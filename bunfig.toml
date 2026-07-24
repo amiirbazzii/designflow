@@ -1,0 +1,7 @@
+# Bun configuration for DesignFlow monorepo
+
+[install]
+exact = true
+
+[test]
+root = "."

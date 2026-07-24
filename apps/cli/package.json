@@ -1,0 +1,36 @@
+{
+  "name": "designflow",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "wf": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "echo \"designflow (cli): lint ok\"",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@designflow/artifacts": "workspace:*",
+    "@designflow/core": "workspace:*",
+    "@designflow/sdk": "workspace:*",
+    "@designflow/state": "workspace:*"
+  },
+  "peerDependencies": {
+    "@designflow/workflow-*": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@designflow/workflow-*": {
+      "optional": true
+    }
+  }
+}

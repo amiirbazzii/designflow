@@ -1,0 +1,88 @@
+import { z } from "zod";
+
+export const capabilityTypeSchema = z.enum([
+  "pure",
+  "generative",
+  "read_fs",
+  "write_fs",
+  "human_gate",
+]);
+
+export type CapabilityType = z.infer<typeof capabilityTypeSchema>;
+
+export const artifactRefSchema = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export type ArtifactRef = z.infer<typeof artifactRefSchema>;
+
+export const executionContextSchema = z.object({
+  runId: z.string().min(1),
+  workflowId: z.string().min(1),
+  stateRef: z.string().min(1),
+  artifacts: z.array(artifactRefSchema).default([]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export type ExecutionContext = z.infer<typeof executionContextSchema>;
+
+export const workflowMetadataSchema = z.object({
+  version: z.string().optional(),
+  author: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+  created: z.string().datetime().optional(),
+  updated: z.string().datetime().optional(),
+});
+
+export type WorkflowMetadata = z.infer<typeof workflowMetadataSchema>;
+
+export const capabilityNodeSchema = z.object({
+  id: z.string().min(1),
+  capabilityId: z.string().min(1),
+  label: z.string().optional(),
+  inputMap: z.record(z.string(), z.unknown()).default({}),
+  execution: z
+    .object({
+      retryPolicy: z
+        .object({
+          maxAttempts: z.number().int().positive(),
+          delay: z.number().nonnegative(),
+        })
+        .optional(),
+      timeout: z.number().positive().optional(),
+      dependsOn: z.array(z.string()).optional(),
+    })
+    .optional(),
+  next: z.array(z.string()).default([]),
+});
+
+export type CapabilityNode = z.infer<typeof capabilityNodeSchema>;
+
+export const workflowDefinitionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().default(""),
+  nodes: z.array(capabilityNodeSchema).default([]),
+  metadata: workflowMetadataSchema.default({}),
+});
+
+export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>;
+
+export const saveCheckpointPayloadSchema = z.object({
+  workflowId: z.string().min(1),
+  checkpointId: z.string().min(1),
+  state: z.unknown(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const checkpointRecordSchema = z.object({
+  checkpointId: z.string().min(1),
+  timestamp: z.number(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export type CheckpointRecord = z.infer<typeof checkpointRecordSchema>;
+
+export const errorMetadataSchema = z.record(z.string(), z.unknown());
