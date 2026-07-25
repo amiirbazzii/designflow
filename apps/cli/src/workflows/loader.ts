@@ -1,8 +1,6 @@
-import { testWorkflowManifest } from "@designflow/workflow-test";
-import { WorkflowRegistry } from "./registry";
+import type { WorkflowRegistry } from "./registry";
+import { discoverWorkflows } from "./discovery";
 
-export function createWorkflowLoader(): WorkflowRegistry {
-  const registry = new WorkflowRegistry();
-  registry.register(testWorkflowManifest);
-  return registry;
+export async function createWorkflowLoader(): Promise<WorkflowRegistry> {
+  return discoverWorkflows();
 }

@@ -25,7 +25,6 @@
     "@designflow/core": "workspace:*",
     "@designflow/sdk": "workspace:*",
     "@designflow/state": "workspace:*",
-    "@designflow/workflow-test": "workspace:*",
     "commander": "^13.0.0"
   }
 }

@@ -20,7 +20,7 @@ export function registerRunCommand(program: Command): void {
       try {
         ctx = createCliContext(workflowId);
 
-        const registry = createWorkflowLoader();
+        const registry = await createWorkflowLoader();
         const manifest = registry.get(workflowId);
         if (!manifest) {
           spin.stop(`Unknown workflow: ${workflowId}`);
