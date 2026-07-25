@@ -23,14 +23,9 @@
         "@designflow/core": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "@designflow/state": "workspace:*",
+        "@designflow/workflow-test": "workspace:*",
         "commander": "^13.0.0",
       },
-      "peerDependencies": {
-        "@designflow/workflow-*": "workspace:*",
-      },
-      "optionalPeers": [
-        "@designflow/workflow-*",
-      ],
     },
     "packages/artifacts": {
       "name": "@designflow/artifacts",
@@ -63,6 +58,14 @@
         "@designflow/sdk": "workspace:*",
       },
     },
+    "workflows/workflow-test": {
+      "name": "@designflow/workflow-test",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+    },
   },
   "packages": {
     "@clack/core": ["@clack/core@0.4.1", "", { "dependencies": { "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-Pxhij4UXg8KSr7rPek6Zowm+5M22rbd2g1nfojHJkxp5YkFqiZ2+YLEM/XGVIzvGOcM0nqjIFxrpDwWRZYWYjA=="],
@@ -76,6 +79,8 @@
     "@designflow/sdk": ["@designflow/sdk@workspace:packages/sdk"],
 
     "@designflow/state": ["@designflow/state@workspace:packages/state"],
+
+    "@designflow/workflow-test": ["@designflow/workflow-test@workspace:workflows/workflow-test"],
 
     "@turbo/darwin-64": ["@turbo/darwin-64@2.10.6", "", { "os": "darwin", "cpu": "x64" }, "sha512-S+yIyZkmjYBQbIM7sTqMAwnLeMjSK60Q9grUDPbTWvkRjbsn5k1Rt5sPvTX80M4PnlYQBwLiYsjlu6tHsuIqQQ=="],
 

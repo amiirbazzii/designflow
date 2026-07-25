@@ -1,4 +1,5 @@
-import type { ArtifactRef } from "./schemas.ts";
+import type { ArtifactRef } from "./schemas";
+import type { ArtifactStore } from "./state";
 
 export interface Logger {
   info(msg: string, ...args: unknown[]): void;
@@ -12,6 +13,7 @@ export interface CapabilityContext {
   readonly workflowId: string;
   readonly logger: Logger;
   readonly artifactRefs: readonly ArtifactRef[];
+  readonly artifactStore: ArtifactStore;
   readonly config: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;
 }

@@ -2,6 +2,7 @@ import type {
   ExecutionContext,
   WorkflowDefinition,
   ArtifactRef,
+  ArtifactStore,
   Logger,
 } from "@designflow/sdk";
 import type {
@@ -21,11 +22,13 @@ export class ExecutionEngine {
   private readonly registry: CapabilityRegistry;
   private readonly compiler: WorkflowCompiler;
   private readonly logger: Logger;
+  private readonly artifactStore: ArtifactStore;
 
-  public constructor(registry: CapabilityRegistry, logger: Logger) {
+  public constructor(registry: CapabilityRegistry, logger: Logger, artifactStore: ArtifactStore) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
     this.logger = logger;
+    this.artifactStore = artifactStore;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -103,6 +106,7 @@ export class ExecutionEngine {
           workflowId: context.workflowId,
           logger: this.logger,
           artifactRefs: context.artifacts,
+          artifactStore: this.artifactStore,
           config: context.metadata,
           signal: context.signal,
         },

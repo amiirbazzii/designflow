@@ -13,3 +13,6 @@ dist/
 
 # Logs
 *.log
+
+# Runtime storage
+.designflow/
