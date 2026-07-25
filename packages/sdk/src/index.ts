@@ -10,6 +10,7 @@ export {
   saveCheckpointPayloadSchema,
   checkpointRecordSchema,
   errorMetadataSchema,
+  workflowManifestSchema,
 } from "./schemas";
 
 export type {
@@ -20,6 +21,7 @@ export type {
   WorkflowMetadata,
   CapabilityNode,
   CheckpointRecord,
+  WorkflowManifestMetadata,
 } from "./schemas";
 
 export { DesignFlowError } from "./errors";
@@ -27,5 +29,7 @@ export { DesignFlowError } from "./errors";
 export type { CapabilityContext, Logger } from "./context";
 
 export type { Capability } from "./capability";
+
+export type { WorkflowManifest, CapabilityRegistrar } from "./manifest";
 
 export type { StateStore, ArtifactStore, CheckpointState } from "./state";

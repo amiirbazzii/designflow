@@ -1,66 +1,58 @@
 import { Command } from "commander";
-import { intro, outro, spinner, log } from "@clack/prompts";
-import type { WorkflowDefinition } from "@designflow/sdk";
-import { testArtifactCapability, testWorkflow } from "@designflow/workflow-test";
-import type { RunResult } from "../types";
+import { intro, outro, spinner } from "@clack/prompts";
+import type { CliContext, RunResult } from "../types";
 import { createCliContext } from "../context";
-
-// Temporary Stage 6 registration.
-// Replace with workflow discovery mechanism later.
-const workflows: Record<string, { definition: WorkflowDefinition; register: (registry: import("@designflow/core").CapabilityRegistry) => void }> = {
-  "test-workflow": {
-    definition: testWorkflow,
-    register(registry) {
-      registry.register(testArtifactCapability);
-    },
-  },
-};
+import { createWorkflowLoader } from "../workflows/loader";
 
 export function registerRunCommand(program: Command): void {
   program
     .command("run")
     .description("Execute a workflow")
-    .argument("<workflow-name>", "Name of the workflow to run")
-    .action(async (workflowName: string): Promise<void> => {
-      intro(`wf run ${workflowName}`);
+    .argument("<workflow-id>", "ID of the workflow to run")
+    .action(async (workflowId: string): Promise<void> => {
+      intro(`wf run ${workflowId}`);
 
       const spin = spinner();
       spin.start("Initializing execution context");
 
-      try {
-        const ctx = createCliContext(workflowName);
+      let ctx!: CliContext;
 
-        const entry = workflows[workflowName];
-        if (!entry) {
-          spin.stop(`Unknown workflow: ${workflowName}`);
-          log.error(`Available workflows: ${Object.keys(workflows).join(", ")}`);
+      try {
+        ctx = createCliContext(workflowId);
+
+        const registry = createWorkflowLoader();
+        const manifest = registry.get(workflowId);
+        if (!manifest) {
+          spin.stop(`Unknown workflow: ${workflowId}`);
+          const available = registry.list().map((m) => m.id).join(", ");
+          ctx.logger.error(`Available workflows: ${available}`);
           process.exit(1);
         }
 
-        entry.register(ctx.registry);
+        manifest.load(ctx.registry);
 
         spin.stop("Execution context ready");
 
-        log.info(`Workflow: ${workflowName}`);
-        log.info(`Run ID: ${ctx.executionContext.runId}`);
+        ctx.logger.info(`Workflow: ${manifest.name}`);
+        ctx.logger.info(`Run ID: ${ctx.executionContext.runId}`);
 
         spin.start("Executing workflow");
-        const result = await ctx.engine.run(entry.definition, ctx.executionContext);
+        const result = await ctx.engine.run(manifest.definition, ctx.executionContext);
         spin.stop("Execution complete");
 
         const runResult: RunResult = {
-          workflowId: workflowName,
+          workflowId,
           runId: ctx.executionContext.runId,
           status: result.success ? "completed" : "failed",
         };
 
         if (result.success) {
-          log.info(`Artifacts produced: ${result.artifacts.length}`);
+          ctx.logger.info(`Artifacts produced: ${result.artifacts.length}`);
           for (const artifact of result.artifacts) {
-            log.info(`  ${artifact.id} (${artifact.type})`);
+            ctx.logger.info(`  ${artifact.id} (${artifact.type})`);
           }
         } else {
-          log.error(`Execution failed: ${String(result.error)}`);
+          ctx.logger.error(`Execution failed: ${String(result.error)}`);
         }
 
         ctx.logger.info(JSON.stringify(runResult, null, 2));
@@ -70,7 +62,7 @@ export function registerRunCommand(program: Command): void {
         }
       } catch (error) {
         spin.stop("Execution failed");
-        log.error(String(error));
+        ctx.logger.error(String(error));
         process.exit(1);
       }
     });

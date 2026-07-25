@@ -86,4 +86,12 @@ export const checkpointRecordSchema = z.object({
 
 export type CheckpointRecord = z.infer<typeof checkpointRecordSchema>;
 
+export const workflowManifestSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  version: z.string().min(1),
+});
+
+export type WorkflowManifestMetadata = z.infer<typeof workflowManifestSchema>;
+
 export const errorMetadataSchema = z.record(z.string(), z.unknown());
