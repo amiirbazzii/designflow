@@ -20,10 +20,12 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@clack/prompts": "^0.9.0",
     "@designflow/artifacts": "workspace:*",
     "@designflow/core": "workspace:*",
     "@designflow/sdk": "workspace:*",
-    "@designflow/state": "workspace:*"
+    "@designflow/state": "workspace:*",
+    "commander": "^13.0.0"
   },
   "peerDependencies": {
     "@designflow/workflow-*": "workspace:*"

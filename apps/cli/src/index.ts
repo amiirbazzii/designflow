@@ -1,1 +1,7 @@
-export const CLI_VERSION = "0.1.0";
+#!/usr/bin/env bun
+
+import { createCli } from "./cli";
+
+const program = createCli();
+
+await program.parseAsync(process.argv);

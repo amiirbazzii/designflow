@@ -8,6 +8,8 @@
   "exclude": ["src/**/*.test.ts"],
   "references": [
     { "path": "../../packages/sdk" },
-    { "path": "../../packages/core" }
+    { "path": "../../packages/core" },
+    { "path": "../../packages/state" },
+    { "path": "../../packages/artifacts" }
   ]
 }
