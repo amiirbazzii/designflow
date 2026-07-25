@@ -24,6 +24,7 @@ export const executionContextSchema = z.object({
   stateRef: z.string().min(1),
   artifacts: z.array(artifactRefSchema).default([]),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  signal: z.custom<AbortSignal>(),
 });
 
 export type ExecutionContext = z.infer<typeof executionContextSchema>;

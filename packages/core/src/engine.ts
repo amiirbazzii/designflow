@@ -1,0 +1,164 @@
+import type {
+  ExecutionContext,
+  WorkflowDefinition,
+  ArtifactRef,
+  Logger,
+} from "@designflow/sdk";
+import type {
+  CompiledNode,
+  CompiledWorkflow,
+  ExecutionPlan,
+  ExecutionResult,
+  ValidationIssue,
+  ValidationResult,
+} from "./types";
+import type { ExecuteResult, ApplyResult } from "./lifecycle";
+import { WorkflowCompiler } from "./compiler";
+import { CapabilityRegistry } from "./registry";
+import { ExecutionError } from "./errors";
+
+export class ExecutionEngine {
+  private readonly registry: CapabilityRegistry;
+  private readonly compiler: WorkflowCompiler;
+  private readonly logger: Logger;
+
+  public constructor(registry: CapabilityRegistry, logger: Logger) {
+    this.registry = registry;
+    this.compiler = new WorkflowCompiler(this.registry);
+    this.logger = logger;
+  }
+
+  public getRegistry(): CapabilityRegistry {
+    return this.registry;
+  }
+
+  public async run(
+    definition: WorkflowDefinition,
+    context: ExecutionContext,
+  ): Promise<ExecutionResult> {
+    const compiled = this.compiler.compile(definition);
+    const plan = this.plan(compiled);
+    const execution = await this.execute(plan, compiled, context);
+    const validation = this.validate(compiled);
+
+    if (!validation.valid) {
+      return {
+        workflowId: definition.id,
+        success: false,
+        artifacts: [],
+        completedSteps: execution.executedSteps,
+        failedStep: undefined,
+        error: new ExecutionError("Workflow validation failed", {
+          issues: validation.issues,
+        }),
+      };
+    }
+
+    const applyResult = this.apply(compiled, execution.candidateArtifacts);
+
+    return {
+      workflowId: definition.id,
+      success: applyResult.committed,
+      artifacts: applyResult.appliedArtifacts,
+      completedSteps: execution.executedSteps,
+      failedStep: undefined,
+      error: undefined,
+    };
+  }
+
+  private plan(workflow: CompiledWorkflow): ExecutionPlan {
+    return {
+      workflowId: workflow.id,
+      steps: workflow.nodes.map((n) => ({
+        nodeId: n.node.id,
+        capabilityId: n.node.capabilityId,
+        label: n.node.label,
+        inputMap: n.node.inputMap,
+        dependsOn: n.node.execution?.dependsOn ?? [],
+      })),
+      totalSteps: workflow.nodes.length,
+    };
+  }
+
+  private async execute(
+    plan: ExecutionPlan,
+    workflow: CompiledWorkflow,
+    context: ExecutionContext,
+  ): Promise<ExecuteResult> {
+    const executedSteps: string[] = [];
+    const candidateArtifacts: ArtifactRef[] = [];
+
+    const nodeMap = new Map<string, CompiledNode>();
+    for (const node of workflow.nodes) {
+      nodeMap.set(node.node.id, node);
+    }
+
+    for (const step of plan.steps) {
+      const compiled = nodeMap.get(step.nodeId);
+      if (!compiled) continue;
+
+      const output = await compiled.capability.execute(
+        {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          logger: this.logger,
+          artifactRefs: context.artifacts,
+          config: context.metadata,
+          signal: context.signal,
+        },
+        step.inputMap,
+      );
+
+      executedSteps.push(step.nodeId);
+
+      if (
+        output &&
+        typeof output === "object" &&
+        "artifactRef" in (output as Record<string, unknown>)
+      ) {
+        const ref = (output as Record<string, unknown>).artifactRef;
+        if (
+          typeof ref === "object" &&
+          ref !== null &&
+          "id" in ref &&
+          "type" in ref
+        ) {
+          candidateArtifacts.push(ref as ArtifactRef);
+        }
+      }
+    }
+
+    return { executedSteps, candidateArtifacts };
+  }
+
+  private validate(workflow: CompiledWorkflow): ValidationResult {
+    const issues: ValidationIssue[] = [];
+
+    for (const node of workflow.nodes) {
+      const deps = node.node.execution?.dependsOn ?? [];
+      for (const dep of deps) {
+        const depExists = workflow.nodes.some((n) => n.node.id === dep);
+        if (!depExists) {
+          issues.push({
+            nodeId: node.node.id,
+            capabilityId: node.node.capabilityId,
+            message: `Missing dependency: ${dep}`,
+            severity: "error",
+          });
+        }
+      }
+    }
+
+    return { valid: issues.length === 0, issues };
+  }
+
+  private apply(
+    _workflow: CompiledWorkflow,
+    artifacts: readonly ArtifactRef[],
+  ): ApplyResult {
+    return {
+      appliedArtifacts: artifacts,
+      committed: true,
+    };
+  }
+}
