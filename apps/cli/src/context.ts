@@ -1,4 +1,4 @@
-import { ExecutionService, CapabilityRegistry } from "@designflow/core";
+import { ExecutionService, CapabilityRegistry, ExecutionEventRepositorySubscriber } from "@designflow/core";
 import type { WorkflowResolver } from "@designflow/core";
 import { LocalExecutionRepository } from "@designflow/state";
 import { LocalArtifactStore } from "@designflow/artifacts";
@@ -17,6 +17,12 @@ export function createCliContext(config: CliContextConfig): CliContext {
   const logger = new CliLogger();
   const executionRepository = new LocalExecutionRepository();
   const artifactStore = new LocalArtifactStore();
+
+  const repositorySubscriber = new ExecutionEventRepositorySubscriber(
+    executionRepository,
+    logger,
+  );
+  eventPublisher.subscribe(repositorySubscriber.createHandler());
 
   eventPublisher.subscribe((event) => {
     const timestamp = new Date(event.timestamp).toISOString();
