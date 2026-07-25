@@ -18,6 +18,7 @@ export interface ExecuteResult {
   readonly executedSteps: readonly string[];
   readonly candidateArtifacts: readonly ArtifactRef[];
   readonly failedSteps: readonly string[];
+  readonly failedErrors: Readonly<Record<string, unknown>>;
 }
 
 export interface ApplyResult {

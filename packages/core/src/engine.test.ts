@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { z } from "zod";
 import { ExecutionEngine } from "./engine";
 import { CapabilityRegistry } from "./registry";
 import type { Capability, ArtifactRef } from "@designflow/sdk";
@@ -7,13 +8,15 @@ import { ExecutionError } from "./errors";
 
 // ── Test Helpers ────────────────────────────────────────────────
 
+const passthroughSchema = z.unknown();
+
 const createMockCapability = (id: string): Capability<unknown, unknown> => ({
   id,
   name: id,
   description: `Capability ${id}`,
   type: "pure",
-  inputSchema: null as unknown as Capability<unknown, unknown>["inputSchema"],
-  outputSchema: null as unknown as Capability<unknown, unknown>["outputSchema"],
+  inputSchema: passthroughSchema,
+  outputSchema: passthroughSchema,
   execute: async (_context, _input) => {
     return { artifactRef: { id: `artifact-${id}`, type: "test" } };
   },

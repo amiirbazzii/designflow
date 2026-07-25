@@ -1,5 +1,9 @@
 export const CORE_VERSION = "0.1.0";
 
+// ── Runtime ─────────────────────────────────────────────────────────
+export { CapabilityRunner, CapabilityExecutionError } from "./runtime";
+export type { CapabilityRunnerOptions } from "./runtime";
+
 // ── DAG Resolver ─────────────────────────────────────────────
 export { DagResolver } from "./dag";
 

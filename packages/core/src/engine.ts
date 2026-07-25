@@ -7,6 +7,7 @@ import type {
   WorkflowDefinition,
   ArtifactRef,
   ArtifactStore,
+  CapabilityContext,
   Logger,
   StateStore,
   ExecutionPhase,
@@ -23,10 +24,12 @@ import type { ExecuteResult, ApplyResult } from "./lifecycle";
 import { WorkflowCompiler } from "./compiler";
 import { CapabilityRegistry } from "./registry";
 import { ExecutionError } from "./errors";
+import { CapabilityRunner } from "./runtime";
 
 export class ExecutionEngine {
   private readonly registry: CapabilityRegistry;
   private readonly compiler: WorkflowCompiler;
+  private readonly runner: CapabilityRunner;
   private readonly logger: Logger;
   private readonly artifactStore: ArtifactStore;
   private readonly stateStore: StateStore;
@@ -39,6 +42,7 @@ export class ExecutionEngine {
   ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
+    this.runner = new CapabilityRunner();
     this.logger = logger;
     this.artifactStore = artifactStore;
     this.stateStore = stateStore;
@@ -71,17 +75,26 @@ export class ExecutionEngine {
           failedSteps: execution.failedSteps,
         });
 
+        const firstFailedId = execution.failedSteps[0];
+        const firstError = firstFailedId !== undefined
+          ? execution.failedErrors[firstFailedId]
+          : undefined;
+
         return {
           workflowId: definition.id,
           success: false,
           artifacts: execution.candidateArtifacts,
           completedSteps: execution.executedSteps,
-          failedStep: execution.failedSteps[0],
+          failedStep: firstFailedId,
           error: new ExecutionError(
-            `Workflow execution failed at step: ${execution.failedSteps[0]}`,
+            `Workflow execution failed at step: ${firstFailedId}`,
             {
               workflowId: definition.id,
               failedSteps: execution.failedSteps,
+              failedErrors: execution.failedErrors,
+              firstError: firstError instanceof Error
+                ? firstError.message
+                : String(firstError),
             },
           ),
         };
@@ -253,6 +266,7 @@ export class ExecutionEngine {
     const executedSteps: string[] = [];
     const candidateArtifacts: ArtifactRef[] = [];
     const failedSteps = new Set<string>();
+    const failedErrors = new Map<string, unknown>();
     const allParentArtifacts: ArtifactRef[] = [
       ...context.artifacts,
     ];
@@ -330,21 +344,28 @@ export class ExecutionEngine {
           exists: (id: string) => this.artifactStore.exists(id),
         };
 
+        const capabilityContext: CapabilityContext = {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          capabilityId,
+          logger: this.logger,
+          artifactRefs: [...allParentArtifacts],
+          parentArtifacts: [...allParentArtifacts],
+          artifactStore: lineageStore,
+          config: context.metadata,
+          signal: context.signal,
+        };
+
         try {
           const step = stepMap.get(nodeId)!;
-          const output = await compiled.capability.execute(
-            {
-              executionId: context.runId,
-              workflowId: context.workflowId,
-              capabilityId,
-              logger: this.logger,
-              artifactRefs: [...allParentArtifacts],
-              parentArtifacts: [...allParentArtifacts],
-              artifactStore: lineageStore,
-              config: context.metadata,
-              signal: context.signal,
-            },
+          const output = await this.runner.run(
+            compiled.capability,
             step.inputMap,
+            capabilityContext,
+            {
+              timeout: compiled.node.execution?.timeout,
+              retryPolicy: compiled.node.execution?.retryPolicy,
+            },
           );
 
           const producedArtifacts: ArtifactRef[] = [];
@@ -370,6 +391,7 @@ export class ExecutionEngine {
           });
         } catch (error) {
           failedSteps.add(nodeId);
+          failedErrors.set(nodeId, error);
           layerResultMap.set(nodeId, {
             artifacts: [],
             executed: false,
@@ -400,6 +422,7 @@ export class ExecutionEngine {
       executedSteps,
       candidateArtifacts,
       failedSteps: Array.from(failedSteps),
+      failedErrors: Object.fromEntries(failedErrors),
     };
   }
 
