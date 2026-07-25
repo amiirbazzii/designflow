@@ -21,7 +21,7 @@ export { ExecutionEngine } from "./engine";
 export { InMemoryExecutionRepository } from "./repository";
 
 // ── Events ─────────────────────────────────────────────────────────
-export { InMemoryEventPublisher } from "./events";
+export { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "./events";
 
 // ── Service ────────────────────────────────────────────────────────
 export { ExecutionService } from "./service";

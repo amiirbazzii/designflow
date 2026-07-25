@@ -28,8 +28,12 @@ export class CapabilityRunner {
     context: CapabilityContext,
     options?: CapabilityRunnerOptions,
   ): Promise<TOutput> {
+    const maxAttempts = options?.retryPolicy?.maxAttempts ?? 1;
+
     await this.publishEvent(context.executionId, "capability.started", {
       capabilityId: capability.id,
+      attempt: 1,
+      maxAttempts,
     });
 
     let validatedInput: TInput;
@@ -38,6 +42,7 @@ export class CapabilityRunner {
     } catch (error) {
       await this.publishEvent(context.executionId, "capability.failed", {
         capabilityId: capability.id,
+        attempt: 1,
         error: "Input validation failed",
       });
       throw new CapabilityExecutionError(
@@ -47,17 +52,24 @@ export class CapabilityRunner {
     }
 
     let output: TOutput;
+    let lastAttempt = 1;
+
     try {
-      output = await this.executeWithRetry(
+      const result = await this.executeWithRetry(
         capability,
         validatedInput,
         context,
         options?.retryPolicy,
         options?.timeout,
+        (attempt) => {
+          lastAttempt = attempt;
+        },
       );
+      output = result;
     } catch (error) {
       await this.publishEvent(context.executionId, "capability.failed", {
         capabilityId: capability.id,
+        attempt: lastAttempt,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -68,17 +80,19 @@ export class CapabilityRunner {
 
       await this.publishEvent(context.executionId, "capability.completed", {
         capabilityId: capability.id,
+        attempt: lastAttempt,
       });
 
       return validatedOutput;
     } catch (error) {
       await this.publishEvent(context.executionId, "capability.failed", {
         capabilityId: capability.id,
+        attempt: lastAttempt,
         error: "Output validation failed",
       });
       throw new CapabilityExecutionError(
         `Output validation failed for capability: ${capability.id}`,
-        { capabilityId: capability.id, attempt: 1, cause: error },
+        { capabilityId: capability.id, attempt: lastAttempt, cause: error },
       );
     }
   }
@@ -104,17 +118,21 @@ export class CapabilityRunner {
     context: CapabilityContext,
     retryPolicy: CapabilityRunnerOptions["retryPolicy"],
     timeout: number | undefined,
+    onAttempt: (attempt: number) => void,
   ): Promise<TOutput> {
     const maxAttempts = retryPolicy?.maxAttempts ?? 1;
     const delayMs = retryPolicy?.delay ?? 0;
 
     if (maxAttempts <= 1) {
+      onAttempt(1);
       return this.executeWithTimeout(capability, input, context, timeout, 1);
     }
 
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      onAttempt(attempt);
+
       try {
         const result = await this.executeWithTimeout(
           capability,

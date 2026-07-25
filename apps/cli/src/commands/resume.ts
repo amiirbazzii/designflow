@@ -4,6 +4,8 @@ import type { CliContext, ResumeResult } from "../types";
 import { createCliContext } from "../context";
 import { createWorkflowLoader } from "../workflows/loader";
 import { createCapabilityRegistry } from "../capabilities";
+import { InMemoryEventPublisher } from "@designflow/core";
+import { CliLogger } from "../logger";
 
 export function registerResumeCommand(program: Command): void {
   program
@@ -30,11 +32,14 @@ export function registerResumeCommand(program: Command): void {
         }
 
         const capabilityRegistry = await createCapabilityRegistry();
+        const logger = new CliLogger();
+        const eventPublisher = new InMemoryEventPublisher(logger);
 
-        ctx = createCliContext(
-          (id) => workflowLoader.get(id),
+        ctx = createCliContext({
+          workflowResolver: (id) => workflowLoader.get(id),
           capabilityRegistry,
-        );
+          eventPublisher,
+        });
 
         spin.stop("Checkpoint loaded");
 

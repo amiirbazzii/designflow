@@ -1,18 +1,22 @@
-import { ExecutionService, CapabilityRegistry, InMemoryEventPublisher } from "@designflow/core";
+import { ExecutionService, CapabilityRegistry } from "@designflow/core";
 import type { WorkflowResolver } from "@designflow/core";
 import { LocalExecutionRepository } from "@designflow/state";
 import { LocalArtifactStore } from "@designflow/artifacts";
 import type { CliContext } from "./types";
 import { CliLogger } from "./logger";
+import type { ExecutionEventPublisher } from "@designflow/sdk";
 
-export function createCliContext(
-  workflowResolver: WorkflowResolver,
-  capabilityRegistry: CapabilityRegistry,
-): CliContext {
+export interface CliContextConfig {
+  workflowResolver: WorkflowResolver;
+  capabilityRegistry: CapabilityRegistry;
+  eventPublisher: ExecutionEventPublisher;
+}
+
+export function createCliContext(config: CliContextConfig): CliContext {
+  const { workflowResolver, capabilityRegistry, eventPublisher } = config;
   const logger = new CliLogger();
   const executionRepository = new LocalExecutionRepository();
   const artifactStore = new LocalArtifactStore();
-  const eventPublisher = new InMemoryEventPublisher();
 
   eventPublisher.subscribe((event) => {
     const timestamp = new Date(event.timestamp).toISOString();

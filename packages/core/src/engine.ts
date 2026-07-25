@@ -28,6 +28,7 @@ import { WorkflowCompiler } from "./compiler";
 import { CapabilityRegistry } from "./registry";
 import { ExecutionError } from "./errors";
 import { CapabilityRunner } from "./runtime";
+import { DesignFlowError } from "@designflow/sdk";
 
 export class ExecutionEngine {
   private readonly registry: CapabilityRegistry;
@@ -187,13 +188,20 @@ export class ExecutionEngine {
         error: String(error),
       });
 
+      const normalizedError = error instanceof DesignFlowError
+        ? error
+        : new ExecutionError("Unexpected execution failure", {
+            workflowId: definition.id,
+            cause: error instanceof Error ? error.message : String(error),
+          });
+
       return {
         workflowId: definition.id,
         success: false,
         artifacts: [],
         completedSteps: [],
         failedStep: undefined,
-        error,
+        error: normalizedError,
       };
     }
   }
