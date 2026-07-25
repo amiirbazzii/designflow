@@ -9,8 +9,8 @@ import type {
   ArtifactStore,
   CapabilityContext,
   Logger,
-  StateStore,
-  ExecutionPhase,
+  ExecutionRepository,
+  ExecutionCheckpointData,
 } from "@designflow/sdk";
 import type {
   CompiledNode,
@@ -32,20 +32,20 @@ export class ExecutionEngine {
   private readonly runner: CapabilityRunner;
   private readonly logger: Logger;
   private readonly artifactStore: ArtifactStore;
-  private readonly stateStore: StateStore;
+  private readonly executionRepository: ExecutionRepository;
 
   public constructor(
     registry: CapabilityRegistry,
     logger: Logger,
     artifactStore: ArtifactStore,
-    stateStore: StateStore,
+    executionRepository: ExecutionRepository,
   ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
     this.runner = new CapabilityRunner();
     this.logger = logger;
     this.artifactStore = artifactStore;
-    this.stateStore = stateStore;
+    this.executionRepository = executionRepository;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -152,19 +152,42 @@ export class ExecutionEngine {
   public async resume(
     definition: WorkflowDefinition,
     workflowId: string,
+    executionId?: string,
   ): Promise<ExecutionResult> {
-    const latest = await this.stateStore.getLatestCheckpoint(workflowId);
+    const resumeId = executionId ?? crypto.randomUUID();
 
-    if (latest === null) {
+    const executionRecords = await this.executionRepository.list(workflowId);
+
+    let targetRecord: { executionId: string; status: string } | null = null;
+
+    if (executionId) {
+      const found = executionRecords.find(
+        (r) => r.executionId === executionId,
+      );
+      if (found) {
+        targetRecord = found;
+      }
+    }
+
+    if (targetRecord === null && executionRecords.length > 0) {
+      const sorted = [...executionRecords].sort(
+        (a, b) => b.startedAt - a.startedAt,
+      );
+      targetRecord = sorted[0] ?? null;
+    }
+
+    if (targetRecord === null) {
       throw new ExecutionError("No checkpoint found to resume from", {
         workflowId,
       });
     }
 
-    const checkpoint = executionCheckpointSchema.parse(latest.state);
+    if (targetRecord.status === "completed") {
+      const checkpoint = await this.executionRepository.getLatestCheckpoint(
+        targetRecord.executionId,
+      );
 
-    if (checkpoint.phase === "completed") {
-      const rawArtifacts = checkpoint.metadata?.appliedArtifacts;
+      const rawArtifacts = checkpoint?.metadata?.appliedArtifacts;
       const completedArtifacts: ArtifactRef[] = Array.isArray(rawArtifacts)
         ? rawArtifacts.filter(
             (a): a is ArtifactRef =>
@@ -185,7 +208,7 @@ export class ExecutionEngine {
       };
     }
 
-    if (checkpoint.phase === "failed") {
+    if (targetRecord.status === "failed" || targetRecord.status === "cancelled") {
       return {
         workflowId,
         success: false,
@@ -193,10 +216,10 @@ export class ExecutionEngine {
         completedSteps: [],
         failedStep: undefined,
         error: new ExecutionError(
-          "Workflow previously failed, cannot resume",
+          `Workflow previously ${targetRecord.status}, cannot resume`,
           {
             workflowId,
-            previousExecutionId: checkpoint.executionId,
+            previousExecutionId: targetRecord.executionId,
           },
         ),
       };
@@ -205,13 +228,12 @@ export class ExecutionEngine {
     const abortController = new AbortController();
 
     const executionContext: ExecutionContext = {
-      runId: crypto.randomUUID(),
+      runId: resumeId,
       workflowId,
       stateRef: "resume",
       artifacts: [],
       metadata: {
-        resumedFromCheckpoint: latest.checkpointId,
-        previousExecutionId: checkpoint.executionId,
+        previousExecutionId: targetRecord.executionId,
       },
       signal: abortController.signal,
     };
@@ -222,30 +244,22 @@ export class ExecutionEngine {
   private async recordCheckpoint(
     workflowId: string,
     executionId: string,
-    phase: ExecutionPhase,
+    phase: string,
     additional?: Record<string, unknown>,
   ): Promise<void> {
-    const checkpointId = `${executionId}-${phase}`;
     const timestamp = Date.now();
     const metadata = { ...additional, executionId, phase };
 
-    const checkpoint = executionCheckpointSchema.parse({
-      workflowId,
+    const checkpoint: ExecutionCheckpointData = {
       executionId,
       phase,
       timestamp,
-      stateRef: checkpointId,
+      state: metadata,
       metadata,
-    });
+    };
 
     try {
-      await this.stateStore.saveCheckpoint(
-        workflowId,
-        checkpointId,
-        checkpoint,
-        { phase, executionId },
-        timestamp,
-      );
+      await this.executionRepository.saveCheckpoint(executionId, checkpoint);
     } catch (error) {
       throw new ExecutionError("Failed to persist checkpoint", {
         workflowId,

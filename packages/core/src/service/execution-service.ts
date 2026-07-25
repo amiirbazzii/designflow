@@ -1,7 +1,6 @@
 import {
   executionRequestSchema,
   executionResultSchema,
-  executionCheckpointSchema,
 } from "@designflow/sdk";
 import type {
   ExecutionRequest,
@@ -9,9 +8,11 @@ import type {
   ExecutionContract,
   WorkflowPackage,
   Logger,
-  StateStore,
   ArtifactStore,
   ArtifactRef,
+  ExecutionRepository,
+  ExecutionRecord,
+  LifecycleEvent,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -47,8 +48,8 @@ export interface ExecutionServiceConfig {
   readonly workflowResolver: WorkflowResolver;
   readonly capabilityRegistry: CapabilityRegistry;
   readonly logger: Logger;
-  readonly stateStore: StateStore;
   readonly artifactStore: ArtifactStore;
+  readonly executionRepository: ExecutionRepository;
 }
 
 // ── Execution Service ───────────────────────────────────────────
@@ -57,15 +58,15 @@ export class ExecutionService implements ExecutionContract {
   private readonly workflowResolver: WorkflowResolver;
   private readonly capabilityRegistry: CapabilityRegistry;
   private readonly logger: Logger;
-  private readonly stateStore: StateStore;
   private readonly artifactStore: ArtifactStore;
+  private readonly executionRepository: ExecutionRepository;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
     this.capabilityRegistry = config.capabilityRegistry;
     this.logger = config.logger;
-    this.stateStore = config.stateStore;
     this.artifactStore = config.artifactStore;
+    this.executionRepository = config.executionRepository;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -77,63 +78,213 @@ export class ExecutionService implements ExecutionContract {
 
     const workflowPackage = this.resolveWorkflow(validatedRequest.workflowId);
 
-    const engine = new ExecutionEngine(
-      this.capabilityRegistry,
-      this.logger,
-      this.artifactStore,
-      this.stateStore,
-    );
+    const executionId = crypto.randomUUID();
 
-    const abortController = new AbortController();
-
-    const executionContext = {
-      runId: crypto.randomUUID(),
+    const now = Date.now();
+    const record: ExecutionRecord = {
+      executionId,
       workflowId: validatedRequest.workflowId,
-      stateRef: "initial",
-      artifacts: [],
-      metadata: validatedRequest.metadata ?? {},
-      signal: abortController.signal,
+      status: "running",
+      startedAt: now,
+      metadata: validatedRequest.metadata,
     };
 
-    const engineResult = await engine.run(
-      workflowPackage.definition,
-      executionContext,
-    );
+    await this.executionRepository.create(record);
+    await this.appendEvent(executionId, "created");
 
-    return this.normalizeResult(
-      executionContext.runId,
-      validatedRequest.workflowId,
-      engineResult,
-    );
+    try {
+      const engine = new ExecutionEngine(
+        this.capabilityRegistry,
+        this.logger,
+        this.artifactStore,
+        this.executionRepository,
+      );
+
+      const abortController = new AbortController();
+
+      const executionContext = {
+        runId: executionId,
+        workflowId: validatedRequest.workflowId,
+        stateRef: "initial",
+        artifacts: [],
+        metadata: validatedRequest.metadata ?? {},
+        signal: abortController.signal,
+      };
+
+      await this.appendEvent(executionId, "executing");
+
+      const engineResult = await engine.run(
+        workflowPackage.definition,
+        executionContext,
+      );
+
+      return this.finalizeResult(executionId, validatedRequest.workflowId, engineResult);
+    } catch (error) {
+      await this.markFailed(executionId, validatedRequest.workflowId, error);
+      throw error;
+    }
   }
 
   public async resume(workflowId: string): Promise<ExecutionResult> {
     const workflowPackage = this.resolveWorkflow(workflowId);
 
-    const latest = await this.stateStore.getLatestCheckpoint(workflowId);
+    const executionRecords = await this.executionRepository.list(workflowId);
+    const latestRecord = this.findLatestRecord(executionRecords);
 
-    let executionId: string;
-    if (latest !== null) {
-      const checkpoint = executionCheckpointSchema.parse(latest.state);
-      executionId = checkpoint.executionId;
-    } else {
-      executionId = crypto.randomUUID();
+    if (latestRecord === null) {
+      throw new DesignFlowError(
+        "ERR_NO_CHECKPOINT",
+        "No checkpoint found to resume from",
+        { workflowId },
+      );
     }
 
-    const engine = new ExecutionEngine(
-      this.capabilityRegistry,
-      this.logger,
-      this.artifactStore,
-      this.stateStore,
+    switch (latestRecord.status) {
+      case "completed": {
+        const result: ExecutionResult = {
+          executionId: latestRecord.executionId,
+          workflowId,
+          status: "completed",
+          artifacts: [],
+        };
+        return executionResultSchema.parse(result);
+      }
+
+      case "failed":
+      case "cancelled": {
+        const result: ExecutionResult = {
+          executionId: latestRecord.executionId,
+          workflowId,
+          status: latestRecord.status,
+          artifacts: [],
+          error: {
+            code: "WORKFLOW_PREVIOUSLY_TERMINATED",
+            message: `Workflow previously ${latestRecord.status}, cannot resume`,
+          },
+        };
+        return executionResultSchema.parse(result);
+      }
+
+      case "running": {
+        const engine = new ExecutionEngine(
+          this.capabilityRegistry,
+          this.logger,
+          this.artifactStore,
+          this.executionRepository,
+        );
+
+        await this.appendEvent(latestRecord.executionId, "executing");
+
+        try {
+          const engineResult = await engine.resume(
+            workflowPackage.definition,
+            workflowId,
+            latestRecord.executionId,
+          );
+
+          return this.finalizeResult(
+            latestRecord.executionId,
+            workflowId,
+            engineResult,
+          );
+        } catch (error) {
+          await this.markFailed(latestRecord.executionId, workflowId, error);
+          throw error;
+        }
+      }
+    }
+  }
+
+  private findLatestRecord(
+    records: readonly ExecutionRecord[],
+  ): ExecutionRecord | null {
+    if (records.length === 0) return null;
+
+    const sorted = [...records].sort(
+      (a, b) => b.startedAt - a.startedAt,
     );
 
-    const engineResult = await engine.resume(workflowPackage.definition, workflowId);
+    return sorted[0] ?? null;
+  }
 
-    return this.normalizeResult(
+  private async markFailed(
+    executionId: string,
+    workflowId: string,
+    error: unknown,
+  ): Promise<void> {
+    const now = Date.now();
+
+    try {
+      await this.executionRepository.update(executionId, {
+        status: "failed",
+        completedAt: now,
+      });
+
+      await this.appendEvent(executionId, "failed");
+    } catch (updateError) {
+      this.logger.error("Failed to persist execution failure", {
+        executionId,
+        workflowId,
+        originalError: String(error),
+        updateError: String(updateError),
+      });
+    }
+  }
+
+  private async finalizeResult(
+    executionId: string,
+    workflowId: string,
+    engineResult: { success: boolean; artifacts: readonly ArtifactRef[]; error: unknown },
+  ): Promise<ExecutionResult> {
+    const status = engineResult.success ? "completed" as const : "failed" as const;
+
+    const now = Date.now();
+    await this.executionRepository.update(executionId, {
+      status,
+      completedAt: now,
+    });
+
+    await this.appendEvent(
+      executionId,
+      engineResult.success ? "completed" : "failed",
+    );
+
+    const error = engineResult.error !== undefined
+      ? {
+          code: engineResult.error instanceof Error
+            ? engineResult.error.name
+            : "UNKNOWN_ERROR",
+          message: engineResult.error instanceof Error
+            ? engineResult.error.message
+            : String(engineResult.error),
+        }
+      : undefined;
+
+    const result: ExecutionResult = {
       executionId,
       workflowId,
-      engineResult,
-    );
+      status,
+      artifacts: engineResult.artifacts.map((a) => ({
+        id: a.id,
+        type: a.type,
+        metadata: a.metadata ?? {},
+      })),
+      error,
+    };
+
+    return executionResultSchema.parse(result);
+  }
+
+  private async appendEvent(
+    executionId: string,
+    phase: LifecycleEvent["phase"],
+  ): Promise<void> {
+    const event: LifecycleEvent = {
+      executionId,
+      phase,
+      timestamp: Date.now(),
+    };
+    await this.executionRepository.appendEvent(event);
   }
 
   private validateRequest(request: ExecutionRequest): ExecutionRequest {
@@ -160,38 +311,5 @@ export class ExecutionService implements ExecutionContract {
     }
 
     return workflowPackage;
-  }
-
-  private normalizeResult(
-    executionId: string,
-    workflowId: string,
-    engineResult: { success: boolean; artifacts: readonly ArtifactRef[]; error: unknown },
-  ): ExecutionResult {
-    const status = engineResult.success ? "completed" as const : "failed" as const;
-
-    const error = engineResult.error !== undefined
-      ? {
-          code: engineResult.error instanceof Error
-            ? engineResult.error.name
-            : "UNKNOWN_ERROR",
-          message: engineResult.error instanceof Error
-            ? engineResult.error.message
-            : String(engineResult.error),
-        }
-      : undefined;
-
-    const result: ExecutionResult = {
-      executionId,
-      workflowId,
-      status,
-      artifacts: engineResult.artifacts.map((a) => ({
-        id: a.id,
-        type: a.type,
-        metadata: a.metadata ?? {},
-      })),
-      error,
-    };
-
-    return executionResultSchema.parse(result);
   }
 }

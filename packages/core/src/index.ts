@@ -17,6 +17,9 @@ export type { CompilationResult } from "./compiler";
 // ── Engine ─────────────────────────────────────────────────────────
 export { ExecutionEngine } from "./engine";
 
+// ── Repository ─────────────────────────────────────────────────────
+export { InMemoryExecutionRepository } from "./repository";
+
 // ── Service ────────────────────────────────────────────────────────
 export { ExecutionService } from "./service";
 export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
@@ -48,4 +51,5 @@ export {
   WorkflowCompilationError,
   CapabilityNotFoundError,
   ExecutionError,
+  ExecutionRepositoryError,
 } from "./errors";

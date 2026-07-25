@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { ExecutionEngine } from "./engine";
 import { CapabilityRegistry } from "./registry";
-import type { Capability, ArtifactRef, CapabilityPackage } from "@designflow/sdk";
-import type { StateStore, ArtifactStore, Logger } from "@designflow/sdk";
+import { InMemoryExecutionRepository } from "./repository";
+import type { Capability, ArtifactRef, CapabilityPackage, ExecutionRecord } from "@designflow/sdk";
+import type { ArtifactStore, Logger, ExecutionRepository } from "@designflow/sdk";
 import { ExecutionError } from "./errors";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -29,13 +30,6 @@ const createMockLogger = (): Logger => ({
   debug: () => {},
 });
 
-const createMockStateStore = (): StateStore => ({
-  saveCheckpoint: async () => {},
-  loadCheckpoint: async () => null,
-  listHistory: async () => [],
-  getLatestCheckpoint: async () => null,
-});
-
 const createMockArtifactStore = (): ArtifactStore => ({
   save: async (_data, _metadata, _lineage) => ({
     id: "test-artifact",
@@ -45,29 +39,54 @@ const createMockArtifactStore = (): ArtifactStore => ({
   exists: async () => false,
 });
 
-const createEngine = (): ExecutionEngine => {
+const createEngine = (): { engine: ExecutionEngine; repository: InMemoryExecutionRepository } => {
   const registry = new CapabilityRegistry();
   const logger = createMockLogger();
   const artifactStore = createMockArtifactStore();
-  const stateStore = createMockStateStore();
-  return new ExecutionEngine(registry, logger, artifactStore, stateStore);
+  const executionRepository = new InMemoryExecutionRepository();
+  const engine = new ExecutionEngine(registry, logger, artifactStore, executionRepository);
+  return { engine, repository: executionRepository };
 };
 
-const createExecution = () => ({
-  runId: crypto.randomUUID(),
-  workflowId: "test-wf",
+const createExecution = (
+  executionId: string,
+  workflowId: string,
+): {
+  runId: string;
+  workflowId: string;
+  stateRef: string;
+  artifacts: never[];
+  metadata: Record<string, unknown>;
+  signal: AbortSignal;
+} => ({
+  runId: executionId,
+  workflowId,
   stateRef: "test",
   artifacts: [],
   metadata: {},
   signal: new AbortController().signal,
 });
 
+const createExecutionRecord = async (
+  repository: InMemoryExecutionRepository,
+  executionId: string,
+  workflowId: string,
+): Promise<void> => {
+  const record: ExecutionRecord = {
+    executionId,
+    workflowId,
+    status: "running",
+    startedAt: Date.now(),
+  };
+  await repository.create(record);
+};
+
 // ── Tests ───────────────────────────────────────────────────────
 
 describe("ExecutionEngine with DAG execution", () => {
   test("linear workflow A → B → C executes in order", async () => {
     const executionOrder: string[] = [];
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     const capA: Capability<unknown, unknown> = {
@@ -108,7 +127,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-linear");
+    const result = await engine.run(definition, createExecution(executionId, "wf-linear"));
 
     expect(result.success).toBe(true);
     expect(executionOrder).toEqual(["A", "B", "C"]);
@@ -118,7 +139,7 @@ describe("ExecutionEngine with DAG execution", () => {
 
   test("branch workflow A → {B, C} executes A then B and C", async () => {
     const executionOrder: string[] = [];
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     const capA: Capability<unknown, unknown> = {
@@ -159,7 +180,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-branch");
+    const result = await engine.run(definition, createExecution(executionId, "wf-branch"));
 
     expect(result.success).toBe(true);
     expect(executionOrder[0]).toBe("A");
@@ -170,7 +193,7 @@ describe("ExecutionEngine with DAG execution", () => {
 
   test("merge workflow A,C → D executes A,C then D", async () => {
     const executionOrder: string[] = [];
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     const capA: Capability<unknown, unknown> = {
@@ -216,7 +239,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-merge");
+    const result = await engine.run(definition, createExecution(executionId, "wf-merge"));
 
     expect(result.success).toBe(true);
     expect(executionOrder.slice(0, 2).sort()).toEqual(["A", "C"]);
@@ -226,7 +251,7 @@ describe("ExecutionEngine with DAG execution", () => {
 
   test("diamond workflow A → {B,C} → D executes correctly", async () => {
     const executionOrder: string[] = [];
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     const capA: Capability<unknown, unknown> = {
@@ -281,7 +306,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-diamond");
+    const result = await engine.run(definition, createExecution(executionId, "wf-diamond"));
 
     expect(result.success).toBe(true);
     expect(executionOrder[0]).toBe("A");
@@ -291,7 +318,7 @@ describe("ExecutionEngine with DAG execution", () => {
   });
 
   test("cycle rejection throws ExecutionError during compilation", async () => {
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     registry.register(createMockCapability("cap-a"));
@@ -308,7 +335,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-cycle");
+    const result = await engine.run(definition, createExecution(executionId, "wf-cycle"));
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
@@ -316,7 +345,7 @@ describe("ExecutionEngine with DAG execution", () => {
 
   test("artifacts are collected in deterministic workflow order", async () => {
     const artifactIds: string[] = [];
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     const capA: Capability<unknown, unknown> = {
@@ -367,7 +396,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-deterministic");
+    const result = await engine.run(definition, createExecution(executionId, "wf-deterministic"));
 
     expect(result.success).toBe(true);
     expect(result.artifacts).toHaveLength(4);
@@ -376,7 +407,7 @@ describe("ExecutionEngine with DAG execution", () => {
   });
 
   test("single node executes successfully", async () => {
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     registry.register(createMockCapability("cap-a"));
@@ -389,7 +420,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-single");
+    const result = await engine.run(definition, createExecution(executionId, "wf-single"));
 
     expect(result.success).toBe(true);
     expect(result.completedSteps).toEqual(["A"]);
@@ -397,7 +430,7 @@ describe("ExecutionEngine with DAG execution", () => {
   });
 
   test("external capability package resolves and executes", async () => {
-    const engine = createEngine();
+    const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 
     const externalPackage: CapabilityPackage = {
@@ -433,7 +466,9 @@ describe("ExecutionEngine with DAG execution", () => {
       metadata: {},
     };
 
-    const result = await engine.run(definition, createExecution());
+    const executionId = crypto.randomUUID();
+    await createExecutionRecord(repository, executionId, "wf-external");
+    const result = await engine.run(definition, createExecution(executionId, "wf-external"));
 
     expect(result.success).toBe(true);
     expect(result.completedSteps).toEqual(["A"]);

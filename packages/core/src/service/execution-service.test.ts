@@ -2,13 +2,14 @@ import { describe, expect, test, beforeEach } from "bun:test";
 import { z } from "zod";
 import { ExecutionService } from "./execution-service";
 import { CapabilityRegistry } from "../registry";
+import { InMemoryExecutionRepository } from "../repository";
 import type {
   WorkflowPackage,
   WorkflowResolver,
   Logger,
-  StateStore,
   ArtifactStore,
   Capability,
+  ExecutionRepository,
 } from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -32,13 +33,6 @@ const createMockLogger = (): Logger => ({
   warn: () => {},
   error: () => {},
   debug: () => {},
-});
-
-const createMockStateStore = (): StateStore => ({
-  saveCheckpoint: async () => {},
-  loadCheckpoint: async () => null,
-  listHistory: async () => [],
-  getLatestCheckpoint: async () => null,
 });
 
 const createMockArtifactStore = (): ArtifactStore => ({
@@ -70,14 +64,14 @@ const createWorkflowPackage = (
 
 describe("ExecutionService", () => {
   let logger: Logger;
-  let stateStore: StateStore;
   let artifactStore: ArtifactStore;
+  let executionRepository: ExecutionRepository;
   let capabilityRegistry: CapabilityRegistry;
 
   beforeEach(() => {
     logger = createMockLogger();
-    stateStore = createMockStateStore();
     artifactStore = createMockArtifactStore();
+    executionRepository = new InMemoryExecutionRepository();
     capabilityRegistry = new CapabilityRegistry();
   });
 
@@ -97,8 +91,8 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -112,8 +106,8 @@ describe("ExecutionService", () => {
         workflowResolver: () => undefined,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       await expect(
@@ -129,8 +123,8 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       await expect(
@@ -155,8 +149,8 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -184,8 +178,8 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       const result = await service.execute({
@@ -194,6 +188,38 @@ describe("ExecutionService", () => {
       });
 
       expect(result.status).toBe("completed");
+    });
+
+    test("successful execution persists events to repository", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      const events = await executionRepository.listEvents(result.executionId);
+      expect(events.length).toBeGreaterThanOrEqual(3);
+      expect(events[0].phase).toBe("created");
+      expect(events[1].phase).toBe("executing");
+      expect(events[events.length - 1].phase).toBe("completed");
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.status).toBe("completed");
+      expect(record?.completedAt).toBeDefined();
     });
   });
 
@@ -224,8 +250,8 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -235,6 +261,47 @@ describe("ExecutionService", () => {
       expect(result.status).toBe("failed");
       expect(result.error).toBeDefined();
       expect(result.error?.message).toContain("node-1");
+    });
+
+    test("failed execution persists failed state to repository", async () => {
+      const failingCap: Capability<unknown, unknown> = {
+        id: "failing-cap",
+        name: "Failing Capability",
+        description: "A capability that fails",
+        type: "pure",
+        inputSchema: passthroughSchema,
+        outputSchema: passthroughSchema,
+        execute: async () => {
+          throw new Error("Capability execution failed");
+        },
+      };
+
+      capabilityRegistry.register(failingCap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "failing-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      const events = await executionRepository.listEvents(result.executionId);
+      expect(events.length).toBeGreaterThanOrEqual(3);
+      expect(events[events.length - 1].phase).toBe("failed");
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.status).toBe("failed");
+      expect(record?.completedAt).toBeDefined();
     });
   });
 
@@ -254,8 +321,8 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       await expect(service.resume("test-wf")).rejects.toThrow(
@@ -278,13 +345,44 @@ describe("ExecutionService", () => {
         workflowResolver: resolver,
         capabilityRegistry,
         logger,
-        stateStore,
         artifactStore,
+        executionRepository,
       });
 
       await expect(
         service.execute({ workflowId: "test-wf", options: { resume: true } }),
       ).rejects.toThrow("No checkpoint found to resume from");
+    });
+
+    test("resume reads repository for execution history", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("completed");
+
+      const events = await executionRepository.listEvents(result.executionId);
+      expect(events.length).toBeGreaterThan(0);
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record).toBeDefined();
+      expect(record?.workflowId).toBe("test-wf");
     });
   });
 });

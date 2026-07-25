@@ -36,3 +36,14 @@ export class ExecutionError extends DesignFlowError {
     Object.setPrototypeOf(this, ExecutionError.prototype);
   }
 }
+
+export class ExecutionRepositoryError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_EXECUTION_REPOSITORY", message, metadata);
+    this.name = "ExecutionRepositoryError";
+    Object.setPrototypeOf(this, ExecutionRepositoryError.prototype);
+  }
+}

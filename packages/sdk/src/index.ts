@@ -47,6 +47,24 @@ export { workflowPackageSchema } from "./workflow";
 
 export type { StateStore, ArtifactStore, CheckpointState, CheckpointData } from "./state";
 
+// ── Execution Repository ────────────────────────────────────────
+export {
+  executionRecordSchema,
+  executionRecordStatusSchema,
+  lifecycleEventSchema,
+  lifecycleEventPhaseSchema,
+  executionCheckpointDataSchema,
+} from "./execution-repository";
+
+export type {
+  ExecutionRecord,
+  ExecutionRecordStatus,
+  LifecycleEvent,
+  LifecycleEventPhase,
+  ExecutionCheckpointData,
+  ExecutionRepository,
+} from "./execution-repository";
+
 // ── Execution Contract ───────────────────────────────────────────
 export {
   executionRequestSchema,
