@@ -32,10 +32,16 @@ export interface ExecutionStep {
   readonly dependsOn: readonly string[];
 }
 
+export interface ExecutionLayer {
+  readonly index: number;
+  readonly nodeIds: readonly string[];
+}
+
 export interface ExecutionPlan {
   readonly workflowId: string;
-  readonly steps: readonly ExecutionStep[];
-  readonly totalSteps: number;
+  readonly layers: readonly ExecutionLayer[];
+  steps: readonly ExecutionStep[];
+  totalSteps: number;
 }
 
 export interface ExecutionResult {

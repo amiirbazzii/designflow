@@ -1,10 +1,14 @@
 export const CORE_VERSION = "0.1.0";
 
+// ── DAG Resolver ─────────────────────────────────────────────
+export { DagResolver } from "./dag";
+
 // ── Registry ───────────────────────────────────────────────────────
 export { CapabilityRegistry } from "./registry";
 
-// ── Compiler ───────────────────────────────────────────────────────
+// ── Compiler ─────────────────────────────────────────────
 export { WorkflowCompiler } from "./compiler";
+export type { CompilationResult } from "./compiler";
 
 // ── Engine ─────────────────────────────────────────────────────────
 export { ExecutionEngine } from "./engine";
@@ -23,6 +27,7 @@ export type {
   CompiledNode,
   CompiledWorkflow,
   ExecutionStep,
+  ExecutionLayer,
   ExecutionPlan,
   ExecutionResult,
   ValidationResult,

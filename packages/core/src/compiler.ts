@@ -1,25 +1,37 @@
 import type { WorkflowDefinition } from "@designflow/sdk";
-import type { CompiledNode, CompiledWorkflow } from "./types";
+import type { CompiledNode, CompiledWorkflow, ExecutionPlan } from "./types";
 import { CapabilityNotFoundError, WorkflowCompilationError } from "./errors";
 import type { CapabilityRegistry } from "./registry";
+import { DagResolver } from "./dag";
+
+export interface CompilationResult {
+  readonly compiled: CompiledWorkflow;
+  readonly plan: ExecutionPlan;
+}
 
 export class WorkflowCompiler {
   private readonly registry: CapabilityRegistry;
+  private readonly dagResolver: DagResolver;
 
   public constructor(registry: CapabilityRegistry) {
     this.registry = registry;
+    this.dagResolver = new DagResolver();
   }
 
-  public compile(definition: WorkflowDefinition): CompiledWorkflow {
+  public compile(definition: WorkflowDefinition): CompilationResult {
     const nodes = this.resolveNodes(definition);
     const ordered = this.topologicalSort(nodes);
+    const plan = this.dagResolver.resolve(definition);
 
     return {
-      id: definition.id,
-      name: definition.name,
-      description: definition.description,
-      metadata: definition.metadata,
-      nodes: ordered,
+      compiled: {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description,
+        metadata: definition.metadata,
+        nodes: ordered,
+      },
+      plan,
     };
   }
 

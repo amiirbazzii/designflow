@@ -6,7 +6,6 @@ import type {
   ExecutionContext,
   WorkflowDefinition,
   ArtifactRef,
-  ArtifactLineage,
   ArtifactStore,
   Logger,
   StateStore,
@@ -58,13 +57,35 @@ export class ExecutionEngine {
     await this.recordCheckpoint(definition.id, executionId, "started");
 
     try {
-      const compiled = this.compiler.compile(definition);
-      const plan = this.plan(compiled);
-      const execution = await this.execute(plan, compiled, context);
+      const { compiled, plan } = this.compiler.compile(definition);
+      const execution = await this.execute(
+        plan,
+        compiled,
+        context,
+        executionId,
+        definition.id,
+      );
 
-      await this.recordCheckpoint(definition.id, executionId, "executing", {
-        executedSteps: execution.executedSteps,
-      });
+      if (execution.failedSteps.length > 0) {
+        await this.recordCheckpoint(definition.id, executionId, "failed", {
+          failedSteps: execution.failedSteps,
+        });
+
+        return {
+          workflowId: definition.id,
+          success: false,
+          artifacts: execution.candidateArtifacts,
+          completedSteps: execution.executedSteps,
+          failedStep: execution.failedSteps[0],
+          error: new ExecutionError(
+            `Workflow execution failed at step: ${execution.failedSteps[0]}`,
+            {
+              workflowId: definition.id,
+              failedSteps: execution.failedSteps,
+            },
+          ),
+        };
+      }
 
       const validation = this.validate(compiled);
 
@@ -222,96 +243,164 @@ export class ExecutionEngine {
     }
   }
 
-  private plan(workflow: CompiledWorkflow): ExecutionPlan {
-    return {
-      workflowId: workflow.id,
-      steps: workflow.nodes.map((n) => ({
-        nodeId: n.node.id,
-        capabilityId: n.node.capabilityId,
-        label: n.node.label,
-        inputMap: n.node.inputMap,
-        dependsOn: n.node.execution?.dependsOn ?? [],
-      })),
-      totalSteps: workflow.nodes.length,
-    };
-  }
-
   private async execute(
     plan: ExecutionPlan,
     workflow: CompiledWorkflow,
     context: ExecutionContext,
+    executionId: string,
+    workflowId: string,
   ): Promise<ExecuteResult> {
     const executedSteps: string[] = [];
     const candidateArtifacts: ArtifactRef[] = [];
+    const failedSteps = new Set<string>();
+    const allParentArtifacts: ArtifactRef[] = [
+      ...context.artifacts,
+    ];
 
     const nodeMap = new Map<string, CompiledNode>();
     for (const node of workflow.nodes) {
       nodeMap.set(node.node.id, node);
     }
 
+    const stepMap = new Map<string, (typeof plan.steps)[number]>();
     for (const step of plan.steps) {
-      const compiled = nodeMap.get(step.nodeId);
-      if (!compiled) continue;
+      stepMap.set(step.nodeId, step);
+    }
 
-      const parentArtifactIds = [
-        ...context.artifacts.map((a) => a.id),
-        ...candidateArtifacts.map((a) => a.id),
-      ];
-      const parentArtifacts = [
-        ...context.artifacts,
-        ...candidateArtifacts,
-      ];
-      const capabilityId = compiled.node.capabilityId;
+    for (let layerIndex = 0; layerIndex < plan.layers.length; layerIndex++) {
+      const layer = plan.layers[layerIndex];
+      if (!layer) continue;
 
-      const lineageStore: ArtifactStore = {
-        save: async (data, metadata) => {
-          const lineage = artifactLineageSchema.parse({
-            executionId: context.runId,
-            workflowId: context.workflowId,
-            capabilityId,
-            parents: parentArtifactIds,
+      const blockedNodes = new Set<string>();
+      const activeNodes: string[] = [];
+
+      for (const nodeId of layer.nodeIds) {
+        const step = stepMap.get(nodeId);
+        if (!step) continue;
+
+        const hasFailedDep = step.dependsOn.some((dep) =>
+          failedSteps.has(dep),
+        );
+        if (hasFailedDep) {
+          blockedNodes.add(nodeId);
+        } else {
+          activeNodes.push(nodeId);
+        }
+      }
+
+      for (const nodeId of blockedNodes) {
+        failedSteps.add(nodeId);
+      }
+
+      await this.recordCheckpoint(workflowId, executionId, "executing", {
+        currentLayer: layerIndex + 1,
+        totalLayers: plan.layers.length,
+        executedSteps: executedSteps.length,
+      });
+
+      if (activeNodes.length === 0) continue;
+
+      const layerResultMap = new Map<
+        string,
+        { artifacts: ArtifactRef[]; executed: boolean }
+      >();
+
+      const layerPromises = activeNodes.map(async (nodeId) => {
+        const compiled = nodeMap.get(nodeId);
+        if (!compiled) return;
+
+        const capabilityId = compiled.node.capabilityId;
+
+        const parentArtifactIds = allParentArtifacts.map((a) => a.id);
+
+        const lineageStore: ArtifactStore = {
+          save: async (
+            data: unknown,
+            metadata?: Record<string, unknown>,
+          ) => {
+            const lineage = artifactLineageSchema.parse({
+              executionId: context.runId,
+              workflowId: context.workflowId,
+              capabilityId,
+              parents: parentArtifactIds,
+            });
+            return this.artifactStore.save(data, metadata, lineage);
+          },
+          get: (id: string) => this.artifactStore.get(id),
+          exists: (id: string) => this.artifactStore.exists(id),
+        };
+
+        try {
+          const step = stepMap.get(nodeId)!;
+          const output = await compiled.capability.execute(
+            {
+              executionId: context.runId,
+              workflowId: context.workflowId,
+              capabilityId,
+              logger: this.logger,
+              artifactRefs: [...allParentArtifacts],
+              parentArtifacts: [...allParentArtifacts],
+              artifactStore: lineageStore,
+              config: context.metadata,
+              signal: context.signal,
+            },
+            step.inputMap,
+          );
+
+          const producedArtifacts: ArtifactRef[] = [];
+          if (
+            output &&
+            typeof output === "object" &&
+            "artifactRef" in (output as Record<string, unknown>)
+          ) {
+            const ref = (output as Record<string, unknown>).artifactRef;
+            if (
+              typeof ref === "object" &&
+              ref !== null &&
+              "id" in ref &&
+              "type" in ref
+            ) {
+              producedArtifacts.push(ref as ArtifactRef);
+            }
+          }
+
+          layerResultMap.set(nodeId, {
+            artifacts: producedArtifacts,
+            executed: true,
           });
-          return this.artifactStore.save(data, metadata, lineage);
-        },
-        get: (id) => this.artifactStore.get(id),
-        exists: (id) => this.artifactStore.exists(id),
-      };
+        } catch (error) {
+          failedSteps.add(nodeId);
+          layerResultMap.set(nodeId, {
+            artifacts: [],
+            executed: false,
+          });
+        }
+      });
 
-      const output = await compiled.capability.execute(
-        {
-          executionId: context.runId,
-          workflowId: context.workflowId,
-          capabilityId,
-          logger: this.logger,
-          artifactRefs: [...context.artifacts, ...candidateArtifacts],
-          parentArtifacts: [...context.artifacts, ...candidateArtifacts],
-          artifactStore: lineageStore,
-          config: context.metadata,
-          signal: context.signal,
-        },
-        step.inputMap,
-      );
+      await Promise.all(layerPromises);
 
-      executedSteps.push(step.nodeId);
+      for (const nodeId of activeNodes) {
+        const result = layerResultMap.get(nodeId);
+        if (!result) {
+          failedSteps.add(nodeId);
+          continue;
+        }
 
-      if (
-        output &&
-        typeof output === "object" &&
-        "artifactRef" in (output as Record<string, unknown>)
-      ) {
-        const ref = (output as Record<string, unknown>).artifactRef;
-        if (
-          typeof ref === "object" &&
-          ref !== null &&
-          "id" in ref &&
-          "type" in ref
-        ) {
-          candidateArtifacts.push(ref as ArtifactRef);
+        if (result.executed) {
+          executedSteps.push(nodeId);
+        }
+        for (const artifact of result.artifacts) {
+          candidateArtifacts.push(artifact);
+          allParentArtifacts.push(artifact);
         }
       }
     }
 
-    return { executedSteps, candidateArtifacts };
+    return {
+      executedSteps,
+      candidateArtifacts,
+      failedSteps: Array.from(failedSteps),
+    };
   }
 
   private validate(workflow: CompiledWorkflow): ValidationResult {

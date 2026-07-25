@@ -17,6 +17,7 @@ export interface PlanResult {
 export interface ExecuteResult {
   readonly executedSteps: readonly string[];
   readonly candidateArtifacts: readonly ArtifactRef[];
+  readonly failedSteps: readonly string[];
 }
 
 export interface ApplyResult {
