@@ -1,4 +1,9 @@
-import type { ExecutionContract, ExecutionRepository, ArtifactStore } from "@designflow/sdk";
+import type {
+  ExecutionContract,
+  ExecutionRepository,
+  ArtifactStore,
+  ExecutionEventPublisher,
+} from "@designflow/sdk";
 import type { CliLogger } from "./logger";
 
 export interface CliConfig {
@@ -12,6 +17,7 @@ export interface CliContext {
   executionRepository: ExecutionRepository;
   artifactStore: ArtifactStore;
   executionService: ExecutionContract;
+  eventPublisher: ExecutionEventPublisher;
 }
 
 export interface RunResult {

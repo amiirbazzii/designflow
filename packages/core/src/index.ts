@@ -20,6 +20,9 @@ export { ExecutionEngine } from "./engine";
 // ── Repository ─────────────────────────────────────────────────────
 export { InMemoryExecutionRepository } from "./repository";
 
+// ── Events ─────────────────────────────────────────────────────────
+export { InMemoryEventPublisher } from "./events";
+
 // ── Service ────────────────────────────────────────────────────────
 export { ExecutionService } from "./service";
 export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
@@ -52,4 +55,5 @@ export {
   CapabilityNotFoundError,
   ExecutionError,
   ExecutionRepositoryError,
+  ExecutionEventError,
 } from "./errors";

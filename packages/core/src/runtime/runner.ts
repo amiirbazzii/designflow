@@ -1,4 +1,10 @@
-import type { Capability, CapabilityContext } from "@designflow/sdk";
+import type {
+  Capability,
+  CapabilityContext,
+  ExecutionEvent,
+  ExecutionEventPublisher,
+} from "@designflow/sdk";
+import { executionEventSchema } from "@designflow/sdk";
 import { CapabilityExecutionError } from "./errors";
 
 export interface CapabilityRunnerOptions {
@@ -10,39 +16,86 @@ export interface CapabilityRunnerOptions {
 }
 
 export class CapabilityRunner {
+  private readonly eventPublisher: ExecutionEventPublisher;
+
+  public constructor(eventPublisher: ExecutionEventPublisher) {
+    this.eventPublisher = eventPublisher;
+  }
+
   public async run<TInput, TOutput>(
     capability: Capability<TInput, TOutput>,
     input: unknown,
     context: CapabilityContext,
     options?: CapabilityRunnerOptions,
   ): Promise<TOutput> {
+    await this.publishEvent(context.executionId, "capability.started", {
+      capabilityId: capability.id,
+    });
+
     let validatedInput: TInput;
     try {
       validatedInput = capability.inputSchema.parse(input);
     } catch (error) {
+      await this.publishEvent(context.executionId, "capability.failed", {
+        capabilityId: capability.id,
+        error: "Input validation failed",
+      });
       throw new CapabilityExecutionError(
         `Input validation failed for capability: ${capability.id}`,
         { capabilityId: capability.id, attempt: 1, cause: error },
       );
     }
 
-    const output = await this.executeWithRetry(
-      capability,
-      validatedInput,
-      context,
-      options?.retryPolicy,
-      options?.timeout,
-    );
+    let output: TOutput;
+    try {
+      output = await this.executeWithRetry(
+        capability,
+        validatedInput,
+        context,
+        options?.retryPolicy,
+        options?.timeout,
+      );
+    } catch (error) {
+      await this.publishEvent(context.executionId, "capability.failed", {
+        capabilityId: capability.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     try {
       const validatedOutput = capability.outputSchema.parse(output);
+
+      await this.publishEvent(context.executionId, "capability.completed", {
+        capabilityId: capability.id,
+      });
+
       return validatedOutput;
     } catch (error) {
+      await this.publishEvent(context.executionId, "capability.failed", {
+        capabilityId: capability.id,
+        error: "Output validation failed",
+      });
       throw new CapabilityExecutionError(
         `Output validation failed for capability: ${capability.id}`,
         { capabilityId: capability.id, attempt: 1, cause: error },
       );
     }
+  }
+
+  private async publishEvent(
+    executionId: string,
+    type: ExecutionEvent["type"],
+    payload?: Record<string, unknown>,
+  ): Promise<void> {
+    const event = executionEventSchema.parse({
+      id: crypto.randomUUID(),
+      executionId,
+      type,
+      timestamp: Date.now(),
+      payload,
+    });
+    await this.eventPublisher.publish(event);
   }
 
   private async executeWithRetry<TInput, TOutput>(

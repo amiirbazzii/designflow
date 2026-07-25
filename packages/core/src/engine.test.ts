@@ -3,8 +3,9 @@ import { z } from "zod";
 import { ExecutionEngine } from "./engine";
 import { CapabilityRegistry } from "./registry";
 import { InMemoryExecutionRepository } from "./repository";
+import { InMemoryEventPublisher } from "./events";
 import type { Capability, ArtifactRef, CapabilityPackage, ExecutionRecord } from "@designflow/sdk";
-import type { ArtifactStore, Logger, ExecutionRepository } from "@designflow/sdk";
+import type { ArtifactStore, Logger, ExecutionRepository, ExecutionEventPublisher } from "@designflow/sdk";
 import { ExecutionError } from "./errors";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -39,13 +40,24 @@ const createMockArtifactStore = (): ArtifactStore => ({
   exists: async () => false,
 });
 
-const createEngine = (): { engine: ExecutionEngine; repository: InMemoryExecutionRepository } => {
+const createEngine = (): {
+  engine: ExecutionEngine;
+  repository: InMemoryExecutionRepository;
+  eventPublisher: InMemoryEventPublisher;
+} => {
   const registry = new CapabilityRegistry();
   const logger = createMockLogger();
   const artifactStore = createMockArtifactStore();
   const executionRepository = new InMemoryExecutionRepository();
-  const engine = new ExecutionEngine(registry, logger, artifactStore, executionRepository);
-  return { engine, repository: executionRepository };
+  const eventPublisher = new InMemoryEventPublisher();
+  const engine = new ExecutionEngine(
+    registry,
+    logger,
+    artifactStore,
+    executionRepository,
+    eventPublisher,
+  );
+  return { engine, repository: executionRepository, eventPublisher };
 };
 
 const createExecution = (

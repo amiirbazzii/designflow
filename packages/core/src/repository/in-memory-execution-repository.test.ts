@@ -187,5 +187,16 @@ describe("InMemoryExecutionRepository", () => {
       const retrieved = await repository.getLatestCheckpoint("exec-1");
       expect(retrieved?.phase).toBe("completed");
     });
+
+    test("save checkpoint with mismatched execution ID throws", async () => {
+      const record = createTestRecord("exec-1", "wf-1");
+      await repository.create(record);
+
+      const checkpoint = createTestCheckpoint("exec-2", "started");
+
+      await expect(
+        repository.saveCheckpoint("exec-1", checkpoint),
+      ).rejects.toThrow("Checkpoint execution ID mismatch");
+    });
   });
 });

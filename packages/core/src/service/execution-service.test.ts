@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ExecutionService } from "./execution-service";
 import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";
+import { InMemoryEventPublisher } from "../events";
 import type {
   WorkflowPackage,
   WorkflowResolver,
@@ -10,6 +11,7 @@ import type {
   ArtifactStore,
   Capability,
   ExecutionRepository,
+  ExecutionEventPublisher,
 } from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -66,12 +68,14 @@ describe("ExecutionService", () => {
   let logger: Logger;
   let artifactStore: ArtifactStore;
   let executionRepository: ExecutionRepository;
+  let eventPublisher: ExecutionEventPublisher;
   let capabilityRegistry: CapabilityRegistry;
 
   beforeEach(() => {
     logger = createMockLogger();
     artifactStore = createMockArtifactStore();
     executionRepository = new InMemoryExecutionRepository();
+    eventPublisher = new InMemoryEventPublisher();
     capabilityRegistry = new CapabilityRegistry();
   });
 
@@ -93,6 +97,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -108,6 +113,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       await expect(
@@ -125,6 +131,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       await expect(
@@ -151,6 +158,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -180,6 +188,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({
@@ -207,6 +216,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -252,6 +262,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -291,6 +302,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -323,6 +335,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       await expect(service.resume("test-wf")).rejects.toThrow(
@@ -347,6 +360,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       await expect(
@@ -371,6 +385,7 @@ describe("ExecutionService", () => {
         logger,
         artifactStore,
         executionRepository,
+        eventPublisher,
       });
 
       const result = await service.execute({ workflowId: "test-wf" });
@@ -383,6 +398,51 @@ describe("ExecutionService", () => {
       const record = await executionRepository.get(result.executionId);
       expect(record).toBeDefined();
       expect(record?.workflowId).toBe("test-wf");
+    });
+  });
+
+  describe("resume completed execution", () => {
+    test("resume preserves artifacts from checkpoint", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("completed");
+      expect(result.artifacts).toHaveLength(1);
+
+      const service2 = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const resumed = await service2.resume("test-wf");
+
+      expect(resumed.executionId).toBe(result.executionId);
+      expect(resumed.status).toBe("completed");
+      expect(resumed.artifacts).toHaveLength(1);
+      expect(resumed.artifacts[0].id).toBe("artifact-test-cap");
     });
   });
 });

@@ -92,6 +92,16 @@ export class InMemoryExecutionRepository implements ExecutionRepository {
   ): Promise<void> {
     const validated = executionCheckpointDataSchema.parse(checkpoint);
 
+    if (validated.executionId !== executionId) {
+      throw new ExecutionRepositoryError(
+        "Checkpoint execution ID mismatch",
+        {
+          executionId,
+          checkpointExecutionId: validated.executionId,
+        },
+      );
+    }
+
     if (!this.records.has(executionId)) {
       throw new ExecutionRepositoryError(
         `Execution record not found for checkpoint: ${executionId}`,

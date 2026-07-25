@@ -47,3 +47,14 @@ export class ExecutionRepositoryError extends DesignFlowError {
     Object.setPrototypeOf(this, ExecutionRepositoryError.prototype);
   }
 }
+
+export class ExecutionEventError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_EXECUTION_EVENT", message, metadata);
+    this.name = "ExecutionEventError";
+    Object.setPrototypeOf(this, ExecutionEventError.prototype);
+  }
+}

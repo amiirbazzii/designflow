@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { CapabilityRunner } from "./runner";
 import { CapabilityExecutionError } from "./errors";
+import { InMemoryEventPublisher } from "../events";
 import type { Capability, CapabilityContext, ArtifactRef, ArtifactStore } from "@designflow/sdk";
 
 const createMockLogger = () => ({
@@ -51,7 +52,7 @@ const createMockCapability = (
 
 describe("CapabilityRunner", () => {
   test("successful capability execution returns validated output", async () => {
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const capability = createMockCapability();
     const context = createMockContext();
 
@@ -63,7 +64,7 @@ describe("CapabilityRunner", () => {
   });
 
   test("input schema rejection throws CapabilityExecutionError", async () => {
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const capability = createMockCapability();
     const context = createMockContext();
 
@@ -80,7 +81,7 @@ describe("CapabilityRunner", () => {
   });
 
   test("output schema rejection throws CapabilityExecutionError", async () => {
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const capability = createMockCapability({
       execute: async () => "invalid-output" as unknown as TestOutput,
     });
@@ -100,7 +101,7 @@ describe("CapabilityRunner", () => {
 
   test("retry works on transient failures", async () => {
     let attempts = 0;
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const capability = createMockCapability({
       execute: async (_ctx, _input) => {
         attempts++;
@@ -125,7 +126,7 @@ describe("CapabilityRunner", () => {
 
   test("retry exhausts all attempts and throws on persistent failure", async () => {
     let attempts = 0;
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const capability = createMockCapability({
       execute: async (_ctx, _input) => {
         attempts++;
@@ -152,7 +153,7 @@ describe("CapabilityRunner", () => {
 
   test("timeout fires, throws CapabilityExecutionError, and aborts signal", async () => {
     let capturedSignal: AbortSignal | undefined;
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const capability = createMockCapability({
       execute: async (ctx, _input) => {
         capturedSignal = ctx.signal;
@@ -181,7 +182,7 @@ describe("CapabilityRunner", () => {
 
   test("abort signal is propagated to capability context", async () => {
     let capturedSignal: AbortSignal | undefined;
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const abortController = new AbortController();
     const capability = createMockCapability({
       execute: async (ctx, _input) => {
@@ -200,7 +201,7 @@ describe("CapabilityRunner", () => {
   });
 
   test("parent abort propagates to combined signal during execution", async () => {
-    const runner = new CapabilityRunner();
+    const runner = new CapabilityRunner(new InMemoryEventPublisher());
     const abortController = new AbortController();
     const capability = createMockCapability({
       execute: async (ctx, _input) => {

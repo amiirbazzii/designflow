@@ -272,5 +272,48 @@ describe("LocalExecutionRepository", () => {
         repository.saveCheckpoint("exec-1", invalidCheckpoint as ExecutionCheckpointData),
       ).rejects.toThrow();
     });
+
+    test("saveCheckpoint with mismatched execution ID throws", async () => {
+      const record = createTestRecord("exec-1", "wf-1");
+      await repository.create(record);
+
+      const checkpoint = createTestCheckpoint("exec-2", "started");
+
+      await expect(
+        repository.saveCheckpoint("exec-1", checkpoint),
+      ).rejects.toThrow("Checkpoint execution ID mismatch");
+    });
+  });
+
+  describe("data validation on read", () => {
+    test("get validates corrupted record from disk", async () => {
+      const record = createTestRecord("exec-1", "wf-1");
+      await repository.create(record);
+
+      const corruptedPath = join(tempDir, "records", "exec-1.json");
+      await Bun.write(corruptedPath, '{"invalid": "data"}');
+
+      await expect(repository.get("exec-1")).rejects.toThrow();
+    });
+
+    test("listEvents validates corrupted events from disk", async () => {
+      const record = createTestRecord("exec-1", "wf-1");
+      await repository.create(record);
+
+      const corruptedPath = join(tempDir, "events", "exec-1.json");
+      await Bun.write(corruptedPath, '[{"invalid": "event"}]');
+
+      await expect(repository.listEvents("exec-1")).rejects.toThrow();
+    });
+
+    test("getLatestCheckpoint validates corrupted checkpoint from disk", async () => {
+      const record = createTestRecord("exec-1", "wf-1");
+      await repository.create(record);
+
+      const corruptedPath = join(tempDir, "checkpoints", "exec-1.json");
+      await Bun.write(corruptedPath, '{"invalid": "checkpoint"}');
+
+      await expect(repository.getLatestCheckpoint("exec-1")).rejects.toThrow();
+    });
   });
 });

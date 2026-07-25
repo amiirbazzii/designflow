@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import {
   executionRecordSchema,
   lifecycleEventSchema,
@@ -22,6 +22,7 @@ const ErrorCodes = {
   LOAD_FAILED: "ERR_EXEC_REPO_LOAD",
   INVALID_ID: "ERR_EXEC_REPO_INVALID_ID",
   DIRECTORY_FAILED: "ERR_EXEC_REPO_DIRECTORY",
+  ID_MISMATCH: "ERR_EXEC_REPO_ID_MISMATCH",
 } as const;
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -100,15 +101,17 @@ export class LocalExecutionRepository implements ExecutionRepository {
     validateId(executionId, "Execution ID");
 
     const filePath = this.recordPath(executionId);
-    const existing = await this.readJson<ExecutionRecord | null>(filePath);
+    const raw = await this.readJson(filePath);
 
-    if (existing === null) {
+    if (raw === null) {
       throw new DesignFlowError(
         ErrorCodes.NOT_FOUND,
         `Execution record not found: ${executionId}`,
         { executionId },
       );
     }
+
+    const existing = executionRecordSchema.parse(raw);
 
     const merged = {
       ...existing,
@@ -124,7 +127,9 @@ export class LocalExecutionRepository implements ExecutionRepository {
     validateId(executionId, "Execution ID");
 
     const filePath = this.recordPath(executionId);
-    return this.readJson<ExecutionRecord | null>(filePath);
+    const raw = await this.readJson(filePath);
+
+    return raw === null ? null : executionRecordSchema.parse(raw);
   }
 
   public async list(workflowId: string): Promise<readonly ExecutionRecord[]> {
@@ -154,9 +159,9 @@ export class LocalExecutionRepository implements ExecutionRepository {
     validateId(validated.executionId, "Execution ID");
 
     const eventsPath = this.eventsPath(validated.executionId);
-    const events = await this.readJson<LifecycleEvent[]>(eventsPath);
+    const raw = await this.readJson(eventsPath);
 
-    if (events === null) {
+    if (raw === null) {
       throw new DesignFlowError(
         ErrorCodes.NOT_FOUND,
         `No execution record found for event: ${validated.executionId}`,
@@ -164,6 +169,7 @@ export class LocalExecutionRepository implements ExecutionRepository {
       );
     }
 
+    const events = lifecycleEventSchema.array().parse(raw);
     events.push(validated);
     await this.writeJson(eventsPath, events);
   }
@@ -172,8 +178,10 @@ export class LocalExecutionRepository implements ExecutionRepository {
     validateId(executionId, "Execution ID");
 
     const eventsPath = this.eventsPath(executionId);
-    const events = await this.readJson<LifecycleEvent[]>(eventsPath);
-    return events ?? [];
+    const raw = await this.readJson(eventsPath);
+
+    if (raw === null) return [];
+    return lifecycleEventSchema.array().parse(raw);
   }
 
   // ── Checkpoints ────────────────────────────────────────────
@@ -184,6 +192,17 @@ export class LocalExecutionRepository implements ExecutionRepository {
   ): Promise<void> {
     const validated = executionCheckpointDataSchema.parse(checkpoint);
     validateId(executionId, "Execution ID");
+
+    if (validated.executionId !== executionId) {
+      throw new DesignFlowError(
+        ErrorCodes.ID_MISMATCH,
+        "Checkpoint execution ID mismatch",
+        {
+          executionId,
+          checkpointExecutionId: validated.executionId,
+        },
+      );
+    }
 
     const recordPath = this.recordPath(executionId);
     const exists = await this.fileExists(recordPath);
@@ -206,7 +225,9 @@ export class LocalExecutionRepository implements ExecutionRepository {
     validateId(executionId, "Execution ID");
 
     const filePath = this.checkpointPath(executionId);
-    return this.readJson<ExecutionCheckpointData | null>(filePath);
+    const raw = await this.readJson(filePath);
+
+    return raw === null ? null : executionCheckpointDataSchema.parse(raw);
   }
 
   // ── File System Helpers ────────────────────────────────────
@@ -248,12 +269,12 @@ export class LocalExecutionRepository implements ExecutionRepository {
     }
   }
 
-  private async readJson<T>(filePath: string): Promise<T | null> {
+  private async readJson(filePath: string): Promise<unknown | null> {
     try {
       const file = Bun.file(filePath);
       const exists = await file.exists();
       if (!exists) return null;
-      return (await file.json()) as T;
+      return await file.json();
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
         return null;

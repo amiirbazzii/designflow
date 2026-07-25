@@ -80,3 +80,16 @@ export type {
   ExecutionErrorDetail,
   ExecutionContract,
 } from "./execution-contract";
+
+// ── Execution Events ────────────────────────────────────────────
+export {
+  executionEventSchema,
+  executionEventTypeSchema,
+} from "./execution-events";
+
+export type {
+  ExecutionEvent,
+  ExecutionEventType,
+  ExecutionEventHandler,
+  ExecutionEventPublisher,
+} from "./execution-events";

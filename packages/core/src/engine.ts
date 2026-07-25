@@ -1,6 +1,7 @@
 import {
   executionCheckpointSchema,
   artifactLineageSchema,
+  executionEventSchema,
 } from "@designflow/sdk";
 import type {
   ExecutionContext,
@@ -11,6 +12,8 @@ import type {
   Logger,
   ExecutionRepository,
   ExecutionCheckpointData,
+  ExecutionEventPublisher,
+  ExecutionEvent,
 } from "@designflow/sdk";
 import type {
   CompiledNode,
@@ -33,19 +36,22 @@ export class ExecutionEngine {
   private readonly logger: Logger;
   private readonly artifactStore: ArtifactStore;
   private readonly executionRepository: ExecutionRepository;
+  private readonly eventPublisher: ExecutionEventPublisher;
 
   public constructor(
     registry: CapabilityRegistry,
     logger: Logger,
     artifactStore: ArtifactStore,
     executionRepository: ExecutionRepository,
+    eventPublisher: ExecutionEventPublisher,
   ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
-    this.runner = new CapabilityRunner();
+    this.runner = new CapabilityRunner(eventPublisher);
     this.logger = logger;
     this.artifactStore = artifactStore;
     this.executionRepository = executionRepository;
+    this.eventPublisher = eventPublisher;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -58,10 +64,24 @@ export class ExecutionEngine {
   ): Promise<ExecutionResult> {
     const executionId = context.runId;
 
+    await this.publishEvent(executionId, "execution.started", {
+      workflowId: definition.id,
+    });
+
     await this.recordCheckpoint(definition.id, executionId, "started");
 
     try {
+      await this.publishEvent(executionId, "execution.planning", {
+        workflowId: definition.id,
+      });
+
       const { compiled, plan } = this.compiler.compile(definition);
+
+      await this.publishEvent(executionId, "execution.executing", {
+        workflowId: definition.id,
+        layers: plan.layers.length,
+      });
+
       const execution = await this.execute(
         plan,
         compiled,
@@ -79,6 +99,11 @@ export class ExecutionEngine {
         const firstError = firstFailedId !== undefined
           ? execution.failedErrors[firstFailedId]
           : undefined;
+
+        await this.publishEvent(executionId, "execution.failed", {
+          workflowId: definition.id,
+          failedSteps: execution.failedSteps,
+        });
 
         return {
           workflowId: definition.id,
@@ -100,10 +125,20 @@ export class ExecutionEngine {
         };
       }
 
+      await this.publishEvent(executionId, "execution.validating", {
+        workflowId: definition.id,
+      });
+
       const validation = this.validate(compiled);
 
       if (!validation.valid) {
         await this.recordCheckpoint(definition.id, executionId, "failed", {
+          issues: validation.issues,
+        });
+
+        await this.publishEvent(executionId, "execution.failed", {
+          workflowId: definition.id,
+          reason: "validation_failed",
           issues: validation.issues,
         });
 
@@ -119,10 +154,19 @@ export class ExecutionEngine {
         };
       }
 
+      await this.publishEvent(executionId, "execution.applying", {
+        workflowId: definition.id,
+      });
+
       const applyResult = this.apply(compiled, execution.candidateArtifacts);
 
       await this.recordCheckpoint(definition.id, executionId, "completed", {
         appliedArtifacts: applyResult.appliedArtifacts,
+      });
+
+      await this.publishEvent(executionId, "execution.completed", {
+        workflowId: definition.id,
+        artifactCount: applyResult.appliedArtifacts.length,
       });
 
       return {
@@ -135,6 +179,11 @@ export class ExecutionEngine {
       };
     } catch (error) {
       await this.recordCheckpoint(definition.id, executionId, "failed", {
+        error: String(error),
+      });
+
+      await this.publishEvent(executionId, "execution.failed", {
+        workflowId: definition.id,
         error: String(error),
       });
 
@@ -239,6 +288,21 @@ export class ExecutionEngine {
     };
 
     return this.run(definition, executionContext);
+  }
+
+  private async publishEvent(
+    executionId: string,
+    type: ExecutionEvent["type"],
+    payload?: Record<string, unknown>,
+  ): Promise<void> {
+    const event = executionEventSchema.parse({
+      id: crypto.randomUUID(),
+      executionId,
+      type,
+      timestamp: Date.now(),
+      payload,
+    });
+    await this.eventPublisher.publish(event);
   }
 
   private async recordCheckpoint(

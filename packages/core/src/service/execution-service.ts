@@ -13,6 +13,7 @@ import type {
   ExecutionRepository,
   ExecutionRecord,
   LifecycleEvent,
+  ExecutionEventPublisher,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -50,6 +51,7 @@ export interface ExecutionServiceConfig {
   readonly logger: Logger;
   readonly artifactStore: ArtifactStore;
   readonly executionRepository: ExecutionRepository;
+  readonly eventPublisher: ExecutionEventPublisher;
 }
 
 // ── Execution Service ───────────────────────────────────────────
@@ -60,6 +62,7 @@ export class ExecutionService implements ExecutionContract {
   private readonly logger: Logger;
   private readonly artifactStore: ArtifactStore;
   private readonly executionRepository: ExecutionRepository;
+  private readonly eventPublisher: ExecutionEventPublisher;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -67,6 +70,7 @@ export class ExecutionService implements ExecutionContract {
     this.logger = config.logger;
     this.artifactStore = config.artifactStore;
     this.executionRepository = config.executionRepository;
+    this.eventPublisher = config.eventPublisher;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -98,6 +102,7 @@ export class ExecutionService implements ExecutionContract {
         this.logger,
         this.artifactStore,
         this.executionRepository,
+        this.eventPublisher,
       );
 
       const abortController = new AbortController();
@@ -141,11 +146,30 @@ export class ExecutionService implements ExecutionContract {
 
     switch (latestRecord.status) {
       case "completed": {
+        const checkpoint = await this.executionRepository.getLatestCheckpoint(
+          latestRecord.executionId,
+        );
+
+        const rawArtifacts = checkpoint?.metadata?.appliedArtifacts;
+        const artifacts = Array.isArray(rawArtifacts)
+          ? rawArtifacts.filter(
+              (a): a is { id: string; type: string; metadata: Record<string, unknown> } =>
+                typeof a === "object" &&
+                a !== null &&
+                "id" in a &&
+                "type" in a,
+            ).map((a) => ({
+              id: a.id,
+              type: a.type,
+              metadata: a.metadata ?? {},
+            }))
+          : [];
+
         const result: ExecutionResult = {
           executionId: latestRecord.executionId,
           workflowId,
           status: "completed",
-          artifacts: [],
+          artifacts,
         };
         return executionResultSchema.parse(result);
       }
@@ -171,6 +195,7 @@ export class ExecutionService implements ExecutionContract {
           this.logger,
           this.artifactStore,
           this.executionRepository,
+          this.eventPublisher,
         );
 
         await this.appendEvent(latestRecord.executionId, "executing");
