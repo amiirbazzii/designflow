@@ -17,6 +17,11 @@ export type { CompilationResult } from "./compiler";
 // ── Engine ─────────────────────────────────────────────────────────
 export { ExecutionEngine } from "./engine";
 
+// ── Service ────────────────────────────────────────────────────────
+export { ExecutionService } from "./service";
+export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
+export { WorkflowNotFoundError, InvalidRequestError } from "./service";
+
 // ── Lifecycle ──────────────────────────────────────────────────────
 export type {
   LifecycleStage,

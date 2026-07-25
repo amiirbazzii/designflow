@@ -18,45 +18,36 @@ export function registerResumeCommand(program: Command): void {
       let ctx!: CliContext;
 
       try {
-        ctx = createCliContext(workflowId);
+        const workflowLoader = await createWorkflowLoader();
 
-        const registry = await createWorkflowLoader();
-        const manifest = registry.get(workflowId);
-        if (!manifest) {
-          spin.stop(`Unknown workflow: ${workflowId}`);
-          const available = registry.list().map((m) => m.id).join(", ");
-          ctx.logger.error(`Available workflows: ${available}`);
-          process.exit(1);
-        }
-
-        manifest.load(ctx.registry);
+        ctx = createCliContext((id) => workflowLoader.get(id));
 
         spin.stop("Checkpoint loaded");
 
-        ctx.logger.info(`Workflow: ${manifest.name}`);
+        ctx.logger.info(`Resuming workflow: ${workflowId}`);
 
         spin.start("Resuming workflow execution");
-        const result = await ctx.engine.resume(manifest.definition, workflowId);
+        const result = await ctx.executionService.resume(workflowId);
         spin.stop("Resume complete");
 
         const resumeResult: ResumeResult = {
           workflowId,
-          runId: ctx.executionContext.runId,
-          status: result.success ? "completed" : "failed",
+          runId: result.executionId,
+          status: result.status,
         };
 
-        if (result.success) {
+        if (result.status === "completed") {
           ctx.logger.info(`Artifacts produced: ${result.artifacts.length}`);
           for (const artifact of result.artifacts) {
             ctx.logger.info(`  ${artifact.id} (${artifact.type})`);
           }
         } else {
-          ctx.logger.error(`Execution failed: ${String(result.error)}`);
+          ctx.logger.error(`Execution failed: ${result.error?.message ?? "Unknown error"}`);
         }
 
         ctx.logger.info(JSON.stringify(resumeResult, null, 2));
-        outro(`Resume ${result.success ? "completed" : "failed"}`);
-        if (!result.success) {
+        outro(`Resume ${result.status === "completed" ? "completed" : "failed"}`);
+        if (result.status !== "completed") {
           process.exit(1);
         }
       } catch (error) {

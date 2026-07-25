@@ -18,46 +18,36 @@ export function registerRunCommand(program: Command): void {
       let ctx!: CliContext;
 
       try {
-        ctx = createCliContext(workflowId);
+        const workflowLoader = await createWorkflowLoader();
 
-        const registry = await createWorkflowLoader();
-        const manifest = registry.get(workflowId);
-        if (!manifest) {
-          spin.stop(`Unknown workflow: ${workflowId}`);
-          const available = registry.list().map((m) => m.id).join(", ");
-          ctx.logger.error(`Available workflows: ${available}`);
-          process.exit(1);
-        }
-
-        manifest.load(ctx.registry);
+        ctx = createCliContext((id) => workflowLoader.get(id));
 
         spin.stop("Execution context ready");
 
-        ctx.logger.info(`Running: ${manifest.name} v${manifest.version}`);
-        ctx.logger.info(`Run ID: ${ctx.executionContext.runId}`);
+        ctx.logger.info(`Running workflow: ${workflowId}`);
 
         spin.start("Executing workflow");
-        const result = await ctx.engine.run(manifest.definition, ctx.executionContext);
+        const result = await ctx.executionService.execute({ workflowId });
         spin.stop("Execution complete");
 
         const runResult: RunResult = {
           workflowId,
-          runId: ctx.executionContext.runId,
-          status: result.success ? "completed" : "failed",
+          runId: result.executionId,
+          status: result.status,
         };
 
-        if (result.success) {
+        if (result.status === "completed") {
           ctx.logger.info(`Artifacts produced: ${result.artifacts.length}`);
           for (const artifact of result.artifacts) {
             ctx.logger.info(`  ${artifact.id} (${artifact.type})`);
           }
         } else {
-          ctx.logger.error(`Execution failed: ${String(result.error)}`);
+          ctx.logger.error(`Execution failed: ${result.error?.message ?? "Unknown error"}`);
         }
 
         ctx.logger.info(JSON.stringify(runResult, null, 2));
-        outro(`Run ${result.success ? "completed" : "failed"}`);
-        if (!result.success) {
+        outro(`Run ${result.status === "completed" ? "completed" : "failed"}`);
+        if (result.status !== "completed") {
           process.exit(1);
         }
       } catch (error) {

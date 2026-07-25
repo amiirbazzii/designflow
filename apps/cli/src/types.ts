@@ -1,5 +1,4 @@
-import type { ExecutionContext } from "@designflow/sdk";
-import type { CapabilityRegistry, ExecutionEngine } from "@designflow/core";
+import type { ExecutionContract } from "@designflow/sdk";
 import type { LocalStateStore } from "@designflow/state";
 import type { LocalArtifactStore } from "@designflow/artifacts";
 import type { CliLogger } from "./logger";
@@ -12,11 +11,9 @@ export interface CliConfig {
 
 export interface CliContext {
   logger: CliLogger;
-  registry: CapabilityRegistry;
   stateStore: LocalStateStore;
   artifactStore: LocalArtifactStore;
-  engine: ExecutionEngine;
-  executionContext: ExecutionContext;
+  executionService: ExecutionContract;
 }
 
 export interface RunResult {

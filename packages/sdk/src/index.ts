@@ -46,3 +46,19 @@ export type { WorkflowProvider, WorkflowPackage, CapabilityRegistrar } from "./w
 export { workflowPackageSchema } from "./workflow";
 
 export type { StateStore, ArtifactStore, CheckpointState, CheckpointData } from "./state";
+
+// ── Execution Contract ───────────────────────────────────────────
+export {
+  executionRequestSchema,
+  executionRequestOptionsSchema,
+  executionResultSchema,
+  executionErrorSchema,
+} from "./execution-contract";
+
+export type {
+  ExecutionRequest,
+  ExecutionRequestOptions,
+  ExecutionResult,
+  ExecutionErrorDetail,
+  ExecutionContract,
+} from "./execution-contract";
