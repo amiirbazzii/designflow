@@ -1,3 +1,7 @@
+import {
+  executionPolicySchema,
+  policyContextSchema,
+} from "@designflow/sdk";
 import type {
   ExecutionPolicy,
   PolicyContext,
@@ -13,27 +17,30 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
     policy: ExecutionPolicy,
     context: PolicyContext,
   ): Promise<PolicyEvaluationResult> {
+    const validatedPolicy = executionPolicySchema.parse(policy);
+    const validatedContext = policyContextSchema.parse(context);
+
     const violations: PolicyEvaluationResult["violations"] = [];
 
-    const denyRules = policy.rules.filter((r) => r.type === "deny_capability");
-    const allowRules = policy.rules.filter((r) => r.type === "allow_capability");
-    const approvalRules = policy.rules.filter((r) => r.type === "require_approval");
-    const resourceRules = policy.rules.filter((r) => r.type === "resource_limit");
+    const denyRules = validatedPolicy.rules.filter((r) => r.type === "deny_capability");
+    const allowRules = validatedPolicy.rules.filter((r) => r.type === "allow_capability");
+    const approvalRules = validatedPolicy.rules.filter((r) => r.type === "require_approval");
+    const resourceRules = validatedPolicy.rules.filter((r) => r.type === "resource_limit");
 
     for (const rule of denyRules) {
-      this.evaluateDenyRule(rule, context, violations);
+      this.evaluateDenyRule(rule, validatedContext, violations);
     }
 
     if (allowRules.length > 0) {
-      this.evaluateAllowRules(allowRules, context, violations);
+      this.evaluateAllowRules(allowRules, validatedContext, violations);
     }
 
     for (const rule of approvalRules) {
-      this.evaluateApprovalRule(rule, context, violations);
+      this.evaluateApprovalRule(rule, validatedContext, violations);
     }
 
     for (const rule of resourceRules) {
-      this.evaluateResourceRule(rule, context, violations);
+      this.evaluateResourceRule(rule, validatedContext, violations);
     }
 
     return {
@@ -68,8 +75,11 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
   ): void {
     const allowedCapabilities = new Set(
       allowRules
-        .filter((r) => r.target !== undefined)
-        .map((r) => r.target as string),
+        .filter(
+          (r): r is PolicyRule & { target: string } =>
+            r.target !== undefined,
+        )
+        .map((r) => r.target),
     );
 
     for (const capabilityId of context.capabilityIds) {

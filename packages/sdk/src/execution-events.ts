@@ -11,6 +11,7 @@ export const executionEventTypeSchema = z.enum([
   "execution.completed",
   "execution.failed",
   "execution.cancelled",
+  "execution.policy_denied",
   "capability.started",
   "capability.completed",
   "capability.failed",

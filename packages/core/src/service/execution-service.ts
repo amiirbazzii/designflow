@@ -1,7 +1,7 @@
 import {
   executionRequestSchema,
   executionResultSchema,
-  policyEvaluationResultSchema,
+  executionPolicySchema,
 } from "@designflow/sdk";
 import type {
   ExecutionRequest,
@@ -22,6 +22,7 @@ import type {
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
 import { ExecutionEngine } from "../engine";
+import { PolicyViolationError } from "../errors";
 
 // ── Errors ──────────────────────────────────────────────────────
 
@@ -80,7 +81,9 @@ export class ExecutionService implements ExecutionContract {
     this.executionRepository = config.executionRepository;
     this.eventPublisher = config.eventPublisher;
     this.policyEvaluator = config.policyEvaluator;
-    this.policy = config.policy;
+    this.policy = config.policy !== undefined
+      ? executionPolicySchema.parse(config.policy)
+      : undefined;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -114,17 +117,29 @@ export class ExecutionService implements ExecutionContract {
         );
 
         if (!policyResult.allowed) {
+          const error = new PolicyViolationError(
+            "Execution denied by policy",
+            {
+              violations: policyResult.violations,
+            },
+          );
+
           await this.markFailed(
             executionId,
             validatedRequest.workflowId,
-            new DesignFlowError(
-              "ERR_POLICY_VIOLATION",
-              "Execution denied by policy",
-              {
-                violations: policyResult.violations,
-              },
-            ),
+            error,
           );
+
+          await this.eventPublisher.publish({
+            id: crypto.randomUUID(),
+            executionId,
+            type: "execution.policy_denied",
+            timestamp: Date.now(),
+            payload: {
+              workflowId: validatedRequest.workflowId,
+              violations: policyResult.violations,
+            },
+          });
 
           await this.eventPublisher.publish({
             id: crypto.randomUUID(),
