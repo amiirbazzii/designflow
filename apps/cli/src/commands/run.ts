@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import { intro, outro, spinner } from "@clack/prompts";
-import { CapabilityRegistry } from "@designflow/core";
 import type { CliContext, RunResult } from "../types";
 import { createCliContext } from "../context";
 import { createWorkflowLoader } from "../workflows/loader";
+import { createCapabilityRegistry } from "../capabilities";
 
 export function registerRunCommand(program: Command): void {
   program
@@ -29,8 +29,7 @@ export function registerRunCommand(program: Command): void {
           process.exit(1);
         }
 
-        const capabilityRegistry = new CapabilityRegistry();
-        manifest.load(capabilityRegistry);
+        const capabilityRegistry = await createCapabilityRegistry();
 
         ctx = createCliContext(
           (id) => workflowLoader.get(id),
