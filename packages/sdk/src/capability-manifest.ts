@@ -39,5 +39,9 @@ export const capabilityPackageSchema = z
   );
 
 export function parseCapabilityPackage(input: unknown): CapabilityPackage {
-  return capabilityPackageSchema.parse(input) as CapabilityPackage;
+  const result = capabilityPackageSchema.parse(input);
+  return {
+    manifest: result.manifest,
+    capability: result.capability,
+  };
 }

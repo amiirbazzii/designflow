@@ -44,7 +44,10 @@ export class CapabilityRegistry {
       );
     }
 
-    this.packages.set(validated.manifest.id, validated as CapabilityPackage);
+    this.packages.set(validated.manifest.id, {
+      manifest: validated.manifest,
+      capability: validated.capability,
+    });
   }
 
   public get(id: string): Capability<unknown, unknown> | undefined {
