@@ -1,5 +1,6 @@
 import {
   executionCheckpointSchema,
+  artifactLineageSchema,
 } from "@designflow/sdk";
 import type {
   ExecutionContext,
@@ -252,17 +253,24 @@ export class ExecutionEngine {
       const compiled = nodeMap.get(step.nodeId);
       if (!compiled) continue;
 
-      const parentArtifactIds = candidateArtifacts.map((a) => a.id);
+      const parentArtifactIds = [
+        ...context.artifacts.map((a) => a.id),
+        ...candidateArtifacts.map((a) => a.id),
+      ];
+      const parentArtifacts = [
+        ...context.artifacts,
+        ...candidateArtifacts,
+      ];
       const capabilityId = compiled.node.capabilityId;
 
       const lineageStore: ArtifactStore = {
-        save: async (data, metadata, _lineage) => {
-          const lineage: ArtifactLineage = {
+        save: async (data, metadata) => {
+          const lineage = artifactLineageSchema.parse({
             executionId: context.runId,
             workflowId: context.workflowId,
             capabilityId,
             parents: parentArtifactIds,
-          };
+          });
           return this.artifactStore.save(data, metadata, lineage);
         },
         get: (id) => this.artifactStore.get(id),
@@ -275,8 +283,8 @@ export class ExecutionEngine {
           workflowId: context.workflowId,
           capabilityId,
           logger: this.logger,
-          artifactRefs: [...candidateArtifacts],
-          parentArtifacts: [...candidateArtifacts],
+          artifactRefs: [...context.artifacts, ...candidateArtifacts],
+          parentArtifacts: [...context.artifacts, ...candidateArtifacts],
           artifactStore: lineageStore,
           config: context.metadata,
           signal: context.signal,

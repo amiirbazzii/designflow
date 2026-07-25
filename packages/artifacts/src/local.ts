@@ -1,4 +1,4 @@
-import { DesignFlowError } from "@designflow/sdk";
+import { DesignFlowError, artifactRefSchema } from "@designflow/sdk";
 import type { ArtifactRef, ArtifactLineage, ArtifactStore } from "@designflow/sdk";
 import { ensureArtifactDir, readArtifact, writeArtifact } from "./storage";
 import { ArtifactErrorCodes, ARTIFACTS_DIR } from "./types";
@@ -45,12 +45,12 @@ export class LocalArtifactStore implements ArtifactStore {
     if (stored === null) return null;
 
     return {
-      artifact: {
+      artifact: artifactRefSchema.parse({
         id: stored.id,
         type: stored.type,
         metadata: stored.metadata,
         ...(stored.lineage !== undefined ? { lineage: stored.lineage } : {}),
-      },
+      }),
       data: stored.data,
     };
   }
