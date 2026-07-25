@@ -5,6 +5,7 @@ import type {
   ExecutionContext,
   WorkflowDefinition,
   ArtifactRef,
+  ArtifactLineage,
   ArtifactStore,
   Logger,
   StateStore,
@@ -251,13 +252,32 @@ export class ExecutionEngine {
       const compiled = nodeMap.get(step.nodeId);
       if (!compiled) continue;
 
+      const parentArtifactIds = candidateArtifacts.map((a) => a.id);
+      const capabilityId = compiled.node.capabilityId;
+
+      const lineageStore: ArtifactStore = {
+        save: async (data, metadata, _lineage) => {
+          const lineage: ArtifactLineage = {
+            executionId: context.runId,
+            workflowId: context.workflowId,
+            capabilityId,
+            parents: parentArtifactIds,
+          };
+          return this.artifactStore.save(data, metadata, lineage);
+        },
+        get: (id) => this.artifactStore.get(id),
+        exists: (id) => this.artifactStore.exists(id),
+      };
+
       const output = await compiled.capability.execute(
         {
           executionId: context.runId,
           workflowId: context.workflowId,
+          capabilityId,
           logger: this.logger,
-          artifactRefs: context.artifacts,
-          artifactStore: this.artifactStore,
+          artifactRefs: [...candidateArtifacts],
+          parentArtifacts: [...candidateArtifacts],
+          artifactStore: lineageStore,
           config: context.metadata,
           signal: context.signal,
         },

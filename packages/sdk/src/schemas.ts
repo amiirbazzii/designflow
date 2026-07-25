@@ -10,10 +10,20 @@ export const capabilityTypeSchema = z.enum([
 
 export type CapabilityType = z.infer<typeof capabilityTypeSchema>;
 
+export const artifactLineageSchema = z.object({
+  executionId: z.string().min(1),
+  workflowId: z.string().min(1),
+  capabilityId: z.string().min(1),
+  parents: z.array(z.string()).default([]),
+});
+
+export type ArtifactLineage = z.infer<typeof artifactLineageSchema>;
+
 export const artifactRefSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  lineage: artifactLineageSchema.optional(),
 });
 
 export type ArtifactRef = z.infer<typeof artifactRefSchema>;

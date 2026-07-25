@@ -1,9 +1,12 @@
+import type { ArtifactLineage } from "@designflow/sdk";
+
 export const ARTIFACTS_DIR = ".designflow/artifacts";
 
 export interface StoredArtifact {
   id: string;
   type: string;
   metadata: Record<string, unknown>;
+  lineage?: ArtifactLineage;
   data: unknown;
 }
 

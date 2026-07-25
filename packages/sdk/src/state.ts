@@ -1,4 +1,4 @@
-import type { ArtifactRef, CheckpointRecord } from "./schemas";
+import type { ArtifactRef, ArtifactLineage, CheckpointRecord } from "./schemas";
 
 export type { ExecutionContext } from "./schemas";
 export { executionContextSchema } from "./schemas";
@@ -36,6 +36,7 @@ export interface ArtifactStore {
   save(
     data: unknown,
     metadata?: Record<string, unknown>,
+    lineage?: ArtifactLineage,
   ): Promise<ArtifactRef>;
 
   get(id: string): Promise<{ artifact: ArtifactRef; data: unknown } | null>;

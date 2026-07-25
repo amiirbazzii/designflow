@@ -1,5 +1,5 @@
 import { DesignFlowError } from "@designflow/sdk";
-import type { ArtifactRef, ArtifactStore } from "@designflow/sdk";
+import type { ArtifactRef, ArtifactLineage, ArtifactStore } from "@designflow/sdk";
 import { ensureArtifactDir, readArtifact, writeArtifact } from "./storage";
 import { ArtifactErrorCodes, ARTIFACTS_DIR } from "./types";
 
@@ -13,18 +13,25 @@ export class LocalArtifactStore implements ArtifactStore {
   public async save(
     data: unknown,
     metadata?: Record<string, unknown>,
+    lineage?: ArtifactLineage,
   ): Promise<ArtifactRef> {
     const id = await this.computeContentHash(data);
     const type = "artifact";
     const resolvedMetadata = metadata ?? {};
 
-    const artifact: ArtifactRef = { id, type, metadata: resolvedMetadata };
+    const artifact: ArtifactRef = {
+      id,
+      type,
+      metadata: resolvedMetadata,
+      ...(lineage !== undefined ? { lineage } : {}),
+    };
 
     await ensureArtifactDir(this.basePath);
     await writeArtifact(this.basePath, {
       id,
       type,
       metadata: resolvedMetadata,
+      ...(lineage !== undefined ? { lineage } : {}),
       data,
     });
 
@@ -42,6 +49,7 @@ export class LocalArtifactStore implements ArtifactStore {
         id: stored.id,
         type: stored.type,
         metadata: stored.metadata,
+        ...(stored.lineage !== undefined ? { lineage: stored.lineage } : {}),
       },
       data: stored.data,
     };

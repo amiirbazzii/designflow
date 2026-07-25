@@ -3,6 +3,7 @@ export const SDK_VERSION = "0.1.0";
 export {
   capabilityTypeSchema,
   artifactRefSchema,
+  artifactLineageSchema,
   executionContextSchema,
   workflowDefinitionSchema,
   workflowMetadataSchema,
@@ -18,6 +19,7 @@ export {
 export type {
   CapabilityType,
   ArtifactRef,
+  ArtifactLineage,
   ExecutionContext,
   WorkflowDefinition,
   WorkflowMetadata,

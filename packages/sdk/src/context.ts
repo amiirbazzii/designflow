@@ -11,8 +11,10 @@ export interface Logger {
 export interface CapabilityContext {
   readonly executionId: string;
   readonly workflowId: string;
+  readonly capabilityId: string;
   readonly logger: Logger;
   readonly artifactRefs: readonly ArtifactRef[];
+  readonly parentArtifacts: readonly ArtifactRef[];
   readonly artifactStore: ArtifactStore;
   readonly config: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;
