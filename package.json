@@ -5,6 +5,7 @@
   "workspaces": [
     "apps/*",
     "packages/*",
+    "packages/capabilities/*",
     "workflows/*"
   ],
   "scripts": {

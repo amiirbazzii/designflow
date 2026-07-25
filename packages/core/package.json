@@ -19,6 +19,7 @@
   "dependencies": {
     "@designflow/artifacts": "workspace:*",
     "@designflow/sdk": "workspace:*",
-    "@designflow/state": "workspace:*"
+    "@designflow/state": "workspace:*",
+    "zod": "^3.24.0"
   }
 }

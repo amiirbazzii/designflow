@@ -8,7 +8,7 @@ export type { CapabilityRunnerOptions } from "./runtime";
 export { DagResolver } from "./dag";
 
 // ── Registry ───────────────────────────────────────────────────────
-export { CapabilityRegistry } from "./registry";
+export { CapabilityRegistry, CapabilityRegistryError } from "./registry";
 
 // ── Compiler ─────────────────────────────────────────────
 export { WorkflowCompiler } from "./compiler";

@@ -19,7 +19,7 @@ const createMockContext = (overrides?: Partial<CapabilityContext>): CapabilityCo
   artifactRefs: [],
   parentArtifacts: [],
   artifactStore: {
-    save: async () => ({ id: "test-artifact", type: "test" }),
+    save: async () => ({ id: "test-artifact", type: "test", metadata: {} }),
     get: async () => null,
     exists: async () => false,
   },
@@ -28,8 +28,8 @@ const createMockContext = (overrides?: Partial<CapabilityContext>): CapabilityCo
   ...overrides,
 });
 
-const inputSchema = z.object({ value: z.string() });
-const outputSchema = z.object({ artifactRef: z.object({ id: z.string(), type: z.string() }) });
+const inputSchema: z.ZodType<{ value: string }> = z.object({ value: z.string() });
+const outputSchema: z.ZodType<{ artifactRef: { id: string; type: string } }> = z.object({ artifactRef: z.object({ id: z.string(), type: z.string() }) });
 
 type TestInput = z.infer<typeof inputSchema>;
 type TestOutput = z.infer<typeof outputSchema>;

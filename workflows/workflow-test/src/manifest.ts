@@ -1,6 +1,6 @@
 import type { WorkflowPackage } from "@designflow/sdk";
 import { testWorkflow } from "./workflow";
-import { testArtifactCapability } from "./capability";
+import { provider as testArtifactProvider } from "@designflow/capability-test-artifact";
 
 export const testWorkflowManifest: WorkflowPackage = {
   id: "test-workflow",
@@ -14,6 +14,7 @@ export const testWorkflowManifest: WorkflowPackage = {
   },
   definition: testWorkflow,
   load(registry) {
-    registry.register(testArtifactCapability);
+    const pkg = testArtifactProvider.getCapability();
+    registry.registerPackage(pkg);
   },
 };

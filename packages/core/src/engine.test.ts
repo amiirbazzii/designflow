@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { ExecutionEngine } from "./engine";
 import { CapabilityRegistry } from "./registry";
-import type { Capability, ArtifactRef } from "@designflow/sdk";
+import type { Capability, ArtifactRef, CapabilityPackage } from "@designflow/sdk";
 import type { StateStore, ArtifactStore, Logger } from "@designflow/sdk";
 import { ExecutionError } from "./errors";
 
@@ -386,6 +386,50 @@ describe("ExecutionEngine with DAG execution", () => {
       name: "single",
       description: "",
       nodes: [{ id: "A", capabilityId: "cap-a", inputMap: {} }],
+      metadata: {},
+    };
+
+    const result = await engine.run(definition, createExecution());
+
+    expect(result.success).toBe(true);
+    expect(result.completedSteps).toEqual(["A"]);
+    expect(result.artifacts).toHaveLength(1);
+  });
+
+  test("external capability package resolves and executes", async () => {
+    const engine = createEngine();
+    const registry = engine.getRegistry();
+
+    const externalPackage: CapabilityPackage = {
+      manifest: {
+        id: "external-cap",
+        name: "External Capability",
+        version: "1.0.0",
+        type: "pure",
+      },
+      capability: {
+        id: "external-cap",
+        name: "External Capability",
+        description: "An external capability package",
+        type: "pure",
+        inputSchema: z.unknown(),
+        outputSchema: z.unknown(),
+        execute: async (_ctx, _input) => {
+          return { artifactRef: { id: "external-artifact", type: "external" } };
+        },
+      },
+    };
+
+    registry.registerPackage(externalPackage);
+
+    expect(registry.has("external-cap")).toBe(true);
+    expect(registry.getPackage("external-cap")?.manifest).toEqual(externalPackage.manifest);
+
+    const definition = {
+      id: "wf-external",
+      name: "external",
+      description: "",
+      nodes: [{ id: "A", capabilityId: "external-cap", inputMap: {} }],
       metadata: {},
     };
 

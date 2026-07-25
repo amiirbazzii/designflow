@@ -1,5 +1,5 @@
 {
-  "name": "@designflow/workflow-test",
+  "name": "@designflow/capability-test-artifact",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,12 +12,11 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "lint": "echo \"@designflow/workflow-test: lint ok\"",
+    "lint": "echo \"@designflow/capability-test-artifact: lint ok\"",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {
-    "@designflow/capability-test-artifact": "workspace:*",
     "@designflow/sdk": "workspace:*",
     "zod": "^3.24.0"
   }

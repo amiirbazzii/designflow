@@ -36,7 +36,11 @@ export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";
 
-export type { Capability } from "./capability";
+export type { Capability, CapabilityPackage, CapabilityProvider } from "./capability";
+export { capabilityPackageSchema, parseCapabilityPackage } from "./capability-manifest";
+
+export { capabilityManifestSchema } from "./capability-manifest";
+export type { CapabilityManifest } from "./capability-manifest";
 
 export type { WorkflowProvider, WorkflowPackage, CapabilityRegistrar } from "./workflow";
 export { workflowPackageSchema } from "./workflow";

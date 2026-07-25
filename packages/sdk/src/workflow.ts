@@ -1,11 +1,12 @@
 import { z } from "zod";
-import type { Capability } from "./capability";
+import type { Capability, CapabilityPackage } from "./capability";
 import { workflowDefinitionSchema } from "./schemas";
 import { workflowManifestSchema } from "./workflow-manifest";
 import type { WorkflowManifest } from "./workflow-manifest";
 
 export interface CapabilityRegistrar {
   register<TInput, TOutput>(capability: Capability<TInput, TOutput>): void;
+  registerPackage(pkg: CapabilityPackage): void;
 }
 
 export interface WorkflowPackage extends WorkflowManifest {
