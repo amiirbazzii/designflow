@@ -30,8 +30,6 @@ export type { CapabilityContext, Logger } from "./context";
 
 export type { Capability } from "./capability";
 
-export type { WorkflowProvider } from "./workflow";
-
-export type { WorkflowManifest, CapabilityRegistrar } from "./manifest";
+export type { WorkflowProvider, WorkflowManifest, CapabilityRegistrar } from "./workflow";
 
 export type { StateStore, ArtifactStore, CheckpointState } from "./state";

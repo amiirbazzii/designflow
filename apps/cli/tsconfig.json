@@ -11,5 +11,6 @@
     { "path": "../../packages/core" },
     { "path": "../../packages/state" },
     { "path": "../../packages/artifacts" },
+    { "path": "../../workflows/workflow-test" }
   ]
 }
