@@ -11,6 +11,7 @@ export interface StateStore {
     checkpointId: string,
     state: CheckpointState,
     metadata?: Record<string, unknown>,
+    timestamp?: number,
   ): Promise<void>;
 
   loadCheckpoint(

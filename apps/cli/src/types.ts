@@ -2,7 +2,6 @@ import type { ExecutionContext } from "@designflow/sdk";
 import type { CapabilityRegistry, ExecutionEngine } from "@designflow/core";
 import type { LocalStateStore } from "@designflow/state";
 import type { LocalArtifactStore } from "@designflow/artifacts";
-import type { CheckpointRecord } from "@designflow/sdk";
 import type { CliLogger } from "./logger";
 
 export interface CliConfig {
@@ -28,11 +27,14 @@ export interface RunResult {
 
 export interface StatusResult {
   workflowId: string;
-  checkpoints: readonly Pick<CheckpointRecord, "checkpointId" | "timestamp" | "metadata">[];
+  phase: string;
+  timestamp: number;
+  status: string;
 }
 
 export interface ResumeResult {
   workflowId: string;
-  checkpoint: unknown;
-  timestamp: number | null;
+  checkpoint: string;
+  phase: string;
+  timestamp: number;
 }

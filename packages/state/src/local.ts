@@ -21,8 +21,9 @@ export class LocalStateStore implements StateStore {
     checkpointId: string,
     state: CheckpointState,
     metadata?: Record<string, unknown>,
+    timestamp?: number,
   ): Promise<void> {
-    const timestamp = Date.now();
+    const ts = timestamp ?? Date.now();
     const resolvedMetadata = metadata ?? {};
 
     const checkpoint: StoredCheckpoint = {
@@ -30,7 +31,7 @@ export class LocalStateStore implements StateStore {
       workflowId,
       state,
       metadata: resolvedMetadata,
-      timestamp,
+      timestamp: ts,
     };
 
     await ensureCheckpointDir(this.basePath, workflowId);
@@ -86,5 +87,31 @@ export class LocalStateStore implements StateStore {
     records.sort((a, b) => a.timestamp - b.timestamp);
 
     return records;
+  }
+
+  public async getLatestCheckpoint(
+    workflowId: string,
+  ): Promise<StoredCheckpoint | null> {
+    const checkpointIds = await listCheckpointFiles(
+      this.basePath,
+      workflowId,
+    );
+
+    let latest: StoredCheckpoint | null = null;
+
+    for (const checkpointId of checkpointIds) {
+      const stored = await readCheckpoint(
+        this.basePath,
+        workflowId,
+        checkpointId,
+      );
+      if (stored !== null) {
+        if (latest === null || stored.timestamp > latest.timestamp) {
+          latest = stored;
+        }
+      }
+    }
+
+    return latest;
   }
 }

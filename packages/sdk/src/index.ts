@@ -9,6 +9,8 @@ export {
   capabilityNodeSchema,
   saveCheckpointPayloadSchema,
   checkpointRecordSchema,
+  executionPhaseSchema,
+  executionCheckpointSchema,
   errorMetadataSchema,
   workflowManifestSchema,
 } from "./schemas";
@@ -21,6 +23,8 @@ export type {
   WorkflowMetadata,
   CapabilityNode,
   CheckpointRecord,
+  ExecutionPhase,
+  ExecutionCheckpoint,
   WorkflowManifestMetadata,
 } from "./schemas";
 

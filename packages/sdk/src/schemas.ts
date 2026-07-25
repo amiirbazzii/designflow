@@ -94,4 +94,24 @@ export const workflowManifestSchema = z.object({
 
 export type WorkflowManifestMetadata = z.infer<typeof workflowManifestSchema>;
 
+export const executionPhaseSchema = z.enum([
+  "started",
+  "executing",
+  "completed",
+  "failed",
+]);
+
+export type ExecutionPhase = z.infer<typeof executionPhaseSchema>;
+
+export const executionCheckpointSchema = z.object({
+  workflowId: z.string().min(1),
+  executionId: z.string().min(1),
+  phase: executionPhaseSchema,
+  timestamp: z.number(),
+  stateRef: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export type ExecutionCheckpoint = z.infer<typeof executionCheckpointSchema>;
+
 export const errorMetadataSchema = z.record(z.string(), z.unknown());

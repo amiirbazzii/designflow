@@ -1,8 +1,13 @@
 import { Command } from "commander";
-import { intro, outro } from "@clack/prompts";
+import { intro, outro, log } from "@clack/prompts";
+import { executionCheckpointSchema } from "@designflow/sdk";
 import { LocalStateStore } from "@designflow/state";
 import type { ResumeResult } from "../types";
 import { CliLogger } from "../logger";
+
+function formatTimestamp(ts: number): string {
+  return new Date(ts).toISOString();
+}
 
 export function registerResumeCommand(program: Command): void {
   program
@@ -16,35 +21,29 @@ export function registerResumeCommand(program: Command): void {
       const stateStore = new LocalStateStore();
 
       try {
-        const history = await stateStore.listHistory(workflowId);
+        const latest = await stateStore.getLatestCheckpoint(workflowId);
 
-        if (history.length === 0) {
+        if (latest === null) {
           logger.error(`No checkpoints found for workflow "${workflowId}".`);
           process.exit(1);
         }
 
-        const latestRecord = history[history.length - 1];
-        if (!latestRecord) {
-          logger.error(`No checkpoints found for workflow "${workflowId}".`);
-          process.exit(1);
-        }
-
-        const checkpoint = await stateStore.loadCheckpoint(
-          workflowId,
-          latestRecord.checkpointId,
-        );
+        const checkpoint = executionCheckpointSchema.parse(latest.state);
 
         const result: ResumeResult = {
           workflowId,
-          checkpoint,
-          timestamp: latestRecord.timestamp,
+          checkpoint: latest.checkpointId,
+          phase: checkpoint.phase,
+          timestamp: latest.timestamp,
         };
 
-        logger.info(`Resuming from checkpoint "${latestRecord.checkpointId}"`);
-        logger.info(JSON.stringify(result, null, 2));
-        outro("Resume information loaded");
+        logger.info(`Workflow:     ${result.workflowId}`);
+        logger.info(`Checkpoint:   ${result.checkpoint}`);
+        logger.info(`Phase:        ${result.phase}`);
+        logger.info(`Time:         ${formatTimestamp(result.timestamp)}`);
+        outro("Resume point loaded (execution not yet resumed)");
       } catch (error) {
-        logger.error(String(error));
+        log.error(String(error));
         process.exit(1);
       }
     });

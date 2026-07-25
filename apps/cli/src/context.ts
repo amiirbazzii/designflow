@@ -26,7 +26,7 @@ export function createCliContext(workflowName: string): CliContext {
   const registry = new CapabilityRegistry();
   const stateStore = new LocalStateStore();
   const artifactStore = new LocalArtifactStore();
-  const engine = new ExecutionEngine(registry, logger, artifactStore);
+  const engine = new ExecutionEngine(registry, logger, artifactStore, stateStore);
   const executionContext = createExecutionContext(workflowName, "initial");
 
   return {

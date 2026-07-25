@@ -1,9 +1,14 @@
+import {
+  executionCheckpointSchema,
+} from "@designflow/sdk";
 import type {
   ExecutionContext,
   WorkflowDefinition,
   ArtifactRef,
   ArtifactStore,
   Logger,
+  StateStore,
+  ExecutionPhase,
 } from "@designflow/sdk";
 import type {
   CompiledNode,
@@ -23,12 +28,19 @@ export class ExecutionEngine {
   private readonly compiler: WorkflowCompiler;
   private readonly logger: Logger;
   private readonly artifactStore: ArtifactStore;
+  private readonly stateStore: StateStore;
 
-  public constructor(registry: CapabilityRegistry, logger: Logger, artifactStore: ArtifactStore) {
+  public constructor(
+    registry: CapabilityRegistry,
+    logger: Logger,
+    artifactStore: ArtifactStore,
+    stateStore: StateStore,
+  ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
     this.logger = logger;
     this.artifactStore = artifactStore;
+    this.stateStore = stateStore;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -39,34 +51,103 @@ export class ExecutionEngine {
     definition: WorkflowDefinition,
     context: ExecutionContext,
   ): Promise<ExecutionResult> {
-    const compiled = this.compiler.compile(definition);
-    const plan = this.plan(compiled);
-    const execution = await this.execute(plan, compiled, context);
-    const validation = this.validate(compiled);
+    const executionId = context.runId;
 
-    if (!validation.valid) {
+    await this.recordCheckpoint(definition.id, executionId, "started");
+
+    try {
+      const compiled = this.compiler.compile(definition);
+      const plan = this.plan(compiled);
+      const execution = await this.execute(plan, compiled, context);
+
+      await this.recordCheckpoint(definition.id, executionId, "executing", {
+        executedSteps: execution.executedSteps,
+      });
+
+      const validation = this.validate(compiled);
+
+      if (!validation.valid) {
+        await this.recordCheckpoint(definition.id, executionId, "failed", {
+          issues: validation.issues,
+        });
+
+        return {
+          workflowId: definition.id,
+          success: false,
+          artifacts: [],
+          completedSteps: execution.executedSteps,
+          failedStep: undefined,
+          error: new ExecutionError("Workflow validation failed", {
+            issues: validation.issues,
+          }),
+        };
+      }
+
+      const applyResult = this.apply(compiled, execution.candidateArtifacts);
+
+      await this.recordCheckpoint(definition.id, executionId, "completed", {
+        appliedArtifacts: applyResult.appliedArtifacts,
+      });
+
+      return {
+        workflowId: definition.id,
+        success: applyResult.committed,
+        artifacts: applyResult.appliedArtifacts,
+        completedSteps: execution.executedSteps,
+        failedStep: undefined,
+        error: undefined,
+      };
+    } catch (error) {
+      await this.recordCheckpoint(definition.id, executionId, "failed", {
+        error: String(error),
+      });
+
       return {
         workflowId: definition.id,
         success: false,
         artifacts: [],
-        completedSteps: execution.executedSteps,
+        completedSteps: [],
         failedStep: undefined,
-        error: new ExecutionError("Workflow validation failed", {
-          issues: validation.issues,
-        }),
+        error,
       };
     }
+  }
 
-    const applyResult = this.apply(compiled, execution.candidateArtifacts);
+  private async recordCheckpoint(
+    workflowId: string,
+    executionId: string,
+    phase: ExecutionPhase,
+    additional?: Record<string, unknown>,
+  ): Promise<void> {
+    const checkpointId = `${executionId}-${phase}`;
+    const timestamp = Date.now();
+    const metadata = { ...additional, executionId, phase };
 
-    return {
-      workflowId: definition.id,
-      success: applyResult.committed,
-      artifacts: applyResult.appliedArtifacts,
-      completedSteps: execution.executedSteps,
-      failedStep: undefined,
-      error: undefined,
-    };
+    const checkpoint = executionCheckpointSchema.parse({
+      workflowId,
+      executionId,
+      phase,
+      timestamp,
+      stateRef: checkpointId,
+      metadata,
+    });
+
+    try {
+      await this.stateStore.saveCheckpoint(
+        workflowId,
+        checkpointId,
+        checkpoint,
+        { phase, executionId },
+        timestamp,
+      );
+    } catch (error) {
+      throw new ExecutionError("Failed to persist checkpoint", {
+        workflowId,
+        executionId,
+        phase,
+        error,
+      });
+    }
   }
 
   private plan(workflow: CompiledWorkflow): ExecutionPlan {
