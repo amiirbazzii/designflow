@@ -36,4 +36,4 @@ export type { Capability } from "./capability";
 
 export type { WorkflowProvider, WorkflowManifest, CapabilityRegistrar } from "./workflow";
 
-export type { StateStore, ArtifactStore, CheckpointState } from "./state";
+export type { StateStore, ArtifactStore, CheckpointState, CheckpointData } from "./state";

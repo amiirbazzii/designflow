@@ -113,6 +113,76 @@ export class ExecutionEngine {
     }
   }
 
+  public async resume(
+    definition: WorkflowDefinition,
+    workflowId: string,
+  ): Promise<ExecutionResult> {
+    const latest = await this.stateStore.getLatestCheckpoint(workflowId);
+
+    if (latest === null) {
+      throw new ExecutionError("No checkpoint found to resume from", {
+        workflowId,
+      });
+    }
+
+    const checkpoint = executionCheckpointSchema.parse(latest.state);
+
+    if (checkpoint.phase === "completed") {
+      const rawArtifacts = checkpoint.metadata?.appliedArtifacts;
+      const completedArtifacts: ArtifactRef[] = Array.isArray(rawArtifacts)
+        ? rawArtifacts.filter(
+            (a): a is ArtifactRef =>
+              typeof a === "object" &&
+              a !== null &&
+              "id" in a &&
+              "type" in a,
+          )
+        : [];
+
+      return {
+        workflowId,
+        success: true,
+        artifacts: completedArtifacts,
+        completedSteps: [],
+        failedStep: undefined,
+        error: undefined,
+      };
+    }
+
+    if (checkpoint.phase === "failed") {
+      return {
+        workflowId,
+        success: false,
+        artifacts: [],
+        completedSteps: [],
+        failedStep: undefined,
+        error: new ExecutionError(
+          "Workflow previously failed, cannot resume",
+          {
+            workflowId,
+            previousExecutionId: checkpoint.executionId,
+          },
+        ),
+      };
+    }
+
+    const abortController = new AbortController();
+
+    const executionContext: ExecutionContext = {
+      runId: crypto.randomUUID(),
+      workflowId,
+      stateRef: "resume",
+      artifacts: [],
+      metadata: {
+        resumedFromCheckpoint: latest.checkpointId,
+        previousExecutionId: checkpoint.executionId,
+      },
+      signal: abortController.signal,
+    };
+
+    return this.run(definition, executionContext);
+  }
+
   private async recordCheckpoint(
     workflowId: string,
     executionId: string,

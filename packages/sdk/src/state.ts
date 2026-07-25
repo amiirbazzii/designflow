@@ -5,6 +5,14 @@ export { executionContextSchema } from "./schemas";
 
 export type CheckpointState = unknown;
 
+export interface CheckpointData {
+  readonly checkpointId: string;
+  readonly workflowId: string;
+  readonly state: CheckpointState;
+  readonly metadata: Record<string, unknown>;
+  readonly timestamp: number;
+}
+
 export interface StateStore {
   saveCheckpoint(
     workflowId: string,
@@ -20,6 +28,8 @@ export interface StateStore {
   ): Promise<CheckpointState>;
 
   listHistory(workflowId: string): Promise<readonly CheckpointRecord[]>;
+
+  getLatestCheckpoint(workflowId: string): Promise<CheckpointData | null>;
 }
 
 export interface ArtifactStore {

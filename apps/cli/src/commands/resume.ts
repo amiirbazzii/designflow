@@ -1,13 +1,8 @@
 import { Command } from "commander";
-import { intro, outro, log } from "@clack/prompts";
-import { executionCheckpointSchema } from "@designflow/sdk";
-import { LocalStateStore } from "@designflow/state";
-import type { ResumeResult } from "../types";
-import { CliLogger } from "../logger";
-
-function formatTimestamp(ts: number): string {
-  return new Date(ts).toISOString();
-}
+import { intro, outro, spinner } from "@clack/prompts";
+import type { CliContext, ResumeResult } from "../types";
+import { createCliContext } from "../context";
+import { createWorkflowLoader } from "../workflows/loader";
 
 export function registerResumeCommand(program: Command): void {
   program
@@ -17,33 +12,56 @@ export function registerResumeCommand(program: Command): void {
     .action(async (workflowId: string): Promise<void> => {
       intro(`wf resume ${workflowId}`);
 
-      const logger = new CliLogger();
-      const stateStore = new LocalStateStore();
+      const spin = spinner();
+      spin.start("Loading workflow");
+
+      let ctx!: CliContext;
 
       try {
-        const latest = await stateStore.getLatestCheckpoint(workflowId);
+        ctx = createCliContext(workflowId);
 
-        if (latest === null) {
-          logger.error(`No checkpoints found for workflow "${workflowId}".`);
+        const registry = await createWorkflowLoader();
+        const manifest = registry.get(workflowId);
+        if (!manifest) {
+          spin.stop(`Unknown workflow: ${workflowId}`);
+          const available = registry.list().map((m) => m.id).join(", ");
+          ctx.logger.error(`Available workflows: ${available}`);
           process.exit(1);
         }
 
-        const checkpoint = executionCheckpointSchema.parse(latest.state);
+        manifest.load(ctx.registry);
 
-        const result: ResumeResult = {
+        spin.stop("Checkpoint loaded");
+
+        ctx.logger.info(`Workflow: ${manifest.name}`);
+
+        spin.start("Resuming workflow execution");
+        const result = await ctx.engine.resume(manifest.definition, workflowId);
+        spin.stop("Resume complete");
+
+        const resumeResult: ResumeResult = {
           workflowId,
-          checkpoint: latest.checkpointId,
-          phase: checkpoint.phase,
-          timestamp: latest.timestamp,
+          runId: ctx.executionContext.runId,
+          status: result.success ? "completed" : "failed",
         };
 
-        logger.info(`Workflow:     ${result.workflowId}`);
-        logger.info(`Checkpoint:   ${result.checkpoint}`);
-        logger.info(`Phase:        ${result.phase}`);
-        logger.info(`Time:         ${formatTimestamp(result.timestamp)}`);
-        outro("Resume point loaded (execution not yet resumed)");
+        if (result.success) {
+          ctx.logger.info(`Artifacts produced: ${result.artifacts.length}`);
+          for (const artifact of result.artifacts) {
+            ctx.logger.info(`  ${artifact.id} (${artifact.type})`);
+          }
+        } else {
+          ctx.logger.error(`Execution failed: ${String(result.error)}`);
+        }
+
+        ctx.logger.info(JSON.stringify(resumeResult, null, 2));
+        outro(`Resume ${result.success ? "completed" : "failed"}`);
+        if (!result.success) {
+          process.exit(1);
+        }
       } catch (error) {
-        log.error(String(error));
+        spin.stop("Resume failed");
+        ctx.logger.error(String(error));
         process.exit(1);
       }
     });

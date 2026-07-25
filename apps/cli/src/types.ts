@@ -34,7 +34,6 @@ export interface StatusResult {
 
 export interface ResumeResult {
   workflowId: string;
-  checkpoint: string;
-  phase: string;
-  timestamp: number;
+  runId: string;
+  status: string;
 }
