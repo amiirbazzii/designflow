@@ -1,6 +1,4 @@
-import type { ExecutionContract } from "@designflow/sdk";
-import type { LocalStateStore } from "@designflow/state";
-import type { LocalArtifactStore } from "@designflow/artifacts";
+import type { ExecutionContract, StateStore, ArtifactStore } from "@designflow/sdk";
 import type { CliLogger } from "./logger";
 
 export interface CliConfig {
@@ -11,8 +9,8 @@ export interface CliConfig {
 
 export interface CliContext {
   logger: CliLogger;
-  stateStore: LocalStateStore;
-  artifactStore: LocalArtifactStore;
+  stateStore: StateStore;
+  artifactStore: ArtifactStore;
   executionService: ExecutionContract;
 }
 

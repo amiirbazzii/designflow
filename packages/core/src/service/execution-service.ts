@@ -1,6 +1,7 @@
 import {
   executionRequestSchema,
   executionResultSchema,
+  executionCheckpointSchema,
 } from "@designflow/sdk";
 import type {
   ExecutionRequest,
@@ -10,6 +11,7 @@ import type {
   Logger,
   StateStore,
   ArtifactStore,
+  ArtifactRef,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -43,6 +45,7 @@ export type WorkflowResolver = (workflowId: string) => WorkflowPackage | undefin
 
 export interface ExecutionServiceConfig {
   readonly workflowResolver: WorkflowResolver;
+  readonly capabilityRegistry: CapabilityRegistry;
   readonly logger: Logger;
   readonly stateStore: StateStore;
   readonly artifactStore: ArtifactStore;
@@ -52,12 +55,14 @@ export interface ExecutionServiceConfig {
 
 export class ExecutionService implements ExecutionContract {
   private readonly workflowResolver: WorkflowResolver;
+  private readonly capabilityRegistry: CapabilityRegistry;
   private readonly logger: Logger;
   private readonly stateStore: StateStore;
   private readonly artifactStore: ArtifactStore;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
+    this.capabilityRegistry = config.capabilityRegistry;
     this.logger = config.logger;
     this.stateStore = config.stateStore;
     this.artifactStore = config.artifactStore;
@@ -65,13 +70,15 @@ export class ExecutionService implements ExecutionContract {
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
     const validatedRequest = this.validateRequest(request);
+
+    if (validatedRequest.options?.resume) {
+      return this.resume(validatedRequest.workflowId);
+    }
+
     const workflowPackage = this.resolveWorkflow(validatedRequest.workflowId);
 
-    const registry = new CapabilityRegistry();
-    workflowPackage.load(registry);
-
     const engine = new ExecutionEngine(
-      registry,
+      this.capabilityRegistry,
       this.logger,
       this.artifactStore,
       this.stateStore,
@@ -103,17 +110,23 @@ export class ExecutionService implements ExecutionContract {
   public async resume(workflowId: string): Promise<ExecutionResult> {
     const workflowPackage = this.resolveWorkflow(workflowId);
 
-    const registry = new CapabilityRegistry();
-    workflowPackage.load(registry);
+    const latest = await this.stateStore.getLatestCheckpoint(workflowId);
+
+    let executionId: string;
+    if (latest !== null) {
+      const checkpoint = executionCheckpointSchema.parse(latest.state);
+      executionId = checkpoint.executionId;
+    } else {
+      executionId = crypto.randomUUID();
+    }
 
     const engine = new ExecutionEngine(
-      registry,
+      this.capabilityRegistry,
       this.logger,
       this.artifactStore,
       this.stateStore,
     );
 
-    const executionId = crypto.randomUUID();
     const engineResult = await engine.resume(workflowPackage.definition, workflowId);
 
     return this.normalizeResult(
@@ -152,7 +165,7 @@ export class ExecutionService implements ExecutionContract {
   private normalizeResult(
     executionId: string,
     workflowId: string,
-    engineResult: { success: boolean; artifacts: readonly { id: string; type: string; metadata?: Record<string, unknown> }[]; error: unknown },
+    engineResult: { success: boolean; artifacts: readonly ArtifactRef[]; error: unknown },
   ): ExecutionResult {
     const status = engineResult.success ? "completed" as const : "failed" as const;
 

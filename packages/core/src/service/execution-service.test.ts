@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import { z } from "zod";
 import { ExecutionService } from "./execution-service";
+import { CapabilityRegistry } from "../registry";
 import type {
   WorkflowPackage,
   WorkflowResolver,
@@ -8,7 +9,6 @@ import type {
   StateStore,
   ArtifactStore,
   Capability,
-  ArtifactRef,
 } from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -52,7 +52,6 @@ const createMockArtifactStore = (): ArtifactStore => ({
 
 const createWorkflowPackage = (
   id: string,
-  capabilities: Capability<unknown, unknown>[] = [],
 ): WorkflowPackage => ({
   id,
   name: `Workflow ${id}`,
@@ -61,18 +60,10 @@ const createWorkflowPackage = (
     id,
     name: `Workflow ${id}`,
     description: "",
-    nodes: capabilities.map((cap) => ({
-      id: cap.id,
-      capabilityId: cap.id,
-      inputMap: {},
-    })),
+    nodes: [],
     metadata: {},
   },
-  load: (registrar) => {
-    for (const cap of capabilities) {
-      registrar.register(cap);
-    }
-  },
+  load: () => {},
 });
 
 // ── Tests ───────────────────────────────────────────────────────
@@ -81,21 +72,30 @@ describe("ExecutionService", () => {
   let logger: Logger;
   let stateStore: StateStore;
   let artifactStore: ArtifactStore;
+  let capabilityRegistry: CapabilityRegistry;
 
   beforeEach(() => {
     logger = createMockLogger();
     stateStore = createMockStateStore();
     artifactStore = createMockArtifactStore();
+    capabilityRegistry = new CapabilityRegistry();
   });
 
   describe("validate execution request", () => {
     test("valid request is accepted", async () => {
       const cap = createMockCapability("test-cap");
-      const workflow = createWorkflowPackage("test-wf", [cap]);
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
       const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
 
       const service = new ExecutionService({
         workflowResolver: resolver,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -110,6 +110,7 @@ describe("ExecutionService", () => {
     test("invalid request with empty workflowId is rejected", async () => {
       const service = new ExecutionService({
         workflowResolver: () => undefined,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -126,6 +127,7 @@ describe("ExecutionService", () => {
       const resolver: WorkflowResolver = () => undefined;
       const service = new ExecutionService({
         workflowResolver: resolver,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -140,11 +142,18 @@ describe("ExecutionService", () => {
   describe("successful execution contract", () => {
     test("returns completed status with artifacts", async () => {
       const cap = createMockCapability("test-cap");
-      const workflow = createWorkflowPackage("test-wf", [cap]);
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
       const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
 
       const service = new ExecutionService({
         workflowResolver: resolver,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -162,11 +171,18 @@ describe("ExecutionService", () => {
 
     test("execution with metadata passes metadata to context", async () => {
       const cap = createMockCapability("test-cap");
-      const workflow = createWorkflowPackage("test-wf", [cap]);
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
       const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
 
       const service = new ExecutionService({
         workflowResolver: resolver,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -195,11 +211,18 @@ describe("ExecutionService", () => {
         },
       };
 
-      const workflow = createWorkflowPackage("test-wf", [failingCap]);
+      capabilityRegistry.register(failingCap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "failing-cap", inputMap: {} },
+      ];
+
       const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
 
       const service = new ExecutionService({
         workflowResolver: resolver,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -211,18 +234,25 @@ describe("ExecutionService", () => {
       expect(result.workflowId).toBe("test-wf");
       expect(result.status).toBe("failed");
       expect(result.error).toBeDefined();
-      expect(result.error?.message).toContain("failing-cap");
+      expect(result.error?.message).toContain("node-1");
     });
   });
 
   describe("resume contract", () => {
     test("resume with no checkpoint throws error", async () => {
       const cap = createMockCapability("test-cap");
-      const workflow = createWorkflowPackage("test-wf", [cap]);
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
       const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
 
       const service = new ExecutionService({
         workflowResolver: resolver,
+        capabilityRegistry,
         logger,
         stateStore,
         artifactStore,
@@ -231,6 +261,30 @@ describe("ExecutionService", () => {
       await expect(service.resume("test-wf")).rejects.toThrow(
         "No checkpoint found to resume from",
       );
+    });
+
+    test("options.resume triggers resume method", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        stateStore,
+        artifactStore,
+      });
+
+      await expect(
+        service.execute({ workflowId: "test-wf", options: { resume: true } }),
+      ).rejects.toThrow("No checkpoint found to resume from");
     });
   });
 });

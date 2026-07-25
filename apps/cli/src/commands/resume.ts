@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { intro, outro, spinner } from "@clack/prompts";
+import { CapabilityRegistry } from "@designflow/core";
 import type { CliContext, ResumeResult } from "../types";
 import { createCliContext } from "../context";
 import { createWorkflowLoader } from "../workflows/loader";
@@ -19,8 +20,22 @@ export function registerResumeCommand(program: Command): void {
 
       try {
         const workflowLoader = await createWorkflowLoader();
+        const manifest = workflowLoader.get(workflowId);
 
-        ctx = createCliContext((id) => workflowLoader.get(id));
+        if (!manifest) {
+          spin.stop(`Unknown workflow: ${workflowId}`);
+          const available = workflowLoader.list().map((m) => m.id).join(", ");
+          process.stderr.write(`Available workflows: ${available}\n`);
+          process.exit(1);
+        }
+
+        const capabilityRegistry = new CapabilityRegistry();
+        manifest.load(capabilityRegistry);
+
+        ctx = createCliContext(
+          (id) => workflowLoader.get(id),
+          capabilityRegistry,
+        );
 
         spin.stop("Checkpoint loaded");
 
