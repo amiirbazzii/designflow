@@ -14,6 +14,7 @@ export {
   executionCheckpointSchema,
   errorMetadataSchema,
   workflowManifestSchema,
+  semanticVersionSchema,
 } from "./schemas";
 
 export type {
@@ -27,7 +28,8 @@ export type {
   CheckpointRecord,
   ExecutionPhase,
   ExecutionCheckpoint,
-  WorkflowManifestMetadata,
+  WorkflowManifest,
+  SemanticVersion,
 } from "./schemas";
 
 export { DesignFlowError } from "./errors";
@@ -36,6 +38,7 @@ export type { CapabilityContext, Logger } from "./context";
 
 export type { Capability } from "./capability";
 
-export type { WorkflowProvider, WorkflowManifest, CapabilityRegistrar } from "./workflow";
+export type { WorkflowProvider, WorkflowPackage, CapabilityRegistrar } from "./workflow";
+export { workflowPackageSchema } from "./workflow";
 
 export type { StateStore, ArtifactStore, CheckpointState, CheckpointData } from "./state";

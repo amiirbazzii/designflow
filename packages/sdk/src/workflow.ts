@@ -1,17 +1,27 @@
+import { z } from "zod";
 import type { Capability } from "./capability";
-import type { WorkflowDefinition, WorkflowManifestMetadata } from "./schemas";
-
-export interface WorkflowProvider {
-  getManifest(): WorkflowManifest;
-}
+import { workflowDefinitionSchema } from "./schemas";
+import { workflowManifestSchema } from "./workflow-manifest";
+import type { WorkflowManifest } from "./workflow-manifest";
 
 export interface CapabilityRegistrar {
   register<TInput, TOutput>(capability: Capability<TInput, TOutput>): void;
 }
 
-export interface WorkflowManifest extends WorkflowManifestMetadata {
-  definition: WorkflowDefinition;
+export interface WorkflowPackage extends WorkflowManifest {
+  definition: z.infer<typeof workflowDefinitionSchema>;
   load(registry: CapabilityRegistrar): void;
+}
+
+export const workflowPackageSchema = z.intersection(
+  workflowManifestSchema,
+  z.object({
+    definition: workflowDefinitionSchema,
+  }),
+);
+
+export interface WorkflowProvider {
+  getManifest(): WorkflowPackage;
 }
 
 export type {
@@ -24,3 +34,6 @@ export {
   workflowMetadataSchema,
   capabilityNodeSchema,
 } from "./schemas";
+
+export type { WorkflowManifest } from "./workflow-manifest";
+export { workflowManifestSchema, semanticVersionSchema } from "./workflow-manifest";

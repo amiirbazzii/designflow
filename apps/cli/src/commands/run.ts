@@ -33,7 +33,7 @@ export function registerRunCommand(program: Command): void {
 
         spin.stop("Execution context ready");
 
-        ctx.logger.info(`Workflow: ${manifest.name}`);
+        ctx.logger.info(`Running: ${manifest.name} v${manifest.version}`);
         ctx.logger.info(`Run ID: ${ctx.executionContext.runId}`);
 
         spin.start("Executing workflow");

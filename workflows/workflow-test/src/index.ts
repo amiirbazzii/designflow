@@ -1,8 +1,8 @@
-import type { WorkflowProvider } from "@designflow/sdk";
+import type { WorkflowProvider, WorkflowPackage } from "@designflow/sdk";
 import { testWorkflowManifest } from "./manifest";
 
 export const provider: WorkflowProvider = {
-  getManifest() {
+  getManifest(): WorkflowPackage {
     return testWorkflowManifest;
   },
 };

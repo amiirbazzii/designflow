@@ -1,19 +1,37 @@
-import { workflowManifestSchema } from "@designflow/sdk";
-import type { WorkflowManifest } from "@designflow/sdk";
+import { workflowPackageSchema, DesignFlowError } from "@designflow/sdk";
+import type { WorkflowPackage } from "@designflow/sdk";
+
+export class WorkflowRegistryError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("WORKFLOW_REGISTRY_ERROR", message, metadata);
+    this.name = "WorkflowRegistryError";
+  }
+}
 
 export class WorkflowRegistry {
-  private readonly manifests = new Map<string, WorkflowManifest>();
+  private readonly packages = new Map<string, WorkflowPackage>();
 
-  public register(manifest: WorkflowManifest): void {
-    const metadata = workflowManifestSchema.parse(manifest);
-    this.manifests.set(metadata.id, manifest);
+  public register(pkg: WorkflowPackage): void {
+    const validated = workflowPackageSchema.parse(pkg);
+
+    if (this.packages.has(validated.id)) {
+      throw new WorkflowRegistryError(
+        `Duplicate workflow ID: "${validated.id}"`,
+        { workflowId: validated.id },
+      );
+    }
+
+    this.packages.set(validated.id, validated as WorkflowPackage);
   }
 
-  public get(id: string): WorkflowManifest | undefined {
-    return this.manifests.get(id);
+  public get(id: string): WorkflowPackage | undefined {
+    return this.packages.get(id);
   }
 
-  public list(): readonly WorkflowManifest[] {
-    return Array.from(this.manifests.values());
+  public list(): readonly WorkflowPackage[] {
+    return Array.from(this.packages.values());
   }
 }

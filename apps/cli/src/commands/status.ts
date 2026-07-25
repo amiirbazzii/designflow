@@ -4,6 +4,7 @@ import { executionCheckpointSchema } from "@designflow/sdk";
 import { LocalStateStore } from "@designflow/state";
 import type { StatusResult } from "../types";
 import { CliLogger } from "../logger";
+import { createWorkflowLoader } from "../workflows/loader";
 
 function formatTimestamp(ts: number): string {
   return new Date(ts).toISOString();
@@ -44,6 +45,19 @@ export function registerStatusCommand(program: Command): void {
 
         const checkpoint = executionCheckpointSchema.parse(latest.state);
 
+        let workflowName = workflowId;
+        let workflowVersion = "unknown";
+        try {
+          const registry = await createWorkflowLoader();
+          const manifest = registry.get(workflowId);
+          if (manifest) {
+            workflowName = manifest.name;
+            workflowVersion = manifest.version;
+          }
+        } catch {
+          // Workflow may not be available; continue with ID
+        }
+
         const result: StatusResult = {
           workflowId,
           phase: checkpoint.phase,
@@ -51,7 +65,7 @@ export function registerStatusCommand(program: Command): void {
           status: statusLabel(checkpoint.phase),
         };
 
-        logger.info(`Workflow: ${result.workflowId}`);
+        logger.info(`Workflow: ${workflowName} v${workflowVersion}`);
         logger.info(`Phase:    ${result.phase}`);
         logger.info(`Time:     ${formatTimestamp(result.timestamp)}`);
         logger.info(`Status:   ${result.status}`);
