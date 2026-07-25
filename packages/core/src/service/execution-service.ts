@@ -298,10 +298,15 @@ export class ExecutionService implements ExecutionContract {
       (node) => node.capabilityId,
     );
 
+    const environment =
+      typeof request.metadata?.environment === "string"
+        ? request.metadata.environment
+        : undefined;
+
     const context: PolicyContext = {
       workflowId: request.workflowId,
       capabilityIds,
-      environment: request.metadata?.["environment"] as string | undefined,
+      environment,
       metadata: request.metadata,
     };
 

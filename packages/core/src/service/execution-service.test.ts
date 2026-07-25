@@ -15,6 +15,7 @@ import type {
   ExecutionEventPublisher,
   ExecutionPolicy,
   PolicyEvaluator,
+  ExecutionEvent,
 } from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -669,6 +670,54 @@ describe("ExecutionService", () => {
       const record = await executionRepository.get(result.executionId);
       expect(record?.status).toBe("failed");
       expect(record?.completedAt).toBeDefined();
+    });
+
+    test("policy denied execution persists governance event to repository", async () => {
+      const receivedEvents: ExecutionEvent[] = [];
+      eventPublisher.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Deny Policy",
+        rules: [
+          { id: "deny-1", type: "deny_capability", target: "test-cap" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("failed");
+
+      const policyDeniedEvents = receivedEvents.filter(
+        (e) => e.type === "execution.policy_denied",
+      );
+      expect(policyDeniedEvents.length).toBe(1);
+      expect(policyDeniedEvents[0].executionId).toBe(result.executionId);
+      expect(policyDeniedEvents[0].payload).toBeDefined();
     });
   });
 });
