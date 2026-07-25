@@ -23,6 +23,9 @@ export { InMemoryExecutionRepository } from "./repository";
 // ── Events ─────────────────────────────────────────────────────────
 export { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "./events";
 
+// ── Policy ─────────────────────────────────────────────────────────
+export { InMemoryPolicyEvaluator } from "./policy";
+
 // ── Service ────────────────────────────────────────────────────────
 export { ExecutionService } from "./service";
 export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
@@ -56,4 +59,5 @@ export {
   ExecutionError,
   ExecutionRepositoryError,
   ExecutionEventError,
+  PolicyViolationError,
 } from "./errors";

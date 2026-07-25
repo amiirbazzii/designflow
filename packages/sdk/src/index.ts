@@ -93,3 +93,23 @@ export type {
   ExecutionEventHandler,
   ExecutionEventPublisher,
 } from "./execution-events";
+
+// ── Execution Policy ────────────────────────────────────────────
+export {
+  policyRuleSchema,
+  policyRuleTypeSchema,
+  executionPolicySchema,
+  policyViolationSchema,
+  policyEvaluationResultSchema,
+  policyContextSchema,
+} from "./execution-policy";
+
+export type {
+  PolicyRule,
+  PolicyRuleType,
+  ExecutionPolicy,
+  PolicyViolation,
+  PolicyEvaluationResult,
+  PolicyContext,
+  PolicyEvaluator,
+} from "./execution-policy";

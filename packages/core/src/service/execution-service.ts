@@ -1,6 +1,7 @@
 import {
   executionRequestSchema,
   executionResultSchema,
+  policyEvaluationResultSchema,
 } from "@designflow/sdk";
 import type {
   ExecutionRequest,
@@ -14,6 +15,9 @@ import type {
   ExecutionRecord,
   LifecycleEvent,
   ExecutionEventPublisher,
+  ExecutionPolicy,
+  PolicyEvaluator,
+  PolicyContext,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -52,6 +56,8 @@ export interface ExecutionServiceConfig {
   readonly artifactStore: ArtifactStore;
   readonly executionRepository: ExecutionRepository;
   readonly eventPublisher: ExecutionEventPublisher;
+  readonly policyEvaluator?: PolicyEvaluator;
+  readonly policy?: ExecutionPolicy;
 }
 
 // ── Execution Service ───────────────────────────────────────────
@@ -63,6 +69,8 @@ export class ExecutionService implements ExecutionContract {
   private readonly artifactStore: ArtifactStore;
   private readonly executionRepository: ExecutionRepository;
   private readonly eventPublisher: ExecutionEventPublisher;
+  private readonly policyEvaluator: PolicyEvaluator | undefined;
+  private readonly policy: ExecutionPolicy | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -71,6 +79,8 @@ export class ExecutionService implements ExecutionContract {
     this.artifactStore = config.artifactStore;
     this.executionRepository = config.executionRepository;
     this.eventPublisher = config.eventPublisher;
+    this.policyEvaluator = config.policyEvaluator;
+    this.policy = config.policy;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -97,6 +107,51 @@ export class ExecutionService implements ExecutionContract {
     await this.appendEvent(executionId, "created");
 
     try {
+      if (this.policyEvaluator !== undefined && this.policy !== undefined) {
+        const policyResult = await this.evaluatePolicy(
+          workflowPackage,
+          validatedRequest,
+        );
+
+        if (!policyResult.allowed) {
+          await this.markFailed(
+            executionId,
+            validatedRequest.workflowId,
+            new DesignFlowError(
+              "ERR_POLICY_VIOLATION",
+              "Execution denied by policy",
+              {
+                violations: policyResult.violations,
+              },
+            ),
+          );
+
+          await this.eventPublisher.publish({
+            id: crypto.randomUUID(),
+            executionId,
+            type: "execution.failed",
+            timestamp: Date.now(),
+            payload: {
+              workflowId: validatedRequest.workflowId,
+              reason: "policy_violation",
+              violations: policyResult.violations,
+            },
+          });
+
+          const result: ExecutionResult = {
+            executionId,
+            workflowId: validatedRequest.workflowId,
+            status: "failed",
+            artifacts: [],
+            error: {
+              code: "ERR_POLICY_VIOLATION",
+              message: `Execution denied: ${policyResult.violations.map((v) => v.message).join("; ")}`,
+            },
+          };
+          return executionResultSchema.parse(result);
+        }
+      }
+
       const engine = new ExecutionEngine(
         this.capabilityRegistry,
         this.logger,
@@ -218,6 +273,24 @@ export class ExecutionService implements ExecutionContract {
         }
       }
     }
+  }
+
+  private async evaluatePolicy(
+    workflowPackage: WorkflowPackage,
+    request: ExecutionRequest,
+  ): Promise<ReturnType<PolicyEvaluator["evaluate"]>> {
+    const capabilityIds = workflowPackage.definition.nodes.map(
+      (node) => node.capabilityId,
+    );
+
+    const context: PolicyContext = {
+      workflowId: request.workflowId,
+      capabilityIds,
+      environment: request.metadata?.["environment"] as string | undefined,
+      metadata: request.metadata,
+    };
+
+    return this.policyEvaluator!.evaluate(this.policy!, context);
   }
 
   private findLatestRecord(

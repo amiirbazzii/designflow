@@ -4,6 +4,7 @@ import { ExecutionService } from "./execution-service";
 import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";
 import { InMemoryEventPublisher } from "../events";
+import { InMemoryPolicyEvaluator } from "../policy";
 import type {
   WorkflowPackage,
   WorkflowResolver,
@@ -12,6 +13,8 @@ import type {
   Capability,
   ExecutionRepository,
   ExecutionEventPublisher,
+  ExecutionPolicy,
+  PolicyEvaluator,
 } from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────
@@ -443,6 +446,229 @@ describe("ExecutionService", () => {
       expect(resumed.status).toBe("completed");
       expect(resumed.artifacts).toHaveLength(1);
       expect(resumed.artifacts[0].id).toBe("artifact-test-cap");
+    });
+  });
+
+  describe("policy evaluation", () => {
+    let policyEvaluator: PolicyEvaluator;
+
+    beforeEach(() => {
+      policyEvaluator = new InMemoryPolicyEvaluator();
+    });
+
+    test("execution with no policy passes", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("completed");
+    });
+
+    test("deny capability blocks execution", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Deny Policy",
+        rules: [
+          { id: "deny-1", type: "deny_capability", target: "test-cap" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("ERR_POLICY_VIOLATION");
+      expect(result.error?.message).toContain("test-cap");
+    });
+
+    test("require_approval blocks execution", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("ERR_POLICY_VIOLATION");
+      expect(result.error?.message).toContain("Approval required");
+    });
+
+    test("multiple violations are returned", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Combined Policy",
+        rules: [
+          { id: "deny-1", type: "deny_capability", target: "test-cap" },
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("failed");
+      expect(result.error?.message).toContain("test-cap");
+      expect(result.error?.message).toContain("Approval required");
+    });
+
+    test("allow policy passes for listed capabilities", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Allow Policy",
+        rules: [
+          { id: "allow-1", type: "allow_capability", target: "test-cap" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("completed");
+    });
+
+    test("policy violation persists failed state to repository", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Deny Policy",
+        rules: [
+          { id: "deny-1", type: "deny_capability", target: "test-cap" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.status).toBe("failed");
+      expect(record?.completedAt).toBeDefined();
     });
   });
 });

@@ -58,3 +58,14 @@ export class ExecutionEventError extends DesignFlowError {
     Object.setPrototypeOf(this, ExecutionEventError.prototype);
   }
 }
+
+export class PolicyViolationError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_POLICY_VIOLATION", message, metadata);
+    this.name = "PolicyViolationError";
+    Object.setPrototypeOf(this, PolicyViolationError.prototype);
+  }
+}
