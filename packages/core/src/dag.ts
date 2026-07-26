@@ -1,4 +1,5 @@
-import type { CapabilityNode, WorkflowDefinition } from "@designflow/sdk";
+import type { WorkflowDefinition, WorkflowStepNode } from "@designflow/sdk";
+import { isWorkflowNode } from "@designflow/sdk";
 import { ExecutionError } from "./errors";
 import type { ExecutionLayer, ExecutionPlan, ExecutionStep } from "./types";
 
@@ -6,7 +7,7 @@ export class DagResolver {
   public resolve(definition: WorkflowDefinition): ExecutionPlan {
     const { nodes } = definition;
 
-    const nodeMap = new Map<string, CapabilityNode>();
+    const nodeMap = new Map<string, WorkflowStepNode>();
     for (const node of nodes) {
       nodeMap.set(node.id, node);
     }
@@ -25,13 +26,18 @@ export class DagResolver {
     for (const layer of layers) {
       for (const nodeId of layer.nodeIds) {
         const node = nodeMap.get(nodeId)!;
-        mutableSteps.push({
+        const base = {
           nodeId: node.id,
-          capabilityId: node.capabilityId,
           label: node.label,
           inputMap: node.inputMap,
           dependsOn: node.execution?.dependsOn ?? [],
-        });
+        };
+
+        mutableSteps.push(
+          isWorkflowNode(node)
+            ? { ...base, kind: "workflow", workflowId: node.workflowId }
+            : { ...base, kind: "capability", capabilityId: node.capabilityId },
+        );
       }
     }
 
@@ -47,8 +53,8 @@ export class DagResolver {
   }
 
   private detectCycle(
-    nodes: readonly CapabilityNode[],
-    nodeMap: Map<string, CapabilityNode>,
+    nodes: readonly WorkflowStepNode[],
+    nodeMap: Map<string, WorkflowStepNode>,
   ): string[] | null {
     const WHITE = 0;
     const GRAY = 1;
@@ -105,8 +111,8 @@ export class DagResolver {
   }
 
   private computeLayers(
-    nodes: readonly CapabilityNode[],
-    nodeMap: Map<string, CapabilityNode>,
+    nodes: readonly WorkflowStepNode[],
+    nodeMap: Map<string, WorkflowStepNode>,
   ): ExecutionLayer[] {
     const nodeIndex = new Map<string, number>();
     for (let i = 0; i < nodes.length; i++) {

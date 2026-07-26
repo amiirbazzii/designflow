@@ -80,3 +80,48 @@ export class ApprovalError extends DesignFlowError {
     Object.setPrototypeOf(this, ApprovalError.prototype);
   }
 }
+
+export class WorkflowCompositionError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_WORKFLOW_COMPOSITION", message, metadata);
+    this.name = "WorkflowCompositionError";
+    Object.setPrototypeOf(this, WorkflowCompositionError.prototype);
+  }
+}
+
+export class WorkflowCompositionCycleError extends DesignFlowError {
+  public readonly compositionPath: readonly string[];
+
+  public constructor(
+    workflowId: string,
+    compositionPath: readonly string[],
+    metadata?: Record<string, unknown>,
+  ) {
+    super(
+      "ERR_WORKFLOW_COMPOSITION_CYCLE",
+      `Workflow composition cycle detected: ${[...compositionPath].join(" -> ")}`,
+      { ...metadata, workflowId, compositionPath: [...compositionPath] },
+    );
+    this.name = "WorkflowCompositionCycleError";
+    this.compositionPath = [...compositionPath];
+    Object.setPrototypeOf(this, WorkflowCompositionCycleError.prototype);
+  }
+}
+
+export class WorkflowResolverNotConfiguredError extends DesignFlowError {
+  public constructor(
+    workflowId: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super(
+      "ERR_WORKFLOW_RESOLVER_NOT_CONFIGURED",
+      `No WorkflowExecutionResolver configured; cannot execute child workflow: ${workflowId}`,
+      { ...metadata, workflowId },
+    );
+    this.name = "WorkflowResolverNotConfiguredError";
+    Object.setPrototypeOf(this, WorkflowResolverNotConfiguredError.prototype);
+  }
+}

@@ -31,6 +31,16 @@ export { ExecutionService } from "./service";
 export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
 export { WorkflowNotFoundError, InvalidRequestError } from "./service";
 
+// ── Composition ────────────────────────────────────────────────────
+export {
+  WorkflowCompositionExecutor,
+  ExecutionServiceWorkflowResolver,
+} from "./composition";
+export type {
+  WorkflowCompositionRequest,
+  WorkflowCompositionOutcome,
+} from "./composition";
+
 // ── Approval ───────────────────────────────────────────────────────
 export { InMemoryApprovalManager, LocalApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./approval";
 
@@ -46,11 +56,17 @@ export type {
 // ── Types ──────────────────────────────────────────────────────────
 export type {
   CompiledNode,
+  CompiledCapabilityNode,
+  CompiledWorkflowNode,
   CompiledWorkflow,
   ExecutionStep,
+  ExecutionStepBase,
+  CapabilityExecutionStep,
+  WorkflowExecutionStep,
   ExecutionLayer,
   ExecutionPlan,
   ExecutionResult,
+  PendingChildApproval,
   ValidationResult,
   ValidationIssue,
 } from "./types";
@@ -64,4 +80,7 @@ export {
   ExecutionEventError,
   PolicyViolationError,
   ApprovalError,
+  WorkflowCompositionError,
+  WorkflowCompositionCycleError,
+  WorkflowResolverNotConfiguredError,
 } from "./errors";

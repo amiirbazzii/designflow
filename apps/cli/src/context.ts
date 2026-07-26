@@ -71,6 +71,15 @@ export function createCliContext(config: CliContextConfig): CliContext {
       case "capability.failed":
         logger.error(`[${timestamp}] Capability failed${payload}`);
         break;
+      case "workflow.child_started":
+        logger.info(`[${timestamp}] Child workflow started${payload}`);
+        break;
+      case "workflow.child_completed":
+        logger.info(`[${timestamp}] Child workflow completed${payload}`);
+        break;
+      case "workflow.child_failed":
+        logger.error(`[${timestamp}] Child workflow failed${payload}`);
+        break;
     }
   });
 

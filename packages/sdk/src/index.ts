@@ -8,6 +8,11 @@ export {
   workflowDefinitionSchema,
   workflowMetadataSchema,
   capabilityNodeSchema,
+  workflowNodeSchema,
+  workflowStepNodeSchema,
+  nodeExecutionOptionsSchema,
+  isCapabilityNode,
+  isWorkflowNode,
   saveCheckpointPayloadSchema,
   checkpointRecordSchema,
   executionPhaseSchema,
@@ -25,6 +30,9 @@ export type {
   WorkflowDefinition,
   WorkflowMetadata,
   CapabilityNode,
+  WorkflowNode,
+  WorkflowStepNode,
+  NodeExecutionOptions,
   CheckpointRecord,
   ExecutionPhase,
   ExecutionCheckpoint,
@@ -127,3 +135,30 @@ export type {
   ApprovalDecision,
   ApprovalManager,
 } from "./approval";
+
+// ── Workflow Composition ────────────────────────────────────────
+export {
+  workflowInvocationSchema,
+  workflowInvocationResultSchema,
+  workflowInvocationStatusSchema,
+  workflowInvocationContextSchema,
+  compositionPathSchema,
+  executionLineageSchema,
+  childExecutionLineageSchema,
+  childExecutionRequestSchema,
+  readExecutionLineage,
+  withExecutionLineage,
+  EXECUTION_LINEAGE_METADATA_KEY,
+} from "./workflow-composition";
+
+export type {
+  WorkflowInvocation,
+  WorkflowInvocationResult,
+  WorkflowInvocationStatus,
+  WorkflowInvocationContext,
+  WorkflowExecutionResolver,
+  ExecutionLineage,
+  ChildExecutionLineage,
+  ChildExecutionRequest,
+  ChildExecutionContract,
+} from "./workflow-composition";

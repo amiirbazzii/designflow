@@ -1,4 +1,5 @@
 import type { WorkflowDefinition } from "@designflow/sdk";
+import { isWorkflowNode } from "@designflow/sdk";
 import type { CompiledNode, CompiledWorkflow, ExecutionPlan } from "./types";
 import { CapabilityNotFoundError, WorkflowCompilationError } from "./errors";
 import type { CapabilityRegistry } from "./registry";
@@ -36,7 +37,13 @@ export class WorkflowCompiler {
   }
 
   private resolveNodes(definition: WorkflowDefinition): CompiledNode[] {
-    return definition.nodes.map((node, index) => {
+    return definition.nodes.map((node, index): CompiledNode => {
+      // Child workflow nodes are resolved at execution time by the injected
+      // WorkflowExecutionResolver — core never statically resolves workflows.
+      if (isWorkflowNode(node)) {
+        return { kind: "workflow", node, order: index };
+      }
+
       const capability = this.registry.get(node.capabilityId);
       if (!capability) {
         throw new CapabilityNotFoundError(node.capabilityId, {
@@ -45,7 +52,7 @@ export class WorkflowCompiler {
         });
       }
 
-      return { node, capability, order: index };
+      return { kind: "capability", node, capability, order: index };
     });
   }
 

@@ -29,11 +29,17 @@ export type {
   WorkflowDefinition,
   WorkflowMetadata,
   CapabilityNode,
+  WorkflowNode,
+  WorkflowStepNode,
 } from "./schemas";
 export {
   workflowDefinitionSchema,
   workflowMetadataSchema,
   capabilityNodeSchema,
+  workflowNodeSchema,
+  workflowStepNodeSchema,
+  isCapabilityNode,
+  isWorkflowNode,
 } from "./schemas";
 
 export type { WorkflowManifest } from "./workflow-manifest";

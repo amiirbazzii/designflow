@@ -2,6 +2,9 @@ import {
   executionRequestSchema,
   executionResultSchema,
   executionPolicySchema,
+  childExecutionRequestSchema,
+  isCapabilityNode,
+  withExecutionLineage,
 } from "@designflow/sdk";
 import type {
   ExecutionRequest,
@@ -19,12 +22,16 @@ import type {
   PolicyEvaluator,
   PolicyContext,
   ApprovalManager,
-  ApprovalRequest,
+  ChildExecutionContract,
+  ChildExecutionRequest,
+  WorkflowExecutionResolver,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
 import { ExecutionEngine } from "../engine";
+import { ExecutionServiceWorkflowResolver } from "../composition";
 import { PolicyViolationError, ApprovalError } from "../errors";
+import type { PendingChildApproval } from "../types";
 
 // ── Errors ──────────────────────────────────────────────────────
 
@@ -62,11 +69,23 @@ export interface ExecutionServiceConfig {
   readonly policyEvaluator?: PolicyEvaluator;
   readonly policy?: ExecutionPolicy;
   readonly approvalManager?: ApprovalManager;
+  /**
+   * Resolver used for child workflow nodes. Defaults to routing child
+   * executions back through this service's own `executeChild`.
+   */
+  readonly workflowExecutionResolver?: WorkflowExecutionResolver;
+}
+
+interface StartExecutionParams {
+  readonly workflowId: string;
+  readonly metadata: Record<string, unknown> | undefined;
 }
 
 // ── Execution Service ───────────────────────────────────────────
 
-export class ExecutionService implements ExecutionContract {
+export class ExecutionService
+  implements ExecutionContract, ChildExecutionContract
+{
   private readonly workflowResolver: WorkflowResolver;
   private readonly capabilityRegistry: CapabilityRegistry;
   private readonly logger: Logger;
@@ -76,6 +95,7 @@ export class ExecutionService implements ExecutionContract {
   private readonly policyEvaluator: PolicyEvaluator | undefined;
   private readonly policy: ExecutionPolicy | undefined;
   private readonly approvalManager: ApprovalManager | undefined;
+  private readonly workflowExecutionResolver: WorkflowExecutionResolver;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -89,6 +109,9 @@ export class ExecutionService implements ExecutionContract {
       ? executionPolicySchema.parse(config.policy)
       : undefined;
     this.approvalManager = config.approvalManager;
+    this.workflowExecutionResolver =
+      config.workflowExecutionResolver ??
+      new ExecutionServiceWorkflowResolver(this);
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -98,17 +121,45 @@ export class ExecutionService implements ExecutionContract {
       return this.resume(validatedRequest.workflowId);
     }
 
-    const workflowPackage = this.resolveWorkflow(validatedRequest.workflowId);
+    return this.startExecution({
+      workflowId: validatedRequest.workflowId,
+      metadata: validatedRequest.metadata,
+    });
+  }
+
+  /**
+   * Internal entry point for child (composed) executions.
+   *
+   * Runs the full request validation → workflow resolution → policy →
+   * persistence → events path, but against the child's own identity and
+   * against a policy context built from the child workflow — the parent's
+   * policy decision is never replayed.
+   */
+  public async executeChild(
+    request: ChildExecutionRequest,
+  ): Promise<ExecutionResult> {
+    const validated = this.validateChildRequest(request);
+
+    return this.startExecution({
+      workflowId: validated.workflowId,
+      metadata: withExecutionLineage(validated.metadata, validated.lineage),
+    });
+  }
+
+  private async startExecution(
+    params: StartExecutionParams,
+  ): Promise<ExecutionResult> {
+    const workflowPackage = this.resolveWorkflow(params.workflowId);
 
     const executionId = crypto.randomUUID();
 
     const now = Date.now();
     const record: ExecutionRecord = {
       executionId,
-      workflowId: validatedRequest.workflowId,
+      workflowId: params.workflowId,
       status: "running",
       startedAt: now,
-      metadata: validatedRequest.metadata,
+      metadata: params.metadata,
     };
 
     await this.executionRepository.create(record);
@@ -118,7 +169,7 @@ export class ExecutionService implements ExecutionContract {
       if (this.policyEvaluator !== undefined && this.policy !== undefined) {
         const policyResult = await this.evaluatePolicy(
           workflowPackage,
-          validatedRequest,
+          params,
         );
 
         if (!policyResult.allowed) {
@@ -129,7 +180,7 @@ export class ExecutionService implements ExecutionContract {
           if (approvalViolations.length > 0 && this.approvalManager !== undefined) {
             return this.handleApprovalRequired(
               executionId,
-              validatedRequest.workflowId,
+              params.workflowId,
               approvalViolations,
               policyResult,
             );
@@ -141,7 +192,7 @@ export class ExecutionService implements ExecutionContract {
             type: "execution.policy_denied",
             timestamp: Date.now(),
             payload: {
-              workflowId: validatedRequest.workflowId,
+              workflowId: params.workflowId,
               violations: policyResult.violations,
             },
           });
@@ -152,7 +203,7 @@ export class ExecutionService implements ExecutionContract {
             type: "execution.failed",
             timestamp: Date.now(),
             payload: {
-              workflowId: validatedRequest.workflowId,
+              workflowId: params.workflowId,
               reason: "policy_violation",
               violations: policyResult.violations,
             },
@@ -160,7 +211,7 @@ export class ExecutionService implements ExecutionContract {
 
           await this.markFailed(
             executionId,
-            validatedRequest.workflowId,
+            params.workflowId,
             new PolicyViolationError(
               "Execution denied by policy",
               {
@@ -171,7 +222,7 @@ export class ExecutionService implements ExecutionContract {
 
           const result: ExecutionResult = {
             executionId,
-            workflowId: validatedRequest.workflowId,
+            workflowId: params.workflowId,
             status: "failed",
             artifacts: [],
             error: {
@@ -189,16 +240,17 @@ export class ExecutionService implements ExecutionContract {
         this.artifactStore,
         this.executionRepository,
         this.eventPublisher,
+        this.workflowExecutionResolver,
       );
 
       const abortController = new AbortController();
 
       const executionContext = {
         runId: executionId,
-        workflowId: validatedRequest.workflowId,
+        workflowId: params.workflowId,
         stateRef: "initial",
         artifacts: [],
-        metadata: validatedRequest.metadata ?? {},
+        metadata: params.metadata ?? {},
         signal: abortController.signal,
       };
 
@@ -209,9 +261,9 @@ export class ExecutionService implements ExecutionContract {
         executionContext,
       );
 
-      return this.finalizeResult(executionId, validatedRequest.workflowId, engineResult);
+      return this.finalizeResult(executionId, params.workflowId, engineResult);
     } catch (error) {
-      await this.markFailed(executionId, validatedRequest.workflowId, error);
+      await this.markFailed(executionId, params.workflowId, error);
       throw error;
     }
   }
@@ -379,6 +431,7 @@ export class ExecutionService implements ExecutionContract {
           this.artifactStore,
           this.executionRepository,
           this.eventPublisher,
+          this.workflowExecutionResolver,
         );
 
         await this.appendEvent(record.executionId, "executing");
@@ -455,22 +508,24 @@ export class ExecutionService implements ExecutionContract {
 
   private async evaluatePolicy(
     workflowPackage: WorkflowPackage,
-    request: ExecutionRequest,
+    params: StartExecutionParams,
   ): Promise<ReturnType<PolicyEvaluator["evaluate"]>> {
-    const capabilityIds = workflowPackage.definition.nodes.map(
-      (node) => node.capabilityId,
-    );
+    // Only this workflow's own capability nodes are considered. Child workflow
+    // nodes are evaluated independently when their execution starts.
+    const capabilityIds = workflowPackage.definition.nodes
+      .filter(isCapabilityNode)
+      .map((node) => node.capabilityId);
 
     const environment =
-      typeof request.metadata?.environment === "string"
-        ? request.metadata.environment
+      typeof params.metadata?.environment === "string"
+        ? params.metadata.environment
         : undefined;
 
     const context: PolicyContext = {
-      workflowId: request.workflowId,
+      workflowId: params.workflowId,
       capabilityIds,
       environment,
-      metadata: request.metadata,
+      metadata: params.metadata,
     };
 
     return this.policyEvaluator!.evaluate(this.policy!, context);
@@ -515,8 +570,48 @@ export class ExecutionService implements ExecutionContract {
   private async finalizeResult(
     executionId: string,
     workflowId: string,
-    engineResult: { success: boolean; artifacts: readonly ArtifactRef[]; error: unknown },
+    engineResult: {
+      success: boolean;
+      artifacts: readonly ArtifactRef[];
+      error: unknown;
+      pendingApproval: PendingChildApproval | undefined;
+    },
   ): Promise<ExecutionResult> {
+    const artifacts = engineResult.artifacts.map((a) => ({
+      id: a.id,
+      type: a.type,
+      metadata: a.metadata ?? {},
+    }));
+
+    // A blocked-on-approval execution stays resumable — it is not a failure.
+    if (!engineResult.success && engineResult.pendingApproval !== undefined) {
+      const pending = engineResult.pendingApproval;
+
+      await this.executionRepository.update(executionId, {
+        status: "waiting_approval",
+        metadata: {
+          pendingChildExecutionId: pending.childExecutionId,
+          pendingChildWorkflowId: pending.childWorkflowId,
+          pendingNodeId: pending.nodeId,
+        },
+      });
+
+      await this.appendEvent(executionId, "waiting_approval");
+
+      const pendingResult: ExecutionResult = {
+        executionId,
+        workflowId,
+        status: "pending_approval",
+        artifacts,
+        error: {
+          code: "ERR_CHILD_APPROVAL_REQUIRED",
+          message: pending.message,
+        },
+      };
+
+      return executionResultSchema.parse(pendingResult);
+    }
+
     const status = engineResult.success ? "completed" as const : "failed" as const;
 
     const now = Date.now();
@@ -532,9 +627,11 @@ export class ExecutionService implements ExecutionContract {
 
     const error = engineResult.error !== undefined
       ? {
-          code: engineResult.error instanceof Error
-            ? engineResult.error.name
-            : "UNKNOWN_ERROR",
+          code: engineResult.error instanceof DesignFlowError
+            ? engineResult.error.code
+            : engineResult.error instanceof Error
+              ? engineResult.error.name
+              : "UNKNOWN_ERROR",
           message: engineResult.error instanceof Error
             ? engineResult.error.message
             : String(engineResult.error),
@@ -545,11 +642,7 @@ export class ExecutionService implements ExecutionContract {
       executionId,
       workflowId,
       status,
-      artifacts: engineResult.artifacts.map((a) => ({
-        id: a.id,
-        type: a.type,
-        metadata: a.metadata ?? {},
-      })),
+      artifacts,
       error,
     };
 
@@ -574,6 +667,24 @@ export class ExecutionService implements ExecutionContract {
     if (!result.success) {
       throw new InvalidRequestError(
         `Invalid execution request: ${result.error.message}`,
+        {
+          issues: result.error.issues,
+          request,
+        },
+      );
+    }
+
+    return result.data;
+  }
+
+  private validateChildRequest(
+    request: ChildExecutionRequest,
+  ): ChildExecutionRequest {
+    const result = childExecutionRequestSchema.safeParse(request);
+
+    if (!result.success) {
+      throw new InvalidRequestError(
+        `Invalid child execution request: ${result.error.message}`,
         {
           issues: result.error.issues,
           request,

@@ -1,7 +1,7 @@
 import {
-  executionCheckpointSchema,
   artifactLineageSchema,
   executionEventSchema,
+  readExecutionLineage,
 } from "@designflow/sdk";
 import type {
   ExecutionContext,
@@ -14,21 +14,35 @@ import type {
   ExecutionCheckpointData,
   ExecutionEventPublisher,
   ExecutionEvent,
+  WorkflowExecutionResolver,
 } from "@designflow/sdk";
 import type {
   CompiledNode,
   CompiledWorkflow,
   ExecutionPlan,
   ExecutionResult,
+  ExecutionStep,
+  PendingChildApproval,
   ValidationIssue,
   ValidationResult,
 } from "./types";
 import type { ExecuteResult, ApplyResult } from "./lifecycle";
 import { WorkflowCompiler } from "./compiler";
 import { CapabilityRegistry } from "./registry";
-import { ExecutionError } from "./errors";
+import {
+  ExecutionError,
+  WorkflowCompositionCycleError,
+  WorkflowResolverNotConfiguredError,
+} from "./errors";
 import { CapabilityRunner } from "./runtime";
+import { WorkflowCompositionExecutor } from "./composition";
 import { DesignFlowError } from "@designflow/sdk";
+
+interface LayerNodeResult {
+  readonly artifacts: readonly ArtifactRef[];
+  readonly executed: boolean;
+  readonly pending: PendingChildApproval | undefined;
+}
 
 export class ExecutionEngine {
   private readonly registry: CapabilityRegistry;
@@ -38,6 +52,7 @@ export class ExecutionEngine {
   private readonly artifactStore: ArtifactStore;
   private readonly executionRepository: ExecutionRepository;
   private readonly eventPublisher: ExecutionEventPublisher;
+  private readonly compositionExecutor: WorkflowCompositionExecutor | undefined;
 
   public constructor(
     registry: CapabilityRegistry,
@@ -45,6 +60,7 @@ export class ExecutionEngine {
     artifactStore: ArtifactStore,
     executionRepository: ExecutionRepository,
     eventPublisher: ExecutionEventPublisher,
+    workflowExecutionResolver?: WorkflowExecutionResolver,
   ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
@@ -53,6 +69,12 @@ export class ExecutionEngine {
     this.artifactStore = artifactStore;
     this.executionRepository = executionRepository;
     this.eventPublisher = eventPublisher;
+    this.compositionExecutor = workflowExecutionResolver !== undefined
+      ? new WorkflowCompositionExecutor(
+          workflowExecutionResolver,
+          eventPublisher,
+        )
+      : undefined;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -123,6 +145,33 @@ export class ExecutionEngine {
                 : String(firstError),
             },
           ),
+          pendingApproval: undefined,
+        };
+      }
+
+      // A child execution awaiting approval blocks the parent without failing
+      // it: candidate artifacts stay traceable and the run is resumable.
+      const firstPending = execution.pendingApprovals[0];
+      if (firstPending !== undefined) {
+        await this.recordCheckpoint(
+          definition.id,
+          executionId,
+          "waiting_approval",
+          {
+            pendingApprovals: execution.pendingApprovals,
+            blockedSteps: execution.blockedSteps,
+            executedSteps: execution.executedSteps,
+          },
+        );
+
+        return {
+          workflowId: definition.id,
+          success: false,
+          artifacts: execution.candidateArtifacts,
+          completedSteps: execution.executedSteps,
+          failedStep: undefined,
+          error: undefined,
+          pendingApproval: firstPending,
         };
       }
 
@@ -152,6 +201,7 @@ export class ExecutionEngine {
           error: new ExecutionError("Workflow validation failed", {
             issues: validation.issues,
           }),
+          pendingApproval: undefined,
         };
       }
 
@@ -177,6 +227,7 @@ export class ExecutionEngine {
         completedSteps: execution.executedSteps,
         failedStep: undefined,
         error: undefined,
+        pendingApproval: undefined,
       };
     } catch (error) {
       await this.recordCheckpoint(definition.id, executionId, "failed", {
@@ -202,6 +253,7 @@ export class ExecutionEngine {
         completedSteps: [],
         failedStep: undefined,
         error: normalizedError,
+        pendingApproval: undefined,
       };
     }
   }
@@ -262,6 +314,7 @@ export class ExecutionEngine {
         completedSteps: [],
         failedStep: undefined,
         error: undefined,
+        pendingApproval: undefined,
       };
     }
 
@@ -279,6 +332,7 @@ export class ExecutionEngine {
             previousExecutionId: targetRecord.executionId,
           },
         ),
+        pendingApproval: undefined,
       };
     }
 
@@ -353,16 +407,23 @@ export class ExecutionEngine {
     const candidateArtifacts: ArtifactRef[] = [];
     const failedSteps = new Set<string>();
     const failedErrors = new Map<string, unknown>();
+    const pendingSteps = new Set<string>();
+    const pendingApprovals: PendingChildApproval[] = [];
+    const blockedSteps = new Set<string>();
     const allParentArtifacts: ArtifactRef[] = [
       ...context.artifacts,
     ];
+
+    const compositionPath = readExecutionLineage(
+      context.metadata,
+    ).compositionPath;
 
     const nodeMap = new Map<string, CompiledNode>();
     for (const node of workflow.nodes) {
       nodeMap.set(node.node.id, node);
     }
 
-    const stepMap = new Map<string, (typeof plan.steps)[number]>();
+    const stepMap = new Map<string, ExecutionStep>();
     for (const step of plan.steps) {
       stepMap.set(step.nodeId, step);
     }
@@ -371,25 +432,27 @@ export class ExecutionEngine {
       const layer = plan.layers[layerIndex];
       if (!layer) continue;
 
-      const blockedNodes = new Set<string>();
       const activeNodes: string[] = [];
 
       for (const nodeId of layer.nodeIds) {
         const step = stepMap.get(nodeId);
         if (!step) continue;
 
-        const hasFailedDep = step.dependsOn.some((dep) =>
-          failedSteps.has(dep),
-        );
-        if (hasFailedDep) {
-          blockedNodes.add(nodeId);
-        } else {
-          activeNodes.push(nodeId);
+        if (step.dependsOn.some((dep) => failedSteps.has(dep))) {
+          failedSteps.add(nodeId);
+          continue;
         }
-      }
 
-      for (const nodeId of blockedNodes) {
-        failedSteps.add(nodeId);
+        if (
+          step.dependsOn.some(
+            (dep) => pendingSteps.has(dep) || blockedSteps.has(dep),
+          )
+        ) {
+          blockedSteps.add(nodeId);
+          continue;
+        }
+
+        activeNodes.push(nodeId);
       }
 
       await this.recordCheckpoint(workflowId, executionId, "executing", {
@@ -400,92 +463,57 @@ export class ExecutionEngine {
 
       if (activeNodes.length === 0) continue;
 
-      const layerResultMap = new Map<
-        string,
-        { artifacts: ArtifactRef[]; executed: boolean }
-      >();
+      const layerResultMap = new Map<string, LayerNodeResult>();
+
+      // Errors that invalidate the workflow structure itself (composition
+      // cycles, missing resolver) abort the whole run instead of degrading
+      // into a single-step failure.
+      let structuralError: unknown;
 
       const layerPromises = activeNodes.map(async (nodeId) => {
         const compiled = nodeMap.get(nodeId);
-        if (!compiled) return;
-
-        const capabilityId = compiled.node.capabilityId;
-
-        const parentArtifactIds = allParentArtifacts.map((a) => a.id);
-
-        const lineageStore: ArtifactStore = {
-          save: async (
-            data: unknown,
-            metadata?: Record<string, unknown>,
-          ) => {
-            const lineage = artifactLineageSchema.parse({
-              executionId: context.runId,
-              workflowId: context.workflowId,
-              capabilityId,
-              parents: parentArtifactIds,
-            });
-            return this.artifactStore.save(data, metadata, lineage);
-          },
-          get: (id: string) => this.artifactStore.get(id),
-          exists: (id: string) => this.artifactStore.exists(id),
-        };
-
-        const capabilityContext: CapabilityContext = {
-          executionId: context.runId,
-          workflowId: context.workflowId,
-          capabilityId,
-          logger: this.logger,
-          artifactRefs: [...allParentArtifacts],
-          parentArtifacts: [...allParentArtifacts],
-          artifactStore: lineageStore,
-          config: context.metadata,
-          signal: context.signal,
-        };
+        const step = stepMap.get(nodeId);
+        if (!compiled || !step) return;
 
         try {
-          const step = stepMap.get(nodeId)!;
-          const output = await this.runner.run(
-            compiled.capability,
-            step.inputMap,
-            capabilityContext,
-            {
-              timeout: compiled.node.execution?.timeout,
-              retryPolicy: compiled.node.execution?.retryPolicy,
-            },
-          );
+          const result = compiled.kind === "workflow"
+            ? await this.runWorkflowNode(
+                compiled.node,
+                step.inputMap,
+                context,
+                compositionPath,
+              )
+            : await this.runCapabilityNode(
+                compiled,
+                step.inputMap,
+                context,
+                allParentArtifacts,
+              );
 
-          const producedArtifacts: ArtifactRef[] = [];
+          layerResultMap.set(nodeId, result);
+        } catch (error) {
           if (
-            output &&
-            typeof output === "object" &&
-            "artifactRef" in (output as Record<string, unknown>)
+            error instanceof WorkflowCompositionCycleError ||
+            error instanceof WorkflowResolverNotConfiguredError
           ) {
-            const ref = (output as Record<string, unknown>).artifactRef;
-            if (
-              typeof ref === "object" &&
-              ref !== null &&
-              "id" in ref &&
-              "type" in ref
-            ) {
-              producedArtifacts.push(ref as ArtifactRef);
-            }
+            structuralError = error;
           }
 
-          layerResultMap.set(nodeId, {
-            artifacts: producedArtifacts,
-            executed: true,
-          });
-        } catch (error) {
           failedSteps.add(nodeId);
           failedErrors.set(nodeId, error);
           layerResultMap.set(nodeId, {
             artifacts: [],
             executed: false,
+            pending: undefined,
           });
         }
       });
 
       await Promise.all(layerPromises);
+
+      if (structuralError !== undefined) {
+        throw structuralError;
+      }
 
       for (const nodeId of activeNodes) {
         const result = layerResultMap.get(nodeId);
@@ -494,9 +522,15 @@ export class ExecutionEngine {
           continue;
         }
 
-        if (result.executed) {
+        if (result.pending !== undefined) {
+          pendingSteps.add(nodeId);
+          pendingApprovals.push(result.pending);
+        } else if (result.executed) {
           executedSteps.push(nodeId);
         }
+
+        // Artifacts already produced by a child remain traceable even when the
+        // child did not reach a terminal completed state.
         for (const artifact of result.artifacts) {
           candidateArtifacts.push(artifact);
           allParentArtifacts.push(artifact);
@@ -509,6 +543,139 @@ export class ExecutionEngine {
       candidateArtifacts,
       failedSteps: Array.from(failedSteps),
       failedErrors: Object.fromEntries(failedErrors),
+      pendingApprovals,
+      blockedSteps: Array.from(blockedSteps),
+    };
+  }
+
+  private async runCapabilityNode(
+    compiled: Extract<CompiledNode, { kind: "capability" }>,
+    inputMap: Readonly<Record<string, unknown>>,
+    context: ExecutionContext,
+    parentArtifacts: readonly ArtifactRef[],
+  ): Promise<LayerNodeResult> {
+    const capabilityId = compiled.node.capabilityId;
+    const snapshot = [...parentArtifacts];
+    const parentArtifactIds = snapshot.map((a) => a.id);
+
+    const lineageStore: ArtifactStore = {
+      save: async (data: unknown, metadata?: Record<string, unknown>) => {
+        const lineage = artifactLineageSchema.parse({
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          capabilityId,
+          parents: parentArtifactIds,
+        });
+        return this.artifactStore.save(data, metadata, lineage);
+      },
+      get: (id: string) => this.artifactStore.get(id),
+      exists: (id: string) => this.artifactStore.exists(id),
+    };
+
+    const capabilityContext: CapabilityContext = {
+      executionId: context.runId,
+      workflowId: context.workflowId,
+      capabilityId,
+      logger: this.logger,
+      artifactRefs: snapshot,
+      parentArtifacts: snapshot,
+      artifactStore: lineageStore,
+      config: context.metadata,
+      signal: context.signal,
+    };
+
+    const output = await this.runner.run(
+      compiled.capability,
+      inputMap,
+      capabilityContext,
+      {
+        timeout: compiled.node.execution?.timeout,
+        retryPolicy: compiled.node.execution?.retryPolicy,
+      },
+    );
+
+    const producedArtifacts: ArtifactRef[] = [];
+    if (
+      output &&
+      typeof output === "object" &&
+      "artifactRef" in (output as Record<string, unknown>)
+    ) {
+      const ref = (output as Record<string, unknown>).artifactRef;
+      if (
+        typeof ref === "object" &&
+        ref !== null &&
+        "id" in ref &&
+        "type" in ref
+      ) {
+        producedArtifacts.push(ref as ArtifactRef);
+      }
+    }
+
+    return {
+      artifacts: producedArtifacts,
+      executed: true,
+      pending: undefined,
+    };
+  }
+
+  private async runWorkflowNode(
+    node: Extract<CompiledNode, { kind: "workflow" }>["node"],
+    inputMap: Readonly<Record<string, unknown>>,
+    context: ExecutionContext,
+    compositionPath: readonly string[],
+  ): Promise<LayerNodeResult> {
+    if (this.compositionExecutor === undefined) {
+      throw new WorkflowResolverNotConfiguredError(node.workflowId, {
+        parentExecutionId: context.runId,
+        parentWorkflowId: context.workflowId,
+        parentNodeId: node.id,
+      });
+    }
+
+    const outcome = await this.compositionExecutor.execute({
+      node,
+      inputMap,
+      parentExecutionId: context.runId,
+      parentWorkflowId: context.workflowId,
+      compositionPath,
+      metadata: context.metadata,
+    });
+
+    if (outcome.status === "pending_approval") {
+      return {
+        artifacts: outcome.artifacts,
+        executed: false,
+        pending: {
+          nodeId: node.id,
+          childWorkflowId: outcome.childWorkflowId,
+          childExecutionId: outcome.childExecutionId,
+          message:
+            outcome.error?.message ??
+            `Child workflow ${outcome.childWorkflowId} is awaiting approval`,
+        },
+      };
+    }
+
+    if (outcome.status !== "completed") {
+      throw new ExecutionError(
+        `Child workflow ${outcome.status}: ${outcome.childWorkflowId}`,
+        {
+          parentExecutionId: context.runId,
+          parentWorkflowId: context.workflowId,
+          parentNodeId: node.id,
+          childExecutionId: outcome.childExecutionId,
+          childWorkflowId: outcome.childWorkflowId,
+          childStatus: outcome.status,
+          childError: outcome.error,
+          childArtifacts: outcome.artifacts.map((a) => a.id),
+        },
+      );
+    }
+
+    return {
+      artifacts: outcome.artifacts,
+      executed: true,
+      pending: undefined,
     };
   }
 
@@ -522,7 +689,10 @@ export class ExecutionEngine {
         if (!depExists) {
           issues.push({
             nodeId: node.node.id,
-            capabilityId: node.node.capabilityId,
+            kind: node.kind,
+            targetId: node.kind === "workflow"
+              ? node.node.workflowId
+              : node.node.capabilityId,
             message: `Missing dependency: ${dep}`,
             severity: "error",
           });

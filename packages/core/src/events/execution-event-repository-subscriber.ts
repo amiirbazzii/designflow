@@ -21,6 +21,9 @@ const EVENT_TO_PHASE: Record<string, string> = {
   "execution.waiting_approval": "waiting_approval",
   "execution.approval_approved": "approval_approved",
   "execution.approval_rejected": "approval_rejected",
+  "workflow.child_started": "executing",
+  "workflow.child_completed": "executing",
+  "workflow.child_failed": "failed",
 };
 
 // ── Execution Event Repository Subscriber ──────────────────────

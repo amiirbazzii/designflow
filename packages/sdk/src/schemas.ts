@@ -49,33 +49,79 @@ export const workflowMetadataSchema = z.object({
 
 export type WorkflowMetadata = z.infer<typeof workflowMetadataSchema>;
 
+export const nodeExecutionOptionsSchema = z.object({
+  retryPolicy: z
+    .object({
+      maxAttempts: z.number().int().positive(),
+      delay: z.number().nonnegative(),
+    })
+    .optional(),
+  timeout: z.number().positive().optional(),
+  dependsOn: z.array(z.string()).optional(),
+});
+
+export type NodeExecutionOptions = z.infer<typeof nodeExecutionOptionsSchema>;
+
+/**
+ * A node that executes a single capability.
+ *
+ * `kind` is optional for backward compatibility: nodes authored before the
+ * composition layer omit it entirely and are treated as capability nodes.
+ */
 export const capabilityNodeSchema = z.object({
   id: z.string().min(1),
+  kind: z.literal("capability").optional(),
   capabilityId: z.string().min(1),
   label: z.string().optional(),
   inputMap: z.record(z.string(), z.unknown()).default({}),
-  execution: z
-    .object({
-      retryPolicy: z
-        .object({
-          maxAttempts: z.number().int().positive(),
-          delay: z.number().nonnegative(),
-        })
-        .optional(),
-      timeout: z.number().positive().optional(),
-      dependsOn: z.array(z.string()).optional(),
-    })
-    .optional(),
+  execution: nodeExecutionOptionsSchema.optional(),
   next: z.array(z.string()).default([]),
 });
 
 export type CapabilityNode = z.infer<typeof capabilityNodeSchema>;
 
+/** A node that executes another workflow as a child execution. */
+export const workflowNodeSchema = z.object({
+  id: z.string().min(1),
+  kind: z.literal("workflow"),
+  workflowId: z.string().min(1),
+  label: z.string().optional(),
+  inputMap: z.record(z.string(), z.unknown()).default({}),
+  execution: nodeExecutionOptionsSchema.optional(),
+  next: z.array(z.string()).default([]),
+});
+
+export type WorkflowNode = z.infer<typeof workflowNodeSchema>;
+
+/**
+ * Tagged union of everything a workflow DAG node can be.
+ *
+ * `workflowNodeSchema` is tried first so that the absence of
+ * `kind: "workflow"` falls through to the (backward compatible) capability
+ * node shape.
+ */
+export const workflowStepNodeSchema = z.union([
+  workflowNodeSchema,
+  capabilityNodeSchema,
+]);
+
+export type WorkflowStepNode = z.infer<typeof workflowStepNodeSchema>;
+
+export function isWorkflowNode(node: WorkflowStepNode): node is WorkflowNode {
+  return node.kind === "workflow";
+}
+
+export function isCapabilityNode(
+  node: WorkflowStepNode,
+): node is CapabilityNode {
+  return node.kind !== "workflow";
+}
+
 export const workflowDefinitionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().default(""),
-  nodes: z.array(capabilityNodeSchema).default([]),
+  nodes: z.array(workflowStepNodeSchema).default([]),
   metadata: workflowMetadataSchema.default({}),
 });
 
