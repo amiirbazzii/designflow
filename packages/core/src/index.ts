@@ -31,6 +31,9 @@ export { ExecutionService } from "./service";
 export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
 export { WorkflowNotFoundError, InvalidRequestError } from "./service";
 
+// ── Approval ───────────────────────────────────────────────────────
+export { InMemoryApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./approval";
+
 // ── Lifecycle ──────────────────────────────────────────────────────
 export type {
   LifecycleStage,
@@ -60,4 +63,5 @@ export {
   ExecutionRepositoryError,
   ExecutionEventError,
   PolicyViolationError,
+  ApprovalError,
 } from "./errors";

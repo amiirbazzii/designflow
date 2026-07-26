@@ -53,6 +53,15 @@ export function createCliContext(config: CliContextConfig): CliContext {
       case "execution.cancelled":
         logger.warn(`[${timestamp}] Workflow cancelled: ${event.executionId}${payload}`);
         break;
+      case "execution.waiting_approval":
+        logger.warn(`[${timestamp}] Awaiting approval: ${event.executionId}${payload}`);
+        break;
+      case "execution.approval_approved":
+        logger.info(`[${timestamp}] Approval granted: ${event.executionId}${payload}`);
+        break;
+      case "execution.approval_rejected":
+        logger.error(`[${timestamp}] Approval rejected: ${event.executionId}${payload}`);
+        break;
       case "capability.started":
         logger.debug(`[${timestamp}] Capability started${payload}`);
         break;

@@ -113,3 +113,17 @@ export type {
   PolicyContext,
   PolicyEvaluator,
 } from "./execution-policy";
+
+// ── Approval ────────────────────────────────────────────────────
+export {
+  approvalStatusSchema,
+  approvalRequestSchema,
+  approvalDecisionSchema,
+} from "./approval";
+
+export type {
+  ApprovalStatus,
+  ApprovalRequest,
+  ApprovalDecision,
+  ApprovalManager,
+} from "./approval";

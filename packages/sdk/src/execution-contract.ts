@@ -31,7 +31,7 @@ export type ExecutionErrorDetail = z.infer<typeof executionErrorSchema>;
 export const executionResultSchema = z.object({
   executionId: z.string().min(1),
   workflowId: z.string().min(1),
-  status: z.enum(["completed", "failed", "cancelled"]),
+  status: z.enum(["completed", "failed", "cancelled", "pending_approval"]),
   artifacts: z.array(artifactRefSchema),
   error: executionErrorSchema.optional(),
 });
@@ -43,4 +43,5 @@ export type ExecutionResult = z.infer<typeof executionResultSchema>;
 export interface ExecutionContract {
   execute(request: ExecutionRequest): Promise<ExecutionResult>;
   resume(workflowId: string): Promise<ExecutionResult>;
+  resumeAfterApproval(approvalId: string): Promise<ExecutionResult>;
 }

@@ -18,11 +18,13 @@ import type {
   ExecutionPolicy,
   PolicyEvaluator,
   PolicyContext,
+  ApprovalManager,
+  ApprovalRequest,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
 import { ExecutionEngine } from "../engine";
-import { PolicyViolationError } from "../errors";
+import { PolicyViolationError, ApprovalError } from "../errors";
 
 // ── Errors ──────────────────────────────────────────────────────
 
@@ -59,6 +61,7 @@ export interface ExecutionServiceConfig {
   readonly eventPublisher: ExecutionEventPublisher;
   readonly policyEvaluator?: PolicyEvaluator;
   readonly policy?: ExecutionPolicy;
+  readonly approvalManager?: ApprovalManager;
 }
 
 // ── Execution Service ───────────────────────────────────────────
@@ -72,6 +75,7 @@ export class ExecutionService implements ExecutionContract {
   private readonly eventPublisher: ExecutionEventPublisher;
   private readonly policyEvaluator: PolicyEvaluator | undefined;
   private readonly policy: ExecutionPolicy | undefined;
+  private readonly approvalManager: ApprovalManager | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -84,6 +88,7 @@ export class ExecutionService implements ExecutionContract {
     this.policy = config.policy !== undefined
       ? executionPolicySchema.parse(config.policy)
       : undefined;
+    this.approvalManager = config.approvalManager;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -117,6 +122,19 @@ export class ExecutionService implements ExecutionContract {
         );
 
         if (!policyResult.allowed) {
+          const approvalViolations = policyResult.violations.filter(
+            (v) => v.message.includes("Approval required"),
+          );
+
+          if (approvalViolations.length > 0 && this.approvalManager !== undefined) {
+            return this.handleApprovalRequired(
+              executionId,
+              validatedRequest.workflowId,
+              approvalViolations,
+              policyResult,
+            );
+          }
+
           await this.eventPublisher.publish({
             id: crypto.randomUUID(),
             executionId,
@@ -257,7 +275,8 @@ export class ExecutionService implements ExecutionContract {
         return executionResultSchema.parse(result);
       }
 
-      case "running": {
+      case "running":
+      case "waiting_approval": {
         const engine = new ExecutionEngine(
           this.capabilityRegistry,
           this.logger,
@@ -286,6 +305,128 @@ export class ExecutionService implements ExecutionContract {
         }
       }
     }
+  }
+
+  public async resumeAfterApproval(approvalId: string): Promise<ExecutionResult> {
+    if (this.approvalManager === undefined) {
+      throw new ApprovalError("Approval manager not configured");
+    }
+
+    const approval = await this.approvalManager.get(approvalId);
+
+    if (approval === null) {
+      return executionResultSchema.parse({
+        executionId: "",
+        workflowId: "",
+        status: "failed",
+        artifacts: [],
+        error: {
+          code: "ERR_APPROVAL_NOT_FOUND",
+          message: `Approval not found: ${approvalId}`,
+        },
+      });
+    }
+
+    if (approval.status === "pending") {
+      return executionResultSchema.parse({
+        executionId: approval.executionId,
+        workflowId: approval.workflowId,
+        status: "pending_approval",
+        artifacts: [],
+        error: {
+          code: "ERR_APPROVAL_PENDING",
+          message: `Approval ${approvalId} is still pending`,
+        },
+      });
+    }
+
+    if (approval.status === "rejected") {
+      await this.eventPublisher.publish({
+        id: crypto.randomUUID(),
+        executionId: approval.executionId,
+        type: "execution.approval_rejected",
+        timestamp: Date.now(),
+        payload: {
+          approvalId: approval.id,
+          workflowId: approval.workflowId,
+          reason: approval.reason,
+          comment: approval.metadata?.comment,
+        },
+      });
+
+      const result: ExecutionResult = {
+        executionId: approval.executionId,
+        workflowId: approval.workflowId,
+        status: "failed",
+        artifacts: [],
+        error: {
+          code: "ERR_APPROVAL_REJECTED",
+          message: `Approval rejected: ${approval.reason}`,
+        },
+      };
+      return executionResultSchema.parse(result);
+    }
+
+    await this.eventPublisher.publish({
+      id: crypto.randomUUID(),
+      executionId: approval.executionId,
+      type: "execution.approval_approved",
+      timestamp: Date.now(),
+      payload: {
+        approvalId: approval.id,
+        workflowId: approval.workflowId,
+      },
+    });
+
+    return this.resume(approval.workflowId);
+  }
+
+  private async handleApprovalRequired(
+    executionId: string,
+    workflowId: string,
+    approvalViolations: readonly { ruleId: string; message: string }[],
+    policyResult: { violations: readonly { ruleId: string; message: string }[] },
+  ): Promise<ExecutionResult> {
+    const reason = approvalViolations.map((v) => v.message).join("; ");
+
+    const approvalRequest = await this.approvalManager!.createRequest(
+      executionId,
+      workflowId,
+      reason,
+    );
+
+    await this.executionRepository.update(executionId, {
+      status: "waiting_approval",
+      metadata: {
+        approvalId: approvalRequest.id,
+      },
+    });
+
+    await this.eventPublisher.publish({
+      id: crypto.randomUUID(),
+      executionId,
+      type: "execution.waiting_approval",
+      timestamp: Date.now(),
+      payload: {
+        workflowId,
+        approvalId: approvalRequest.id,
+        reason,
+        violations: policyResult.violations,
+      },
+    });
+
+    const result: ExecutionResult = {
+      executionId,
+      workflowId,
+      status: "pending_approval",
+      artifacts: [],
+      error: {
+        code: "ERR_APPROVAL_REQUIRED",
+        message: `Approval required: ${reason}`,
+      },
+    };
+
+    return executionResultSchema.parse(result);
   }
 
   private async evaluatePolicy(

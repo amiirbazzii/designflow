@@ -7,6 +7,7 @@ export const executionRecordStatusSchema = z.enum([
   "completed",
   "failed",
   "cancelled",
+  "waiting_approval",
 ]);
 
 export type ExecutionRecordStatus = z.infer<typeof executionRecordStatusSchema>;

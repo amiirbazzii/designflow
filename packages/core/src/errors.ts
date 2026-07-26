@@ -69,3 +69,14 @@ export class PolicyViolationError extends DesignFlowError {
     Object.setPrototypeOf(this, PolicyViolationError.prototype);
   }
 }
+
+export class ApprovalError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_APPROVAL", message, metadata);
+    this.name = "ApprovalError";
+    Object.setPrototypeOf(this, ApprovalError.prototype);
+  }
+}

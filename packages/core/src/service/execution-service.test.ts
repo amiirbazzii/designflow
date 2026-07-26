@@ -5,6 +5,7 @@ import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";
 import { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "../events";
 import { InMemoryPolicyEvaluator } from "../policy";
+import { InMemoryApprovalManager } from "../approval";
 import type {
   WorkflowPackage,
   WorkflowResolver,
@@ -526,7 +527,7 @@ describe("ExecutionService", () => {
       expect(result.error?.message).toContain("test-cap");
     });
 
-    test("require_approval blocks execution", async () => {
+    test("require_approval without approval manager still fails", async () => {
       const cap = createMockCapability("test-cap");
       capabilityRegistry.register(cap);
 
@@ -737,6 +738,397 @@ describe("ExecutionService", () => {
           event.metadata.eventType === "execution.policy_denied",
       );
       expect(policyDeniedInRepository).toBe(true);
+    });
+  });
+
+  describe("approval flow", () => {
+    let policyEvaluator: PolicyEvaluator;
+    let approvalManager: InMemoryApprovalManager;
+
+    beforeEach(() => {
+      policyEvaluator = new InMemoryPolicyEvaluator();
+      approvalManager = new InMemoryApprovalManager();
+
+      const repositorySubscriber = new ExecutionEventRepositorySubscriber(
+        executionRepository,
+      );
+      eventPublisher.subscribe(repositorySubscriber.createHandler());
+    });
+
+    test("policy creates approval instead of failure", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      expect(result.status).toBe("pending_approval");
+      expect(result.error?.code).toBe("ERR_APPROVAL_REQUIRED");
+      expect(result.error?.message).toContain("Approval required");
+    });
+
+    test("approval creates waiting_approval execution record", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.status).toBe("waiting_approval");
+    });
+
+    test("approved request resumes execution", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+      expect(result.status).toBe("pending_approval");
+
+      const record = await executionRepository.get(result.executionId);
+      const approvalId = record?.metadata?.approvalId as string;
+      expect(approvalId).toBeDefined();
+
+      const approved = await approvalManager.approve(approvalId);
+      expect(approved.status).toBe("approved");
+
+      const resumed = await service.resumeAfterApproval(approvalId);
+      expect(resumed.status).toBe("completed");
+      expect(resumed.artifacts).toHaveLength(1);
+    });
+
+    test("rejected request stops execution", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+      expect(result.status).toBe("pending_approval");
+
+      const record = await executionRepository.get(result.executionId);
+      const approvalId = record?.metadata?.approvalId as string;
+
+      await approvalManager.reject(approvalId);
+
+      const resumed = await service.resumeAfterApproval(approvalId);
+      expect(resumed.status).toBe("failed");
+      expect(resumed.error?.code).toBe("ERR_APPROVAL_REJECTED");
+    });
+
+    test("pending approval returns pending result on resumeAfterApproval", async () => {
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" });
+      expect(result.status).toBe("pending_approval");
+
+      const record = await executionRepository.get(result.executionId);
+      const approvalId = record?.metadata?.approvalId as string;
+
+      const resumed = await service.resumeAfterApproval(approvalId);
+      expect(resumed.status).toBe("pending_approval");
+      expect(resumed.error?.code).toBe("ERR_APPROVAL_PENDING");
+    });
+
+    test("resumeAfterApproval without approval manager throws", async () => {
+      const service = new ExecutionService({
+        workflowResolver: () => undefined,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      await expect(service.resumeAfterApproval("any")).rejects.toThrow("Approval manager not configured");
+    });
+
+    test("execution.waiting_approval event is published", async () => {
+      const receivedEvents: ExecutionEvent[] = [];
+      eventPublisher.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      await service.execute({ workflowId: "test-wf" });
+
+      const waitingEvents = receivedEvents.filter(
+        (e) => e.type === "execution.waiting_approval",
+      );
+      expect(waitingEvents.length).toBe(1);
+      expect(waitingEvents[0].payload?.approvalId).toBeDefined();
+      expect(waitingEvents[0].payload?.reason).toContain("Approval required");
+    });
+
+    test("execution.approval_approved event is published on resume after approval", async () => {
+      const receivedEvents: ExecutionEvent[] = [];
+      eventPublisher.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const execResult = await service.execute({ workflowId: "test-wf" });
+      const record = await executionRepository.get(execResult.executionId);
+      const approvalId = record?.metadata?.approvalId as string;
+
+      await approvalManager.approve(approvalId);
+
+      const eventsBefore = receivedEvents.length;
+      await service.resumeAfterApproval(approvalId);
+
+      const approvalEvents = receivedEvents.slice(eventsBefore).filter(
+        (e) => e.type === "execution.approval_approved",
+      );
+      expect(approvalEvents.length).toBe(1);
+    });
+
+    test("execution.approval_rejected event is published on resume after rejection", async () => {
+      const receivedEvents: ExecutionEvent[] = [];
+      eventPublisher.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const execResult = await service.execute({ workflowId: "test-wf" });
+      const record = await executionRepository.get(execResult.executionId);
+      const approvalId = record?.metadata?.approvalId as string;
+
+      await approvalManager.reject(approvalId);
+
+      const eventsBefore = receivedEvents.length;
+      await service.resumeAfterApproval(approvalId);
+
+      const rejectEvents = receivedEvents.slice(eventsBefore).filter(
+        (e) => e.type === "execution.approval_rejected",
+      );
+      expect(rejectEvents.length).toBe(1);
     });
   });
 });
