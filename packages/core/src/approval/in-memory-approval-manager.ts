@@ -1,6 +1,5 @@
 import {
   approvalRequestSchema,
-  approvalStatusSchema,
 } from "@designflow/sdk";
 import type { ApprovalRequest, ApprovalManager } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
@@ -81,9 +80,9 @@ export class InMemoryApprovalManager implements ApprovalManager {
     approvalId: string,
     comment?: string,
   ): Promise<ApprovalRequest> {
-    const request = this.requests.get(approvalId);
+    const request = await this.get(approvalId);
 
-    if (request === undefined) {
+    if (request === null) {
       throw new ApprovalNotFoundError(approvalId);
     }
 
@@ -108,9 +107,9 @@ export class InMemoryApprovalManager implements ApprovalManager {
     approvalId: string,
     comment?: string,
   ): Promise<ApprovalRequest> {
-    const request = this.requests.get(approvalId);
+    const request = await this.get(approvalId);
 
-    if (request === undefined) {
+    if (request === null) {
       throw new ApprovalNotFoundError(approvalId);
     }
 
@@ -132,6 +131,10 @@ export class InMemoryApprovalManager implements ApprovalManager {
   }
 
   public async get(approvalId: string): Promise<ApprovalRequest | null> {
-    return this.requests.get(approvalId) ?? null;
+    const raw = this.requests.get(approvalId);
+
+    if (raw === undefined) return null;
+
+    return approvalRequestSchema.parse(raw);
   }
 }

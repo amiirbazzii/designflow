@@ -18,9 +18,9 @@ const EVENT_TO_PHASE: Record<string, string> = {
   "execution.failed": "failed",
   "execution.cancelled": "failed",
   "execution.policy_denied": "failed",
-  "execution.waiting_approval": "failed",
-  "execution.approval_approved": "failed",
-  "execution.approval_rejected": "failed",
+  "execution.waiting_approval": "waiting_approval",
+  "execution.approval_approved": "approval_approved",
+  "execution.approval_rejected": "approval_rejected",
 };
 
 // ── Execution Event Repository Subscriber ──────────────────────

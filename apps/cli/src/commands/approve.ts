@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { intro, outro, spinner } from "@clack/prompts";
-import { InMemoryApprovalManager } from "@designflow/core";
+import { LocalApprovalManager } from "@designflow/core";
 
 export function registerApproveCommand(program: Command): void {
   program
@@ -15,7 +15,7 @@ export function registerApproveCommand(program: Command): void {
       spin.start("Processing approval");
 
       try {
-        const manager = new InMemoryApprovalManager();
+        const manager = new LocalApprovalManager();
         const request = await manager.approve(approvalId, options.comment);
 
         spin.stop("Approval processed");

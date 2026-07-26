@@ -1079,7 +1079,7 @@ describe("ExecutionService", () => {
       expect(approvalEvents.length).toBe(1);
     });
 
-    test("execution.approval_rejected event is published on resume after rejection", async () => {
+    test("execution.approval_approved event includes comment and resolvedAt", async () => {
       const receivedEvents: ExecutionEvent[] = [];
       eventPublisher.subscribe((event) => {
         receivedEvents.push(event);
@@ -1120,7 +1120,61 @@ describe("ExecutionService", () => {
       const record = await executionRepository.get(execResult.executionId);
       const approvalId = record?.metadata?.approvalId as string;
 
-      await approvalManager.reject(approvalId);
+      await approvalManager.approve(approvalId, "Approved by reviewer");
+
+      const eventsBefore = receivedEvents.length;
+      await service.resumeAfterApproval(approvalId);
+
+      const approvalEvents = receivedEvents.slice(eventsBefore).filter(
+        (e) => e.type === "execution.approval_approved",
+      );
+      expect(approvalEvents.length).toBe(1);
+      expect(approvalEvents[0].payload?.comment).toBe("Approved by reviewer");
+      expect(approvalEvents[0].payload?.resolvedAt).toBeGreaterThan(0);
+    });
+
+    test("execution.approval_rejected event includes comment and resolvedAt", async () => {
+      const receivedEvents: ExecutionEvent[] = [];
+      eventPublisher.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "test-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const execResult = await service.execute({ workflowId: "test-wf" });
+      const record = await executionRepository.get(execResult.executionId);
+      const approvalId = record?.metadata?.approvalId as string;
+
+      await approvalManager.reject(approvalId, "Rejected by reviewer");
 
       const eventsBefore = receivedEvents.length;
       await service.resumeAfterApproval(approvalId);
@@ -1129,6 +1183,8 @@ describe("ExecutionService", () => {
         (e) => e.type === "execution.approval_rejected",
       );
       expect(rejectEvents.length).toBe(1);
+      expect(rejectEvents[0].payload?.comment).toBe("Rejected by reviewer");
+      expect(rejectEvents[0].payload?.resolvedAt).toBeGreaterThan(0);
     });
   });
 });

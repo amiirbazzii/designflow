@@ -32,7 +32,7 @@ export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
 export { WorkflowNotFoundError, InvalidRequestError } from "./service";
 
 // ── Approval ───────────────────────────────────────────────────────
-export { InMemoryApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./approval";
+export { InMemoryApprovalManager, LocalApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./approval";
 
 // ── Lifecycle ──────────────────────────────────────────────────────
 export type {

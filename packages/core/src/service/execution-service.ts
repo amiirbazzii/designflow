@@ -230,81 +230,7 @@ export class ExecutionService implements ExecutionContract {
       );
     }
 
-    switch (latestRecord.status) {
-      case "completed": {
-        const checkpoint = await this.executionRepository.getLatestCheckpoint(
-          latestRecord.executionId,
-        );
-
-        const rawArtifacts = checkpoint?.metadata?.appliedArtifacts;
-        const artifacts = Array.isArray(rawArtifacts)
-          ? rawArtifacts.filter(
-              (a): a is { id: string; type: string; metadata: Record<string, unknown> } =>
-                typeof a === "object" &&
-                a !== null &&
-                "id" in a &&
-                "type" in a,
-            ).map((a) => ({
-              id: a.id,
-              type: a.type,
-              metadata: a.metadata ?? {},
-            }))
-          : [];
-
-        const result: ExecutionResult = {
-          executionId: latestRecord.executionId,
-          workflowId,
-          status: "completed",
-          artifacts,
-        };
-        return executionResultSchema.parse(result);
-      }
-
-      case "failed":
-      case "cancelled": {
-        const result: ExecutionResult = {
-          executionId: latestRecord.executionId,
-          workflowId,
-          status: latestRecord.status,
-          artifacts: [],
-          error: {
-            code: "WORKFLOW_PREVIOUSLY_TERMINATED",
-            message: `Workflow previously ${latestRecord.status}, cannot resume`,
-          },
-        };
-        return executionResultSchema.parse(result);
-      }
-
-      case "running":
-      case "waiting_approval": {
-        const engine = new ExecutionEngine(
-          this.capabilityRegistry,
-          this.logger,
-          this.artifactStore,
-          this.executionRepository,
-          this.eventPublisher,
-        );
-
-        await this.appendEvent(latestRecord.executionId, "executing");
-
-        try {
-          const engineResult = await engine.resume(
-            workflowPackage.definition,
-            workflowId,
-            latestRecord.executionId,
-          );
-
-          return this.finalizeResult(
-            latestRecord.executionId,
-            workflowId,
-            engineResult,
-          );
-        } catch (error) {
-          await this.markFailed(latestRecord.executionId, workflowId, error);
-          throw error;
-        }
-      }
-    }
+    return this.resumeExecution(latestRecord, workflowPackage);
   }
 
   public async resumeAfterApproval(approvalId: string): Promise<ExecutionResult> {
@@ -351,6 +277,7 @@ export class ExecutionService implements ExecutionContract {
           workflowId: approval.workflowId,
           reason: approval.reason,
           comment: approval.metadata?.comment,
+          resolvedAt: approval.resolvedAt,
         },
       });
 
@@ -375,10 +302,105 @@ export class ExecutionService implements ExecutionContract {
       payload: {
         approvalId: approval.id,
         workflowId: approval.workflowId,
+        comment: approval.metadata?.comment,
+        resolvedAt: approval.resolvedAt,
       },
     });
 
-    return this.resume(approval.workflowId);
+    const record = await this.executionRepository.get(approval.executionId);
+
+    if (record === null) {
+      throw new DesignFlowError(
+        "ERR_EXECUTION_NOT_FOUND",
+        `Execution record not found: ${approval.executionId}`,
+        { executionId: approval.executionId },
+      );
+    }
+
+    const workflowPackage = this.resolveWorkflow(approval.workflowId);
+
+    return this.resumeExecution(record, workflowPackage);
+  }
+
+  private async resumeExecution(
+    record: ExecutionRecord,
+    workflowPackage: WorkflowPackage,
+  ): Promise<ExecutionResult> {
+    switch (record.status) {
+      case "completed": {
+        const checkpoint = await this.executionRepository.getLatestCheckpoint(
+          record.executionId,
+        );
+
+        const rawArtifacts = checkpoint?.metadata?.appliedArtifacts;
+        const artifacts = Array.isArray(rawArtifacts)
+          ? rawArtifacts.filter(
+              (a): a is { id: string; type: string; metadata: Record<string, unknown> } =>
+                typeof a === "object" &&
+                a !== null &&
+                "id" in a &&
+                "type" in a,
+            ).map((a) => ({
+              id: a.id,
+              type: a.type,
+              metadata: a.metadata ?? {},
+            }))
+          : [];
+
+        const result: ExecutionResult = {
+          executionId: record.executionId,
+          workflowId: record.workflowId,
+          status: "completed",
+          artifacts,
+        };
+        return executionResultSchema.parse(result);
+      }
+
+      case "failed":
+      case "cancelled": {
+        const result: ExecutionResult = {
+          executionId: record.executionId,
+          workflowId: record.workflowId,
+          status: record.status,
+          artifacts: [],
+          error: {
+            code: "WORKFLOW_PREVIOUSLY_TERMINATED",
+            message: `Workflow previously ${record.status}, cannot resume`,
+          },
+        };
+        return executionResultSchema.parse(result);
+      }
+
+      case "running":
+      case "waiting_approval": {
+        const engine = new ExecutionEngine(
+          this.capabilityRegistry,
+          this.logger,
+          this.artifactStore,
+          this.executionRepository,
+          this.eventPublisher,
+        );
+
+        await this.appendEvent(record.executionId, "executing");
+
+        try {
+          const engineResult = await engine.resume(
+            workflowPackage.definition,
+            record.workflowId,
+            record.executionId,
+          );
+
+          return this.finalizeResult(
+            record.executionId,
+            record.workflowId,
+            engineResult,
+          );
+        } catch (error) {
+          await this.markFailed(record.executionId, record.workflowId, error);
+          throw error;
+        }
+      }
+    }
   }
 
   private async handleApprovalRequired(
@@ -401,6 +423,8 @@ export class ExecutionService implements ExecutionContract {
         approvalId: approvalRequest.id,
       },
     });
+
+    await this.appendEvent(executionId, "waiting_approval");
 
     await this.eventPublisher.publish({
       id: crypto.randomUUID(),

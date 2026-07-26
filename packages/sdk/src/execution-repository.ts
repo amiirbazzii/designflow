@@ -29,6 +29,9 @@ export const lifecycleEventPhaseSchema = z.enum([
   "executing",
   "validating",
   "applying",
+  "waiting_approval",
+  "approval_approved",
+  "approval_rejected",
   "completed",
   "failed",
 ]);

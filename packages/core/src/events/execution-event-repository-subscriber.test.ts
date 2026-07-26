@@ -145,6 +145,60 @@ describe("ExecutionEventRepositorySubscriber", () => {
     expect(events[0].metadata?.payload).toEqual({ workflowId: "wf-1", test: true });
   });
 
+  test("execution.waiting_approval maps to waiting_approval phase", async () => {
+    await repository.create({
+      executionId: "exec-1",
+      workflowId: "wf-1",
+      status: "running",
+      startedAt: Date.now(),
+    });
+
+    const handler = subscriber.createHandler();
+    const event = createTestEvent("execution.waiting_approval");
+
+    await handler(event);
+
+    const events = await repository.listEvents("exec-1");
+    expect(events).toHaveLength(1);
+    expect(events[0].phase).toBe("waiting_approval");
+  });
+
+  test("execution.approval_approved maps to approval_approved phase", async () => {
+    await repository.create({
+      executionId: "exec-1",
+      workflowId: "wf-1",
+      status: "running",
+      startedAt: Date.now(),
+    });
+
+    const handler = subscriber.createHandler();
+    const event = createTestEvent("execution.approval_approved");
+
+    await handler(event);
+
+    const events = await repository.listEvents("exec-1");
+    expect(events).toHaveLength(1);
+    expect(events[0].phase).toBe("approval_approved");
+  });
+
+  test("execution.approval_rejected maps to approval_rejected phase", async () => {
+    await repository.create({
+      executionId: "exec-1",
+      workflowId: "wf-1",
+      status: "running",
+      startedAt: Date.now(),
+    });
+
+    const handler = subscriber.createHandler();
+    const event = createTestEvent("execution.approval_rejected");
+
+    await handler(event);
+
+    const events = await repository.listEvents("exec-1");
+    expect(events).toHaveLength(1);
+    expect(events[0].phase).toBe("approval_rejected");
+  });
+
   test("repository failure does not throw", async () => {
     const failingRepository: ExecutionRepository = {
       create: async () => { throw new Error("DB error"); },
