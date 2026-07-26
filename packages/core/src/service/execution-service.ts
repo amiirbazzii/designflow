@@ -117,19 +117,6 @@ export class ExecutionService implements ExecutionContract {
         );
 
         if (!policyResult.allowed) {
-          const error = new PolicyViolationError(
-            "Execution denied by policy",
-            {
-              violations: policyResult.violations,
-            },
-          );
-
-          await this.markFailed(
-            executionId,
-            validatedRequest.workflowId,
-            error,
-          );
-
           await this.eventPublisher.publish({
             id: crypto.randomUUID(),
             executionId,
@@ -152,6 +139,17 @@ export class ExecutionService implements ExecutionContract {
               violations: policyResult.violations,
             },
           });
+
+          await this.markFailed(
+            executionId,
+            validatedRequest.workflowId,
+            new PolicyViolationError(
+              "Execution denied by policy",
+              {
+                violations: policyResult.violations,
+              },
+            ),
+          );
 
           const result: ExecutionResult = {
             executionId,

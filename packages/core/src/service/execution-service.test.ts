@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ExecutionService } from "./execution-service";
 import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";
-import { InMemoryEventPublisher } from "../events";
+import { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "../events";
 import { InMemoryPolicyEvaluator } from "../policy";
 import type {
   WorkflowPackage,
@@ -455,6 +455,11 @@ describe("ExecutionService", () => {
 
     beforeEach(() => {
       policyEvaluator = new InMemoryPolicyEvaluator();
+
+      const repositorySubscriber = new ExecutionEventRepositorySubscriber(
+        executionRepository,
+      );
+      eventPublisher.subscribe(repositorySubscriber.createHandler());
     });
 
     test("execution with no policy passes", async () => {
@@ -718,6 +723,20 @@ describe("ExecutionService", () => {
       expect(policyDeniedEvents.length).toBe(1);
       expect(policyDeniedEvents[0].executionId).toBe(result.executionId);
       expect(policyDeniedEvents[0].payload).toBeDefined();
+
+      const repositoryEvents = await executionRepository.listEvents(
+        result.executionId,
+      );
+      expect(repositoryEvents.length).toBeGreaterThanOrEqual(2);
+
+      const policyDeniedInRepository = repositoryEvents.some(
+        (event) =>
+          event.metadata !== undefined &&
+          typeof event.metadata === "object" &&
+          "eventType" in event.metadata &&
+          event.metadata.eventType === "execution.policy_denied",
+      );
+      expect(policyDeniedInRepository).toBe(true);
     });
   });
 });

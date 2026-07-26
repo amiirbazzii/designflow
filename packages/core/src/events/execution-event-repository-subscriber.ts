@@ -17,6 +17,7 @@ const EVENT_TO_PHASE: Record<string, string> = {
   "execution.completed": "completed",
   "execution.failed": "failed",
   "execution.cancelled": "failed",
+  "execution.policy_denied": "failed",
 };
 
 // ── Execution Event Repository Subscriber ──────────────────────
