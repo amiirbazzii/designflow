@@ -72,6 +72,7 @@ export interface PendingChildApproval {
   readonly nodeId: string;
   readonly childWorkflowId: string;
   readonly childExecutionId: string;
+  readonly childArtifacts: readonly ArtifactRef[];
   readonly message: string;
 }
 

@@ -99,7 +99,78 @@ Cycle and missing-resolver errors are treated as **structural**: they abort the
 whole parent run rather than degrading into a single failed step, so the stable
 code reaches the `ExecutionResult`.
 
-### 6. Failure and pending-approval semantics
+### 6. Parent resume is node-aware
+
+Blocking on a child approval writes a `compositionCheckpointSchema` payload
+under the `composition` key of the parent's `waiting_approval` checkpoint:
+
+```ts
+{
+  completedNodeIds, completedArtifacts,
+  pendingNodeId, childExecutionId, childWorkflowId, childArtifacts,
+  pendingNodes,   // every blocked node, so siblings are not dropped
+}
+```
+
+`ExecutionEngine.resume` reads that state *before* `run()` overwrites the
+checkpoint and threads it through `execute()`, which:
+
+- skips nodes in `completedNodeIds` and restores their artifacts,
+- resolves each `pendingNodes` entry from the **existing** child execution
+  record instead of calling the resolver again — child `completed` → node
+  completes with the child's applied artifacts; `failed`/`cancelled` → node
+  fails; still `waiting_approval` → parent stays pending,
+- runs only the previously blocked downstream nodes.
+
+Resuming therefore creates no second child execution and no second approval
+request. The parent keeps its original execution id, so the record and
+checkpoint slot are continuous.
+
+Two supporting fixes were needed: execution record metadata is now **merged**
+rather than replaced when an execution goes `waiting_approval` (it carries the
+lineage and input needed to resume), and `resumeAfterApproval` now marks a
+rejected execution's record `failed` — previously it returned a failed result
+while leaving the record `waiting_approval`, so a composing parent would have
+seen the rejected child as still pending forever.
+
+### 7. Approval never overrides a hard denial
+
+`policyViolationSchema` gained a required machine-readable `type`
+(`capability_denied` | `capability_not_allowed` | `approval_required`).
+The service enters the approval flow only when **every** violation is an
+approval requirement:
+
+```ts
+const approvalOnly =
+  violations.length > 0 &&
+  violations.every((v) => v.type === "approval_required");
+```
+
+A `deny_capability` violation alongside a `require_approval` violation now
+stays denied. Violation classification is never inferred from message text.
+
+### 8. Execution input propagation
+
+`StartExecutionParams` carries `input`, supplied by both `execute` (root
+`ExecutionRequest.input`) and `executeChild` (the child invocation input).
+`startExecution` stores it under the reserved `input` metadata key via
+`withExecutionInput`, so it is persisted with the record and recoverable on
+resume. Passing `undefined` *removes* the key, so a child never inherits its
+parent's input by accident.
+
+Nodes consume it with a strict, Zod-validated reference token resolved by
+`resolveNodeInput`:
+
+```ts
+inputMap: { $workflowInput: true }               // the whole workflow input
+inputMap: { greeting: { $workflowInput: "msg" } } // one property of it
+```
+
+The token is honoured as the whole `inputMap` and as any of its top-level
+values; `.strict()` ensures an ordinary object is never mistaken for a
+reference.
+
+### 9. Failure and pending-approval semantics
 
 | Child status | Parent node | Parent execution |
 |---|---|---|
@@ -111,7 +182,7 @@ Genuine failures take precedence over pending approvals in the same run: a
 failed sibling means the parent can never complete, so reporting `failed` is
 more actionable than reporting a resumable block.
 
-### 7. Events
+### 10. Events
 
 `workflow.child_started`, `workflow.child_completed` and
 `workflow.child_failed` are published on the **parent** execution id with
@@ -170,3 +241,9 @@ workflow:
   name for errors that carry one. Non-`DesignFlowError` errors are unchanged.
 - Hosts that render execution events should handle the three new
   `workflow.child_*` types.
+- `PolicyViolation` gained a **required** `type`. Custom `PolicyEvaluator`
+  implementations must classify each violation they emit; the message text is
+  no longer load-bearing.
+- `WorkflowCompositionRequest.inputMap` is now `input: unknown` — it receives
+  the node input already resolved against the workflow input.
+- `PendingChildApproval` gained `childArtifacts`.

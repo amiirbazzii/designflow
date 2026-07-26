@@ -63,6 +63,20 @@ export const nodeExecutionOptionsSchema = z.object({
 export type NodeExecutionOptions = z.infer<typeof nodeExecutionOptionsSchema>;
 
 /**
+ * Reference token that resolves to the enclosing workflow's input.
+ *
+ * `true` selects the whole input; a string selects that property of it.
+ * Strict so that an ordinary object is never mistaken for a reference.
+ */
+export const workflowInputRefSchema = z
+  .object({
+    $workflowInput: z.union([z.literal(true), z.string().min(1)]),
+  })
+  .strict();
+
+export type WorkflowInputRef = z.infer<typeof workflowInputRefSchema>;
+
+/**
  * A node that executes a single capability.
  *
  * `kind` is optional for backward compatibility: nodes authored before the

@@ -4,6 +4,7 @@ import {
   executionPolicySchema,
   childExecutionRequestSchema,
   isCapabilityNode,
+  withExecutionInput,
   withExecutionLineage,
 } from "@designflow/sdk";
 import type {
@@ -22,6 +23,7 @@ import type {
   PolicyEvaluator,
   PolicyContext,
   ApprovalManager,
+  PolicyViolation,
   ChildExecutionContract,
   ChildExecutionRequest,
   WorkflowExecutionResolver,
@@ -78,6 +80,7 @@ export interface ExecutionServiceConfig {
 
 interface StartExecutionParams {
   readonly workflowId: string;
+  readonly input: unknown;
   readonly metadata: Record<string, unknown> | undefined;
 }
 
@@ -123,6 +126,7 @@ export class ExecutionService
 
     return this.startExecution({
       workflowId: validatedRequest.workflowId,
+      input: validatedRequest.input,
       metadata: validatedRequest.metadata,
     });
   }
@@ -142,13 +146,21 @@ export class ExecutionService
 
     return this.startExecution({
       workflowId: validated.workflowId,
+      input: validated.input,
       metadata: withExecutionLineage(validated.metadata, validated.lineage),
     });
   }
 
   private async startExecution(
-    params: StartExecutionParams,
+    input: StartExecutionParams,
   ): Promise<ExecutionResult> {
+    // The execution's input travels in metadata so that it is persisted with
+    // the record and recoverable when the execution is resumed.
+    const params: StartExecutionParams = {
+      ...input,
+      metadata: withExecutionInput(input.metadata, input.input),
+    };
+
     const workflowPackage = this.resolveWorkflow(params.workflowId);
 
     const executionId = crypto.randomUUID();
@@ -173,15 +185,20 @@ export class ExecutionService
         );
 
         if (!policyResult.allowed) {
-          const approvalViolations = policyResult.violations.filter(
-            (v) => v.message.includes("Approval required"),
-          );
+          // Approval may only unblock an execution whose *every* violation is
+          // an approval requirement. A hard denial alongside an approval rule
+          // stays denied.
+          const approvalOnly =
+            policyResult.violations.length > 0 &&
+            policyResult.violations.every(
+              (violation) => violation.type === "approval_required",
+            );
 
-          if (approvalViolations.length > 0 && this.approvalManager !== undefined) {
+          if (approvalOnly && this.approvalManager !== undefined) {
             return this.handleApprovalRequired(
               executionId,
               params.workflowId,
-              approvalViolations,
+              policyResult.violations,
               policyResult,
             );
           }
@@ -333,6 +350,17 @@ export class ExecutionService
         },
       });
 
+      // A rejected approval terminates the execution. Without this the record
+      // would stay `waiting_approval` and a composing parent would keep
+      // treating the child as still pending.
+      await this.markFailed(
+        approval.executionId,
+        approval.workflowId,
+        new ApprovalError(`Approval rejected: ${approval.reason}`, {
+          approvalId: approval.id,
+        }),
+      );
+
       const result: ExecutionResult = {
         executionId: approval.executionId,
         workflowId: approval.workflowId,
@@ -459,8 +487,8 @@ export class ExecutionService
   private async handleApprovalRequired(
     executionId: string,
     workflowId: string,
-    approvalViolations: readonly { ruleId: string; message: string }[],
-    policyResult: { violations: readonly { ruleId: string; message: string }[] },
+    approvalViolations: readonly PolicyViolation[],
+    policyResult: { violations: readonly PolicyViolation[] },
   ): Promise<ExecutionResult> {
     const reason = approvalViolations.map((v) => v.message).join("; ");
 
@@ -470,11 +498,13 @@ export class ExecutionService
       reason,
     );
 
+    // Merge, never replace: the record's metadata carries this execution's
+    // lineage and input, both of which are needed to resume it.
     await this.executionRepository.update(executionId, {
       status: "waiting_approval",
-      metadata: {
+      metadata: await this.mergeRecordMetadata(executionId, {
         approvalId: approvalRequest.id,
-      },
+      }),
     });
 
     await this.appendEvent(executionId, "waiting_approval");
@@ -589,11 +619,11 @@ export class ExecutionService
 
       await this.executionRepository.update(executionId, {
         status: "waiting_approval",
-        metadata: {
+        metadata: await this.mergeRecordMetadata(executionId, {
           pendingChildExecutionId: pending.childExecutionId,
           pendingChildWorkflowId: pending.childWorkflowId,
           pendingNodeId: pending.nodeId,
-        },
+        }),
       });
 
       await this.appendEvent(executionId, "waiting_approval");
@@ -647,6 +677,14 @@ export class ExecutionService
     };
 
     return executionResultSchema.parse(result);
+  }
+
+  private async mergeRecordMetadata(
+    executionId: string,
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const record = await this.executionRepository.get(executionId);
+    return { ...record?.metadata, ...patch };
   }
 
   private async appendEvent(

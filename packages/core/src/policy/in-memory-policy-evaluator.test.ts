@@ -193,4 +193,54 @@ describe("InMemoryPolicyEvaluator", () => {
       expect(result.violations).toHaveLength(0);
     });
   });
+
+  describe("violation types", () => {
+    test("each rule kind emits its machine-readable violation type", async () => {
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Mixed Policy",
+        rules: [
+          { id: "deny-1", type: "deny_capability", target: "cap-a" },
+          { id: "allow-1", type: "allow_capability", target: "cap-a" },
+          { id: "approval-1", type: "require_approval" },
+        ],
+      };
+
+      const context: PolicyContext = {
+        workflowId: "wf-1",
+        capabilityIds: ["cap-a", "cap-b"],
+      };
+
+      const result = await evaluator.evaluate(policy, context);
+
+      expect(result.allowed).toBe(false);
+
+      const types = result.violations.map((v) => v.type).sort();
+      expect(types).toEqual([
+        "approval_required",
+        "capability_denied",
+        "capability_not_allowed",
+      ]);
+    });
+
+    test("an approval-only policy emits only approval_required", async () => {
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [{ id: "approval-1", type: "require_approval" }],
+      };
+
+      const context: PolicyContext = {
+        workflowId: "wf-1",
+        capabilityIds: ["cap-a"],
+      };
+
+      const result = await evaluator.evaluate(policy, context);
+
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations.every((v) => v.type === "approval_required")).toBe(
+        true,
+      );
+    });
+  });
 });

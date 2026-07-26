@@ -62,6 +62,7 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
       if (capabilityId === deniedCapability) {
         violations.push({
           ruleId: rule.id,
+          type: "capability_denied",
           message: `Capability "${capabilityId}" is denied by policy rule "${rule.id}"`,
         });
       }
@@ -86,6 +87,7 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
       if (!allowedCapabilities.has(capabilityId)) {
         violations.push({
           ruleId: allowRules[0]?.id ?? "allow_rule",
+          type: "capability_not_allowed",
           message: `Capability "${capabilityId}" is not in the allowed capabilities list`,
         });
       }
@@ -99,6 +101,7 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
   ): void {
     violations.push({
       ruleId: rule.id,
+      type: "approval_required",
       message: `Approval required by policy rule "${rule.id}"`,
     });
   }

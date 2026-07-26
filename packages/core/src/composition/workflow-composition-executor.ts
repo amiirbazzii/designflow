@@ -24,7 +24,8 @@ import {
 
 export interface WorkflowCompositionRequest {
   readonly node: WorkflowNode;
-  readonly inputMap: Readonly<Record<string, unknown>>;
+  /** Node input already resolved against the parent's workflow input. */
+  readonly input: unknown;
   readonly parentExecutionId: string;
   readonly parentWorkflowId: string;
   /** Ancestor workflow ids, root first. Empty for a root execution. */
@@ -102,7 +103,7 @@ export class WorkflowCompositionExecutor {
 
     const invocation = workflowInvocationSchema.parse({
       workflowId: childWorkflowId,
-      input: request.inputMap,
+      input: request.input,
       metadata: request.metadata,
     });
 

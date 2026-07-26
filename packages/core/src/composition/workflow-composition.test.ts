@@ -9,7 +9,12 @@ import { ExecutionService } from "../service";
 import type { WorkflowResolver } from "../service";
 import { WorkflowCompositionExecutor } from "./workflow-composition-executor";
 import { WorkflowCompositionCycleError } from "../errors";
-import { readExecutionLineage } from "@designflow/sdk";
+import { DesignFlowError } from "@designflow/sdk";
+import {
+  readCompositionCheckpoint,
+  readExecutionInput,
+  readExecutionLineage,
+} from "@designflow/sdk";
 import type {
   ArtifactRef,
   ArtifactStore,
@@ -117,6 +122,27 @@ class StubWorkflowExecutionResolver implements WorkflowExecutionResolver {
     return this.respond(invocation);
   }
 }
+
+/** Pulls one failed node's error metadata out of an aggregate run failure. */
+const nodeFailureMetadata = (
+  error: unknown,
+  nodeId: string,
+): Record<string, unknown> => {
+  if (!(error instanceof DesignFlowError)) {
+    throw new Error("expected a DesignFlowError");
+  }
+
+  const failedErrors = z
+    .record(z.string(), z.unknown())
+    .parse(error.metadata.failedErrors);
+
+  const nodeError = failedErrors[nodeId];
+  if (!(nodeError instanceof DesignFlowError)) {
+    throw new Error(`expected a DesignFlowError for node ${nodeId}`);
+  }
+
+  return nodeError.metadata;
+};
 
 const createWorkflowPackage = (
   definition: WorkflowDefinition,
@@ -331,20 +357,9 @@ describe("ExecutionEngine workflow composition", () => {
     expect(result.completedSteps).not.toContain("downstream");
 
     // Artifacts the child already produced stay traceable on the failure.
-    const failure = result.error;
-    expect(failure).toBeInstanceOf(Error);
-    const failedErrors =
-      failure instanceof Error && "metadata" in failure
-        ? (failure as { metadata: Record<string, unknown> }).metadata
-            .failedErrors
-        : undefined;
-    const childError =
-      failedErrors !== undefined && typeof failedErrors === "object"
-        ? (failedErrors as Record<string, unknown>).child
-        : undefined;
-    expect(childError).toBeInstanceOf(Error);
-    const childMetadata = (childError as { metadata: Record<string, unknown> })
-      .metadata;
+    expect(result.error).toBeInstanceOf(DesignFlowError);
+
+    const childMetadata = nodeFailureMetadata(result.error, "child");
     expect(childMetadata.childArtifacts).toEqual(["partial-child-artifact"]);
     expect(childMetadata.childExecutionId).toBe("child-exec-1");
     expect(childMetadata.childError).toEqual({
@@ -416,6 +431,7 @@ describe("ExecutionEngine workflow composition", () => {
       nodeId: "child",
       childWorkflowId: "wf-child",
       childExecutionId: "child-exec-1",
+      childArtifacts: [],
       message: "Approval required: deploy gate",
     });
 
@@ -926,6 +942,7 @@ describe("ExecutionService workflow composition", () => {
               violations: [
                 {
                   ruleId: "child-gate",
+                  type: "approval_required",
                   message: "Approval required by policy rule \"child-gate\"",
                 },
               ],
@@ -1107,6 +1124,399 @@ describe("ExecutionService workflow composition", () => {
       cRecord.executionId,
     ]);
     expect(ids.size).toBe(3);
+  });
+
+  test("resuming the parent after child approval reuses the child execution", async () => {
+    const childRuns: unknown[] = [];
+    capabilityRegistry.register(
+      createCapability("cap-child", async (_ctx, input) => {
+        childRuns.push(input);
+        return { artifactRef: { id: "child-artifact", type: "test" } };
+      }),
+    );
+
+    const downstreamRuns: string[][] = [];
+    capabilityRegistry.register(
+      createCapability("cap-downstream", async (ctx) => {
+        downstreamRuns.push(ctx.parentArtifacts.map((a) => a.id));
+        return { artifactRef: { id: "downstream-artifact", type: "test" } };
+      }),
+    );
+
+    const parent: WorkflowDefinition = {
+      id: "wf-parent",
+      name: "parent",
+      description: "",
+      nodes: [
+        {
+          id: "child",
+          kind: "workflow",
+          workflowId: "wf-child",
+          inputMap: {},
+          next: [],
+        },
+        {
+          id: "downstream",
+          capabilityId: "cap-downstream",
+          inputMap: {},
+          execution: { dependsOn: ["child"] },
+          next: [],
+        },
+      ],
+      metadata: { tags: [] },
+    };
+
+    const policyEvaluator: PolicyEvaluator = {
+      evaluate: async (
+        _policy: ExecutionPolicy,
+        context: PolicyContext,
+      ): Promise<PolicyEvaluationResult> =>
+        context.workflowId === "wf-child"
+          ? {
+              allowed: false,
+              violations: [
+                {
+                  ruleId: "child-gate",
+                  type: "approval_required",
+                  message: "Approval required by policy rule \"child-gate\"",
+                },
+              ],
+            }
+          : { allowed: true, violations: [] },
+    };
+
+    const approvalManager = new InMemoryApprovalManager();
+
+    const service = createService(
+      [
+        createWorkflowPackage(parent),
+        createWorkflowPackage(childWorkflow("wf-child", "cap-child")),
+      ],
+      {
+        policyEvaluator,
+        policy: { id: "p1", name: "policy", rules: [] },
+        approvalManager,
+      },
+    );
+
+    // 1. Parent blocks on the child's approval gate.
+    const blocked = await service.execute({ workflowId: "wf-parent" });
+    expect(blocked.status).toBe("pending_approval");
+    expect(childRuns).toHaveLength(0);
+    expect(downstreamRuns).toHaveLength(0);
+
+    const childRecordBefore = (await executionRepository.list("wf-child"))[0]!;
+    const approvalId = childRecordBefore.metadata?.approvalId;
+    expect(typeof approvalId).toBe("string");
+
+    // The pending checkpoint carries node-level resume state.
+    const parentCheckpoint = await executionRepository.getLatestCheckpoint(
+      blocked.executionId,
+    );
+    const composition = readCompositionCheckpoint(parentCheckpoint?.metadata);
+    expect(composition).not.toBeNull();
+    expect(composition?.pendingNodeId).toBe("child");
+    expect(composition?.childExecutionId).toBe(childRecordBefore.executionId);
+    expect(composition?.completedNodeIds).toEqual([]);
+
+    // 2. Approve and resume the child.
+    await approvalManager.approve(String(approvalId));
+    const resumedChild = await service.resumeAfterApproval(String(approvalId));
+    expect(resumedChild.status).toBe("completed");
+    expect(childRuns).toHaveLength(1);
+
+    // 3. Resume the parent.
+    const resumedParent = await service.resume("wf-parent");
+
+    expect(resumedParent.status).toBe("completed");
+    expect(resumedParent.executionId).toBe(blocked.executionId);
+
+    // No second child execution and no second approval request.
+    const childRecords = await executionRepository.list("wf-child");
+    expect(childRecords).toHaveLength(1);
+    expect(childRecords[0]?.executionId).toBe(childRecordBefore.executionId);
+    expect(childRuns).toHaveLength(1);
+
+    const approvalRequests = events.filter(
+      (e) => e.type === "execution.waiting_approval",
+    );
+    expect(
+      approvalRequests.filter((e) => e.payload?.approvalId !== undefined),
+    ).toHaveLength(1);
+
+    // The blocked downstream node ran exactly once, seeing the child artifact.
+    expect(downstreamRuns).toHaveLength(1);
+    expect(downstreamRuns[0]).toContain("child-artifact");
+
+    expect(resumedParent.artifacts.map((a) => a.id)).toEqual([
+      "child-artifact",
+      "downstream-artifact",
+    ]);
+  });
+
+  test("resuming the parent while the child is still pending stays pending", async () => {
+    capabilityRegistry.register(createCapability("cap-child"));
+
+    const policyEvaluator: PolicyEvaluator = {
+      evaluate: async (
+        _policy: ExecutionPolicy,
+        context: PolicyContext,
+      ): Promise<PolicyEvaluationResult> =>
+        context.workflowId === "wf-child"
+          ? {
+              allowed: false,
+              violations: [
+                {
+                  ruleId: "child-gate",
+                  type: "approval_required",
+                  message: "Approval required by policy rule \"child-gate\"",
+                },
+              ],
+            }
+          : { allowed: true, violations: [] },
+    };
+
+    const service = createService(
+      [
+        createWorkflowPackage(parentWithChild("wf-child")),
+        createWorkflowPackage(childWorkflow("wf-child", "cap-child")),
+      ],
+      {
+        policyEvaluator,
+        policy: { id: "p1", name: "policy", rules: [] },
+        approvalManager: new InMemoryApprovalManager(),
+      },
+    );
+
+    await service.execute({ workflowId: "wf-parent" });
+    const resumed = await service.resume("wf-parent");
+
+    expect(resumed.status).toBe("pending_approval");
+    expect(await executionRepository.list("wf-child")).toHaveLength(1);
+  });
+
+  test("a rejected child fails the parent on resume", async () => {
+    capabilityRegistry.register(createCapability("cap-child"));
+
+    const policyEvaluator: PolicyEvaluator = {
+      evaluate: async (
+        _policy: ExecutionPolicy,
+        context: PolicyContext,
+      ): Promise<PolicyEvaluationResult> =>
+        context.workflowId === "wf-child"
+          ? {
+              allowed: false,
+              violations: [
+                {
+                  ruleId: "child-gate",
+                  type: "approval_required",
+                  message: "Approval required by policy rule \"child-gate\"",
+                },
+              ],
+            }
+          : { allowed: true, violations: [] },
+    };
+
+    const approvalManager = new InMemoryApprovalManager();
+
+    const service = createService(
+      [
+        createWorkflowPackage(parentWithChild("wf-child")),
+        createWorkflowPackage(childWorkflow("wf-child", "cap-child")),
+      ],
+      {
+        policyEvaluator,
+        policy: { id: "p1", name: "policy", rules: [] },
+        approvalManager,
+      },
+    );
+
+    await service.execute({ workflowId: "wf-parent" });
+
+    const childRecord = (await executionRepository.list("wf-child"))[0]!;
+    const approvalId = String(childRecord.metadata?.approvalId);
+
+    await approvalManager.reject(approvalId);
+    const rejected = await service.resumeAfterApproval(approvalId);
+    expect(rejected.status).toBe("failed");
+
+    const resumedParent = await service.resume("wf-parent");
+    expect(resumedParent.status).toBe("failed");
+    expect(await executionRepository.list("wf-child")).toHaveLength(1);
+  });
+
+  test("mixed deny + approval violations stay denied", async () => {
+    capabilityRegistry.register(createCapability("cap-a"));
+
+    const policyEvaluator: PolicyEvaluator = {
+      evaluate: async (): Promise<PolicyEvaluationResult> => ({
+        allowed: false,
+        violations: [
+          {
+            ruleId: "deny-1",
+            type: "capability_denied",
+            message: "Capability \"cap-a\" is denied by policy rule \"deny-1\"",
+          },
+          {
+            ruleId: "approval-1",
+            type: "approval_required",
+            message: "Approval required by policy rule \"approval-1\"",
+          },
+        ],
+      }),
+    };
+
+    const approvalManager = new InMemoryApprovalManager();
+
+    const service = createService(
+      [createWorkflowPackage(childWorkflow("wf-plain", "cap-a"))],
+      {
+        policyEvaluator,
+        policy: { id: "p1", name: "policy", rules: [] },
+        approvalManager,
+      },
+    );
+
+    const result = await service.execute({ workflowId: "wf-plain" });
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("ERR_POLICY_VIOLATION");
+
+    const record = await executionRepository.get(result.executionId);
+    expect(record?.status).toBe("failed");
+    expect(record?.metadata?.approvalId).toBeUndefined();
+    expect(
+      events.some((e) => e.type === "execution.policy_denied"),
+    ).toBe(true);
+  });
+
+  test("approval-only violations still enter the approval flow", async () => {
+    capabilityRegistry.register(createCapability("cap-a"));
+
+    const policyEvaluator: PolicyEvaluator = {
+      evaluate: async (): Promise<PolicyEvaluationResult> => ({
+        allowed: false,
+        violations: [
+          {
+            ruleId: "approval-1",
+            type: "approval_required",
+            message: "Approval required by policy rule \"approval-1\"",
+          },
+          {
+            ruleId: "approval-2",
+            type: "approval_required",
+            message: "Approval required by policy rule \"approval-2\"",
+          },
+        ],
+      }),
+    };
+
+    const service = createService(
+      [createWorkflowPackage(childWorkflow("wf-plain", "cap-a"))],
+      {
+        policyEvaluator,
+        policy: { id: "p1", name: "policy", rules: [] },
+        approvalManager: new InMemoryApprovalManager(),
+      },
+    );
+
+    const result = await service.execute({ workflowId: "wf-plain" });
+    expect(result.status).toBe("pending_approval");
+  });
+
+  test("parent input reaches a child capability", async () => {
+    const received: unknown[] = [];
+    capabilityRegistry.register(
+      createCapability("cap-child", async (_ctx, input) => {
+        received.push(input);
+        return { artifactRef: { id: "child-artifact", type: "test" } };
+      }),
+    );
+
+    const parent: WorkflowDefinition = {
+      id: "wf-parent",
+      name: "parent",
+      description: "",
+      nodes: [
+        {
+          id: "child",
+          kind: "workflow",
+          workflowId: "wf-child",
+          // The parent forwards its own input into the child invocation.
+          inputMap: { $workflowInput: true },
+          next: [],
+        },
+      ],
+      metadata: { tags: [] },
+    };
+
+    const child: WorkflowDefinition = {
+      id: "wf-child",
+      name: "child",
+      description: "",
+      nodes: [
+        {
+          id: "work",
+          capabilityId: "cap-child",
+          inputMap: { greeting: { $workflowInput: "message" } },
+          next: [],
+        },
+      ],
+      metadata: { tags: [] },
+    };
+
+    const service = createService([
+      createWorkflowPackage(parent),
+      createWorkflowPackage(child),
+    ]);
+
+    const result = await service.execute({
+      workflowId: "wf-parent",
+      input: { message: "hello from parent" },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(received).toEqual([{ greeting: "hello from parent" }]);
+
+    const childRecord = (await executionRepository.list("wf-child"))[0]!;
+    expect(readExecutionInput(childRecord.metadata)).toEqual({
+      message: "hello from parent",
+    });
+  });
+
+  test("root request input reaches a capability node", async () => {
+    const received: unknown[] = [];
+    capabilityRegistry.register(
+      createCapability("cap-a", async (_ctx, input) => {
+        received.push(input);
+        return { artifactRef: { id: "artifact-cap-a", type: "test" } };
+      }),
+    );
+
+    const definition: WorkflowDefinition = {
+      id: "wf-plain",
+      name: "plain",
+      description: "",
+      nodes: [
+        {
+          id: "work",
+          capabilityId: "cap-a",
+          inputMap: { $workflowInput: true },
+          next: [],
+        },
+      ],
+      metadata: { tags: [] },
+    };
+
+    const service = createService([createWorkflowPackage(definition)]);
+
+    const result = await service.execute({
+      workflowId: "wf-plain",
+      input: { seed: 42 },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(received).toEqual([{ seed: 42 }]);
   });
 
   test("capability-only workflows still execute through the service", async () => {

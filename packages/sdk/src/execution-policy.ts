@@ -33,8 +33,21 @@ export type ExecutionPolicy = z.infer<typeof executionPolicySchema>;
 
 // ── Policy Violation Schema ────────────────────────────────────
 
+/**
+ * Machine-readable violation classification. Consumers MUST branch on this
+ * rather than on `message` text.
+ */
+export const policyViolationTypeSchema = z.enum([
+  "capability_denied",
+  "capability_not_allowed",
+  "approval_required",
+]);
+
+export type PolicyViolationType = z.infer<typeof policyViolationTypeSchema>;
+
 export const policyViolationSchema = z.object({
   ruleId: z.string(),
+  type: policyViolationTypeSchema,
   message: z.string(),
 });
 

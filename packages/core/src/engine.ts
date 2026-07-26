@@ -1,6 +1,11 @@
+import { z } from "zod";
 import {
   artifactLineageSchema,
+  artifactRefSchema,
+  compositionCheckpointSchema,
   executionEventSchema,
+  readCompositionCheckpoint,
+  readExecutionInput,
   readExecutionLineage,
 } from "@designflow/sdk";
 import type {
@@ -12,8 +17,11 @@ import type {
   Logger,
   ExecutionRepository,
   ExecutionCheckpointData,
+  ExecutionRecord,
   ExecutionEventPublisher,
   ExecutionEvent,
+  CompositionCheckpoint,
+  PendingChildExecution,
   WorkflowExecutionResolver,
 } from "@designflow/sdk";
 import type {
@@ -36,12 +44,39 @@ import {
 } from "./errors";
 import { CapabilityRunner } from "./runtime";
 import { WorkflowCompositionExecutor } from "./composition";
+import { resolveNodeInput } from "./input";
 import { DesignFlowError } from "@designflow/sdk";
 
 interface LayerNodeResult {
   readonly artifacts: readonly ArtifactRef[];
   readonly executed: boolean;
   readonly pending: PendingChildApproval | undefined;
+}
+
+const capabilityOutputSchema = z.object({
+  artifactRef: artifactRefSchema.optional(),
+});
+
+/** Pulls a schema-valid artifact reference out of a capability's output. */
+function extractProducedArtifacts(output: unknown): ArtifactRef[] {
+  const parsed = capabilityOutputSchema.safeParse(output);
+
+  if (!parsed.success || parsed.data.artifactRef === undefined) {
+    return [];
+  }
+
+  return [parsed.data.artifactRef];
+}
+
+/** Artifacts recorded on a completed execution's final checkpoint. */
+function readAppliedArtifacts(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): ArtifactRef[] {
+  const parsed = z
+    .array(artifactRefSchema)
+    .safeParse(metadata?.appliedArtifacts);
+
+  return parsed.success ? parsed.data : [];
 }
 
 export class ExecutionEngine {
@@ -84,6 +119,7 @@ export class ExecutionEngine {
   public async run(
     definition: WorkflowDefinition,
     context: ExecutionContext,
+    resumeState?: CompositionCheckpoint,
   ): Promise<ExecutionResult> {
     const executionId = context.runId;
 
@@ -111,6 +147,7 @@ export class ExecutionEngine {
         context,
         executionId,
         definition.id,
+        resumeState,
       );
 
       if (execution.failedSteps.length > 0) {
@@ -153,11 +190,32 @@ export class ExecutionEngine {
       // it: candidate artifacts stay traceable and the run is resumable.
       const firstPending = execution.pendingApprovals[0];
       if (firstPending !== undefined) {
+        const pendingNodes: PendingChildExecution[] =
+          execution.pendingApprovals.map((pending) => ({
+            nodeId: pending.nodeId,
+            childExecutionId: pending.childExecutionId,
+            childWorkflowId: pending.childWorkflowId,
+            childArtifacts: [...pending.childArtifacts],
+          }));
+
+        // Node-level state so a later resume skips completed nodes and reuses
+        // the existing child execution instead of invoking it again.
+        const composition = compositionCheckpointSchema.parse({
+          completedNodeIds: execution.executedSteps,
+          completedArtifacts: execution.candidateArtifacts,
+          pendingNodeId: firstPending.nodeId,
+          childExecutionId: firstPending.childExecutionId,
+          childWorkflowId: firstPending.childWorkflowId,
+          childArtifacts: firstPending.childArtifacts,
+          pendingNodes,
+        });
+
         await this.recordCheckpoint(
           definition.id,
           executionId,
           "waiting_approval",
           {
+            composition,
             pendingApprovals: execution.pendingApprovals,
             blockedSteps: execution.blockedSteps,
             executedSteps: execution.executedSteps,
@@ -267,7 +325,7 @@ export class ExecutionEngine {
 
     const executionRecords = await this.executionRepository.list(workflowId);
 
-    let targetRecord: { executionId: string; status: string } | null = null;
+    let targetRecord: ExecutionRecord | null = null;
 
     if (executionId) {
       const found = executionRecords.find(
@@ -336,6 +394,13 @@ export class ExecutionEngine {
       };
     }
 
+    // Composition state is read before run(), which overwrites the
+    // waiting_approval checkpoint with a fresh "started" one.
+    const checkpoint = await this.executionRepository.getLatestCheckpoint(
+      targetRecord.executionId,
+    );
+    const resumeState = readCompositionCheckpoint(checkpoint?.metadata);
+
     const abortController = new AbortController();
 
     const executionContext: ExecutionContext = {
@@ -344,12 +409,17 @@ export class ExecutionEngine {
       stateRef: "resume",
       artifacts: [],
       metadata: {
+        ...targetRecord.metadata,
         previousExecutionId: targetRecord.executionId,
       },
       signal: abortController.signal,
     };
 
-    return this.run(definition, executionContext);
+    return this.run(
+      definition,
+      executionContext,
+      resumeState ?? undefined,
+    );
   }
 
   private async publishEvent(
@@ -402,9 +472,22 @@ export class ExecutionEngine {
     context: ExecutionContext,
     executionId: string,
     workflowId: string,
+    resumeState?: CompositionCheckpoint,
   ): Promise<ExecuteResult> {
-    const executedSteps: string[] = [];
-    const candidateArtifacts: ArtifactRef[] = [];
+    // Resuming replays the plan but re-executes nothing that already
+    // finished: completed nodes are skipped and their artifacts are restored.
+    const alreadyCompleted = new Set(resumeState?.completedNodeIds ?? []);
+    const restoredArtifacts = resumeState?.completedArtifacts ?? [];
+
+    const resumedChildren = new Map<string, PendingChildExecution>(
+      (resumeState?.pendingNodes ?? []).map((pending) => [
+        pending.nodeId,
+        pending,
+      ]),
+    );
+
+    const executedSteps: string[] = [...alreadyCompleted];
+    const candidateArtifacts: ArtifactRef[] = [...restoredArtifacts];
     const failedSteps = new Set<string>();
     const failedErrors = new Map<string, unknown>();
     const pendingSteps = new Set<string>();
@@ -412,11 +495,14 @@ export class ExecutionEngine {
     const blockedSteps = new Set<string>();
     const allParentArtifacts: ArtifactRef[] = [
       ...context.artifacts,
+      ...restoredArtifacts,
     ];
 
     const compositionPath = readExecutionLineage(
       context.metadata,
     ).compositionPath;
+
+    const workflowInput = readExecutionInput(context.metadata);
 
     const nodeMap = new Map<string, CompiledNode>();
     for (const node of workflow.nodes) {
@@ -437,6 +523,8 @@ export class ExecutionEngine {
       for (const nodeId of layer.nodeIds) {
         const step = stepMap.get(nodeId);
         if (!step) continue;
+
+        if (alreadyCompleted.has(nodeId)) continue;
 
         if (step.dependsOn.some((dep) => failedSteps.has(dep))) {
           failedSteps.add(nodeId);
@@ -476,16 +564,19 @@ export class ExecutionEngine {
         if (!compiled || !step) return;
 
         try {
+          const nodeInput = resolveNodeInput(step.inputMap, workflowInput);
+
           const result = compiled.kind === "workflow"
             ? await this.runWorkflowNode(
                 compiled.node,
-                step.inputMap,
+                nodeInput,
                 context,
                 compositionPath,
+                resumedChildren.get(nodeId),
               )
             : await this.runCapabilityNode(
                 compiled,
-                step.inputMap,
+                nodeInput,
                 context,
                 allParentArtifacts,
               );
@@ -550,7 +641,7 @@ export class ExecutionEngine {
 
   private async runCapabilityNode(
     compiled: Extract<CompiledNode, { kind: "capability" }>,
-    inputMap: Readonly<Record<string, unknown>>,
+    input: unknown,
     context: ExecutionContext,
     parentArtifacts: readonly ArtifactRef[],
   ): Promise<LayerNodeResult> {
@@ -586,7 +677,7 @@ export class ExecutionEngine {
 
     const output = await this.runner.run(
       compiled.capability,
-      inputMap,
+      input,
       capabilityContext,
       {
         timeout: compiled.node.execution?.timeout,
@@ -594,25 +685,8 @@ export class ExecutionEngine {
       },
     );
 
-    const producedArtifacts: ArtifactRef[] = [];
-    if (
-      output &&
-      typeof output === "object" &&
-      "artifactRef" in (output as Record<string, unknown>)
-    ) {
-      const ref = (output as Record<string, unknown>).artifactRef;
-      if (
-        typeof ref === "object" &&
-        ref !== null &&
-        "id" in ref &&
-        "type" in ref
-      ) {
-        producedArtifacts.push(ref as ArtifactRef);
-      }
-    }
-
     return {
-      artifacts: producedArtifacts,
+      artifacts: extractProducedArtifacts(output),
       executed: true,
       pending: undefined,
     };
@@ -620,10 +694,17 @@ export class ExecutionEngine {
 
   private async runWorkflowNode(
     node: Extract<CompiledNode, { kind: "workflow" }>["node"],
-    inputMap: Readonly<Record<string, unknown>>,
+    input: unknown,
     context: ExecutionContext,
     compositionPath: readonly string[],
+    resumedChild?: PendingChildExecution,
   ): Promise<LayerNodeResult> {
+    // On resume the child already exists — reuse its outcome rather than
+    // starting a second child execution (and a second approval request).
+    if (resumedChild !== undefined) {
+      return this.resumeChildNode(node, context, resumedChild);
+    }
+
     if (this.compositionExecutor === undefined) {
       throw new WorkflowResolverNotConfiguredError(node.workflowId, {
         parentExecutionId: context.runId,
@@ -634,7 +715,7 @@ export class ExecutionEngine {
 
     const outcome = await this.compositionExecutor.execute({
       node,
-      inputMap,
+      input,
       parentExecutionId: context.runId,
       parentWorkflowId: context.workflowId,
       compositionPath,
@@ -649,6 +730,7 @@ export class ExecutionEngine {
           nodeId: node.id,
           childWorkflowId: outcome.childWorkflowId,
           childExecutionId: outcome.childExecutionId,
+          childArtifacts: outcome.artifacts,
           message:
             outcome.error?.message ??
             `Child workflow ${outcome.childWorkflowId} is awaiting approval`,
@@ -677,6 +759,84 @@ export class ExecutionEngine {
       executed: true,
       pending: undefined,
     };
+  }
+
+  /**
+   * Resolves a workflow node from the child execution that was already
+   * started for it, without re-invoking the resolver.
+   */
+  private async resumeChildNode(
+    node: Extract<CompiledNode, { kind: "workflow" }>["node"],
+    context: ExecutionContext,
+    resumedChild: PendingChildExecution,
+  ): Promise<LayerNodeResult> {
+    const payload = {
+      parentExecutionId: context.runId,
+      parentWorkflowId: context.workflowId,
+      parentNodeId: node.id,
+      childWorkflowId: resumedChild.childWorkflowId,
+      childExecutionId: resumedChild.childExecutionId,
+      resumed: true,
+    };
+
+    const record = await this.executionRepository.get(
+      resumedChild.childExecutionId,
+    );
+
+    if (record === null) {
+      throw new ExecutionError(
+        `Child execution record not found on resume: ${resumedChild.childExecutionId}`,
+        payload,
+      );
+    }
+
+    switch (record.status) {
+      case "completed": {
+        const checkpoint = await this.executionRepository.getLatestCheckpoint(
+          resumedChild.childExecutionId,
+        );
+        const artifacts = readAppliedArtifacts(checkpoint?.metadata);
+
+        await this.publishEvent(
+          context.runId,
+          "workflow.child_completed",
+          { ...payload, artifactCount: artifacts.length },
+        );
+
+        return { artifacts, executed: true, pending: undefined };
+      }
+
+      case "failed":
+      case "cancelled": {
+        await this.publishEvent(context.runId, "workflow.child_failed", {
+          ...payload,
+          status: record.status,
+        });
+
+        throw new ExecutionError(
+          `Child workflow ${record.status}: ${resumedChild.childWorkflowId}`,
+          {
+            ...payload,
+            childStatus: record.status,
+            childArtifacts: resumedChild.childArtifacts.map((a) => a.id),
+          },
+        );
+      }
+
+      case "running":
+      case "waiting_approval":
+        return {
+          artifacts: resumedChild.childArtifacts,
+          executed: false,
+          pending: {
+            nodeId: node.id,
+            childWorkflowId: resumedChild.childWorkflowId,
+            childExecutionId: resumedChild.childExecutionId,
+            childArtifacts: resumedChild.childArtifacts,
+            message: `Child workflow ${resumedChild.childWorkflowId} is still awaiting approval`,
+          },
+        };
+    }
   }
 
   private validate(workflow: CompiledWorkflow): ValidationResult {

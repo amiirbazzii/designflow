@@ -7,10 +7,18 @@ import {
   executionLineageSchema,
   readExecutionLineage,
   withExecutionLineage,
+  readExecutionInput,
+  withExecutionInput,
+  compositionCheckpointSchema,
+  readCompositionCheckpoint,
+  withCompositionCheckpoint,
   EXECUTION_LINEAGE_METADATA_KEY,
+  EXECUTION_INPUT_METADATA_KEY,
 } from "./workflow-composition";
+import { policyViolationSchema } from "./execution-policy";
 import {
   workflowStepNodeSchema,
+  workflowInputRefSchema,
   workflowDefinitionSchema,
   isCapabilityNode,
   isWorkflowNode,
@@ -167,6 +175,151 @@ describe("execution lineage helpers", () => {
     const parsed = executionLineageSchema.parse({ compositionPath: ["a"] });
     expect(parsed.parentExecutionId).toBeUndefined();
     expect(parsed.compositionPath).toEqual(["a"]);
+  });
+});
+
+describe("execution input helpers", () => {
+  test("withExecutionInput stores and readExecutionInput recovers", () => {
+    const metadata = withExecutionInput({ environment: "test" }, { seed: 1 });
+    expect(metadata.environment).toBe("test");
+    expect(readExecutionInput(metadata)).toEqual({ seed: 1 });
+  });
+
+  test("an undefined input removes an inherited key", () => {
+    const inherited = withExecutionInput(undefined, { seed: 1 });
+    const cleared = withExecutionInput(inherited, undefined);
+
+    expect(readExecutionInput(cleared)).toBeUndefined();
+    expect(EXECUTION_INPUT_METADATA_KEY in cleared).toBe(false);
+  });
+
+  test("readExecutionInput tolerates missing metadata", () => {
+    expect(readExecutionInput(undefined)).toBeUndefined();
+    expect(readExecutionInput({})).toBeUndefined();
+  });
+
+  test("falsy inputs are preserved", () => {
+    expect(readExecutionInput(withExecutionInput(undefined, 0))).toBe(0);
+    expect(readExecutionInput(withExecutionInput(undefined, false))).toBe(false);
+    expect(readExecutionInput(withExecutionInput(undefined, null))).toBeNull();
+  });
+});
+
+describe("compositionCheckpointSchema", () => {
+  const base = {
+    pendingNodeId: "child",
+    childExecutionId: "exec-child",
+    childWorkflowId: "wf-child",
+    pendingNodes: [
+      {
+        nodeId: "child",
+        childExecutionId: "exec-child",
+        childWorkflowId: "wf-child",
+      },
+    ],
+  };
+
+  test("applies array defaults", () => {
+    const parsed = compositionCheckpointSchema.parse(base);
+    expect(parsed.completedNodeIds).toEqual([]);
+    expect(parsed.completedArtifacts).toEqual([]);
+    expect(parsed.childArtifacts).toEqual([]);
+    expect(parsed.pendingNodes[0]?.childArtifacts).toEqual([]);
+  });
+
+  test("requires at least one pending node", () => {
+    expect(() =>
+      compositionCheckpointSchema.parse({ ...base, pendingNodes: [] }),
+    ).toThrow();
+  });
+
+  test("requires a pending node id", () => {
+    const { pendingNodeId: _omitted, ...withoutPending } = base;
+    expect(() => compositionCheckpointSchema.parse(withoutPending)).toThrow();
+  });
+
+  test("round-trips through metadata", () => {
+    const checkpoint = compositionCheckpointSchema.parse({
+      ...base,
+      completedNodeIds: ["a"],
+      completedArtifacts: [{ id: "art-a", type: "test" }],
+    });
+
+    const metadata = withCompositionCheckpoint({ phase: "x" }, checkpoint);
+    expect(metadata.phase).toBe("x");
+
+    const restored = readCompositionCheckpoint(metadata);
+    expect(restored?.completedNodeIds).toEqual(["a"]);
+    expect(restored?.completedArtifacts[0]?.id).toBe("art-a");
+    expect(restored?.pendingNodeId).toBe("child");
+  });
+
+  test("readCompositionCheckpoint returns null when absent or malformed", () => {
+    expect(readCompositionCheckpoint(undefined)).toBeNull();
+    expect(readCompositionCheckpoint({})).toBeNull();
+    expect(readCompositionCheckpoint({ composition: "nope" })).toBeNull();
+    expect(readCompositionCheckpoint({ composition: {} })).toBeNull();
+  });
+});
+
+describe("policyViolationSchema", () => {
+  test("requires a machine-readable type", () => {
+    expect(() =>
+      policyViolationSchema.parse({ ruleId: "r1", message: "denied" }),
+    ).toThrow();
+  });
+
+  test("accepts each violation type", () => {
+    for (const type of [
+      "capability_denied",
+      "capability_not_allowed",
+      "approval_required",
+    ] as const) {
+      const parsed = policyViolationSchema.parse({
+        ruleId: "r1",
+        type,
+        message: "m",
+      });
+      expect(parsed.type).toBe(type);
+    }
+  });
+
+  test("rejects an unknown type", () => {
+    expect(() =>
+      policyViolationSchema.parse({
+        ruleId: "r1",
+        type: "something_else",
+        message: "m",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("workflowInputRefSchema", () => {
+  test("accepts the whole-input form", () => {
+    expect(workflowInputRefSchema.parse({ $workflowInput: true })).toEqual({
+      $workflowInput: true,
+    });
+  });
+
+  test("accepts the property-selector form", () => {
+    expect(workflowInputRefSchema.parse({ $workflowInput: "seed" })).toEqual({
+      $workflowInput: "seed",
+    });
+  });
+
+  test("is strict so ordinary objects are not mistaken for references", () => {
+    expect(
+      workflowInputRefSchema.safeParse({ $workflowInput: true, other: 1 })
+        .success,
+    ).toBe(false);
+    expect(workflowInputRefSchema.safeParse({ seed: 1 }).success).toBe(false);
+    expect(
+      workflowInputRefSchema.safeParse({ $workflowInput: false }).success,
+    ).toBe(false);
+    expect(
+      workflowInputRefSchema.safeParse({ $workflowInput: "" }).success,
+    ).toBe(false);
   });
 });
 

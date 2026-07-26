@@ -1,14 +1,18 @@
 import type {
   ExecutionEvent,
   ExecutionEventHandler,
+  ExecutionEventType,
   ExecutionRepository,
+  LifecycleEventPhase,
   Logger,
 } from "@designflow/sdk";
 import { lifecycleEventSchema } from "@designflow/sdk";
 
 // ── Event Type to Lifecycle Phase Mapping ───────────────────────
 
-const EVENT_TO_PHASE: Record<string, string> = {
+const EVENT_TO_PHASE: Partial<
+  Record<ExecutionEventType, LifecycleEventPhase>
+> = {
   "execution.started": "created",
   "execution.planning": "planning",
   "execution.executing": "executing",

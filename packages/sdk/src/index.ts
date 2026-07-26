@@ -9,6 +9,7 @@ export {
   workflowMetadataSchema,
   capabilityNodeSchema,
   workflowNodeSchema,
+  workflowInputRefSchema,
   workflowStepNodeSchema,
   nodeExecutionOptionsSchema,
   isCapabilityNode,
@@ -32,6 +33,7 @@ export type {
   CapabilityNode,
   WorkflowNode,
   WorkflowStepNode,
+  WorkflowInputRef,
   NodeExecutionOptions,
   CheckpointRecord,
   ExecutionPhase,
@@ -106,6 +108,7 @@ export type {
 export {
   policyRuleSchema,
   policyRuleTypeSchema,
+  policyViolationTypeSchema,
   executionPolicySchema,
   policyViolationSchema,
   policyEvaluationResultSchema,
@@ -115,6 +118,7 @@ export {
 export type {
   PolicyRule,
   PolicyRuleType,
+  PolicyViolationType,
   ExecutionPolicy,
   PolicyViolation,
   PolicyEvaluationResult,
@@ -148,7 +152,15 @@ export {
   childExecutionRequestSchema,
   readExecutionLineage,
   withExecutionLineage,
+  readExecutionInput,
+  withExecutionInput,
+  pendingChildExecutionSchema,
+  compositionCheckpointSchema,
+  readCompositionCheckpoint,
+  withCompositionCheckpoint,
   EXECUTION_LINEAGE_METADATA_KEY,
+  EXECUTION_INPUT_METADATA_KEY,
+  COMPOSITION_CHECKPOINT_METADATA_KEY,
 } from "./workflow-composition";
 
 export type {
@@ -161,4 +173,6 @@ export type {
   ChildExecutionLineage,
   ChildExecutionRequest,
   ChildExecutionContract,
+  PendingChildExecution,
+  CompositionCheckpoint,
 } from "./workflow-composition";

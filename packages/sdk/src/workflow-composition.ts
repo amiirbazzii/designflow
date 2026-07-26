@@ -136,3 +136,94 @@ export function withExecutionLineage(
     [EXECUTION_LINEAGE_METADATA_KEY]: executionLineageSchema.parse(lineage),
   };
 }
+
+// ── Execution Input ──────────────────────────────────────────────
+
+/**
+ * Reserved key under which an execution's input is carried in metadata, so it
+ * survives persistence and is recoverable on resume.
+ */
+export const EXECUTION_INPUT_METADATA_KEY = "input";
+
+export function readExecutionInput(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): unknown {
+  return metadata?.[EXECUTION_INPUT_METADATA_KEY];
+}
+
+/**
+ * Returns a new metadata bag carrying `input`. An `undefined` input removes
+ * the key, so an inherited parent input is never mistaken for a child's own.
+ */
+export function withExecutionInput(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  input: unknown,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...metadata };
+
+  if (input === undefined) {
+    delete next[EXECUTION_INPUT_METADATA_KEY];
+  } else {
+    next[EXECUTION_INPUT_METADATA_KEY] = input;
+  }
+
+  return next;
+}
+
+// ── Composition Checkpoint ───────────────────────────────────────
+
+/** Reserved key under which composition resume state is checkpointed. */
+export const COMPOSITION_CHECKPOINT_METADATA_KEY = "composition";
+
+export const pendingChildExecutionSchema = z.object({
+  nodeId: z.string().min(1),
+  childExecutionId: z.string().min(1),
+  childWorkflowId: z.string().min(1),
+  childArtifacts: z.array(artifactRefSchema).default([]),
+});
+
+export type PendingChildExecution = z.infer<typeof pendingChildExecutionSchema>;
+
+/**
+ * Node-level state persisted when a parent execution blocks on a child
+ * approval, so resuming never re-runs already-completed nodes and never
+ * re-invokes the pending child.
+ */
+export const compositionCheckpointSchema = z.object({
+  completedNodeIds: z.array(z.string().min(1)).default([]),
+  completedArtifacts: z.array(artifactRefSchema).default([]),
+  /** Primary pending node — mirrors `pendingNodes[0]`. */
+  pendingNodeId: z.string().min(1),
+  childExecutionId: z.string().min(1),
+  childWorkflowId: z.string().min(1),
+  childArtifacts: z.array(artifactRefSchema).default([]),
+  /** Every node blocked on a child approval, including the primary one. */
+  pendingNodes: z.array(pendingChildExecutionSchema).min(1),
+});
+
+export type CompositionCheckpoint = z.infer<typeof compositionCheckpointSchema>;
+
+export function readCompositionCheckpoint(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): CompositionCheckpoint | null {
+  if (metadata === undefined) {
+    return null;
+  }
+
+  const parsed = compositionCheckpointSchema.safeParse(
+    metadata[COMPOSITION_CHECKPOINT_METADATA_KEY],
+  );
+
+  return parsed.success ? parsed.data : null;
+}
+
+export function withCompositionCheckpoint(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  checkpoint: CompositionCheckpoint,
+): Record<string, unknown> {
+  return {
+    ...metadata,
+    [COMPOSITION_CHECKPOINT_METADATA_KEY]:
+      compositionCheckpointSchema.parse(checkpoint),
+  };
+}
