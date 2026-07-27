@@ -86,13 +86,13 @@ const createHarness = (): Harness => {
   const repository = new InMemoryExecutionRepository();
   const registry = new CapabilityRegistry();
 
-  const engine = new ExecutionEngine(
+  const engine = new ExecutionEngine({
     registry,
-    createLogger(),
+    logger: createLogger(),
     artifactStore,
-    repository,
+    executionRepository: repository,
     eventPublisher,
-  );
+  });
 
   return { engine, registry, artifactStore, repository, events };
 };
@@ -252,13 +252,13 @@ describe("capability output registration", () => {
     registry.register(emitting("cap-parse", "figma-json", "figma.json"));
 
     const repository = new InMemoryExecutionRepository();
-    const engine = new ExecutionEngine(
+    const engine = new ExecutionEngine({
       registry,
-      createLogger(),
-      payloadOnly,
-      repository,
-      new InMemoryEventPublisher(),
-    );
+      logger: createLogger(),
+      artifactStore: payloadOnly,
+      executionRepository: repository,
+      eventPublisher: new InMemoryEventPublisher(),
+    });
 
     const definition = {
       id: "wf-payload-only",

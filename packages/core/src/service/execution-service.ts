@@ -267,16 +267,7 @@ export class ExecutionService
         }
       }
 
-      const engine = new ExecutionEngine(
-        this.capabilityRegistry,
-        this.logger,
-        this.artifactStore,
-        this.executionRepository,
-        this.eventPublisher,
-        this.workflowExecutionResolver,
-        this.reuseResolver,
-        this.incrementalPlanner,
-      );
+      const engine = this.createEngine();
 
       const abortController = new AbortController();
 
@@ -471,16 +462,7 @@ export class ExecutionService
 
       case "running":
       case "waiting_approval": {
-        const engine = new ExecutionEngine(
-          this.capabilityRegistry,
-          this.logger,
-          this.artifactStore,
-          this.executionRepository,
-          this.eventPublisher,
-          this.workflowExecutionResolver,
-          this.reuseResolver,
-          this.incrementalPlanner,
-        );
+        const engine = this.createEngine();
 
         await this.appendEvent(record.executionId, "executing");
 
@@ -579,6 +561,20 @@ export class ExecutionService
     };
 
     return this.policyEvaluator!.evaluate(this.policy!, context);
+  }
+
+  /** Builds an engine from this service's collaborators. */
+  private createEngine(): ExecutionEngine {
+    return new ExecutionEngine({
+      registry: this.capabilityRegistry,
+      logger: this.logger,
+      artifactStore: this.artifactStore,
+      executionRepository: this.executionRepository,
+      eventPublisher: this.eventPublisher,
+      workflowExecutionResolver: this.workflowExecutionResolver,
+      reuseResolver: this.reuseResolver,
+      incrementalPlanner: this.incrementalPlanner,
+    });
   }
 
   private findLatestRecord(

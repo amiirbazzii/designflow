@@ -94,6 +94,27 @@ function readPreviousExecutionId(
   return parsed.success ? parsed.data : undefined;
 }
 
+/**
+ * Everything an `ExecutionEngine` needs to run a workflow.
+ *
+ * The four optional collaborators are each inert when omitted, so an engine
+ * built from the five required fields behaves exactly as it did before any of
+ * them existed.
+ */
+export interface ExecutionEngineConfig {
+  readonly registry: CapabilityRegistry;
+  readonly logger: Logger;
+  readonly artifactStore: ArtifactStore;
+  readonly executionRepository: ExecutionRepository;
+  readonly eventPublisher: ExecutionEventPublisher;
+  /** Enables `kind: "workflow"` nodes. Without it, they fail to resolve. */
+  readonly workflowExecutionResolver?: WorkflowExecutionResolver | undefined;
+  /** Cache decision boundary. Without it, no capability is ever skipped. */
+  readonly reuseResolver?: CapabilityReuseResolver | undefined;
+  /** Incremental planner. Without it, every node runs. */
+  readonly incrementalPlanner?: IncrementalExecutionPlanner | undefined;
+}
+
 export class ExecutionEngine {
   private readonly registry: CapabilityRegistry;
   private readonly compiler: WorkflowCompiler;
@@ -107,36 +128,27 @@ export class ExecutionEngine {
   private readonly reuseResolver: CapabilityReuseResolver | undefined;
   private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
 
-  public constructor(
-    registry: CapabilityRegistry,
-    logger: Logger,
-    artifactStore: ArtifactStore,
-    executionRepository: ExecutionRepository,
-    eventPublisher: ExecutionEventPublisher,
-    workflowExecutionResolver?: WorkflowExecutionResolver,
-    reuseResolver?: CapabilityReuseResolver,
-    incrementalPlanner?: IncrementalExecutionPlanner,
-  ) {
-    this.registry = registry;
+  public constructor(config: ExecutionEngineConfig) {
+    this.registry = config.registry;
     this.compiler = new WorkflowCompiler(this.registry);
-    this.runner = new CapabilityRunner(eventPublisher);
-    this.logger = logger;
-    this.artifactStore = artifactStore;
+    this.runner = new CapabilityRunner(config.eventPublisher);
+    this.logger = config.logger;
+    this.artifactStore = config.artifactStore;
     // Registry-capable stores get artifact identity, versions and provenance
     // recorded automatically; payload-only stores are left untouched.
-    this.artifactRegistry = isArtifactRegistry(artifactStore)
-      ? artifactStore
+    this.artifactRegistry = isArtifactRegistry(config.artifactStore)
+      ? config.artifactStore
       : undefined;
-    this.executionRepository = executionRepository;
-    this.eventPublisher = eventPublisher;
-    this.compositionExecutor = workflowExecutionResolver !== undefined
+    this.executionRepository = config.executionRepository;
+    this.eventPublisher = config.eventPublisher;
+    this.compositionExecutor = config.workflowExecutionResolver !== undefined
       ? new WorkflowCompositionExecutor(
-          workflowExecutionResolver,
-          eventPublisher,
+          config.workflowExecutionResolver,
+          config.eventPublisher,
         )
       : undefined;
-    this.reuseResolver = reuseResolver;
-    this.incrementalPlanner = incrementalPlanner;
+    this.reuseResolver = config.reuseResolver;
+    this.incrementalPlanner = config.incrementalPlanner;
   }
 
   public getRegistry(): CapabilityRegistry {

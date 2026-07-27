@@ -67,15 +67,14 @@ const createHarness = (resolver?: CapabilityReuseResolver): Harness => {
   const repository = new InMemoryExecutionRepository();
   const registry = new CapabilityRegistry();
 
-  const engine = new ExecutionEngine(
+  const engine = new ExecutionEngine({
     registry,
-    createLogger(),
+    logger: createLogger(),
     artifactStore,
-    repository,
+    executionRepository: repository,
     eventPublisher,
-    undefined,
-    resolver,
-  );
+    reuseResolver: resolver,
+  });
 
   return { engine, registry, artifactStore, repository, events };
 };
@@ -371,15 +370,14 @@ describe("reuse integrity", () => {
     registry.register(counting("cap-lower", "ui-ir", calls));
 
     const repository = new InMemoryExecutionRepository();
-    const engine = new ExecutionEngine(
+    const engine = new ExecutionEngine({
       registry,
-      createLogger(),
-      payloadOnly,
-      repository,
-      new InMemoryEventPublisher(),
-      undefined,
-      resolver,
-    );
+      logger: createLogger(),
+      artifactStore: payloadOnly,
+      executionRepository: repository,
+      eventPublisher: new InMemoryEventPublisher(),
+      reuseResolver: resolver,
+    });
 
     const executionId = crypto.randomUUID();
     await startExecution(repository, executionId, twoStep.id);

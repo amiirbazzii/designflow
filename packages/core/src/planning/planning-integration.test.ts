@@ -101,16 +101,14 @@ const createHarness = (options?: { readonly withPlanner?: boolean }): Harness =>
         })
       : undefined;
 
-  const engine = new ExecutionEngine(
+  const engine = new ExecutionEngine({
     registry,
-    createLogger(),
-    new InMemoryArtifactStore({ eventPublisher }),
-    repository,
+    logger: createLogger(),
+    artifactStore: new InMemoryArtifactStore({ eventPublisher }),
+    executionRepository: repository,
     eventPublisher,
-    undefined,
-    undefined,
-    planner,
-  );
+    incrementalPlanner: planner,
+  });
 
   return { engine, repository, events, calls };
 };

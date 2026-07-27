@@ -50,13 +50,13 @@ const createEngine = (): {
   const artifactStore = createMockArtifactStore();
   const executionRepository = new InMemoryExecutionRepository();
   const eventPublisher = new InMemoryEventPublisher();
-  const engine = new ExecutionEngine(
+  const engine = new ExecutionEngine({
     registry,
     logger,
     artifactStore,
     executionRepository,
     eventPublisher,
-  );
+  });
   return { engine, repository: executionRepository, eventPublisher };
 };
 

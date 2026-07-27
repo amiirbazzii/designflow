@@ -16,6 +16,7 @@ export type { CompilationResult } from "./compiler";
 
 // ── Engine ─────────────────────────────────────────────────────────
 export { ExecutionEngine } from "./engine";
+export type { ExecutionEngineConfig } from "./engine";
 
 // ── Repository ─────────────────────────────────────────────────────
 export { InMemoryExecutionRepository } from "./repository";

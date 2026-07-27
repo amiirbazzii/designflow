@@ -179,14 +179,14 @@ describe("ExecutionEngine workflow composition", () => {
   const createEngine = (
     resolver?: WorkflowExecutionResolver,
   ): ExecutionEngine =>
-    new ExecutionEngine(
+    new ExecutionEngine({
       registry,
       logger,
       artifactStore,
-      repository,
+      executionRepository: repository,
       eventPublisher,
-      resolver,
-    );
+      workflowExecutionResolver: resolver,
+    });
 
   test("parent executes a child workflow successfully", async () => {
     const resolver = new StubWorkflowExecutionResolver(() => ({
