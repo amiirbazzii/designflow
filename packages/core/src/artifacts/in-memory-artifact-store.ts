@@ -15,6 +15,7 @@ import type {
   ArtifactProvenance,
   ArtifactRef,
   ArtifactRelation,
+  ArtifactRelationType,
   ArtifactVersion,
   ExecutionEventPublisher,
   ExecutionEventType,
@@ -42,6 +43,34 @@ export interface InMemoryArtifactStoreOptions {
    * carry no provenance and therefore publish nothing.
    */
   readonly eventPublisher?: ExecutionEventPublisher;
+}
+
+// ── Relation Semantics ──────────────────────────────────────────
+
+/**
+ * Relations that describe where an artifact came from. Together they form one
+ * lineage graph, so a cycle across any mix of them is still a cycle.
+ */
+const LINEAGE_RELATIONS: ReadonlySet<ArtifactRelationType> = new Set([
+  "derived_from",
+  "generated_from",
+  "validated_by",
+]);
+
+/**
+ * The relation types a proposed edge must be checked against for cycles.
+ *
+ * Lineage edges are checked against the whole lineage graph. `replaced_by`
+ * is checked only against itself: "new derived_from old" alongside "old
+ * replaced_by new" describes one supersession from both sides and must stay
+ * legal, whereas a chain of supersessions folding back on itself must not.
+ */
+function cycleScope(
+  relation: ArtifactRelationType,
+): ReadonlySet<ArtifactRelationType> {
+  return LINEAGE_RELATIONS.has(relation)
+    ? LINEAGE_RELATIONS
+    : new Set<ArtifactRelationType>([relation]);
 }
 
 // ── Hashing ─────────────────────────────────────────────────────
@@ -290,13 +319,13 @@ export class InMemoryArtifactStore implements RegistryArtifactStore {
 
     if (duplicate) return;
 
-    // Cycles are checked per relation type: "old replaced_by new" alongside
-    // "new derived_from old" is a legitimate pair, whereas two opposing edges
-    // of the same type are contradictory.
+    // Cycles are checked over the whole lineage sub-graph, not one relation
+    // type: `A derived_from B`, `B generated_from C`, `C derived_from A` is a
+    // cyclic lineage even though no single relation type closes the loop.
     const closingPath = this.findPath(
       edge.targetArtifactId,
       edge.sourceArtifactId,
-      edge.relation,
+      cycleScope(edge.relation),
     );
 
     if (closingPath !== null) {
@@ -354,7 +383,10 @@ export class InMemoryArtifactStore implements RegistryArtifactStore {
     createdAt: number,
     metadata: Record<string, unknown> | undefined,
   ): Promise<ArtifactVersion> {
-    const hash = await hashContent({ artifactId, version, metadata });
+    // Content-only: the version *number* is deliberately excluded so that two
+    // revisions carrying the same content hash identically, which is what lets
+    // a caller tell "changed" from "re-emitted unchanged".
+    const hash = await hashContent({ artifactId, metadata });
 
     const record: ArtifactVersion = artifactVersionSchema.parse({
       artifactId,
@@ -368,13 +400,13 @@ export class InMemoryArtifactStore implements RegistryArtifactStore {
   }
 
   /**
-   * Breadth-first walk over relations of one type, returning the chain from
-   * `from` to `to` (exclusive of `from`), or null when `to` is unreachable.
+   * Breadth-first walk over relations whose type is in `scope`, returning the
+   * chain from `from` to `to`, or null when `to` is unreachable.
    */
   private findPath(
     from: string,
     to: string,
-    relation: ArtifactRelation["relation"],
+    scope: ReadonlySet<ArtifactRelationType>,
   ): readonly string[] | null {
     const queue: Array<readonly string[]> = [[from]];
     const seen = new Set<string>([from]);
@@ -389,7 +421,7 @@ export class InMemoryArtifactStore implements RegistryArtifactStore {
       if (head === to) return path;
 
       for (const edge of this.relations) {
-        if (edge.relation !== relation) continue;
+        if (!scope.has(edge.relation)) continue;
         if (edge.sourceArtifactId !== head) continue;
         if (seen.has(edge.targetArtifactId)) continue;
 

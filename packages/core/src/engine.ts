@@ -44,7 +44,7 @@ import {
   WorkflowResolverNotConfiguredError,
 } from "./errors";
 import { CapabilityRunner } from "./runtime";
-import { isArtifactRegistry } from "./artifacts";
+import { contentEquals, isArtifactRegistry } from "./artifacts";
 import { WorkflowCompositionExecutor } from "./composition";
 import { resolveNodeInput } from "./input";
 import { DesignFlowError } from "@designflow/sdk";
@@ -713,8 +713,8 @@ export class ExecutionEngine {
 
   /**
    * Resolves a capability's `ArtifactRef` against the registry, registering it
-   * with provenance the first time it is seen, and linking it to the artifacts
-   * it was built from.
+   * with provenance the first time it is seen, versioning it when a later
+   * emission changes it, and linking it to the artifacts it was built from.
    *
    * Only identity, version and provenance are recorded — the payload stays
    * behind `ArtifactStore` and never enters a checkpoint.
@@ -728,19 +728,31 @@ export class ExecutionEngine {
     const registry = this.artifactRegistry;
     if (registry === undefined) return;
 
+    const metadata = artifact.metadata ?? {};
     const existing = await registry.getArtifact(artifact.id);
 
     if (existing === null) {
       await registry.createArtifact({
         id: artifact.id,
         type: artifact.type,
-        metadata: artifact.metadata ?? {},
+        metadata,
         provenance: {
           executionId: context.runId,
           workflowId: context.workflowId,
           capabilityId,
         },
       });
+    } else {
+      // A content-addressed id can only be re-emitted with identical content,
+      // so this branch versions exactly the artifacts that carry a *stable
+      // logical* id and changed between emissions. Comparing against the
+      // latest version keeps a re-run that produces the same output at the
+      // same version instead of inflating history.
+      const latest = await registry.getVersion(artifact.id, existing.version);
+
+      if (!contentEquals(latest?.metadata, metadata)) {
+        await registry.createVersion(artifact.id, metadata);
+      }
     }
 
     for (const parentId of parentArtifactIds) {

@@ -43,6 +43,30 @@ const emitting = (
   }),
 });
 
+/**
+ * A capability whose emitted artifact metadata is controlled by the test, so a
+ * second run can emit the same logical artifact with changed content.
+ */
+const mutating = (
+  id: string,
+  artifactId: string,
+  metadata: { current: Record<string, unknown> },
+): Capability<unknown, unknown> => ({
+  id,
+  name: id,
+  description: `Capability ${id}`,
+  type: "pure",
+  inputSchema: z.unknown(),
+  outputSchema: z.unknown(),
+  execute: async () => ({
+    artifactRef: {
+      id: artifactId,
+      type: "ui.ir",
+      metadata: metadata.current,
+    },
+  }),
+});
+
 interface Harness {
   readonly engine: ExecutionEngine;
   readonly registry: CapabilityRegistry;
@@ -254,6 +278,136 @@ describe("capability output registration", () => {
 
     expect(result.success).toBe(true);
     expect(result.artifacts).toHaveLength(1);
+  });
+});
+
+// ── Version creation from capability emissions ──────────────────
+
+describe("artifact versioning across executions", () => {
+  const singleNode = {
+    id: "wf-versioned",
+    name: "versioned",
+    description: "",
+    nodes: [{ id: "emit", capabilityId: "cap-emit", inputMap: {} }],
+    metadata: {},
+  };
+
+  const runOnce = async (
+    engine: ExecutionEngine,
+    repository: InMemoryExecutionRepository,
+  ): Promise<string> => {
+    const executionId = crypto.randomUUID();
+    await startExecution(repository, executionId, singleNode.id);
+    const result = await engine.run(
+      singleNode,
+      createContext(executionId, singleNode.id),
+    );
+    expect(result.success).toBe(true);
+    return executionId;
+  };
+
+  test("creates a new version when a later run changes the artifact", async () => {
+    const { engine, registry, artifactStore, repository } = createHarness();
+    const emitted = { current: { tokens: 12 } as Record<string, unknown> };
+    registry.register(mutating("cap-emit", "ui-ir", emitted));
+
+    await runOnce(engine, repository);
+    expect((await artifactStore.getArtifact("ui-ir"))?.version).toBe(1);
+
+    emitted.current = { tokens: 34 };
+    await runOnce(engine, repository);
+
+    expect((await artifactStore.getArtifact("ui-ir"))?.version).toBe(2);
+    expect((await artifactStore.getVersion("ui-ir", 1))?.metadata).toEqual({
+      tokens: 12,
+    });
+    expect((await artifactStore.getVersion("ui-ir", 2))?.metadata).toEqual({
+      tokens: 34,
+    });
+
+    emitted.current = { tokens: 56 };
+    await runOnce(engine, repository);
+    expect((await artifactStore.getArtifact("ui-ir"))?.version).toBe(3);
+  });
+
+  test("does not version an unchanged re-emission", async () => {
+    const { engine, registry, artifactStore, repository } = createHarness();
+    const emitted = { current: { tokens: 12 } as Record<string, unknown> };
+    registry.register(mutating("cap-emit", "ui-ir", emitted));
+
+    await runOnce(engine, repository);
+    await runOnce(engine, repository);
+    await runOnce(engine, repository);
+
+    expect((await artifactStore.getArtifact("ui-ir"))?.version).toBe(1);
+  });
+
+  test("treats reordered keys as unchanged content", async () => {
+    const { engine, registry, artifactStore, repository } = createHarness();
+    const emitted = { current: { a: 1, b: 2 } as Record<string, unknown> };
+    registry.register(mutating("cap-emit", "ui-ir", emitted));
+
+    await runOnce(engine, repository);
+    emitted.current = { b: 2, a: 1 };
+    await runOnce(engine, repository);
+
+    expect((await artifactStore.getArtifact("ui-ir"))?.version).toBe(1);
+  });
+
+  test("keeps the origin provenance while versioning", async () => {
+    const { engine, registry, artifactStore, repository } = createHarness();
+    const emitted = { current: { tokens: 12 } as Record<string, unknown> };
+    registry.register(mutating("cap-emit", "ui-ir", emitted));
+
+    const firstExecution = await runOnce(engine, repository);
+
+    emitted.current = { tokens: 34 };
+    await runOnce(engine, repository);
+
+    const artifact = await artifactStore.getArtifact("ui-ir");
+    expect(artifact?.version).toBe(2);
+    expect(artifact?.provenance?.executionId).toBe(firstExecution);
+    expect(artifact?.provenance?.capabilityId).toBe("cap-emit");
+
+    // Identity metadata is fixed at registration; revisions live on versions.
+    expect(artifact?.metadata).toEqual({ tokens: 12 });
+  });
+
+  test("emits artifact.version_created on the versioning execution", async () => {
+    const { engine, registry, repository, events } = createHarness();
+    const emitted = { current: { tokens: 12 } as Record<string, unknown> };
+    registry.register(mutating("cap-emit", "ui-ir", emitted));
+
+    await runOnce(engine, repository);
+    events.length = 0;
+
+    emitted.current = { tokens: 34 };
+    const secondExecution = await runOnce(engine, repository);
+
+    const versionEvents = events.filter(
+      (event) => event.type === "artifact.version_created",
+    );
+
+    expect(versionEvents).toHaveLength(1);
+    expect(versionEvents[0]?.payload).toEqual({
+      artifactId: "ui-ir",
+      version: 2,
+    });
+
+    // Provenance owns event attribution, so the event lands on the execution
+    // that first registered the artifact, not the one that versioned it.
+    expect(versionEvents[0]?.executionId).not.toBe(secondExecution);
+  });
+
+  test("content-addressed payloads yield a new artifact, not a new version", async () => {
+    const { artifactStore } = createHarness();
+
+    const first = await artifactStore.save({ tokens: 12 });
+    const second = await artifactStore.save({ tokens: 34 });
+
+    expect(second.id).not.toBe(first.id);
+    expect((await artifactStore.getArtifact(first.id))?.version).toBe(1);
+    expect((await artifactStore.getArtifact(second.id))?.version).toBe(1);
   });
 });
 

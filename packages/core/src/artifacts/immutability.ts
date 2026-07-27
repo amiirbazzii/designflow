@@ -37,6 +37,16 @@ export function clone<T>(value: T): T {
 }
 
 /**
+ * Structural equality over the canonical encoding, so key order never makes
+ * equal content look changed.
+ */
+export function contentEquals(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right))
+  );
+}
+
+/**
  * Rewrites a value with object keys in sorted order so that two structurally
  * equal values serialize identically.
  */

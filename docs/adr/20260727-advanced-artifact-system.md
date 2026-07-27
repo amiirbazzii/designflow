@@ -86,15 +86,21 @@ registration; per-revision metadata belongs on the version record.
 ### 3. Version hashes are content-derived and order-independent
 
 `ArtifactVersion.hash` is `SHA-256` over a canonical JSON encoding of
-`{ artifactId, version, metadata }`, with object keys sorted recursively
+`{ artifactId, metadata }`, with object keys sorted recursively
 (`canonicalize`). Two structurally equal metadata objects therefore hash
 identically regardless of key insertion order, and the same metadata under a
-different artifact or version number does not collide.
+different artifact does not collide.
+
+The version **number is deliberately excluded** from the hash. Including it
+would make every revision hash uniquely, which defeats the point: the hash
+exists so a caller can tell "this content changed" from "this was re-emitted
+unchanged". Two revisions carrying equal content therefore carry equal hashes,
+which is what content-addressing means.
 
 The algorithm stays internal to the implementation — the contract exposes
 `hash: string` only, per §4.4's "generic content-addressable identifiers".
 
-### 4. Cycles are rejected per relation type
+### 4. Cycles are rejected over the lineage graph
 
 `addRelation` rejects, in order:
 
@@ -104,22 +110,44 @@ The algorithm stays internal to the implementation — the contract exposes
 | source not registered | `ArtifactNotFoundError` | `ERR_ARTIFACT_NOT_FOUND` |
 | target not registered | `ArtifactNotFoundError` | `ERR_ARTIFACT_NOT_FOUND` |
 | identical edge already present | — (no-op, no event) | — |
-| target already reaches source **via the same relation type** | `ArtifactCycleError` | `ERR_ARTIFACT_CYCLE` |
+| target already reaches source **within the edge's cycle scope** | `ArtifactCycleError` | `ERR_ARTIFACT_CYCLE` |
 
-Cycle detection is scoped to a single relation type deliberately. Checking
-across all types would reject a legitimate and common pair:
+Lineage is a graph, so a cycle check scoped to one relation type at a time is
+not sufficient. This is cyclic lineage even though no single relation type
+closes the loop:
+
+```
+A  derived_from    B
+B  generated_from  C
+C  derived_from    A     <-- A already reaches C, so this closes a cycle
+```
+
+The relation types split into two **cycle scopes**:
+
+| Scope | Members | Rationale |
+|---|---|---|
+| lineage | `derived_from`, `generated_from`, `validated_by` | all answer "where did this come from"; together they are one graph |
+| supersession | `replaced_by` | answers "what took this one's place" |
+
+A proposed edge is checked against every relation type in its own scope. So a
+lineage edge is checked against the whole lineage graph, and a `replaced_by`
+edge is checked only against other `replaced_by` edges.
+
+Keeping `replaced_by` out of the lineage scope is what makes this pair legal:
 
 ```
 new  derived_from  old      // the new artifact came from the old one
 old  replaced_by   new      // and the old one was superseded by it
 ```
 
-Those are two views of one supersession, not a contradiction. Two opposing
-edges of the *same* type — `A derived_from B` and `B derived_from A` — are
-contradictory, and that is exactly what is rejected. Detection is transitive
-(`A → B → C → A` is caught) via a breadth-first search from the proposed target
-back to the proposed source; the resulting path is attached to the error as
-`cyclePath`.
+Those are two views of one supersession, not a contradiction, and neither
+insertion order may be rejected. A chain of supersessions folding back on
+itself (`v1 → v2 → v3 → v1`) is still rejected, because it is a cycle *within*
+the supersession scope.
+
+Detection is transitive in both scopes, via a breadth-first search from the
+proposed target back to the proposed source across the in-scope relation types;
+the resulting path is attached to the error as `cyclePath`.
 
 ### 5. Lineage is a graph query, not stored denormalised state
 
@@ -168,19 +196,41 @@ payload-only store leaves the engine's behaviour byte-for-byte as before.
 
 After a capability returns, for each produced `ArtifactRef`:
 
-1. `getArtifact(ref.id)` — if present, **resolve** (no new version);
-2. if absent, `createArtifact` with provenance
-   `{ executionId, workflowId, capabilityId }`;
-3. for each in-scope predecessor artifact that is itself registered, add
-   `derived_from` from the new artifact to it.
+1. `getArtifact(ref.id)`;
+2. if absent → `createArtifact` with provenance
+   `{ executionId, workflowId, capabilityId }` (version 1);
+3. if present → compare the ref's content against the **latest** version
+   record; if it changed, `createVersion(ref.id, ref.metadata)`, otherwise
+   resolve and do nothing;
+4. for each in-scope predecessor artifact that is itself registered, add
+   `derived_from` from the artifact to it.
 
-Re-emitting an existing artifact does **not** create a version. Content-addressed
-identity means identical id implies identical content, so a second sighting is
-the same artifact, and its provenance stays that of the execution that first
-produced it. Versioning is an explicit act (`createVersion`), never an
-inference. Self-relations and relations to unregistered predecessors are
-skipped rather than raised, so an execution seeded with external artifact
-references still runs.
+Step 3 is the deterministic rule that gives an artifact a version history:
+
+```
+same content ── same content-addressed id ──> no new version
+changed content, same stable logical id ────> new version
+changed content, content-addressed id ──────> new artifact (id changed)
+```
+
+Both halves fall out of one comparison. An id produced by
+`ArtifactStore.save` is a content hash, so it can only be re-emitted with
+identical content and step 3 always resolves. An id chosen by the capability
+(`"ui-ir"`, `"generated-code"`) is a *stable logical* id, so re-emitting it
+with different content is a genuine revision and produces version 2, 3, …
+A re-run that produces byte-identical output does not inflate history.
+
+Content comparison is structural over the canonical encoding (`contentEquals`),
+so reordered metadata keys do not read as a change. For Stage 22 the comparison
+is over `ArtifactRef.metadata`, which is what the reference carries; a future
+stage can put a payload digest on `ArtifactRef` and compare that instead
+without changing the rule or any call site.
+
+The artifact's `provenance` and identity `metadata` are fixed at registration —
+they describe where the artifact *originated*. Revisions live on version
+records. Self-relations and relations to unregistered predecessors are skipped
+rather than raised, so an execution seeded with external artifact references
+still runs.
 
 ### 7. Events
 
@@ -196,6 +246,12 @@ Three new `ExecutionEventType` members go through the existing
 `createArtifact` emits **both** `artifact.created` and
 `artifact.version_created` for version 1, so a subscriber materialising a
 version index never has to special-case an artifact's first version.
+
+Because provenance is fixed at registration, a `version_created` event raised
+by a *later* execution is still attributed to the execution that originally
+registered the artifact. The event's `payload.version` identifies the revision;
+correlating a revision to the execution that caused it requires the version
+record, not the event's `executionId`.
 
 Events are attributed to the execution named by the artifact's **provenance**.
 An artifact registered outside any execution has no provenance and therefore
@@ -273,8 +329,14 @@ behaviours the engine relies on are:
 
 - `createArtifact` rejects a duplicate id with `ERR_ARTIFACT_EXISTS`;
 - `getArtifact` returns `null` (never throws) for an unknown id;
+- `getVersion(id, artifact.version)` returns the latest version record — the
+  engine compares against it to decide whether to version;
+- `ArtifactVersion.hash` is derived from content **without** the version
+  number, so equal content yields equal hashes;
 - `addRelation` is idempotent for an identical edge;
-- `addRelation` rejects unregistered endpoints and same-type cycles.
+- `addRelation` rejects unregistered endpoints, and rejects cycles over the
+  lineage scope (`derived_from` / `generated_from` / `validated_by` as one
+  graph) and over the `replaced_by` scope separately.
 
 `packages/core/src/artifacts/in-memory-artifact-store.test.ts` is the contract
 suite to run a new backend against.

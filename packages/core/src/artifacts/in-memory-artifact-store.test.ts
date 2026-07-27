@@ -149,7 +149,26 @@ describe("createVersion", () => {
     expect(hashes.size).toBe(3);
   });
 
-  test("hashes identical content identically across artifacts", async () => {
+  test("hashes content only, independent of key order and version number", async () => {
+    const store = new InMemoryArtifactStore();
+    await store.createArtifact({ id: "a", type: "t", metadata: { x: 1, y: 2 } });
+
+    await store.createVersion("a", { p: 1, q: 2 });
+    await store.createVersion("a", { q: 2, p: 1 });
+
+    const v2 = await store.getVersion("a", 2);
+    const v3 = await store.getVersion("a", 3);
+
+    // Equal content hashes equally regardless of key order or which revision
+    // it landed on — this is what lets a caller tell "changed" from
+    // "re-emitted unchanged".
+    expect(v3?.hash).toBe(v2?.hash ?? "");
+
+    const v1 = await store.getVersion("a", 1);
+    expect(v1?.hash).not.toBe(v2?.hash);
+  });
+
+  test("does not collide across artifacts carrying the same content", async () => {
     const store = new InMemoryArtifactStore();
     await store.createArtifact({ id: "a", type: "t", metadata: { x: 1, y: 2 } });
     await store.createArtifact({ id: "b", type: "t", metadata: { y: 2, x: 1 } });
@@ -157,16 +176,8 @@ describe("createVersion", () => {
     const a = await store.getVersion("a", 1);
     const b = await store.getVersion("b", 1);
 
-    // Version identity is content-derived; key order must not affect it.
-    expect(a?.hash).not.toBe(b?.hash); // artifactId participates in the hash
+    expect(a?.hash).not.toBe(b?.hash);
     expect(a?.hash.length).toBe(b?.hash.length);
-
-    await store.createVersion("a", { p: 1, q: 2 });
-    await store.createVersion("a", { q: 2, p: 1 });
-
-    const v2 = await store.getVersion("a", 2);
-    const v3 = await store.getVersion("a", 3);
-    expect(v2?.hash).not.toBe(v3?.hash); // version number participates too
   });
 
   test("rejects versioning an unknown artifact", async () => {
@@ -409,6 +420,83 @@ describe("cycle detection", () => {
     );
   });
 
+  test("rejects a cycle that closes across mixed lineage relation types", async () => {
+    const store = new InMemoryArtifactStore();
+    await register(store, "A");
+    await register(store, "B");
+    await register(store, "C");
+
+    // No single relation type closes this loop, but the lineage graph is
+    // still cyclic: A -> B -> C -> A.
+    await store.addRelation({
+      sourceArtifactId: "A",
+      targetArtifactId: "B",
+      relation: "derived_from",
+    });
+    await store.addRelation({
+      sourceArtifactId: "B",
+      targetArtifactId: "C",
+      relation: "generated_from",
+    });
+
+    await expectCode(
+      store.addRelation({
+        sourceArtifactId: "C",
+        targetArtifactId: "A",
+        relation: "derived_from",
+      }),
+      "ERR_ARTIFACT_CYCLE",
+    );
+  });
+
+  test("rejects a lineage cycle closed by validated_by", async () => {
+    const store = new InMemoryArtifactStore();
+    await register(store, "A");
+    await register(store, "B");
+
+    await store.addRelation({
+      sourceArtifactId: "A",
+      targetArtifactId: "B",
+      relation: "generated_from",
+    });
+
+    await expectCode(
+      store.addRelation({
+        sourceArtifactId: "B",
+        targetArtifactId: "A",
+        relation: "validated_by",
+      }),
+      "ERR_ARTIFACT_CYCLE",
+    );
+  });
+
+  test("rejects a chain of supersessions folding back on itself", async () => {
+    const store = new InMemoryArtifactStore();
+    await register(store, "v1");
+    await register(store, "v2");
+    await register(store, "v3");
+
+    await store.addRelation({
+      sourceArtifactId: "v1",
+      targetArtifactId: "v2",
+      relation: "replaced_by",
+    });
+    await store.addRelation({
+      sourceArtifactId: "v2",
+      targetArtifactId: "v3",
+      relation: "replaced_by",
+    });
+
+    await expectCode(
+      store.addRelation({
+        sourceArtifactId: "v3",
+        targetArtifactId: "v1",
+        relation: "replaced_by",
+      }),
+      "ERR_ARTIFACT_CYCLE",
+    );
+  });
+
   test("rejects a self relation", async () => {
     const store = new InMemoryArtifactStore();
     await register(store, "A");
@@ -423,25 +511,42 @@ describe("cycle detection", () => {
     );
   });
 
-  test("allows opposing edges of different relation types", async () => {
-    const store = new InMemoryArtifactStore();
-    await register(store, "old");
-    await register(store, "new");
+  test("allows a supersession recorded from both sides, in either order", async () => {
+    // "new derived_from old" and "old replaced_by new" describe one
+    // supersession from both sides, so neither ordering may be rejected.
+    const lineageFirst = new InMemoryArtifactStore();
+    await register(lineageFirst, "old");
+    await register(lineageFirst, "new");
 
-    // "new derived_from old" and "old replaced_by new" describe the same
-    // supersession from both sides and must both be recordable.
-    await store.addRelation({
+    await lineageFirst.addRelation({
       sourceArtifactId: "new",
       targetArtifactId: "old",
       relation: "derived_from",
     });
-    await store.addRelation({
+    await lineageFirst.addRelation({
       sourceArtifactId: "old",
       targetArtifactId: "new",
       relation: "replaced_by",
     });
 
-    expect((await store.getLineage("new")).relations).toHaveLength(2);
+    expect((await lineageFirst.getLineage("new")).relations).toHaveLength(2);
+
+    const supersessionFirst = new InMemoryArtifactStore();
+    await register(supersessionFirst, "old");
+    await register(supersessionFirst, "new");
+
+    await supersessionFirst.addRelation({
+      sourceArtifactId: "old",
+      targetArtifactId: "new",
+      relation: "replaced_by",
+    });
+    await supersessionFirst.addRelation({
+      sourceArtifactId: "new",
+      targetArtifactId: "old",
+      relation: "derived_from",
+    });
+
+    expect((await supersessionFirst.getLineage("new")).relations).toHaveLength(2);
   });
 
   test("reports the offending path on the error", async () => {
