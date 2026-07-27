@@ -583,6 +583,10 @@ export class ExecutionEngine {
       reused: report.reused,
       removed: report.removed,
       unchanged: report.unchanged,
+      // The counts answer "how much changed"; the ids answer "what". A reader
+      // asking the second question has no other source — a removed artifact is
+      // by definition absent from the final set.
+      removedArtifactIds: result.removedArtifactIds,
     });
 
     return result.artifacts;

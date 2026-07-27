@@ -361,6 +361,7 @@ describe("execution.reconciled event", () => {
       reused: 1,
       removed: 0,
       unchanged: 0,
+      removedArtifactIds: [],
     });
   });
 
@@ -411,6 +412,7 @@ describe("execution.reconciled event", () => {
     );
 
     expect(reconciled[0]?.payload?.removed).toBe(1);
+    expect(reconciled[0]?.payload?.removedArtifactIds).toEqual(["legacy-css"]);
   });
 
   test("emits nothing when reconciliation fails", async () => {
