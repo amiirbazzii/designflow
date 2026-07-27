@@ -1,3 +1,4 @@
+// packages/product/src/progress.ts
 import { executionProgressSchema } from "./schemas";
 import type { ExecutionProgress, ProgressStep } from "./schemas";
 import type { ExecutionEvent } from "@designflow/sdk";

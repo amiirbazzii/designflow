@@ -1,3 +1,4 @@
+// packages/sdk/src/capability-manifest.test.ts
 import { describe, expect, test } from "bun:test";
 import { capabilityManifestSchema } from "./capability-manifest";
 

@@ -1,3 +1,4 @@
+// packages/sdk/src/state.ts
 import type { ArtifactRef, ArtifactLineage, CheckpointRecord } from "./schemas";
 import type { ArtifactRegistry } from "./artifact-system";
 

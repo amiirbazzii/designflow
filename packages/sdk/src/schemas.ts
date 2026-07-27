@@ -1,3 +1,4 @@
+// packages/sdk/src/schemas.ts
 import { z } from "zod";
 
 export const capabilityTypeSchema = z.enum([

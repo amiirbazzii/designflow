@@ -1,3 +1,4 @@
+// packages/core/src/artifacts/intelligence.test.ts
 import { describe, expect, test } from "bun:test";
 import type { ExecutionEvent } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";

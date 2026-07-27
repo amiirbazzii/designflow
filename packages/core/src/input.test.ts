@@ -1,3 +1,4 @@
+// packages/core/src/input.test.ts
 import { describe, expect, test } from "bun:test";
 import { resolveNodeInput } from "./input";
 

@@ -1,3 +1,4 @@
+// packages/sdk/src/errors.ts
 export class DesignFlowError extends Error {
   public readonly code: string;
   public readonly metadata: Record<string, unknown>;

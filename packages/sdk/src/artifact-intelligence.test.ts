@@ -1,3 +1,4 @@
+// packages/sdk/src/artifact-intelligence.test.ts
 import { describe, expect, test } from "bun:test";
 import {
   artifactDependencySchema,

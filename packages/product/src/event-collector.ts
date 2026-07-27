@@ -1,3 +1,4 @@
+// packages/product/src/event-collector.ts
 import type {
   ExecutionEvent,
   ExecutionEventHandler,

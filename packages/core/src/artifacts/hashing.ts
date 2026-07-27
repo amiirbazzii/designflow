@@ -1,3 +1,4 @@
+// packages/core/src/artifacts/hashing.ts
 import { DesignFlowError } from "@designflow/sdk";
 import { canonicalize } from "./immutability";
 

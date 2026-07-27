@@ -1,3 +1,4 @@
+// packages/core/src/planning/impact.ts
 import { nodeImpactSchema } from "@designflow/sdk";
 import type { NodeImpact, WorkflowGraph } from "@designflow/sdk";
 import { buildDependentIndex } from "./graph";

@@ -1,3 +1,4 @@
+// packages/product/src/service.ts
 import {
   artifactCountsSchema,
   executionOverviewSchema,

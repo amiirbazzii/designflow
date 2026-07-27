@@ -1,3 +1,4 @@
+// packages/capabilities/test-artifact/src/index.ts
 import type { CapabilityProvider, CapabilityPackage } from "@designflow/sdk";
 import { testArtifactManifest } from "./manifest";
 import { testArtifactCapability } from "./capability";

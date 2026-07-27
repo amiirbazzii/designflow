@@ -1,3 +1,4 @@
+// workflows/workflow-design-to-code/src/artifact-io.ts
 import { z } from "zod";
 import { DesignFlowError } from "@designflow/sdk";
 import type { ArtifactRef, CapabilityContext } from "@designflow/sdk";

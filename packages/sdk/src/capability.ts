@@ -1,3 +1,4 @@
+// packages/sdk/src/capability.ts
 import type { z } from "zod";
 import type { CapabilityType } from "./schemas";
 import type { CapabilityContext } from "./context";

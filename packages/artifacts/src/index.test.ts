@@ -1,3 +1,4 @@
+// packages/artifacts/src/index.test.ts
 import { describe, expect, test } from "bun:test";
 
 describe("@designflow/artifacts foundation", () => {

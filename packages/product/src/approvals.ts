@@ -1,3 +1,4 @@
+// packages/product/src/approvals.ts
 import { approvalOutcomeSchema, pendingApprovalSchema } from "./schemas";
 import type { ApprovalOutcome, ExecutionState, PendingApproval } from "./schemas";
 import type { ExecutionEventSource } from "./event-collector";

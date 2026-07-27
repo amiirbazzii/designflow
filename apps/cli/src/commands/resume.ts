@@ -1,3 +1,4 @@
+// apps/cli/src/commands/resume.ts
 import { Command } from "commander";
 import { intro, outro, spinner } from "@clack/prompts";
 import type { CliContext, ResumeResult } from "../types";

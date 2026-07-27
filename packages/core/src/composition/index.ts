@@ -1,3 +1,4 @@
+// packages/core/src/composition/index.ts
 export { WorkflowCompositionExecutor } from "./workflow-composition-executor";
 export type {
   WorkflowCompositionRequest,

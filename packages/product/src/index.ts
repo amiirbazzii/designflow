@@ -1,3 +1,4 @@
+// packages/product/src/index.ts
 export const PRODUCT_VERSION = "0.1.0";
 
 // ── Read Model ──────────────────────────────────────────────────

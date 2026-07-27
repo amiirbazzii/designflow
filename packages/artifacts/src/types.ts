@@ -1,3 +1,4 @@
+// packages/artifacts/src/types.ts
 import type { ArtifactLineage } from "@designflow/sdk";
 
 export const ARTIFACTS_DIR = ".designflow/artifacts";

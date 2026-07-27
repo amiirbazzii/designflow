@@ -1,3 +1,4 @@
+// packages/core/src/lifecycle.ts
 import type { ArtifactRef, ExecutionContext } from "@designflow/sdk";
 import type { CompiledWorkflow, PendingChildApproval } from "./types";
 

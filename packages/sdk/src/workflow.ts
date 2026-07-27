@@ -1,3 +1,4 @@
+// packages/sdk/src/workflow.ts
 import { z } from "zod";
 import type { Capability, CapabilityPackage } from "./capability";
 import { workflowDefinitionSchema } from "./schemas";

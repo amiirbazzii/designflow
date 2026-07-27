@@ -1,3 +1,4 @@
+// packages/core/src/artifacts/relations.ts
 import type { ArtifactRelationType } from "@designflow/sdk";
 
 /**

@@ -1,3 +1,4 @@
+// packages/state/src/index.ts
 export const STATE_VERSION = "0.1.0";
 
 export { LocalStateStore } from "./local";

@@ -1,3 +1,4 @@
+// packages/capabilities/test-artifact/src/capability.ts
 import { z } from "zod";
 import type { Capability, CapabilityContext } from "@designflow/sdk";
 

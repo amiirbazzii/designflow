@@ -1,3 +1,4 @@
+// apps/cli/src/types.ts
 import type {
   ExecutionContract,
   ExecutionRepository,

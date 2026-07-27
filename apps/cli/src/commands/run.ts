@@ -1,3 +1,4 @@
+// apps/cli/src/commands/run.ts
 import { Command } from "commander";
 import { intro, outro, spinner } from "@clack/prompts";
 import type { CliContext, RunResult } from "../types";

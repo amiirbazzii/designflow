@@ -1,3 +1,4 @@
+// apps/cli/src/workflows/registry.ts
 import { workflowPackageSchema, DesignFlowError } from "@designflow/sdk";
 import type { WorkflowPackage } from "@designflow/sdk";
 

@@ -1,3 +1,4 @@
+// packages/core/src/registry.test.ts
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { CapabilityRegistry, CapabilityRegistryError } from "./registry";

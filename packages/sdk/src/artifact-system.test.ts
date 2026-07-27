@@ -1,3 +1,4 @@
+// packages/sdk/src/artifact-system.test.ts
 import { describe, expect, test } from "bun:test";
 import {
   artifactInputSchema,

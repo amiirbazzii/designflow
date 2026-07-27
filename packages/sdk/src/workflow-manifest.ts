@@ -1,3 +1,4 @@
+// packages/sdk/src/workflow-manifest.ts
 import { z } from "zod";
 
 const SEMVER_REGEX = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;

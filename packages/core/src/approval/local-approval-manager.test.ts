@@ -1,3 +1,4 @@
+// packages/core/src/approval/local-approval-manager.test.ts
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { LocalApprovalManager } from "./local-approval-manager";
 import { ApprovalStateTransitionError, ApprovalNotFoundError } from "./in-memory-approval-manager";

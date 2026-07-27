@@ -1,3 +1,4 @@
+// packages/core/src/reconciliation/comparison.ts
 import type { ArtifactRef, ArtifactRegistry } from "@designflow/sdk";
 import { contentEquals } from "../artifacts";
 

@@ -1,3 +1,4 @@
+// packages/product/src/service.test.ts
 import { describe, expect, test } from "bun:test";
 import type {
   Artifact,

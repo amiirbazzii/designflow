@@ -1,3 +1,4 @@
+// packages/sdk/src/artifact-materialization.ts
 import { z } from "zod";
 import { artifactRefSchema } from "./schemas";
 

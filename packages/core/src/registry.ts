@@ -1,3 +1,4 @@
+// packages/core/src/registry.ts
 import {
   capabilityPackageSchema,
   DesignFlowError,

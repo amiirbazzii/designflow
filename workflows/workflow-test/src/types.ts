@@ -1,3 +1,4 @@
+// workflows/workflow-test/src/types.ts
 import { z } from "zod";
 
 export const testArtifactInputSchema = z.object({

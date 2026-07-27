@@ -1,3 +1,4 @@
+// workflows/workflow-design-to-code/src/capabilities/index.ts
 import { z } from "zod";
 import type { Capability, CapabilityContext } from "@designflow/sdk";
 import {

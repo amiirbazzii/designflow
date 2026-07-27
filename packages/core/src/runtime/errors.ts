@@ -1,3 +1,4 @@
+// packages/core/src/runtime/errors.ts
 import { DesignFlowError } from "@designflow/sdk";
 
 export class CapabilityExecutionError extends DesignFlowError {

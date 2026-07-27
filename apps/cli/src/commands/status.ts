@@ -1,3 +1,4 @@
+// apps/cli/src/commands/status.ts
 import { Command } from "commander";
 import { intro, outro, log } from "@clack/prompts";
 import { executionCheckpointSchema } from "@designflow/sdk";

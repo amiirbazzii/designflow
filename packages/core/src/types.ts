@@ -1,3 +1,4 @@
+// packages/core/src/types.ts
 import type {
   Capability,
   CapabilityNode,

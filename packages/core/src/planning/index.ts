@@ -1,3 +1,4 @@
+// packages/core/src/planning/index.ts
 export { IncrementalExecutionPlannerService } from "./planner";
 export type {
   IncrementalExecutionPlannerOptions,

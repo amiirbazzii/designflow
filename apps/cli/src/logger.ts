@@ -1,3 +1,4 @@
+// apps/cli/src/logger.ts
 import type { Logger } from "@designflow/sdk";
 
 export class CliLogger implements Logger {

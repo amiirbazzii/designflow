@@ -1,3 +1,4 @@
+// packages/state/src/types.ts
 export const STATE_DIR = ".designflow/state";
 
 export interface StoredCheckpoint {

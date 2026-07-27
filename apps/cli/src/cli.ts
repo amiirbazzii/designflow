@@ -1,3 +1,4 @@
+// apps/cli/src/cli.ts
 import { Command } from "commander";
 import { registerRunCommand } from "./commands/run";
 import { registerStatusCommand } from "./commands/status";

@@ -1,3 +1,4 @@
+// packages/sdk/src/capability-manifest.ts
 import { z } from "zod";
 import { capabilityTypeSchema, semanticVersionSchema } from "./schemas";
 import type { CapabilityPackage, Capability } from "./capability";

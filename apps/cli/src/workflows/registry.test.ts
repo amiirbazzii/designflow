@@ -1,3 +1,4 @@
+// apps/cli/src/workflows/registry.test.ts
 import { describe, expect, test } from "bun:test";
 import { WorkflowRegistry } from "./registry";
 import type { WorkflowPackage } from "@designflow/sdk";

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// apps/cli/src/index.ts
 
 import { createCli } from "./cli";
 

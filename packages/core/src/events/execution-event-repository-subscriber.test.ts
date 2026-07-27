@@ -1,3 +1,4 @@
+// packages/core/src/events/execution-event-repository-subscriber.test.ts
 import { describe, expect, test, beforeEach } from "bun:test";
 import { ExecutionEventRepositorySubscriber } from "./execution-event-repository-subscriber";
 import { InMemoryExecutionRepository } from "../repository";

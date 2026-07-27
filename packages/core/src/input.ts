@@ -1,3 +1,4 @@
+// packages/core/src/input.ts
 import { z } from "zod";
 import { workflowInputRefSchema } from "@designflow/sdk";
 

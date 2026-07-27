@@ -1,3 +1,4 @@
+// workflows/workflow-test/src/capability.ts
 import { z } from "zod";
 import type { Capability, CapabilityContext } from "@designflow/sdk";
 import { testArtifactInputSchema, testArtifactOutputSchema } from "./types";

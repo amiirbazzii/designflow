@@ -1,3 +1,4 @@
+// packages/sdk/src/execution-events.ts
 import { z } from "zod";
 
 // ── Event Types ────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+// apps/cli/src/context.ts
 import { ExecutionService, CapabilityRegistry, ExecutionEventRepositorySubscriber } from "@designflow/core";
 import type { WorkflowResolver } from "@designflow/core";
 import { LocalExecutionRepository } from "@designflow/state";

@@ -1,3 +1,4 @@
+// packages/core/src/artifacts/registry-support.ts
 import type { ArtifactRegistry, ArtifactStore } from "@designflow/sdk";
 
 /**

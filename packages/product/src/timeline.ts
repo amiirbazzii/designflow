@@ -1,3 +1,4 @@
+// packages/product/src/timeline.ts
 import { executionTimelineSchema, timelineEntrySchema } from "./schemas";
 import type { ExecutionTimeline, NarrationEntry, TimelineEntry } from "./schemas";
 

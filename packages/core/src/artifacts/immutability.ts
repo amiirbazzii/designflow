@@ -1,3 +1,4 @@
+// packages/core/src/artifacts/immutability.ts
 /**
  * Structural helpers shared by the artifact registry.
  *

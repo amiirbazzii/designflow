@@ -1,3 +1,4 @@
+// packages/sdk/src/workflow-manifest.test.ts
 import { describe, expect, test } from "bun:test";
 import { workflowManifestSchema, semanticVersionSchema } from "./workflow-manifest";
 

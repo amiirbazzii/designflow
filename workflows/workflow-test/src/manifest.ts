@@ -1,3 +1,4 @@
+// workflows/workflow-test/src/manifest.ts
 import type { WorkflowPackage } from "@designflow/sdk";
 import { testWorkflow } from "./workflow";
 import { provider as testArtifactProvider } from "@designflow/capability-test-artifact";

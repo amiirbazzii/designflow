@@ -1,3 +1,4 @@
+// packages/sdk/src/context.ts
 import type { ArtifactRef } from "./schemas";
 import type { ArtifactStore } from "./state";
 

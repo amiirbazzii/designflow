@@ -1,3 +1,4 @@
+// packages/capabilities/test-artifact/src/manifest.ts
 import type { CapabilityManifest } from "@designflow/sdk";
 
 export const testArtifactManifest: CapabilityManifest = {

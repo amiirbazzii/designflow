@@ -1,3 +1,4 @@
+// workflows/workflow-design-to-code/src/index.ts
 export { designToCodeWorkflowPackage } from "./manifest";
 export { designToCodeWorkflow, designToCodeApprovalPolicy } from "./workflow";
 

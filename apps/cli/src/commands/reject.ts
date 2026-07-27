@@ -1,3 +1,4 @@
+// apps/cli/src/commands/reject.ts
 import { Command } from "commander";
 import { intro, outro, spinner } from "@clack/prompts";
 import { LocalApprovalManager } from "@designflow/core";

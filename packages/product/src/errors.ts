@@ -1,3 +1,4 @@
+// packages/product/src/errors.ts
 import { DesignFlowError } from "@designflow/sdk";
 
 export class ExecutionNotFoundError extends DesignFlowError {

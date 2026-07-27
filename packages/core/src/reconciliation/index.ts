@@ -1,3 +1,4 @@
+// packages/core/src/reconciliation/index.ts
 export { ArtifactSetReconciler } from "./reconciler";
 export type { ArtifactSetReconcilerOptions } from "./reconciler";
 export {

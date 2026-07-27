@@ -1,3 +1,4 @@
+// packages/core/src/artifacts/artifact-integration.test.ts
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type {

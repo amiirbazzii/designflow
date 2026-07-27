@@ -1,3 +1,4 @@
+// packages/sdk/src/artifact-system.ts
 import { z } from "zod";
 
 // ── Provenance ───────────────────────────────────────────────────

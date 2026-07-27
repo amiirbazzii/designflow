@@ -1,3 +1,4 @@
+// packages/sdk/src/artifact-intelligence.ts
 import { z } from "zod";
 import type { ArtifactRegistry } from "./artifact-system";
 import { artifactRefSchema } from "./schemas";

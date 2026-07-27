@@ -1,3 +1,4 @@
+// packages/product/src/narration.ts
 import { narrationEntrySchema } from "./schemas";
 import type { NarrationEntry, NarrationKind } from "./schemas";
 import type { ExecutionEvent } from "@designflow/sdk";
