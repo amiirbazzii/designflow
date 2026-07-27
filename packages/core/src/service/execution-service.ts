@@ -30,6 +30,7 @@ import type {
   CapabilityReuseResolver,
   IncrementalExecutionPlanner,
   ArtifactMaterializer,
+  ExecutionReconciler,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -94,6 +95,11 @@ export interface ExecutionServiceConfig {
    * Omitted by default; the engine then applies its own existence check.
    */
   readonly artifactMaterializer?: ArtifactMaterializer;
+  /**
+   * Merges an incremental run's artifact sets. Applied only when an
+   * incremental planner is also configured.
+   */
+  readonly executionReconciler?: ExecutionReconciler;
 }
 
 interface StartExecutionParams {
@@ -120,6 +126,7 @@ export class ExecutionService
   private readonly reuseResolver: CapabilityReuseResolver | undefined;
   private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
   private readonly artifactMaterializer: ArtifactMaterializer | undefined;
+  private readonly executionReconciler: ExecutionReconciler | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -139,6 +146,7 @@ export class ExecutionService
     this.reuseResolver = config.reuseResolver;
     this.incrementalPlanner = config.incrementalPlanner;
     this.artifactMaterializer = config.artifactMaterializer;
+    this.executionReconciler = config.executionReconciler;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -583,6 +591,7 @@ export class ExecutionService
       reuseResolver: this.reuseResolver,
       incrementalPlanner: this.incrementalPlanner,
       artifactMaterializer: this.artifactMaterializer,
+      executionReconciler: this.executionReconciler,
     });
   }
 

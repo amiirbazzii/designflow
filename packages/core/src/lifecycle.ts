@@ -17,6 +17,10 @@ export interface PlanResult {
 export interface ExecuteResult {
   readonly executedSteps: readonly string[];
   readonly candidateArtifacts: readonly ArtifactRef[];
+  /** Candidates adopted from a previous run rather than computed. */
+  readonly reusedArtifacts: readonly ArtifactRef[];
+  /** Candidates emitted by a node that actually ran. */
+  readonly producedArtifacts: readonly ArtifactRef[];
   readonly failedSteps: readonly string[];
   readonly failedErrors: Readonly<Record<string, unknown>>;
   /** Nodes whose child execution is awaiting an approval decision. */

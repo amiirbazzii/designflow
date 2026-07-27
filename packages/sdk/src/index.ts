@@ -85,6 +85,20 @@ export type {
   ArtifactRegistry,
 } from "./artifact-system";
 
+// ── Execution Reconciliation ────────────────────────────────────
+export {
+  artifactReconciliationInputSchema,
+  artifactReconciliationResultSchema,
+  reconciliationReportSchema,
+} from "./execution-reconciliation";
+
+export type {
+  ArtifactReconciliationInput,
+  ArtifactReconciliationResult,
+  ReconciliationReport,
+  ExecutionReconciler,
+} from "./execution-reconciliation";
+
 // ── Artifact Materialization ────────────────────────────────────
 export {
   artifactMaterializationRequestSchema,

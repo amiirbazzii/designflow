@@ -35,6 +35,15 @@ export type {
   ArtifactIntelligenceServiceOptions,
 } from "./artifacts";
 
+// ── Reconciliation ─────────────────────────────────────────────────
+export { ArtifactSetReconciler } from "./reconciliation";
+export type {
+  ArtifactSetReconcilerOptions,
+  ReconciliationConflict,
+  ReconciliationConflictKind,
+  VersionedArtifact,
+} from "./reconciliation";
+
 // ── Materialization ────────────────────────────────────────────────
 export { RegistryArtifactMaterializer } from "./materialization";
 export type {
@@ -117,6 +126,7 @@ export {
   WorkflowResolverNotConfiguredError,
   ExecutionPlanningError,
   ArtifactMaterializationError,
+  ArtifactReconciliationError,
   ArtifactNotFoundError,
   ArtifactVersionNotFoundError,
   ArtifactConflictError,

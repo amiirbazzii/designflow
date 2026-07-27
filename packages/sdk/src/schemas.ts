@@ -23,6 +23,17 @@ export const artifactRefSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * The artifact version this reference names.
+   *
+   * Reconciliation identity is `id + version`, and a reference recorded by a
+   * past run must be able to say which revision it meant — resolving it against
+   * the registry later would yield whatever is current, not what it named.
+   *
+   * Optional rather than defaulted, so adding it does not make it a required
+   * property of every existing typed reference.
+   */
+  version: z.number().int().positive().optional(),
   lineage: artifactLineageSchema.optional(),
 });
 

@@ -126,6 +126,17 @@ export class ArtifactNotFoundError extends DesignFlowError {
   }
 }
 
+export class ArtifactReconciliationError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_ARTIFACT_RECONCILIATION_FAILED", message, metadata);
+    this.name = "ArtifactReconciliationError";
+    Object.setPrototypeOf(this, ArtifactReconciliationError.prototype);
+  }
+}
+
 export class ArtifactMaterializationError extends DesignFlowError {
   public constructor(
     message: string,

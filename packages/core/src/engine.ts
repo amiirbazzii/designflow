@@ -29,6 +29,7 @@ import type {
   ExecutionEventPublisher,
   ExecutionEvent,
   CompositionCheckpoint,
+  ExecutionReconciler,
   IncrementalExecutionPlanner,
   PendingChildExecution,
   WorkflowExecutionResolver,
@@ -61,6 +62,11 @@ interface LayerNodeResult {
   readonly artifacts: readonly ArtifactRef[];
   readonly executed: boolean;
   readonly pending: PendingChildApproval | undefined;
+  /**
+   * True when the artifacts were adopted rather than computed. Reconciliation
+   * needs the two apart; every other consumer treats them the same.
+   */
+  readonly reused?: boolean;
 }
 
 const capabilityOutputSchema = z.object({
@@ -121,6 +127,11 @@ export interface ExecutionEngineConfig {
    * the engine falls back to its own existence check.
    */
   readonly artifactMaterializer?: ArtifactMaterializer | undefined;
+  /**
+   * Merges an incremental run's artifact sets into its final one. Consulted
+   * only alongside `incrementalPlanner`; a full execution is never reconciled.
+   */
+  readonly executionReconciler?: ExecutionReconciler | undefined;
 }
 
 export class ExecutionEngine {
@@ -136,6 +147,7 @@ export class ExecutionEngine {
   private readonly reuseResolver: CapabilityReuseResolver | undefined;
   private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
   private readonly artifactMaterializer: ArtifactMaterializer | undefined;
+  private readonly executionReconciler: ExecutionReconciler | undefined;
 
   public constructor(config: ExecutionEngineConfig) {
     this.registry = config.registry;
@@ -159,6 +171,7 @@ export class ExecutionEngine {
     this.reuseResolver = config.reuseResolver;
     this.incrementalPlanner = config.incrementalPlanner;
     this.artifactMaterializer = config.artifactMaterializer;
+    this.executionReconciler = config.executionReconciler;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -323,7 +336,15 @@ export class ExecutionEngine {
         workflowId: definition.id,
       });
 
-      const applyResult = this.apply(compiled, execution.candidateArtifacts);
+      // Reconciliation settles what the run's artifact set actually is before
+      // anything is committed, so `apply` and the checkpoint agree with it.
+      const finalArtifacts = await this.reconcileArtifacts(
+        executionId,
+        context,
+        execution,
+      );
+
+      const applyResult = this.apply(compiled, finalArtifacts);
 
       await this.recordCheckpoint(definition.id, executionId, "completed", {
         appliedArtifacts: applyResult.appliedArtifacts,
@@ -523,6 +544,65 @@ export class ExecutionEngine {
   }
 
   /**
+   * Merges the run's reused and produced artifacts into its final set.
+   *
+   * Only incremental runs are reconciled. A full execution has nothing to
+   * reconcile *against* — every artifact was produced by this run, there is no
+   * previous set, and the merge would be an identity function over
+   * `candidateArtifacts`. Running it anyway would put a failure mode into the
+   * hot path of every ordinary execution for no information gained.
+   *
+   * Returns the candidate set unchanged whenever reconciliation does not
+   * apply, so an unplanned run reaches `apply` exactly as it did before.
+   */
+  private async reconcileArtifacts(
+    executionId: string,
+    context: ExecutionContext,
+    execution: ExecuteResult,
+  ): Promise<readonly ArtifactRef[]> {
+    const reconciler = this.executionReconciler;
+
+    if (reconciler === undefined || this.incrementalPlanner === undefined) {
+      return execution.candidateArtifacts;
+    }
+
+    const previousArtifacts = await this.readPreviousArtifacts(context);
+
+    const result = await reconciler.reconcile({
+      executionId,
+      previousArtifacts: [...previousArtifacts],
+      reusedArtifacts: [...execution.reusedArtifacts],
+      producedArtifacts: [...execution.producedArtifacts],
+    });
+
+    const report = await reconciler.createReport(previousArtifacts, result);
+
+    await this.publishEvent(executionId, "execution.reconciled", {
+      executionId,
+      added: report.added,
+      reused: report.reused,
+      removed: report.removed,
+      unchanged: report.unchanged,
+    });
+
+    return result.artifacts;
+  }
+
+  /** The previous run's applied artifacts, when this run names one. */
+  private async readPreviousArtifacts(
+    context: ExecutionContext,
+  ): Promise<readonly ArtifactRef[]> {
+    const previousExecutionId = readPreviousExecutionId(context.metadata);
+    if (previousExecutionId === undefined) return [];
+
+    const checkpoint = await this.executionRepository.getLatestCheckpoint(
+      previousExecutionId,
+    );
+
+    return readAppliedArtifacts(checkpoint?.metadata);
+  }
+
+  /**
    * Asks the incremental planner which nodes this run may leave out.
    *
    * Returns an empty set when no planner is configured, which is what keeps
@@ -579,6 +659,8 @@ export class ExecutionEngine {
 
     const executedSteps: string[] = [...alreadyCompleted];
     const candidateArtifacts: ArtifactRef[] = [...restoredArtifacts];
+    const reusedArtifacts: ArtifactRef[] = [];
+    const producedArtifacts: ArtifactRef[] = [...restoredArtifacts];
     const failedSteps = new Set<string>();
     const failedErrors = new Map<string, unknown>();
     const pendingSteps = new Set<string>();
@@ -655,6 +737,7 @@ export class ExecutionEngine {
             for (const artifact of adopted.artifacts) {
               candidateArtifacts.push(artifact);
               allParentArtifacts.push(artifact);
+              reusedArtifacts.push(artifact);
             }
 
             continue;
@@ -765,6 +848,12 @@ export class ExecutionEngine {
         for (const artifact of result.artifacts) {
           candidateArtifacts.push(artifact);
           allParentArtifacts.push(artifact);
+
+          if (result.reused === true) {
+            reusedArtifacts.push(artifact);
+          } else {
+            producedArtifacts.push(artifact);
+          }
         }
       }
     }
@@ -772,6 +861,8 @@ export class ExecutionEngine {
     return {
       executedSteps,
       candidateArtifacts,
+      reusedArtifacts,
+      producedArtifacts,
       failedSteps: Array.from(failedSteps),
       failedErrors: Object.fromEntries(failedErrors),
       pendingApprovals,
@@ -971,6 +1062,7 @@ export class ExecutionEngine {
       artifacts,
       executed: true,
       pending: undefined,
+      reused: true,
     };
   }
 
