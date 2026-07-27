@@ -774,11 +774,40 @@ export class ExecutionEngine {
 
     if (!decision.reuse) return null;
 
+    // The resolver owns the caching policy; the engine owns integrity. An
+    // adopted artifact is never registered, so accepting one that does not
+    // exist would put a dangling reference into the DAG and into every
+    // downstream node's lineage. Validate the whole set before emitting any
+    // event, so a rejected decision leaves no trace.
+    const versions = new Map<string, number | undefined>();
+
     for (const artifact of decision.artifacts) {
+      if (this.artifactRegistry === undefined) continue;
+
+      const registered = await this.artifactRegistry.getArtifact(artifact.id);
+
+      if (registered === null) {
+        throw new ExecutionError("Reuse returned unknown artifact", {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          nodeId,
+          capabilityId,
+          artifactId: artifact.id,
+          ...(decision.reason !== undefined
+            ? { reason: decision.reason }
+            : {}),
+        });
+      }
+
+      versions.set(artifact.id, registered.version);
+    }
+
+    for (const artifact of decision.artifacts) {
+      const version = versions.get(artifact.id);
+
       await this.publishEvent(context.runId, "artifact.reused", {
         artifactId: artifact.id,
-        version: (await this.artifactRegistry?.getArtifact(artifact.id))
-          ?.version,
+        ...(version !== undefined ? { version } : {}),
         executionId: context.runId,
         nodeId,
         capabilityId,

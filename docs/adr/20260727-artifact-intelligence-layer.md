@@ -62,11 +62,19 @@ Reading edges source-first (`A derived_from B` points A at its origin B):
 | `dependencies` | source → target, breadth-first, nearest first |
 | `dependents` | target → source, breadth-first, nearest first |
 
-`getDependencies` and `getDependents` both return the complete
-`ArtifactDependency` record — `{ artifactId, dependencies, dependents }` — as
-the schema specifies. They are two names for one query, differing only in
-caller intent; returning a half-populated record from each would mean reporting
-`dependents: []` for an artifact that has them, which is worse than redundancy.
+The two query methods are **directional**. `getDependencies` populates
+`dependencies` and leaves `dependents` empty; `getDependents` does the reverse.
+Both return the full `ArtifactDependency` shape the schema specifies, but each
+answers only the question it was asked.
+
+Having both return the same fully-populated record was rejected: it makes the
+two methods indistinguishable at runtime, so a caller that reached for the
+wrong one would still get a plausible answer and never learn it had asked the
+wrong question. The combined view is still available — `analyzeImpact` builds
+it internally, and a caller wanting both directions makes both calls.
+
+An empty array therefore means "nothing in this direction *as asked*", not
+"nothing exists". Callers wanting the full picture must call both.
 
 ### 3. Impact is scoped to what is downstream
 
@@ -161,10 +169,27 @@ capability, `ExecutionEngine` builds a `CapabilityReuseRequest`:
 - `dependencies` are the artifacts the node would consume, each at its current
   registered version — exactly the input `findReusableArtifacts` expects.
 
-If the resolver answers `reuse: true`, the engine emits `artifact.reused` per
-adopted artifact and returns the node as **executed** with those artifacts.
-Only the capability body is skipped; the node still completes and still feeds
-downstream nodes.
+If the resolver answers `reuse: true`, the engine validates the decision (see
+below), emits `artifact.reused` per adopted artifact, and returns the node as
+**executed** with those artifacts. Only the capability body is skipped; the
+node still completes and still feeds downstream nodes.
+
+**The resolver owns policy; the engine owns integrity.** A reused artifact is
+adopted, never registered, so an adopted id that does not exist would put a
+dangling reference into the DAG and into every downstream node's lineage —
+cache poisoning with no later checkpoint to catch it. Before honouring a
+decision the engine rejects any adopted artifact the registry does not know,
+with `ExecutionError` naming the offending id.
+
+The whole set is validated before any event is published, so a partly valid
+decision leaves no trace rather than emitting `artifact.reused` for the good
+half of a bad answer. A rejected decision fails that node — downstream nodes
+block as dependents of a failed step — rather than aborting the run: one bad
+cache entry is a node-level fault, not a structural one.
+
+Validation is skipped when the configured store is payload-only, since there is
+no registry to check against. Such a host is already outside the artifact
+system's guarantees; reuse is taken on trust rather than blocked outright.
 
 **Core ships no resolver.** Deciding what may be reused, and where prior
 outputs live, is caching policy that belongs to the host — implementing it here
@@ -259,9 +284,9 @@ Two obligations on an implementer:
 
 - **Answer `reuse: false` when unsure.** A false positive silently skips real
   work; a false negative only costs time.
-- **Return artifacts that already exist.** The engine adopts them as the node's
-  output without registering them, so a returned reference that was never
-  produced will read as a dangling dependency downstream.
+- **Return artifacts that already exist.** The engine adopts them without
+  registering them, so an unknown id is rejected with `ExecutionError` and the
+  node fails. This is enforced, not advisory.
 
 `request.dependencies` is already in the shape `findReusableArtifacts` accepts,
 so the dependency half of the decision is one call.
@@ -274,7 +299,7 @@ fallthrough.
 
 ### For implementers of `ArtifactIntelligence`
 
-`getDependencies` and `getDependents` must both return the complete record.
-Traversal must exclude `replaced_by`, or a successor will be reported as a
-dependency. `findReusableArtifacts` must treat an empty request as
-`allReusable: false`.
+`getDependencies` and `getDependents` must be directional — each populates its
+own field and leaves the other empty. Traversal must exclude `replaced_by`, or
+a successor will be reported as a dependency. `findReusableArtifacts` must
+treat an empty request as `allReusable: false`.

@@ -169,14 +169,23 @@ describe("getDependents", () => {
     expect(result.dependencies).toEqual([]);
   });
 
-  test("reports both directions from mid-chain", async () => {
+  test("answers only its own direction from mid-chain", async () => {
     const fixture = createFixture();
     await buildPipeline(fixture);
 
-    const result = await fixture.intelligence.getDependents("ui-ir");
+    const dependents = await fixture.intelligence.getDependents("ui-ir");
+    const dependencies = await fixture.intelligence.getDependencies("ui-ir");
 
-    expect(result.dependencies).toEqual(["figma-json"]);
-    expect(result.dependents).toEqual(["generated-code", "validated-patch"]);
+    expect(dependents.dependents).toEqual([
+      "generated-code",
+      "validated-patch",
+    ]);
+    expect(dependencies.dependencies).toEqual(["figma-json"]);
+
+    // Each query answers one question. The opposite field stays empty rather
+    // than letting a caller read the direction it did not ask for.
+    expect(dependents.dependencies).toEqual([]);
+    expect(dependencies.dependents).toEqual([]);
   });
 
   test("returns an empty chain for a leaf", async () => {

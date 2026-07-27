@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
+import { DesignFlowError } from "@designflow/sdk";
 import type {
   Capability,
   CapabilityReuseDecision,
@@ -105,6 +106,27 @@ const startExecution = async (
   await repository.create(record);
 };
 
+/**
+ * Registers an artifact as if a prior execution had produced it — the only
+ * state in which reuse is legitimate.
+ */
+const seedArtifact = async (
+  store: InMemoryArtifactStore,
+  id: string,
+  type = "ui.ir",
+): Promise<void> => {
+  await store.createArtifact({
+    id,
+    type,
+    metadata: {},
+    provenance: {
+      executionId: "exec-prior",
+      workflowId: "wf-reuse",
+      capabilityId: "cap-lower",
+    },
+  });
+};
+
 /** A capability that records each invocation so a skip is observable. */
 const counting = (
   id: string,
@@ -157,6 +179,7 @@ describe("capability reuse", () => {
     const harness = createHarness(resolver);
     harness.registry.register(counting("cap-parse", "figma-json", calls));
     harness.registry.register(counting("cap-lower", "ui-ir", calls));
+    await seedArtifact(harness.artifactStore, "ui-ir");
 
     const executionId = crypto.randomUUID();
     await startExecution(harness.repository, executionId, twoStep.id);
@@ -205,7 +228,7 @@ describe("capability reuse", () => {
     expect(calls).toEqual(["cap-parse", "cap-lower"]);
   });
 
-  test("a skipped node does not register a new artifact version", async () => {
+  test("a skipped node does not register or version the adopted artifact", async () => {
     const calls: string[] = [];
     const resolver = new ScriptedReuseResolver((request) =>
       request.capabilityId === "cap-lower"
@@ -219,13 +242,157 @@ describe("capability reuse", () => {
     const harness = createHarness(resolver);
     harness.registry.register(counting("cap-parse", "figma-json", calls));
     harness.registry.register(counting("cap-lower", "ui-ir", calls));
+    await seedArtifact(harness.artifactStore, "ui-ir");
 
     const executionId = crypto.randomUUID();
     await startExecution(harness.repository, executionId, twoStep.id);
     await harness.engine.run(twoStep, createContext(executionId, twoStep.id));
 
-    // Reuse adopts a prior artifact; it never claims to have produced one.
-    expect(await harness.artifactStore.getArtifact("ui-ir")).toBeNull();
+    // Reuse adopts a prior artifact; it never claims to have produced one, so
+    // neither the version nor the originating provenance moves.
+    const artifact = await harness.artifactStore.getArtifact("ui-ir");
+    expect(artifact?.version).toBe(1);
+    expect(artifact?.provenance?.executionId).toBe("exec-prior");
+  });
+});
+
+// ── Reuse integrity ─────────────────────────────────────────────
+
+describe("reuse integrity", () => {
+  test("rejects a decision adopting an unregistered artifact", async () => {
+    const calls: string[] = [];
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.capabilityId === "cap-lower"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "fake-artifact", type: "ui.ir", metadata: {} }],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness(resolver);
+    harness.registry.register(counting("cap-parse", "figma-json", calls));
+    harness.registry.register(counting("cap-lower", "ui-ir", calls));
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId, twoStep.id);
+
+    const result = await harness.engine.run(
+      twoStep,
+      createContext(executionId, twoStep.id),
+    );
+
+    // A poisoned cache entry fails its node rather than putting a dangling
+    // reference into the DAG.
+    expect(result.success).toBe(false);
+    expect(result.failedStep).toBe("lower");
+    expect(result.completedSteps).toEqual(["parse"]);
+    expect(result.artifacts.map((a) => a.id)).toEqual(["figma-json"]);
+  });
+
+  test("emits no artifact.reused event for a rejected decision", async () => {
+    const calls: string[] = [];
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.capabilityId === "cap-lower"
+        ? {
+            reuse: true,
+            artifacts: [
+              { id: "figma-json", type: "figma.json", metadata: {} },
+              { id: "fake-artifact", type: "ui.ir", metadata: {} },
+            ],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness(resolver);
+    harness.registry.register(counting("cap-parse", "figma-json", calls));
+    harness.registry.register(counting("cap-lower", "ui-ir", calls));
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId, twoStep.id);
+    await harness.engine.run(twoStep, createContext(executionId, twoStep.id));
+
+    // The whole set is validated before anything is published, so a partly
+    // valid decision leaves no trace at all.
+    expect(
+      harness.events.filter((event) => event.type === "artifact.reused"),
+    ).toHaveLength(0);
+  });
+
+  test("reports the offending artifact on the error", async () => {
+    const calls: string[] = [];
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.capabilityId === "cap-lower"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "fake-artifact", type: "ui.ir", metadata: {} }],
+            reason: "bad cache entry",
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness(resolver);
+    harness.registry.register(counting("cap-parse", "figma-json", calls));
+    harness.registry.register(counting("cap-lower", "ui-ir", calls));
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId, twoStep.id);
+
+    const result = await harness.engine.run(
+      twoStep,
+      createContext(executionId, twoStep.id),
+    );
+
+    expect(result.error).toBeInstanceOf(DesignFlowError);
+    const metadata =
+      result.error instanceof DesignFlowError ? result.error.metadata : {};
+    expect(JSON.stringify(metadata)).toContain("fake-artifact");
+  });
+
+  test("skips validation when the store cannot answer for artifacts", async () => {
+    const calls: string[] = [];
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.capabilityId === "cap-lower"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "ui-ir", type: "ui.ir", metadata: {} }],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const payloadOnly = {
+      save: async () => ({ id: "payload", type: "test", metadata: {} }),
+      get: async () => null,
+      exists: async () => false,
+    };
+
+    const registry = new CapabilityRegistry();
+    registry.register(counting("cap-parse", "figma-json", calls));
+    registry.register(counting("cap-lower", "ui-ir", calls));
+
+    const repository = new InMemoryExecutionRepository();
+    const engine = new ExecutionEngine(
+      registry,
+      createLogger(),
+      payloadOnly,
+      repository,
+      new InMemoryEventPublisher(),
+      undefined,
+      resolver,
+    );
+
+    const executionId = crypto.randomUUID();
+    await startExecution(repository, executionId, twoStep.id);
+
+    const result = await engine.run(
+      twoStep,
+      createContext(executionId, twoStep.id),
+    );
+
+    // A payload-only store holds no registry to check against, so reuse is
+    // taken on trust rather than being blocked outright.
+    expect(result.success).toBe(true);
+    expect(calls).toEqual(["cap-parse"]);
   });
 });
 
@@ -345,6 +512,7 @@ describe("artifact.reused event", () => {
     const harness = createHarness(resolver);
     harness.registry.register(counting("cap-parse", "figma-json", calls));
     harness.registry.register(counting("cap-lower", "ui-ir", calls));
+    await seedArtifact(harness.artifactStore, "ui-ir");
 
     const executionId = crypto.randomUUID();
     await startExecution(harness.repository, executionId, twoStep.id);

@@ -54,12 +54,32 @@ export class ArtifactIntelligenceService implements ArtifactIntelligence {
 
   // ── Dependency queries ────────────────────────────────────────
 
+  /**
+   * What this artifact was built from, transitively.
+   *
+   * Directional: `dependents` is always empty. Ask `getDependents` for the
+   * other direction — a query that answered both would make the two methods
+   * indistinguishable and let a caller read the opposite of what it asked for.
+   */
   public async getDependencies(artifactId: string): Promise<ArtifactDependency> {
-    return this.describeDependencies(artifactId);
+    const graph = await this.registry.getLineage(artifactId);
+
+    return artifactDependencySchema.parse({
+      artifactId,
+      dependencies: walk(graph, artifactId, "dependencies"),
+      dependents: [],
+    });
   }
 
+  /** What was built from this artifact, transitively. `dependencies` is always empty. */
   public async getDependents(artifactId: string): Promise<ArtifactDependency> {
-    return this.describeDependencies(artifactId);
+    const graph = await this.registry.getLineage(artifactId);
+
+    return artifactDependencySchema.parse({
+      artifactId,
+      dependencies: [],
+      dependents: walk(graph, artifactId, "dependents"),
+    });
   }
 
   // ── Impact analysis ───────────────────────────────────────────
@@ -218,18 +238,6 @@ export class ArtifactIntelligenceService implements ArtifactIntelligence {
   }
 
   // ── Internals ─────────────────────────────────────────────────
-
-  private async describeDependencies(
-    artifactId: string,
-  ): Promise<ArtifactDependency> {
-    const graph = await this.registry.getLineage(artifactId);
-
-    return artifactDependencySchema.parse({
-      artifactId,
-      dependencies: walk(graph, artifactId, "dependencies"),
-      dependents: walk(graph, artifactId, "dependents"),
-    });
-  }
 
   private async publish(
     provenance: ArtifactProvenance | undefined,
