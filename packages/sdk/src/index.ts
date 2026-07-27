@@ -85,6 +85,35 @@ export type {
   ArtifactRegistry,
 } from "./artifact-system";
 
+// ── Artifact Intelligence ───────────────────────────────────────
+export {
+  artifactDependencySchema,
+  artifactImpactSchema,
+  artifactDiffSchema,
+  artifactMetadataChangesSchema,
+  artifactVersionRefSchema,
+  artifactReuseReasonSchema,
+  artifactReuseCandidateSchema,
+  artifactReuseReportSchema,
+  capabilityReuseDecisionSchema,
+} from "./artifact-intelligence";
+
+export type {
+  ArtifactDependency,
+  ArtifactImpact,
+  ArtifactDiff,
+  ArtifactMetadataChanges,
+  ArtifactVersionRef,
+  ArtifactReuseReason,
+  ArtifactReuseCandidate,
+  ArtifactReuseReport,
+  ArtifactIntelligence,
+  IntelligentArtifactRegistry,
+  CapabilityReuseRequest,
+  CapabilityReuseDecision,
+  CapabilityReuseResolver,
+} from "./artifact-intelligence";
+
 // ── Execution Repository ────────────────────────────────────────
 export {
   executionRecordSchema,

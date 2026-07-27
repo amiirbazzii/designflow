@@ -24,8 +24,15 @@ export { InMemoryExecutionRepository } from "./repository";
 export { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "./events";
 
 // ── Artifacts ──────────────────────────────────────────────────────
-export { InMemoryArtifactStore, isArtifactRegistry } from "./artifacts";
-export type { InMemoryArtifactStoreOptions } from "./artifacts";
+export {
+  InMemoryArtifactStore,
+  isArtifactRegistry,
+  ArtifactIntelligenceService,
+} from "./artifacts";
+export type {
+  InMemoryArtifactStoreOptions,
+  ArtifactIntelligenceServiceOptions,
+} from "./artifacts";
 
 // ── Policy ─────────────────────────────────────────────────────────
 export { InMemoryPolicyEvaluator } from "./policy";
@@ -88,6 +95,7 @@ export {
   WorkflowCompositionCycleError,
   WorkflowResolverNotConfiguredError,
   ArtifactNotFoundError,
+  ArtifactVersionNotFoundError,
   ArtifactConflictError,
   ArtifactCycleError,
 } from "./errors";

@@ -1,5 +1,4 @@
 import {
-  DesignFlowError,
   artifactInputSchema,
   artifactRefSchema,
   artifactRelationSchema,
@@ -26,7 +25,9 @@ import {
   ArtifactCycleError,
   ArtifactNotFoundError,
 } from "../errors";
-import { canonicalize, clone, deepFreeze } from "./immutability";
+import { clone, deepFreeze } from "./immutability";
+import { hashContent } from "./hashing";
+import { cycleScope } from "./relations";
 
 // ── Internal State ──────────────────────────────────────────────
 
@@ -43,59 +44,6 @@ export interface InMemoryArtifactStoreOptions {
    * carry no provenance and therefore publish nothing.
    */
   readonly eventPublisher?: ExecutionEventPublisher;
-}
-
-// ── Relation Semantics ──────────────────────────────────────────
-
-/**
- * Relations that describe where an artifact came from. Together they form one
- * lineage graph, so a cycle across any mix of them is still a cycle.
- */
-const LINEAGE_RELATIONS: ReadonlySet<ArtifactRelationType> = new Set([
-  "derived_from",
-  "generated_from",
-  "validated_by",
-]);
-
-/**
- * The relation types a proposed edge must be checked against for cycles.
- *
- * Lineage edges are checked against the whole lineage graph. `replaced_by`
- * is checked only against itself: "new derived_from old" alongside "old
- * replaced_by new" describes one supersession from both sides and must stay
- * legal, whereas a chain of supersessions folding back on itself must not.
- */
-function cycleScope(
-  relation: ArtifactRelationType,
-): ReadonlySet<ArtifactRelationType> {
-  return LINEAGE_RELATIONS.has(relation)
-    ? LINEAGE_RELATIONS
-    : new Set<ArtifactRelationType>([relation]);
-}
-
-// ── Hashing ─────────────────────────────────────────────────────
-
-async function sha256Hex(input: string): Promise<string> {
-  const encoded = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/** Content identifier for a payload. Algorithm stays internal to the store. */
-async function hashContent(value: unknown): Promise<string> {
-  const serialized = JSON.stringify(canonicalize(value));
-
-  if (serialized === undefined) {
-    throw new DesignFlowError(
-      "ERR_ARTIFACT_INVALID_DATA",
-      "Artifact data cannot be serialized for hashing",
-      { valueType: typeof value },
-    );
-  }
-
-  return sha256Hex(serialized);
 }
 
 // ── In-Memory Artifact Store ────────────────────────────────────

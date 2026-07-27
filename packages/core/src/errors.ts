@@ -126,6 +126,22 @@ export class ArtifactNotFoundError extends DesignFlowError {
   }
 }
 
+export class ArtifactVersionNotFoundError extends DesignFlowError {
+  public constructor(
+    artifactId: string,
+    version: number,
+    metadata?: Record<string, unknown>,
+  ) {
+    super(
+      "ERR_ARTIFACT_VERSION_NOT_FOUND",
+      `Artifact version not found: ${artifactId}@${version}`,
+      { ...metadata, artifactId, version },
+    );
+    this.name = "ArtifactVersionNotFoundError";
+    Object.setPrototypeOf(this, ArtifactVersionNotFoundError.prototype);
+  }
+}
+
 export class ArtifactConflictError extends DesignFlowError {
   public constructor(
     artifactId: string,

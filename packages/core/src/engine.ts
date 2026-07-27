@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   artifactLineageSchema,
   artifactRefSchema,
+  capabilityReuseDecisionSchema,
   compositionCheckpointSchema,
   executionEventSchema,
   readCompositionCheckpoint,
@@ -14,6 +15,8 @@ import type {
   ArtifactRef,
   ArtifactRegistry,
   ArtifactStore,
+  ArtifactVersionRef,
+  CapabilityReuseResolver,
   CapabilityContext,
   Logger,
   ExecutionRepository,
@@ -44,7 +47,7 @@ import {
   WorkflowResolverNotConfiguredError,
 } from "./errors";
 import { CapabilityRunner } from "./runtime";
-import { contentEquals, isArtifactRegistry } from "./artifacts";
+import { contentEquals, hashContent, isArtifactRegistry } from "./artifacts";
 import { WorkflowCompositionExecutor } from "./composition";
 import { resolveNodeInput } from "./input";
 import { DesignFlowError } from "@designflow/sdk";
@@ -91,6 +94,7 @@ export class ExecutionEngine {
   private readonly executionRepository: ExecutionRepository;
   private readonly eventPublisher: ExecutionEventPublisher;
   private readonly compositionExecutor: WorkflowCompositionExecutor | undefined;
+  private readonly reuseResolver: CapabilityReuseResolver | undefined;
 
   public constructor(
     registry: CapabilityRegistry,
@@ -99,6 +103,7 @@ export class ExecutionEngine {
     executionRepository: ExecutionRepository,
     eventPublisher: ExecutionEventPublisher,
     workflowExecutionResolver?: WorkflowExecutionResolver,
+    reuseResolver?: CapabilityReuseResolver,
   ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
@@ -118,6 +123,7 @@ export class ExecutionEngine {
           eventPublisher,
         )
       : undefined;
+    this.reuseResolver = reuseResolver;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -657,6 +663,18 @@ export class ExecutionEngine {
     const snapshot = [...parentArtifacts];
     const parentArtifactIds = snapshot.map((a) => a.id);
 
+    const reused = await this.resolveReuse(
+      compiled.node.id,
+      capabilityId,
+      input,
+      context,
+      parentArtifactIds,
+    );
+
+    if (reused !== null) {
+      return reused;
+    }
+
     const lineageStore: ArtifactStore = {
       save: async (data: unknown, metadata?: Record<string, unknown>) => {
         const lineage = artifactLineageSchema.parse({
@@ -706,6 +724,72 @@ export class ExecutionEngine {
 
     return {
       artifacts: produced,
+      executed: true,
+      pending: undefined,
+    };
+  }
+
+  /**
+   * The cache decision boundary: asks the configured resolver whether this
+   * node's work has already been done, and adopts the prior artifacts if so.
+   *
+   * Returns `null` to mean "execute normally" — no resolver configured, or the
+   * resolver declined. Core makes no reuse decision of its own; it only poses
+   * the question (input fingerprint + dependency versions) and honours the
+   * answer. Nothing is skipped unless a host opts in.
+   */
+  private async resolveReuse(
+    nodeId: string,
+    capabilityId: string,
+    input: unknown,
+    context: ExecutionContext,
+    parentArtifactIds: readonly string[],
+  ): Promise<LayerNodeResult | null> {
+    const resolver = this.reuseResolver;
+    if (resolver === undefined) return null;
+
+    const dependencies: ArtifactVersionRef[] = [];
+
+    for (const artifactId of parentArtifactIds) {
+      const artifact = await this.artifactRegistry?.getArtifact(artifactId);
+
+      dependencies.push({
+        artifactId,
+        ...(artifact !== null && artifact !== undefined
+          ? { version: artifact.version }
+          : {}),
+      });
+    }
+
+    const decision = capabilityReuseDecisionSchema.parse(
+      await resolver.resolve({
+        executionId: context.runId,
+        workflowId: context.workflowId,
+        nodeId,
+        capabilityId,
+        inputFingerprint: await hashContent(input),
+        dependencies,
+      }),
+    );
+
+    if (!decision.reuse) return null;
+
+    for (const artifact of decision.artifacts) {
+      await this.publishEvent(context.runId, "artifact.reused", {
+        artifactId: artifact.id,
+        version: (await this.artifactRegistry?.getArtifact(artifact.id))
+          ?.version,
+        executionId: context.runId,
+        nodeId,
+        capabilityId,
+        ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
+      });
+    }
+
+    // The node counts as completed: its outputs exist and downstream nodes
+    // depend on them. Only the capability body was skipped.
+    return {
+      artifacts: decision.artifacts,
       executed: true,
       pending: undefined,
     };

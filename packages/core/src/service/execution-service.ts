@@ -27,6 +27,7 @@ import type {
   ChildExecutionContract,
   ChildExecutionRequest,
   WorkflowExecutionResolver,
+  CapabilityReuseResolver,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -76,6 +77,11 @@ export interface ExecutionServiceConfig {
    * executions back through this service's own `executeChild`.
    */
   readonly workflowExecutionResolver?: WorkflowExecutionResolver;
+  /**
+   * Cache decision boundary consulted before each capability runs. Omitted by
+   * default, so no work is ever skipped unless a host opts in.
+   */
+  readonly reuseResolver?: CapabilityReuseResolver;
 }
 
 interface StartExecutionParams {
@@ -99,6 +105,7 @@ export class ExecutionService
   private readonly policy: ExecutionPolicy | undefined;
   private readonly approvalManager: ApprovalManager | undefined;
   private readonly workflowExecutionResolver: WorkflowExecutionResolver;
+  private readonly reuseResolver: CapabilityReuseResolver | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -115,6 +122,7 @@ export class ExecutionService
     this.workflowExecutionResolver =
       config.workflowExecutionResolver ??
       new ExecutionServiceWorkflowResolver(this);
+    this.reuseResolver = config.reuseResolver;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -258,6 +266,7 @@ export class ExecutionService
         this.executionRepository,
         this.eventPublisher,
         this.workflowExecutionResolver,
+        this.reuseResolver,
       );
 
       const abortController = new AbortController();
@@ -460,6 +469,7 @@ export class ExecutionService
           this.executionRepository,
           this.eventPublisher,
           this.workflowExecutionResolver,
+          this.reuseResolver,
         );
 
         await this.appendEvent(record.executionId, "executing");
