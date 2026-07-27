@@ -35,6 +35,14 @@ export type {
   ArtifactIntelligenceServiceOptions,
 } from "./artifacts";
 
+// ── Materialization ────────────────────────────────────────────────
+export { RegistryArtifactMaterializer } from "./materialization";
+export type {
+  RegistryArtifactMaterializerOptions,
+  MaterializationIssue,
+  MaterializationIssueKind,
+} from "./materialization";
+
 // ── Planning ───────────────────────────────────────────────────────
 export {
   IncrementalExecutionPlannerService,
@@ -108,6 +116,7 @@ export {
   WorkflowCompositionCycleError,
   WorkflowResolverNotConfiguredError,
   ExecutionPlanningError,
+  ArtifactMaterializationError,
   ArtifactNotFoundError,
   ArtifactVersionNotFoundError,
   ArtifactConflictError,

@@ -126,6 +126,17 @@ export class ArtifactNotFoundError extends DesignFlowError {
   }
 }
 
+export class ArtifactMaterializationError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_ARTIFACT_MATERIALIZATION", message, metadata);
+    this.name = "ArtifactMaterializationError";
+    Object.setPrototypeOf(this, ArtifactMaterializationError.prototype);
+  }
+}
+
 export class ExecutionPlanningError extends DesignFlowError {
   public constructor(
     message: string,

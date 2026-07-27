@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   artifactLineageSchema,
+  artifactMaterializationResultSchema,
   artifactRefSchema,
   capabilityReuseDecisionSchema,
   compositionCheckpointSchema,
@@ -14,9 +15,11 @@ import type {
   ExecutionContext,
   WorkflowDefinition,
   ArtifactRef,
+  ArtifactMaterializer,
   ArtifactRegistry,
   ArtifactStore,
   ArtifactVersionRef,
+  CapabilityReuseDecision,
   CapabilityReuseResolver,
   CapabilityContext,
   Logger,
@@ -97,9 +100,9 @@ function readPreviousExecutionId(
 /**
  * Everything an `ExecutionEngine` needs to run a workflow.
  *
- * The four optional collaborators are each inert when omitted, so an engine
- * built from the five required fields behaves exactly as it did before any of
- * them existed.
+ * Each optional collaborator is inert when omitted, so an engine built from
+ * the five required fields behaves exactly as it did before any of them
+ * existed.
  */
 export interface ExecutionEngineConfig {
   readonly registry: CapabilityRegistry;
@@ -113,6 +116,11 @@ export interface ExecutionEngineConfig {
   readonly reuseResolver?: CapabilityReuseResolver | undefined;
   /** Incremental planner. Without it, every node runs. */
   readonly incrementalPlanner?: IncrementalExecutionPlanner | undefined;
+  /**
+   * Validates and resolves the artifacts a reuse decision offers. Without it,
+   * the engine falls back to its own existence check.
+   */
+  readonly artifactMaterializer?: ArtifactMaterializer | undefined;
 }
 
 export class ExecutionEngine {
@@ -127,6 +135,7 @@ export class ExecutionEngine {
   private readonly compositionExecutor: WorkflowCompositionExecutor | undefined;
   private readonly reuseResolver: CapabilityReuseResolver | undefined;
   private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
+  private readonly artifactMaterializer: ArtifactMaterializer | undefined;
 
   public constructor(config: ExecutionEngineConfig) {
     this.registry = config.registry;
@@ -149,6 +158,7 @@ export class ExecutionEngine {
       : undefined;
     this.reuseResolver = config.reuseResolver;
     this.incrementalPlanner = config.incrementalPlanner;
+    this.artifactMaterializer = config.artifactMaterializer;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -926,35 +936,23 @@ export class ExecutionEngine {
 
     if (!decision.reuse) return null;
 
-    // The resolver owns the caching policy; the engine owns integrity. An
-    // adopted artifact is never registered, so accepting one that does not
-    // exist would put a dangling reference into the DAG and into every
-    // downstream node's lineage. Validate the whole set before emitting any
-    // event, so a rejected decision leaves no trace.
+    // The resolver answered "yes, reuse". Turning that answer into references
+    // the DAG can carry is a separate question, and a separate collaborator.
+    const artifacts = await this.materializeReuse(
+      nodeId,
+      capabilityId,
+      context,
+      decision,
+    );
+
     const versions = new Map<string, number | undefined>();
 
-    for (const artifact of decision.artifacts) {
-      if (this.artifactRegistry === undefined) continue;
-
-      const registered = await this.artifactRegistry.getArtifact(artifact.id);
-
-      if (registered === null) {
-        throw new ExecutionError("Reuse returned unknown artifact", {
-          executionId: context.runId,
-          workflowId: context.workflowId,
-          nodeId,
-          capabilityId,
-          artifactId: artifact.id,
-          ...(decision.reason !== undefined
-            ? { reason: decision.reason }
-            : {}),
-        });
-      }
-
-      versions.set(artifact.id, registered.version);
+    for (const artifact of artifacts) {
+      const registered = await this.artifactRegistry?.getArtifact(artifact.id);
+      versions.set(artifact.id, registered?.version);
     }
 
-    for (const artifact of decision.artifacts) {
+    for (const artifact of artifacts) {
       const version = versions.get(artifact.id);
 
       await this.publishEvent(context.runId, "artifact.reused", {
@@ -970,10 +968,77 @@ export class ExecutionEngine {
     // The node counts as completed: its outputs exist and downstream nodes
     // depend on them. Only the capability body was skipped.
     return {
-      artifacts: decision.artifacts,
+      artifacts,
       executed: true,
       pending: undefined,
     };
+  }
+
+  /**
+   * Turns a granted reuse decision into references the DAG can carry.
+   *
+   * With a materializer configured, that collaborator owns the question
+   * entirely: it validates existence, resolves versions, rebuilds each
+   * reference through `artifactRefSchema`, and publishes
+   * `artifact.materialized`. A `success: false` result and a thrown
+   * `DesignFlowError` are both treated as failure, so an implementation may
+   * use whichever channel it prefers.
+   *
+   * Without one, the engine falls back to the existence check it has applied
+   * since the reuse boundary was introduced. The resolver owns caching policy;
+   * the engine owns integrity, and it does not give that up just because no
+   * materializer was supplied.
+   */
+  private async materializeReuse(
+    nodeId: string,
+    capabilityId: string,
+    context: ExecutionContext,
+    decision: CapabilityReuseDecision,
+  ): Promise<readonly ArtifactRef[]> {
+    const artifactIds = decision.artifacts.map((artifact) => artifact.id);
+
+    if (this.artifactMaterializer !== undefined) {
+      const result = artifactMaterializationResultSchema.parse(
+        await this.artifactMaterializer.materialize({
+          nodeId,
+          capabilityId,
+          executionId: context.runId,
+          artifactIds,
+        }),
+      );
+
+      if (!result.success) {
+        throw new ExecutionError("Reuse artifacts could not be materialized", {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          nodeId,
+          capabilityId,
+          artifactIds,
+          ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
+        });
+      }
+
+      return result.artifacts;
+    }
+
+    for (const artifact of decision.artifacts) {
+      if (this.artifactRegistry === undefined) continue;
+
+      const registered = await this.artifactRegistry.getArtifact(artifact.id);
+
+      if (registered === null) {
+        throw new ExecutionError("Reuse returned unknown artifact", {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          nodeId,
+          capabilityId,
+          artifactId: artifact.id,
+          ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
+        });
+      }
+    }
+
+    return decision.artifacts;
   }
 
   /**

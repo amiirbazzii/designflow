@@ -85,6 +85,18 @@ export type {
   ArtifactRegistry,
 } from "./artifact-system";
 
+// ── Artifact Materialization ────────────────────────────────────
+export {
+  artifactMaterializationRequestSchema,
+  artifactMaterializationResultSchema,
+} from "./artifact-materialization";
+
+export type {
+  ArtifactMaterializationRequest,
+  ArtifactMaterializationResult,
+  ArtifactMaterializer,
+} from "./artifact-materialization";
+
 // ── Incremental Execution Planning ──────────────────────────────
 export {
   incrementalExecutionPlanSchema,

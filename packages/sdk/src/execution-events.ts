@@ -28,6 +28,7 @@ export const executionEventTypeSchema = z.enum([
   "artifact.impact_analyzed",
   "artifact.diff_created",
   "artifact.reused",
+  "artifact.materialized",
 ]);
 
 export type ExecutionEventType = z.infer<typeof executionEventTypeSchema>;
