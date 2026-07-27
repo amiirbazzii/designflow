@@ -153,3 +153,115 @@ export const executionReportSchema = z.object({
 });
 
 export type ExecutionReport = z.infer<typeof executionReportSchema>;
+
+// ── Workflow Launch ──────────────────────────────────────────────
+
+export const workflowLaunchRequestSchema = z.object({
+  workflowId: z.string().min(1),
+  input: z.unknown().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type WorkflowLaunchRequest = z.infer<typeof workflowLaunchRequestSchema>;
+
+/**
+ * What a caller holds after starting a workflow.
+ *
+ * Deliberately small: an id, a name and a state. Everything else is fetched
+ * through the runner when it is needed, so a handle never goes stale.
+ */
+export const executionHandleSchema = z.object({
+  executionId: z.string().min(1),
+  workflowId: z.string().min(1),
+  workflowName: z.string().min(1),
+  state: executionStateSchema,
+});
+
+export type ExecutionHandle = z.infer<typeof executionHandleSchema>;
+
+// ── Progress ─────────────────────────────────────────────────────
+
+export const progressStepStatusSchema = z.enum(["done", "active", "pending"]);
+
+export type ProgressStepStatus = z.infer<typeof progressStepStatusSchema>;
+
+export const progressStepSchema = z.object({
+  /** Human label, e.g. "Extract design tokens". */
+  label: z.string().min(1),
+  status: progressStepStatusSchema,
+  capabilityId: z.string().min(1).optional(),
+});
+
+export type ProgressStep = z.infer<typeof progressStepSchema>;
+
+export const executionProgressSchema = z.object({
+  completed: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  /** 0–100, rounded. 100 only when every known step is done. */
+  percent: z.number().int().min(0).max(100),
+  /** The step underway right now, absent once the run has stopped. */
+  currentStep: z.string().min(1).optional(),
+  /** Ordered steps with their state, for rendering a checklist. */
+  steps: z.array(progressStepSchema),
+});
+
+export type ExecutionProgress = z.infer<typeof executionProgressSchema>;
+
+// ── Status ───────────────────────────────────────────────────────
+
+export const pendingApprovalSchema = z.object({
+  approvalId: z.string().min(1),
+  executionId: z.string().min(1),
+  workflowId: z.string().min(1),
+  /** Why a person is being asked, in the words the policy used. */
+  reason: z.string().min(1),
+  requestedAt: z.number().optional(),
+});
+
+export type PendingApproval = z.infer<typeof pendingApprovalSchema>;
+
+/** The answer to "what is happening right now?". */
+export const executionStatusSchema = z.object({
+  executionId: z.string().min(1),
+  workflowId: z.string().min(1),
+  workflowName: z.string().min(1),
+  state: executionStateSchema,
+  statusLabel: z.string().min(1),
+  currentStep: z.string().min(1).optional(),
+  progress: executionProgressSchema,
+  /** One sentence a person can read without any other context. */
+  message: z.string().min(1),
+  approval: pendingApprovalSchema.optional(),
+});
+
+export type ExecutionStatus = z.infer<typeof executionStatusSchema>;
+
+// ── Approval Outcome ─────────────────────────────────────────────
+
+export const approvalOutcomeSchema = z.object({
+  executionId: z.string().min(1),
+  approvalId: z.string().min(1),
+  decision: z.enum(["approve", "reject"]),
+  /** The execution's state after the decision was applied. */
+  state: executionStateSchema,
+  message: z.string().min(1),
+});
+
+export type ApprovalOutcome = z.infer<typeof approvalOutcomeSchema>;
+
+// ── History ──────────────────────────────────────────────────────
+
+export const workflowHistoryEntrySchema = z.object({
+  executionId: z.string().min(1),
+  workflowId: z.string().min(1),
+  workflowName: z.string().min(1),
+  status: z.string().min(1),
+  state: executionStateSchema,
+  summary: z.string().min(1),
+  startedAt: z.number(),
+  completedAt: z.number().optional(),
+  durationMs: z.number().nonnegative().optional(),
+  durationLabel: z.string().optional(),
+});
+
+export type WorkflowHistoryEntry = z.infer<typeof workflowHistoryEntrySchema>;

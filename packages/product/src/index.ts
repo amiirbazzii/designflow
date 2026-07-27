@@ -11,6 +11,18 @@ export type {
   WorkflowNameResolver,
 } from "./service";
 
+// ── Workflow Interaction ────────────────────────────────────────
+export { WorkflowRunner } from "./runner";
+export type {
+  WorkflowRunnerOptions,
+  WorkflowStepCountResolver,
+} from "./runner";
+
+export { ApprovalService, ApprovalNotPendingError } from "./approvals";
+export type { ApprovalServiceOptions } from "./approvals";
+
+export { buildProgress, humanizeCapabilityId, countSkippedSteps } from "./progress";
+
 // ── Presentation ────────────────────────────────────────────────
 export { narrateEvents } from "./narration";
 export { buildTimeline } from "./timeline";
@@ -28,6 +40,30 @@ export {
   timelineEntrySchema,
   executionTimelineSchema,
   executionReportSchema,
+} from "./schemas";
+
+export {
+  workflowLaunchRequestSchema,
+  executionHandleSchema,
+  progressStepStatusSchema,
+  progressStepSchema,
+  executionProgressSchema,
+  pendingApprovalSchema,
+  executionStatusSchema,
+  approvalOutcomeSchema,
+  workflowHistoryEntrySchema,
+} from "./schemas";
+
+export type {
+  WorkflowLaunchRequest,
+  ExecutionHandle,
+  ProgressStepStatus,
+  ProgressStep,
+  ExecutionProgress,
+  PendingApproval,
+  ExecutionStatus,
+  ApprovalOutcome,
+  WorkflowHistoryEntry,
 } from "./schemas";
 
 export type {
