@@ -5,6 +5,7 @@ import {
   capabilityReuseDecisionSchema,
   compositionCheckpointSchema,
   executionEventSchema,
+  readChangedArtifacts,
   readCompositionCheckpoint,
   readExecutionInput,
   readExecutionLineage,
@@ -25,6 +26,7 @@ import type {
   ExecutionEventPublisher,
   ExecutionEvent,
   CompositionCheckpoint,
+  IncrementalExecutionPlanner,
   PendingChildExecution,
   WorkflowExecutionResolver,
 } from "@designflow/sdk";
@@ -84,6 +86,14 @@ function readAppliedArtifacts(
   return parsed.success ? parsed.data : [];
 }
 
+/** The prior run's id, as recorded in execution metadata by `resume`. */
+function readPreviousExecutionId(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  const parsed = z.string().min(1).safeParse(metadata?.previousExecutionId);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export class ExecutionEngine {
   private readonly registry: CapabilityRegistry;
   private readonly compiler: WorkflowCompiler;
@@ -95,6 +105,7 @@ export class ExecutionEngine {
   private readonly eventPublisher: ExecutionEventPublisher;
   private readonly compositionExecutor: WorkflowCompositionExecutor | undefined;
   private readonly reuseResolver: CapabilityReuseResolver | undefined;
+  private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
 
   public constructor(
     registry: CapabilityRegistry,
@@ -104,6 +115,7 @@ export class ExecutionEngine {
     eventPublisher: ExecutionEventPublisher,
     workflowExecutionResolver?: WorkflowExecutionResolver,
     reuseResolver?: CapabilityReuseResolver,
+    incrementalPlanner?: IncrementalExecutionPlanner,
   ) {
     this.registry = registry;
     this.compiler = new WorkflowCompiler(this.registry);
@@ -124,6 +136,7 @@ export class ExecutionEngine {
         )
       : undefined;
     this.reuseResolver = reuseResolver;
+    this.incrementalPlanner = incrementalPlanner;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -150,6 +163,12 @@ export class ExecutionEngine {
 
       const { compiled, plan } = this.compiler.compile(definition);
 
+      const plannedSkips = await this.resolvePlannedSkips(
+        definition,
+        context,
+        executionId,
+      );
+
       await this.publishEvent(executionId, "execution.executing", {
         workflowId: definition.id,
         layers: plan.layers.length,
@@ -162,6 +181,7 @@ export class ExecutionEngine {
         executionId,
         definition.id,
         resumeState,
+        plannedSkips,
       );
 
       if (execution.failedSteps.length > 0) {
@@ -480,6 +500,40 @@ export class ExecutionEngine {
     }
   }
 
+  /**
+   * Asks the incremental planner which nodes this run may leave out.
+   *
+   * Returns an empty set when no planner is configured, which is what keeps
+   * unplanned execution byte-for-byte unchanged. The change set and the
+   * previous run's id travel in execution metadata, so both survive
+   * persistence and a resume.
+   */
+  private async resolvePlannedSkips(
+    definition: WorkflowDefinition,
+    context: ExecutionContext,
+    executionId: string,
+  ): Promise<ReadonlySet<string>> {
+    const planner = this.incrementalPlanner;
+    if (planner === undefined) return new Set();
+
+    const previousExecutionId = readPreviousExecutionId(context.metadata);
+
+    const result = await planner.planExecution({
+      workflowId: definition.id,
+      changedArtifacts: [...readChangedArtifacts(context.metadata)],
+      ...(previousExecutionId !== undefined ? { previousExecutionId } : {}),
+    });
+
+    await this.publishEvent(executionId, "execution.plan_created", {
+      workflowId: definition.id,
+      affectedNodes: result.plan.affectedNodes,
+      skippedNodes: result.plan.skippedNodes,
+      executionNodes: result.plan.executionNodes,
+    });
+
+    return new Set(result.plan.skippedNodes);
+  }
+
   private async execute(
     plan: ExecutionPlan,
     workflow: CompiledWorkflow,
@@ -487,6 +541,7 @@ export class ExecutionEngine {
     executionId: string,
     workflowId: string,
     resumeState?: CompositionCheckpoint,
+    plannedSkips: ReadonlySet<string> = new Set(),
   ): Promise<ExecuteResult> {
     // Resuming replays the plan but re-executes nothing that already
     // finished: completed nodes are skipped and their artifacts are restored.
@@ -507,6 +562,7 @@ export class ExecutionEngine {
     const pendingSteps = new Set<string>();
     const pendingApprovals: PendingChildApproval[] = [];
     const blockedSteps = new Set<string>();
+    const plannedSkippedSteps = new Set<string>();
     const allParentArtifacts: ArtifactRef[] = [
       ...context.artifacts,
       ...restoredArtifacts,
@@ -539,6 +595,14 @@ export class ExecutionEngine {
         if (!step) continue;
 
         if (alreadyCompleted.has(nodeId)) continue;
+
+        // The planner classified this node as reusable, so its body is left
+        // out of the run. It is not a failure and does not block dependents:
+        // adopting the prior output is a `CapabilityReuseResolver` concern.
+        if (plannedSkips.has(nodeId)) {
+          plannedSkippedSteps.add(nodeId);
+          continue;
+        }
 
         if (step.dependsOn.some((dep) => failedSteps.has(dep))) {
           failedSteps.add(nodeId);

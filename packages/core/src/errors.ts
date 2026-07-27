@@ -126,6 +126,17 @@ export class ArtifactNotFoundError extends DesignFlowError {
   }
 }
 
+export class ExecutionPlanningError extends DesignFlowError {
+  public constructor(
+    message: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_EXECUTION_PLANNING", message, metadata);
+    this.name = "ExecutionPlanningError";
+    Object.setPrototypeOf(this, ExecutionPlanningError.prototype);
+  }
+}
+
 export class ArtifactVersionNotFoundError extends DesignFlowError {
   public constructor(
     artifactId: string,

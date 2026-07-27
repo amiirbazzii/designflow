@@ -34,6 +34,18 @@ export type {
   ArtifactIntelligenceServiceOptions,
 } from "./artifacts";
 
+// ── Planning ───────────────────────────────────────────────────────
+export {
+  IncrementalExecutionPlannerService,
+  buildWorkflowGraph,
+  buildDependentIndex,
+  analyzeNodeImpact,
+} from "./planning";
+export type {
+  IncrementalExecutionPlannerOptions,
+  WorkflowDefinitionResolver,
+} from "./planning";
+
 // ── Policy ─────────────────────────────────────────────────────────
 export { InMemoryPolicyEvaluator } from "./policy";
 
@@ -94,6 +106,7 @@ export {
   WorkflowCompositionError,
   WorkflowCompositionCycleError,
   WorkflowResolverNotConfiguredError,
+  ExecutionPlanningError,
   ArtifactNotFoundError,
   ArtifactVersionNotFoundError,
   ArtifactConflictError,

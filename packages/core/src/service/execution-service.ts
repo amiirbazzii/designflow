@@ -28,6 +28,7 @@ import type {
   ChildExecutionRequest,
   WorkflowExecutionResolver,
   CapabilityReuseResolver,
+  IncrementalExecutionPlanner,
 } from "@designflow/sdk";
 import { DesignFlowError } from "@designflow/sdk";
 import { CapabilityRegistry } from "../registry";
@@ -82,6 +83,11 @@ export interface ExecutionServiceConfig {
    * default, so no work is ever skipped unless a host opts in.
    */
   readonly reuseResolver?: CapabilityReuseResolver;
+  /**
+   * Incremental planner consulted before each run. Omitted by default, so no
+   * node is ever left out unless a host opts in.
+   */
+  readonly incrementalPlanner?: IncrementalExecutionPlanner;
 }
 
 interface StartExecutionParams {
@@ -106,6 +112,7 @@ export class ExecutionService
   private readonly approvalManager: ApprovalManager | undefined;
   private readonly workflowExecutionResolver: WorkflowExecutionResolver;
   private readonly reuseResolver: CapabilityReuseResolver | undefined;
+  private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -123,6 +130,7 @@ export class ExecutionService
       config.workflowExecutionResolver ??
       new ExecutionServiceWorkflowResolver(this);
     this.reuseResolver = config.reuseResolver;
+    this.incrementalPlanner = config.incrementalPlanner;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -267,6 +275,7 @@ export class ExecutionService
         this.eventPublisher,
         this.workflowExecutionResolver,
         this.reuseResolver,
+        this.incrementalPlanner,
       );
 
       const abortController = new AbortController();
@@ -470,6 +479,7 @@ export class ExecutionService
           this.eventPublisher,
           this.workflowExecutionResolver,
           this.reuseResolver,
+          this.incrementalPlanner,
         );
 
         await this.appendEvent(record.executionId, "executing");

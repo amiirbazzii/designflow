@@ -89,6 +89,17 @@ export const capabilityNodeSchema = z.object({
   label: z.string().optional(),
   inputMap: z.record(z.string(), z.unknown()).default({}),
   execution: nodeExecutionOptionsSchema.optional(),
+  /**
+   * Artifact ids this node is declared to produce.
+   *
+   * Read only by incremental planning, to decide whether a change to a given
+   * artifact invalidates this node. Undeclared nodes are never *directly*
+   * invalidated, though they are still invalidated through their dependencies.
+   *
+   * Optional rather than defaulted, so that adding it does not make it a
+   * required property of every existing typed workflow literal.
+   */
+  produces: z.array(z.string().min(1)).optional(),
   next: z.array(z.string()).default([]),
 });
 
@@ -102,6 +113,8 @@ export const workflowNodeSchema = z.object({
   label: z.string().optional(),
   inputMap: z.record(z.string(), z.unknown()).default({}),
   execution: nodeExecutionOptionsSchema.optional(),
+  /** Artifact ids this child workflow is declared to produce. */
+  produces: z.array(z.string().min(1)).optional(),
   next: z.array(z.string()).default([]),
 });
 

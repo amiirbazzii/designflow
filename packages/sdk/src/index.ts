@@ -85,6 +85,31 @@ export type {
   ArtifactRegistry,
 } from "./artifact-system";
 
+// ── Incremental Execution Planning ──────────────────────────────
+export {
+  incrementalExecutionPlanSchema,
+  nodeImpactSchema,
+  nodeImpactReasonSchema,
+  executionPlanningRequestSchema,
+  executionPlanningResultSchema,
+  workflowGraphSchema,
+  workflowGraphNodeSchema,
+  readChangedArtifacts,
+  withChangedArtifacts,
+  CHANGED_ARTIFACTS_METADATA_KEY,
+} from "./execution-plan";
+
+export type {
+  IncrementalExecutionPlan,
+  NodeImpact,
+  NodeImpactReason,
+  ExecutionPlanningRequest,
+  ExecutionPlanningResult,
+  WorkflowGraph,
+  WorkflowGraphNode,
+  IncrementalExecutionPlanner,
+} from "./execution-plan";
+
 // ── Artifact Intelligence ───────────────────────────────────────
 export {
   artifactDependencySchema,
