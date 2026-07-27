@@ -1,4 +1,5 @@
 import type { ArtifactRef, ArtifactLineage, CheckpointRecord } from "./schemas";
+import type { ArtifactRegistry } from "./artifact-system";
 
 export type { ExecutionContext } from "./schemas";
 export { executionContextSchema } from "./schemas";
@@ -43,3 +44,13 @@ export interface ArtifactStore {
 
   exists(id: string): Promise<boolean>;
 }
+
+/**
+ * An `ArtifactStore` that also serves as the artifact registry: payload
+ * storage plus identity, immutable versions, provenance and relationships.
+ *
+ * The registry half is an *extension* rather than an addition to
+ * `ArtifactStore` itself so that payload-only backends (local filesystem,
+ * object storage) stay valid stores without implementing lineage.
+ */
+export interface RegistryArtifactStore extends ArtifactStore, ArtifactRegistry {}

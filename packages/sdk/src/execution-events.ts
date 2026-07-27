@@ -21,6 +21,9 @@ export const executionEventTypeSchema = z.enum([
   "workflow.child_started",
   "workflow.child_completed",
   "workflow.child_failed",
+  "artifact.created",
+  "artifact.version_created",
+  "artifact.relation_added",
 ]);
 
 export type ExecutionEventType = z.infer<typeof executionEventTypeSchema>;

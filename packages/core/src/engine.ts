@@ -12,6 +12,7 @@ import type {
   ExecutionContext,
   WorkflowDefinition,
   ArtifactRef,
+  ArtifactRegistry,
   ArtifactStore,
   CapabilityContext,
   Logger,
@@ -43,6 +44,7 @@ import {
   WorkflowResolverNotConfiguredError,
 } from "./errors";
 import { CapabilityRunner } from "./runtime";
+import { isArtifactRegistry } from "./artifacts";
 import { WorkflowCompositionExecutor } from "./composition";
 import { resolveNodeInput } from "./input";
 import { DesignFlowError } from "@designflow/sdk";
@@ -85,6 +87,7 @@ export class ExecutionEngine {
   private readonly runner: CapabilityRunner;
   private readonly logger: Logger;
   private readonly artifactStore: ArtifactStore;
+  private readonly artifactRegistry: ArtifactRegistry | undefined;
   private readonly executionRepository: ExecutionRepository;
   private readonly eventPublisher: ExecutionEventPublisher;
   private readonly compositionExecutor: WorkflowCompositionExecutor | undefined;
@@ -102,6 +105,11 @@ export class ExecutionEngine {
     this.runner = new CapabilityRunner(eventPublisher);
     this.logger = logger;
     this.artifactStore = artifactStore;
+    // Registry-capable stores get artifact identity, versions and provenance
+    // recorded automatically; payload-only stores are left untouched.
+    this.artifactRegistry = isArtifactRegistry(artifactStore)
+      ? artifactStore
+      : undefined;
     this.executionRepository = executionRepository;
     this.eventPublisher = eventPublisher;
     this.compositionExecutor = workflowExecutionResolver !== undefined
@@ -685,11 +693,66 @@ export class ExecutionEngine {
       },
     );
 
+    const produced = extractProducedArtifacts(output);
+
+    for (const artifact of produced) {
+      await this.registerProducedArtifact(
+        artifact,
+        context,
+        capabilityId,
+        parentArtifactIds,
+      );
+    }
+
     return {
-      artifacts: extractProducedArtifacts(output),
+      artifacts: produced,
       executed: true,
       pending: undefined,
     };
+  }
+
+  /**
+   * Resolves a capability's `ArtifactRef` against the registry, registering it
+   * with provenance the first time it is seen, and linking it to the artifacts
+   * it was built from.
+   *
+   * Only identity, version and provenance are recorded — the payload stays
+   * behind `ArtifactStore` and never enters a checkpoint.
+   */
+  private async registerProducedArtifact(
+    artifact: ArtifactRef,
+    context: ExecutionContext,
+    capabilityId: string,
+    parentArtifactIds: readonly string[],
+  ): Promise<void> {
+    const registry = this.artifactRegistry;
+    if (registry === undefined) return;
+
+    const existing = await registry.getArtifact(artifact.id);
+
+    if (existing === null) {
+      await registry.createArtifact({
+        id: artifact.id,
+        type: artifact.type,
+        metadata: artifact.metadata ?? {},
+        provenance: {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          capabilityId,
+        },
+      });
+    }
+
+    for (const parentId of parentArtifactIds) {
+      if (parentId === artifact.id) continue;
+      if ((await registry.getArtifact(parentId)) === null) continue;
+
+      await registry.addRelation({
+        sourceArtifactId: artifact.id,
+        targetArtifactId: parentId,
+        relation: "derived_from",
+      });
+    }
   }
 
   private async runWorkflowNode(

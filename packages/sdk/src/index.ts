@@ -55,7 +55,35 @@ export type { CapabilityManifest } from "./capability-manifest";
 export type { WorkflowProvider, WorkflowPackage, CapabilityRegistrar } from "./workflow";
 export { workflowPackageSchema } from "./workflow";
 
-export type { StateStore, ArtifactStore, CheckpointState, CheckpointData } from "./state";
+export type {
+  StateStore,
+  ArtifactStore,
+  RegistryArtifactStore,
+  CheckpointState,
+  CheckpointData,
+} from "./state";
+
+// ── Artifact System ─────────────────────────────────────────────
+export {
+  artifactSchema,
+  artifactInputSchema,
+  artifactVersionSchema,
+  artifactRelationSchema,
+  artifactRelationTypeSchema,
+  artifactProvenanceSchema,
+  artifactLineageGraphSchema,
+} from "./artifact-system";
+
+export type {
+  Artifact,
+  ArtifactInput,
+  ArtifactVersion,
+  ArtifactRelation,
+  ArtifactRelationType,
+  ArtifactProvenance,
+  ArtifactLineageGraph,
+  ArtifactRegistry,
+} from "./artifact-system";
 
 // ── Execution Repository ────────────────────────────────────────
 export {

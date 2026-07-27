@@ -111,6 +111,54 @@ export class WorkflowCompositionCycleError extends DesignFlowError {
   }
 }
 
+export class ArtifactNotFoundError extends DesignFlowError {
+  public constructor(
+    artifactId: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super(
+      "ERR_ARTIFACT_NOT_FOUND",
+      `Artifact not found: ${artifactId}`,
+      { ...metadata, artifactId },
+    );
+    this.name = "ArtifactNotFoundError";
+    Object.setPrototypeOf(this, ArtifactNotFoundError.prototype);
+  }
+}
+
+export class ArtifactConflictError extends DesignFlowError {
+  public constructor(
+    artifactId: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    super(
+      "ERR_ARTIFACT_EXISTS",
+      `Artifact already registered: ${artifactId}`,
+      { ...metadata, artifactId },
+    );
+    this.name = "ArtifactConflictError";
+    Object.setPrototypeOf(this, ArtifactConflictError.prototype);
+  }
+}
+
+export class ArtifactCycleError extends DesignFlowError {
+  public readonly cyclePath: readonly string[];
+
+  public constructor(
+    cyclePath: readonly string[],
+    metadata?: Record<string, unknown>,
+  ) {
+    super(
+      "ERR_ARTIFACT_CYCLE",
+      `Artifact relation cycle detected: ${[...cyclePath].join(" -> ")}`,
+      { ...metadata, cyclePath: [...cyclePath] },
+    );
+    this.name = "ArtifactCycleError";
+    this.cyclePath = [...cyclePath];
+    Object.setPrototypeOf(this, ArtifactCycleError.prototype);
+  }
+}
+
 export class WorkflowResolverNotConfiguredError extends DesignFlowError {
   public constructor(
     workflowId: string,
