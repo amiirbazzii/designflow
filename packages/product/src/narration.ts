@@ -216,24 +216,25 @@ export function narrateEvents(
 ): readonly NarrationEntry[] {
   const entries: NarrationEntry[] = [];
 
+  // Silent events are dropped *before* grouping, not during it. Left in place
+  // they break a run of identical events apart — a reused artifact is
+  // announced right after the `artifact.materialized` that validated it, so
+  // three reuses would narrate as three separate lines instead of one.
+  const audible = events.filter((event) => !SILENT_EVENT_TYPES.has(event.type));
+
   let index = 0;
 
-  while (index < events.length) {
-    const event = events[index];
+  while (index < audible.length) {
+    const event = audible[index];
 
     if (event === undefined) break;
-
-    if (SILENT_EVENT_TYPES.has(event.type)) {
-      index++;
-      continue;
-    }
 
     let groupSize = 1;
 
     if (AGGREGATED_EVENT_TYPES.has(event.type)) {
       while (
-        index + groupSize < events.length &&
-        events[index + groupSize]?.type === event.type
+        index + groupSize < audible.length &&
+        audible[index + groupSize]?.type === event.type
       ) {
         groupSize++;
       }
@@ -244,7 +245,7 @@ export function narrateEvents(
     if (narration !== null) {
       const sourceEventTypes: string[] = [];
       for (let offset = 0; offset < groupSize; offset++) {
-        const source = events[index + offset];
+        const source = audible[index + offset];
         if (source !== undefined) sourceEventTypes.push(source.type);
       }
 

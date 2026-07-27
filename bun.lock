@@ -75,6 +75,18 @@
         "@designflow/sdk": "workspace:*",
       },
     },
+    "workflows/workflow-design-to-code": {
+      "name": "@designflow/workflow-design-to-code",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+      "devDependencies": {
+        "@designflow/core": "workspace:*",
+        "@designflow/product": "workspace:*",
+      },
+    },
     "workflows/workflow-test": {
       "name": "@designflow/workflow-test",
       "version": "0.1.0",
@@ -101,6 +113,8 @@
     "@designflow/sdk": ["@designflow/sdk@workspace:packages/sdk"],
 
     "@designflow/state": ["@designflow/state@workspace:packages/state"],
+
+    "@designflow/workflow-design-to-code": ["@designflow/workflow-design-to-code@workspace:workflows/workflow-design-to-code"],
 
     "@designflow/workflow-test": ["@designflow/workflow-test@workspace:workflows/workflow-test"],
 
