@@ -608,12 +608,52 @@ export class ExecutionEngine {
 
         if (alreadyCompleted.has(nodeId)) continue;
 
-        // The planner classified this node as reusable, so its body is left
-        // out of the run. It is not a failure and does not block dependents:
-        // adopting the prior output is a `CapabilityReuseResolver` concern.
+        // The planner decided this node needs no computation. The resolver
+        // decides what artifacts replace that computation — the two answer
+        // different questions, so a skip is only honoured once the outputs
+        // have actually been recovered.
         if (plannedSkips.has(nodeId)) {
-          plannedSkippedSteps.add(nodeId);
-          continue;
+          let adopted: LayerNodeResult | null;
+
+          try {
+            adopted = await this.adoptPlannedSkip(
+              step,
+              context,
+              workflowInput,
+              allParentArtifacts,
+            );
+          } catch (error) {
+            // Recovery ran outside the per-node task loop, so its failures
+            // are attributed here by hand — a bad adoption fails its own node
+            // and blocks its dependents, rather than aborting the whole run.
+            failedSteps.add(nodeId);
+            failedErrors.set(nodeId, error);
+            continue;
+          }
+
+          if (adopted !== null) {
+            plannedSkippedSteps.add(nodeId);
+
+            // Only a node whose outputs were actually recovered counts as
+            // completed. The artifact-less skip preserved for a host running
+            // the planner alone stays out of `completedSteps`, exactly as it
+            // was before the resolver handshake existed.
+            if (adopted.executed) {
+              executedSteps.push(nodeId);
+            }
+
+            for (const artifact of adopted.artifacts) {
+              candidateArtifacts.push(artifact);
+              allParentArtifacts.push(artifact);
+            }
+
+            continue;
+          }
+
+          // Nothing could stand in for the node's output, so the optimisation
+          // degrades to running it. Executing work that may be redundant is
+          // recoverable; carrying on without artifacts a dependent expects is
+          // not.
         }
 
         if (step.dependsOn.some((dep) => failedSteps.has(dep))) {
@@ -803,6 +843,42 @@ export class ExecutionEngine {
       executed: true,
       pending: undefined,
     };
+  }
+
+  /**
+   * Recovers the outputs of a node the planner marked reusable.
+   *
+   * This is the seam between the two collaborators: the planner decides that a
+   * node needs no computation, and the resolver supplies the artifacts that
+   * replace it. Returns `null` when the outputs could not be recovered, which
+   * the caller reads as "run the node after all".
+   *
+   * Two cases deliberately return the artifact-less skip that predates the
+   * reuse handshake, so behaviour is preserved when a collaborator is absent:
+   *
+   * - **No resolver configured.** The host opted into planning alone and has
+   *   accepted that skipped nodes contribute nothing.
+   * - **A workflow node.** `CapabilityReuseRequest` is a capability contract
+   *   and carries a `capabilityId`; there is nothing honest to put there for a
+   *   child workflow, so composition is left to a later stage.
+   */
+  private async adoptPlannedSkip(
+    step: ExecutionStep,
+    context: ExecutionContext,
+    workflowInput: unknown,
+    parentArtifacts: readonly ArtifactRef[],
+  ): Promise<LayerNodeResult | null> {
+    if (this.reuseResolver === undefined || step.kind !== "capability") {
+      return { artifacts: [], executed: false, pending: undefined };
+    }
+
+    return this.resolveReuse(
+      step.nodeId,
+      step.capabilityId,
+      resolveNodeInput(step.inputMap, workflowInput),
+      context,
+      parentArtifacts.map((artifact) => artifact.id),
+    );
   }
 
   /**

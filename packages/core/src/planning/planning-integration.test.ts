@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type {
   Capability,
+  CapabilityReuseDecision,
+  CapabilityReuseRequest,
+  CapabilityReuseResolver,
   ExecutionContext,
   ExecutionEvent,
   ExecutionRecord,
@@ -51,11 +54,12 @@ const pipeline: WorkflowDefinition = workflowDefinitionSchema.parse({
   ],
 });
 
-/** Records each invocation so a planner-driven skip is observable. */
-const counting = (
+/** Records the parent artifacts each node was handed when it ran. */
+const recordingParents = (
   id: string,
   artifactId: string,
   calls: string[],
+  seen: Map<string, readonly string[]>,
 ): Capability<unknown, unknown> => ({
   id,
   name: id,
@@ -63,8 +67,9 @@ const counting = (
   type: "pure",
   inputSchema: z.unknown(),
   outputSchema: z.unknown(),
-  execute: async () => {
+  execute: async (ctx) => {
     calls.push(id);
+    seen.set(id, ctx.parentArtifacts.map((artifact) => artifact.id));
     return { artifactRef: { id: artifactId, type: "test", metadata: {} } };
   },
 });
@@ -72,11 +77,16 @@ const counting = (
 interface Harness {
   readonly engine: ExecutionEngine;
   readonly repository: InMemoryExecutionRepository;
+  readonly artifactStore: InMemoryArtifactStore;
   readonly events: ExecutionEvent[];
   readonly calls: string[];
+  readonly parentsSeen: Map<string, readonly string[]>;
 }
 
-const createHarness = (options?: { readonly withPlanner?: boolean }): Harness => {
+const createHarness = (options?: {
+  readonly withPlanner?: boolean;
+  readonly reuseResolver?: CapabilityReuseResolver;
+}): Harness => {
   const events: ExecutionEvent[] = [];
   const eventPublisher = new InMemoryEventPublisher();
   eventPublisher.subscribe((event) => {
@@ -84,13 +94,23 @@ const createHarness = (options?: { readonly withPlanner?: boolean }): Harness =>
   });
 
   const calls: string[] = [];
+  const parentsSeen = new Map<string, readonly string[]>();
   const registry = new CapabilityRegistry();
-  registry.register(counting("cap-parse", "figma-json", calls));
-  registry.register(counting("cap-transform", "ui-ir", calls));
-  registry.register(counting("cap-generate", "generated-code", calls));
-  registry.register(counting("cap-validate", "validated-patch", calls));
+  registry.register(
+    recordingParents("cap-parse", "figma-json", calls, parentsSeen),
+  );
+  registry.register(
+    recordingParents("cap-transform", "ui-ir", calls, parentsSeen),
+  );
+  registry.register(
+    recordingParents("cap-generate", "generated-code", calls, parentsSeen),
+  );
+  registry.register(
+    recordingParents("cap-validate", "validated-patch", calls, parentsSeen),
+  );
 
   const repository = new InMemoryExecutionRepository();
+  const artifactStore = new InMemoryArtifactStore({ eventPublisher });
 
   const planner =
     options?.withPlanner === true
@@ -104,13 +124,14 @@ const createHarness = (options?: { readonly withPlanner?: boolean }): Harness =>
   const engine = new ExecutionEngine({
     registry,
     logger: createLogger(),
-    artifactStore: new InMemoryArtifactStore({ eventPublisher }),
+    artifactStore,
     executionRepository: repository,
     eventPublisher,
     incrementalPlanner: planner,
+    reuseResolver: options?.reuseResolver,
   });
 
-  return { engine, repository, events, calls };
+  return { engine, repository, artifactStore, events, calls, parentsSeen };
 };
 
 const createContext = (
@@ -424,5 +445,280 @@ describe("execution.plan_created event", () => {
 
     expect(result.success).toBe(false);
     expect(harness.calls).toEqual([]);
+  });
+});
+
+// ── Planner + reuse resolver composition ────────────────────────
+
+/** Answers reuse from a script, recording what it was asked. */
+class ScriptedReuseResolver implements CapabilityReuseResolver {
+  public readonly requests: CapabilityReuseRequest[] = [];
+
+  private readonly decide: (
+    request: CapabilityReuseRequest,
+  ) => CapabilityReuseDecision;
+
+  public constructor(
+    decide: (request: CapabilityReuseRequest) => CapabilityReuseDecision,
+  ) {
+    this.decide = decide;
+  }
+
+  public async resolve(
+    request: CapabilityReuseRequest,
+  ): Promise<CapabilityReuseDecision> {
+    this.requests.push(request);
+    return this.decide(request);
+  }
+}
+
+/** Registers an artifact as if the previous execution had produced it. */
+const seedArtifact = async (
+  store: InMemoryArtifactStore,
+  id: string,
+): Promise<void> => {
+  await store.createArtifact({
+    id,
+    type: "test",
+    metadata: {},
+    provenance: {
+      executionId: "exec-previous",
+      workflowId: pipeline.id,
+      capabilityId: "cap-parse",
+    },
+  });
+};
+
+const incrementalContext = (executionId: string): ExecutionContext =>
+  createContext(executionId, {
+    ...withChangedArtifacts({}, ["ui-ir"]),
+    previousExecutionId: "exec-previous",
+  });
+
+describe("planner and reuse resolver composed", () => {
+  test("recovers a skipped node's artifacts through the resolver", async () => {
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.nodeId === "parse"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "figma-json", type: "test", metadata: {} }],
+            reason: "unchanged upstream",
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await seedArtifact(harness.artifactStore, "figma-json");
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+
+    const result = await harness.engine.run(
+      pipeline,
+      incrementalContext(executionId),
+    );
+
+    expect(result.success).toBe(true);
+    expect(harness.calls).toEqual([
+      "cap-transform",
+      "cap-generate",
+      "cap-validate",
+    ]);
+
+    // The gap Stage 24 documented: the skipped node's artifact is now present.
+    expect(result.artifacts.map((a) => a.id)).toEqual([
+      "figma-json",
+      "ui-ir",
+      "generated-code",
+      "validated-patch",
+    ]);
+  });
+
+  test("hands the recovered artifact to the downstream node", async () => {
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.nodeId === "parse"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "figma-json", type: "test", metadata: {} }],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await seedArtifact(harness.artifactStore, "figma-json");
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+    await harness.engine.run(pipeline, incrementalContext(executionId));
+
+    // transform depends on the skipped parse node and must still see its
+    // output — this is the whole point of the composition.
+    expect(harness.parentsSeen.get("cap-transform")).toEqual(["figma-json"]);
+  });
+
+  test("counts a recovered node as completed", async () => {
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.nodeId === "parse"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "figma-json", type: "test", metadata: {} }],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await seedArtifact(harness.artifactStore, "figma-json");
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+
+    const result = await harness.engine.run(
+      pipeline,
+      incrementalContext(executionId),
+    );
+
+    expect(result.completedSteps).toEqual([
+      "parse",
+      "transform",
+      "generate",
+      "validate",
+    ]);
+  });
+
+  test("emits artifact.reused for the skipped node", async () => {
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.nodeId === "parse"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "figma-json", type: "test", metadata: {} }],
+            reason: "unchanged upstream",
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await seedArtifact(harness.artifactStore, "figma-json");
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+    await harness.engine.run(pipeline, incrementalContext(executionId));
+
+    const reused = harness.events.filter((e) => e.type === "artifact.reused");
+
+    expect(reused).toHaveLength(1);
+    expect(reused[0]?.payload?.artifactId).toBe("figma-json");
+    expect(reused[0]?.payload?.nodeId).toBe("parse");
+    expect(reused[0]?.payload?.reason).toBe("unchanged upstream");
+  });
+
+  test("asks the resolver only about the planner-skipped node", async () => {
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.nodeId === "parse"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "figma-json", type: "test", metadata: {} }],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await seedArtifact(harness.artifactStore, "figma-json");
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+    await harness.engine.run(pipeline, incrementalContext(executionId));
+
+    // Nodes the planner kept are still offered to the resolver by the
+    // per-capability boundary, but the skipped node must be among them.
+    expect(resolver.requests.map((r) => r.nodeId)).toContain("parse");
+    const parse = resolver.requests.find((r) => r.nodeId === "parse");
+    expect(parse?.capabilityId).toBe("cap-parse");
+    expect(parse?.inputFingerprint.length).toBe(64);
+  });
+
+  test("runs the node when the resolver cannot supply its output", async () => {
+    const resolver = new ScriptedReuseResolver(() => ({
+      reuse: false,
+      artifacts: [],
+    }));
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+
+    const result = await harness.engine.run(
+      pipeline,
+      incrementalContext(executionId),
+    );
+
+    // The optimisation degrades to correctness rather than dropping outputs.
+    expect(result.success).toBe(true);
+    expect(harness.calls).toEqual([
+      "cap-parse",
+      "cap-transform",
+      "cap-generate",
+      "cap-validate",
+    ]);
+    expect(result.artifacts).toHaveLength(4);
+  });
+
+  test("fails the node when the resolver adopts an unregistered artifact", async () => {
+    const resolver = new ScriptedReuseResolver((request) =>
+      request.nodeId === "parse"
+        ? {
+            reuse: true,
+            artifacts: [{ id: "never-registered", type: "test", metadata: {} }],
+          }
+        : { reuse: false, artifacts: [] },
+    );
+
+    const harness = createHarness({ withPlanner: true, reuseResolver: resolver });
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+
+    const result = await harness.engine.run(
+      pipeline,
+      incrementalContext(executionId),
+    );
+
+    // Stage 23's integrity check still governs what may be adopted.
+    expect(result.success).toBe(false);
+    expect(result.failedStep).toBe("parse");
+  });
+
+  test("keeps the artifact-less skip when no resolver is configured", async () => {
+    const harness = createHarness({ withPlanner: true });
+    await startExecution(harness.repository, "exec-previous", "completed");
+
+    const executionId = crypto.randomUUID();
+    await startExecution(harness.repository, executionId);
+
+    const result = await harness.engine.run(
+      pipeline,
+      incrementalContext(executionId),
+    );
+
+    // Behaviour for a host running the planner alone is unchanged.
+    expect(result.success).toBe(true);
+    expect(harness.calls).toEqual([
+      "cap-transform",
+      "cap-generate",
+      "cap-validate",
+    ]);
+    expect(result.completedSteps).toEqual([
+      "transform",
+      "generate",
+      "validate",
+    ]);
+    expect(harness.parentsSeen.get("cap-transform")).toEqual([]);
   });
 });
