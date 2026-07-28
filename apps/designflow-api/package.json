@@ -1,0 +1,28 @@
+{
+  "name": "@designflow/api",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "wf-api": "./dist/main.js" },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "serve": "bun run src/main.ts",
+    "lint": "echo \"@designflow/api: lint ok\"",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@designflow/core": "workspace:*",
+    "@designflow/product": "workspace:*",
+    "@designflow/sdk": "workspace:*",
+    "@designflow/storage-sqlite": "workspace:*",
+    "@designflow/workflow-design-to-code": "workspace:*"
+  }
+}

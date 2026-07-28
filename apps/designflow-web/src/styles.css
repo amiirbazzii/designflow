@@ -1,0 +1,92 @@
+/* apps/designflow-web/src/styles.css */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #17181c;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --accent: #2563eb;
+  --ok: #059669;
+  --warn: #b45309;
+  --bad: #dc2626;
+  --card: #fbfbfd;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0e12;
+    --fg: #e8e9ed;
+    --muted: #9aa1ad;
+    --line: #24262e;
+    --accent: #6b95ff;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --card: #14161c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.shell { max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+
+h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -0.02em; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; letter-spacing: -0.01em; }
+p.lede { color: var(--muted); margin: 0 0 2rem; }
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  margin-bottom: .75rem;
+}
+
+button {
+  font: inherit;
+  padding: .5rem .9rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+
+label { display: block; margin-bottom: 1rem; }
+label span { display: block; font-size: .85rem; color: var(--muted); margin-bottom: .3rem; }
+input, select {
+  font: inherit; width: 100%; padding: .5rem .6rem;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--fg);
+}
+
+ul.steps { list-style: none; padding: 0; margin: 0; }
+ul.steps li { display: flex; gap: .6rem; padding: .3rem 0; }
+.mark { width: 1.1rem; text-align: center; }
+.done .mark { color: var(--ok); }
+.active .mark { color: var(--accent); }
+.pending { color: var(--muted); }
+
+.bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin: .75rem 0; }
+.bar > div { height: 100%; background: var(--accent); transition: width .25s; }
+
+.meta { color: var(--muted); font-size: .87rem; }
+.tag { font-size: .75rem; padding: .1rem .45rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.err { color: var(--bad); }
+.counts { display: flex; gap: 1.5rem; margin: .5rem 0 0; }
+.counts b { display: block; font-size: 1.4rem; font-weight: 600; }
+.narration { list-style: none; padding: 0; margin: 0; color: var(--muted); }
+.narration li { padding: .15rem 0; }
+.time { display: inline-block; width: 3.5rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+a.link { color: var(--accent); cursor: pointer; text-decoration: none; }
