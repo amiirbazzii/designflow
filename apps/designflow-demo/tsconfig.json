@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts"],
+  "references": [
+    { "path": "../../packages/sdk" },
+    { "path": "../../packages/core" },
+    { "path": "../../packages/product" },
+    { "path": "../../workflows/workflow-design-to-code" }
+  ]
+}

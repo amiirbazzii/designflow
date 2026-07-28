@@ -27,6 +27,19 @@
         "commander": "^13.0.0",
       },
     },
+    "apps/designflow-demo": {
+      "name": "@designflow/demo",
+      "version": "0.1.0",
+      "bin": {
+        "wf-demo": "./dist/main.js",
+      },
+      "dependencies": {
+        "@designflow/core": "workspace:*",
+        "@designflow/product": "workspace:*",
+        "@designflow/sdk": "workspace:*",
+        "@designflow/workflow-design-to-code": "workspace:*",
+      },
+    },
     "packages/artifacts": {
       "name": "@designflow/artifacts",
       "version": "0.1.0",
@@ -107,6 +120,8 @@
     "@designflow/capability-test-artifact": ["@designflow/capability-test-artifact@workspace:packages/capabilities/test-artifact"],
 
     "@designflow/core": ["@designflow/core@workspace:packages/core"],
+
+    "@designflow/demo": ["@designflow/demo@workspace:apps/designflow-demo"],
 
     "@designflow/product": ["@designflow/product@workspace:packages/product"],
 
