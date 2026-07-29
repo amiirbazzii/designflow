@@ -1,5 +1,5 @@
 // apps/designflow-cli/src/commands/history.ts
-import { formatWhen, heading } from "../ui/terminal";
+import { formatWhen, heading, runExample } from "../ui/terminal";
 import type { Terminal } from "../ui/terminal";
 import type { CliContext } from "../services/cli-runner";
 
@@ -28,7 +28,9 @@ export async function historyCommand(
   if (entries.length === 0) {
     terminal.print("Nothing has run yet.");
     terminal.print();
-    terminal.print("Start one with:  designflow run design-to-code");
+    terminal.print(
+      `Start one with:  ${runExample(context.workers.listWorkers()[0]?.id)}`,
+    );
     return 0;
   }
 

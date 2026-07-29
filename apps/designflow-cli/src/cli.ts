@@ -1,18 +1,20 @@
 // apps/designflow-cli/src/cli.ts
-import { usage } from "./ui/terminal";
+import { onboarding, runExample, usage, version } from "./ui/terminal";
 import type { Terminal } from "./ui/terminal";
 import type { CliContext } from "./services/cli-runner";
 import { listCommand } from "./commands/list";
 import { runCommand } from "./commands/run";
 import { historyCommand } from "./commands/history";
 import { interactiveCommand } from "./commands/interactive";
+import { settingsCommand } from "./commands/settings";
+import { CLI_VERSION } from "./version";
 
-export const CLI_VERSION = "0.1.0";
+export { CLI_VERSION };
 
 /**
  * Argument parsing and dispatch.
  *
- * Hand-rolled rather than delegated to an argument library: there are four
+ * Hand-rolled rather than delegated to an argument library: there are five
  * commands, and a global `npm install -g designflow` is nicer for having one
  * fewer dependency to audit.
  *
@@ -26,13 +28,25 @@ export async function dispatch(
 ): Promise<number> {
   const [command, ...rest] = argv;
 
+  // Onboarding comes before any command: a fresh install should introduce
+  // itself whether the first thing typed is `designflow` or `designflow list`.
+  // Shown once — the config records that setup happened.
+  //
+  // `newInstall`, not `firstRun`: an upgrade from a CLI predating
+  // `firstRunCompleted` still has setup work to do, but telling someone it
+  // "set up ~/.designflow" would describe work it did not do to a directory
+  // they already had.
+  if (context.home.newInstall) {
+    terminal.print(onboarding(context.home.layout));
+  }
+
   if (command === "--help" || command === "-h" || command === "help") {
     terminal.print(usage());
     return 0;
   }
 
   if (command === "--version" || command === "-v") {
-    terminal.print(CLI_VERSION);
+    terminal.print(version(CLI_VERSION));
     return 0;
   }
 
@@ -43,6 +57,9 @@ export async function dispatch(
   switch (command) {
     case "list":
       return listCommand(context, terminal);
+
+    case "settings":
+      return settingsCommand(context, terminal);
 
     case "history": {
       const workflowId = rest[0];
@@ -59,7 +76,9 @@ export async function dispatch(
       if (name === undefined) {
         terminal.print("Which worker? For example:");
         terminal.print();
-        terminal.print("  designflow run design-engineer");
+        terminal.print(
+          `  ${runExample(context.workers.listWorkers()[0]?.id)}`,
+        );
         terminal.print();
         terminal.print("Run  designflow list  to see who is available.");
         return 1;

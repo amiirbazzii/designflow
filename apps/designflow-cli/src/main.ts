@@ -3,6 +3,8 @@
 import { createInterface } from "node:readline/promises";
 import { dispatch } from "./cli";
 import { createCliContext } from "./services/cli-runner";
+import type { CliContext } from "./services/cli-runner";
+import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
 
 /**
@@ -79,16 +81,19 @@ async function main(): Promise<number> {
       ? await pipedTerminal()
       : interactiveTerminal();
 
-  const context = createCliContext();
+  // Built inside the guard: preparing `~/.designflow` is filesystem work, so
+  // this is exactly where a permissions or disk problem surfaces, and it
+  // deserves the same explanation as any other failure rather than a raw trace.
+  let context: CliContext | undefined;
 
   try {
+    context = createCliContext();
     return await dispatch(argv, context, terminal);
   } catch (error) {
-    print();
-    print(error instanceof Error ? error.message : String(error));
+    print(formatError(error));
     return 1;
   } finally {
-    context.close();
+    context?.close();
     close();
   }
 }

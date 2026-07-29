@@ -34,7 +34,9 @@ import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
 } from "@designflow/workflow-design-to-code";
-import { ensureConfig, resolveDatabasePath } from "./config";
+import { resolveDatabasePath } from "./config";
+import { initializeHome } from "./home";
+import type { HomeState } from "./home";
 
 /**
  * The CLI's composition root — the one allowed exception to the import rule.
@@ -94,6 +96,16 @@ export interface CliContext {
   /** The worker catalogue — what a person chooses from. */
   readonly workers: InMemoryWorkerRegistry;
   /**
+   * The application directory, and whether this invocation created it.
+   *
+   * `dispatch` reads `home.firstRun` to decide whether to show onboarding. The
+   * directory work already happened by the time a context exists; this only
+   * reports what was found or done.
+   */
+  readonly home: HomeState;
+  /** Where this context's runs are stored. Shown by `settings`. */
+  readonly databasePath: string;
+  /**
    * Resolves a name to something runnable.
    *
    * Accepts a worker id, and falls back to a workflow id so that a workflow
@@ -112,11 +124,22 @@ export interface CliContextOptions {
   /** Overrides the configured database. Tests pass a temporary file. */
   readonly databasePath?: string;
   readonly requireApproval?: boolean;
+  /**
+   * Overrides the worker catalogue.
+   *
+   * The built-in catalogue is the default. A host embedding the CLI can supply
+   * a curated one, and a test can supply an empty one — which is the only way
+   * to exercise "no workers installed" without the shell hardcoding a name it
+   * could then check for.
+   */
+  readonly workers?: InMemoryWorkerRegistry;
 }
 
 export function createCliContext(options?: CliContextOptions): CliContext {
-  const config = ensureConfig();
-  const databasePath = options?.databasePath ?? resolveDatabasePath(config);
+  // First: lay out `~/.designflow`. Everything below needs somewhere to write,
+  // and a fresh install has nowhere until this runs.
+  const home = initializeHome();
+  const databasePath = options?.databasePath ?? resolveDatabasePath(home.config);
 
   mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -136,7 +159,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
   const capabilityRegistry = new CapabilityRegistry();
   const workflows = new Map<string, WorkflowPackage>();
-  const workers = createWorkerRegistry();
+  const workers = options?.workers ?? createWorkerRegistry();
 
   for (const workflowPackage of [designToCodeWorkflowPackage]) {
     workflowPackage.load(capabilityRegistry);
@@ -202,6 +225,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   return {
     runner,
     workers,
+    home,
+    databasePath,
 
     resolve(name) {
       const worker = workers.getWorker(name);

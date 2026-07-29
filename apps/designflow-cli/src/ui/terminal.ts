@@ -1,4 +1,5 @@
 // apps/designflow-cli/src/ui/terminal.ts
+import type { HomeLayout } from "../services/home";
 
 /**
  * Terminal rendering and the IO port.
@@ -21,24 +22,120 @@ export function heading(title: string): string {
   return `${title}\n${RULE}`;
 }
 
-export function banner(): string {
+// ── First run ───────────────────────────────────────────────────
+
+/**
+ * Shown once, by the invocation that creates `~/.designflow`.
+ *
+ * The moment after `npm install -g designflow` is the only chance to say what
+ * this is, so it says it plainly and then lists what it just put on the disk —
+ * an installed application should never leave someone wondering what it wrote
+ * or where.
+ */
+export function onboarding(layout: HomeLayout): string {
   return [
-    "Welcome to DesignFlow",
     "",
-    "AI workflows that turn ideas into results.",
+    "Welcome to DesignFlow.",
+    "",
+    "Your AI workforce in the terminal.",
+    "",
+    RULE,
+    "",
+    `Set up  ${layout.home}`,
+    "",
+    "  config.json    settings you can edit",
+    "  history/       your previous runs",
+    "  cache/         working space",
+    "",
+    "Nothing leaves this machine. There is no account to create.",
+    "",
   ].join("\n");
+}
+
+// ── Interactive shell ───────────────────────────────────────────
+
+export function banner(): string {
+  return heading("DesignFlow AI");
 }
 
 export function menu(): string {
   return [
     "",
-    "Available actions:",
+    "Options:",
     "",
-    "  1. Hire a worker",
-    "  2. View history",
-    "  3. Exit",
+    "  1. Use an AI Worker",
+    "  2. View History",
+    "  3. Settings",
+    "  4. Exit",
     "",
   ].join("\n");
+}
+
+/** What `Use an AI Worker` shows. Driven entirely by the worker registry. */
+export function workerMenu(
+  workers: readonly { readonly name: string; readonly description: string }[],
+): string {
+  const lines = ["", "Who would you like to use?", ""];
+
+  workers.forEach((worker, index) => {
+    lines.push(`  ${index + 1}. ${worker.name}`);
+    lines.push(`     ${worker.description}`);
+  });
+
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+/**
+ * The Settings screen.
+ *
+ * Read-only, and shows where to make changes rather than offering to make them.
+ * Editing a JSON file is a thing users already know how to do, and a prompt
+ * driven editor for four fields would be more code and more ways to corrupt the
+ * file than the file itself is worth.
+ *
+ * There is nothing here to authenticate, and by design nothing here to point at
+ * a server.
+ */
+export function settings(
+  layout: HomeLayout,
+  values: {
+    readonly version: string;
+    readonly environment: string;
+    readonly historyFile: string;
+    readonly workerCount: number;
+  },
+): string {
+  return [
+    "",
+    heading("Settings"),
+    "",
+    `  Version       DesignFlow ${values.version}`,
+    `  Environment   ${values.environment}`,
+    `  Workers       ${values.workerCount} installed`,
+    "",
+    `  Home          ${layout.home}`,
+    `  Config        ${layout.configFile}`,
+    `  History       ${values.historyFile}`,
+    `  Cache         ${layout.cache}`,
+    "",
+    "  Edit config.json to change these. Set DESIGNFLOW_HOME to move the",
+    "  whole directory somewhere else.",
+    "",
+  ].join("\n");
+}
+
+/**
+ * A `designflow run …` example naming a real installed worker.
+ *
+ * Every hint that suggests a command takes its worker from the registry rather
+ * than from a string here. A literal would be correct only for as long as the
+ * built-in catalogue does not change, and would then send someone to a worker
+ * that is not installed.
+ */
+export function runExample(workerId: string | undefined): string {
+  return `designflow run ${workerId ?? "<worker>"}`;
 }
 
 /** `✓` done, `→` underway, `○` not started. */
@@ -46,19 +143,28 @@ export function stepMarker(status: string): string {
   return status === "done" ? "✓" : status === "active" ? "→" : "○";
 }
 
+export function version(cliVersion: string): string {
+  return `DesignFlow ${cliVersion}`;
+}
+
 export function usage(): string {
   return [
-    "designflow — AI workflows that turn ideas into results",
+    "designflow — your AI workforce in the terminal",
     "",
     "Usage:",
     "  designflow                 Interactive mode",
     "  designflow list            Show available AI workers",
     "  designflow run <worker>    Put a worker to work",
     "  designflow history         Show previous runs",
+    "  designflow settings        Show where things are kept",
     "",
     "Options:",
     "  -h, --help                 Show this help",
     "  -v, --version              Show the installed version",
+    "",
+    "Environment:",
+    "  DESIGNFLOW_HOME            Where DesignFlow keeps its files",
+    "  DESIGNFLOW_DEBUG=1         Show full details when something fails",
     "",
   ].join("\n");
 }

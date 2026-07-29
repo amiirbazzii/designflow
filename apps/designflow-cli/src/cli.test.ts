@@ -33,9 +33,21 @@ function workspace(): string {
   return dir;
 }
 
+/**
+ * A context against a throwaway home.
+ *
+ * `DESIGNFLOW_HOME` is set for every context, not just the ones asserting on
+ * configuration: `createCliContext` prepares the application directory, so
+ * without this the suite would create and mutate the developer's real
+ * `~/.designflow` — and the first-run tests would then depend on whether
+ * anybody had ever run the CLI on this machine.
+ */
 function context(options?: { readonly requireApproval?: boolean }): CliContext {
+  const home = workspace();
+  process.env.DESIGNFLOW_HOME = home;
+
   const created = createCliContext({
-    databasePath: join(workspace(), "runs.sqlite"),
+    databasePath: join(home, "runs.json"),
     ...options,
   });
   contexts.push(created);
@@ -60,42 +72,40 @@ afterEach(() => {
 // ── 1. CLI starts successfully ──────────────────────────────────
 
 describe("starting the CLI", () => {
-  test("greets the user and offers actions", async () => {
-    const terminal = new ScriptedTerminal(["3"]);
+  test("names itself and offers the four options", async () => {
+    const terminal = new ScriptedTerminal(["4"]);
 
     const code = await dispatch([], context(), terminal);
 
     expect(code).toBe(0);
-    expect(terminal.transcript).toContain("Welcome to DesignFlow");
-    expect(terminal.transcript).toContain(
-      "AI workflows that turn ideas into results.",
-    );
-    expect(terminal.transcript).toContain("1. Hire a worker");
-    expect(terminal.transcript).toContain("2. View history");
-    expect(terminal.transcript).toContain("3. Exit");
+    expect(terminal.transcript).toContain("DesignFlow AI");
+    expect(terminal.transcript).toContain("1. Use an AI Worker");
+    expect(terminal.transcript).toContain("2. View History");
+    expect(terminal.transcript).toContain("3. Settings");
+    expect(terminal.transcript).toContain("4. Exit");
   });
 
   test("exits cleanly", async () => {
-    const terminal = new ScriptedTerminal(["3"]);
+    const terminal = new ScriptedTerminal(["4"]);
 
     expect(await dispatch([], context(), terminal)).toBe(0);
     expect(terminal.transcript).toContain("Goodbye.");
   });
 
   test("returns to the menu after an action", async () => {
-    const terminal = new ScriptedTerminal(["2", "3"]);
+    const terminal = new ScriptedTerminal(["2", "4"]);
 
     await dispatch([], context(), terminal);
 
     // The session is a place to work, not a single command.
     const menus = terminal.output.filter((line) =>
-      line.includes("1. Hire a worker"),
+      line.includes("1. Use an AI Worker"),
     );
     expect(menus.length).toBeGreaterThan(1);
   });
 
   test("reports an unrecognised menu choice without exiting", async () => {
-    const terminal = new ScriptedTerminal(["9", "3"]);
+    const terminal = new ScriptedTerminal(["9", "4"]);
 
     expect(await dispatch([], context(), terminal)).toBe(0);
     expect(terminal.transcript).toContain("Not an option: 9");
@@ -288,7 +298,9 @@ describe("designflow history", () => {
   });
 
   test("survives the process that produced it", async () => {
-    const databasePath = join(workspace(), "runs.sqlite");
+    const home = workspace();
+    process.env.DESIGNFLOW_HOME = home;
+    const databasePath = join(home, "runs.json");
 
     // First "invocation".
     const first = createCliContext({ databasePath, requireApproval: false });
@@ -411,6 +423,7 @@ describe("command parsing", () => {
     expect(terminal.transcript).toContain("designflow list");
     expect(terminal.transcript).toContain("designflow run <worker>");
     expect(terminal.transcript).toContain("designflow history");
+    expect(terminal.transcript).toContain("designflow settings");
   });
 
   test("accepts -h and help as aliases", async () => {
@@ -425,7 +438,7 @@ describe("command parsing", () => {
     const terminal = new ScriptedTerminal();
 
     expect(await dispatch(["--version"], context(), terminal)).toBe(0);
-    expect(terminal.transcript.trim()).toBe(CLI_VERSION);
+    expect(terminal.transcript).toContain(`DesignFlow ${CLI_VERSION}`);
   });
 
   test("rejects an unknown command with usage", async () => {
@@ -439,11 +452,11 @@ describe("command parsing", () => {
   });
 
   test("no arguments means interactive mode", async () => {
-    const terminal = new ScriptedTerminal(["3"]);
+    const terminal = new ScriptedTerminal(["4"]);
 
     await dispatch([], context(), terminal);
 
-    expect(terminal.transcript).toContain("Welcome to DesignFlow");
+    expect(terminal.transcript).toContain("DesignFlow AI");
   });
 });
 

@@ -37,8 +37,40 @@ npm install -g --prefix "$PREFIX" "$WORK/$TARBALL" >/dev/null
 command -v designflow >/dev/null || fail "designflow is not on PATH after install"
 echo "installed at $(command -v designflow)"
 
+# The first-run check has to come before anything else that starts the CLI:
+# every command prepares the application directory, so a `--version` here would
+# consume the one first run there is.
+step "first run creates the application directory"
+[ -d "$DESIGNFLOW_HOME" ] && fail "the home already exists before the first run"
+FIRST="$(designflow list)"
+grep -q "Welcome to DesignFlow" <<<"$FIRST" || fail "no onboarding on the first run"
+grep -q "Available AI Workers" <<<"$FIRST" || fail "did not continue into the application"
+for entry in config.json history cache; do
+  [ -e "$DESIGNFLOW_HOME/$entry" ] || fail "$entry was not created"
+done
+grep -q '"firstRunCompleted": true' "$DESIGNFLOW_HOME/config.json" \
+  || fail "config.json does not record that setup completed"
+echo "ok"
+
 step "designflow --version"
-designflow --version
+designflow --version | grep -q "DesignFlow" || fail "--version did not name the product"
+echo "ok"
+
+step "second run skips onboarding"
+designflow list | grep -q "Welcome to DesignFlow" && fail "onboarding was shown twice"
+echo "ok"
+
+step "designflow settings"
+designflow settings | grep -q "$DESIGNFLOW_HOME" || fail "settings did not report the home"
+echo "ok"
+
+step "errors carry no stack trace"
+BROKEN="$WORK/afile"
+touch "$BROKEN"
+OUT="$(DESIGNFLOW_HOME="$BROKEN/home" designflow list 2>&1 || true)"
+grep -q "DESIGNFLOW_HOME" <<<"$OUT" || fail "the error suggested no next action"
+grep -q "    at " <<<"$OUT" && fail "a stack trace reached the user"
+echo "ok"
 
 step "designflow list"
 designflow list | grep -q "Design Engineer" || fail "list did not show the Design Engineer worker"
@@ -55,7 +87,11 @@ designflow history | grep -q "Design → Code" || fail "history did not list the
 echo "ok"
 
 step "designflow (interactive)"
-printf '3\n' | designflow | grep -q "Welcome to DesignFlow" || fail "interactive mode did not start"
+MENU="$(printf '4\n' | designflow)"
+grep -q "DesignFlow AI" <<<"$MENU" || fail "interactive mode did not start"
+for option in "1. Use an AI Worker" "2. View History" "3. Settings" "4. Exit"; do
+  grep -q "$option" <<<"$MENU" || fail "the main menu is missing: $option"
+done
 echo "ok"
 
 printf '\n\033[32mSMOKE TEST PASSED\033[0m — the published package installs and runs under Node.\n'
