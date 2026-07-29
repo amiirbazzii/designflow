@@ -12,7 +12,7 @@
       },
     },
     "apps/cli": {
-      "name": "designflow",
+      "name": "@designflow/cli-legacy",
       "version": "0.1.0",
       "bin": {
         "wf": "./dist/index.js",
@@ -39,6 +39,21 @@
         "@designflow/sdk": "workspace:*",
         "@designflow/storage-sqlite": "workspace:*",
         "@designflow/workflow-design-to-code": "workspace:*",
+      },
+    },
+    "apps/designflow-cli": {
+      "name": "designflow",
+      "version": "0.1.0",
+      "bin": {
+        "designflow": "./dist/main.js",
+      },
+      "devDependencies": {
+        "@designflow/core": "workspace:*",
+        "@designflow/product": "workspace:*",
+        "@designflow/sdk": "workspace:*",
+        "@designflow/storage-file": "workspace:*",
+        "@designflow/workflow-design-to-code": "workspace:*",
+        "zod": "^3.24.0",
       },
     },
     "apps/designflow-demo": {
@@ -116,6 +131,14 @@
       "dependencies": {
         "@designflow/artifacts": "workspace:*",
         "@designflow/sdk": "workspace:*",
+      },
+    },
+    "packages/storage-file": {
+      "name": "@designflow/storage-file",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
       },
     },
     "packages/storage-sqlite": {
@@ -197,6 +220,8 @@
 
     "@designflow/capability-test-artifact": ["@designflow/capability-test-artifact@workspace:packages/capabilities/test-artifact"],
 
+    "@designflow/cli-legacy": ["@designflow/cli-legacy@workspace:apps/cli"],
+
     "@designflow/core": ["@designflow/core@workspace:packages/core"],
 
     "@designflow/demo": ["@designflow/demo@workspace:apps/designflow-demo"],
@@ -206,6 +231,8 @@
     "@designflow/sdk": ["@designflow/sdk@workspace:packages/sdk"],
 
     "@designflow/state": ["@designflow/state@workspace:packages/state"],
+
+    "@designflow/storage-file": ["@designflow/storage-file@workspace:packages/storage-file"],
 
     "@designflow/storage-sqlite": ["@designflow/storage-sqlite@workspace:packages/storage-sqlite"],
 
@@ -379,7 +406,7 @@
 
     "debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" }, "peerDependencies": { "supports-color": "*" }, "optionalPeers": ["supports-color"] }, "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="],
 
-    "designflow": ["designflow@workspace:apps/cli"],
+    "designflow": ["designflow@workspace:apps/designflow-cli"],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.397", "", {}, "sha512-khGTy9U9x02KEtsKM8vx5A62BsRmcOsIgDpWr1ImE32Ax8GxHGPHZf+Eu9H8zOOyHJnB0jTbseyTHbq2XCT8yw=="],
 

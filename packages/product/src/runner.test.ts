@@ -42,6 +42,9 @@ class StubRepository implements ExecutionRepository {
   public async list(workflowId: string): Promise<readonly ExecutionRecord[]> {
     return [...this.records.values()].filter((r) => r.workflowId === workflowId);
   }
+  public async listAll(): Promise<readonly ExecutionRecord[]> {
+    return [...this.records.values()];
+  }
   public async appendEvent(): Promise<void> {}
   public async listEvents(): Promise<readonly never[]> {
     return [];
@@ -747,5 +750,64 @@ describe("explain", () => {
       "Completed successfully",
     ]);
     expect(report.timeline.entries).toHaveLength(2);
+  });
+});
+
+// ── history() without a workflow id ─────────────────────────────
+
+describe("history across every workflow", () => {
+  test("returns runs from all workflows when none is named", async () => {
+    const harness = createHarness();
+    harness.repository.add(record({ executionId: "exec-1", startedAt: BASE }));
+    harness.repository.add(
+      record({
+        executionId: "exec-2",
+        workflowId: "other-workflow",
+        startedAt: BASE + 5_000,
+      }),
+    );
+
+    const history = await harness.runner.history();
+
+    // A caller browsing history has an execution list, not a workflow in mind.
+    expect(history.map((entry) => entry.executionId)).toEqual([
+      "exec-2",
+      "exec-1",
+    ]);
+  });
+
+  test("still narrows to one workflow when asked", async () => {
+    const harness = createHarness();
+    harness.repository.add(record({ executionId: "exec-1" }));
+    harness.repository.add(
+      record({ executionId: "exec-2", workflowId: "other-workflow" }),
+    );
+
+    const history = await harness.runner.history("design-to-code");
+
+    expect(history.map((entry) => entry.executionId)).toEqual(["exec-1"]);
+  });
+
+  test("reports nothing when the repository cannot list everything", async () => {
+    const repository = new StubRepository();
+    repository.add(record());
+
+    // StubRepository implements listAll; strip it to model a backend that
+    // predates the optional method.
+    const limited = { ...repository, listAll: undefined };
+
+    const runner = new WorkflowRunner({
+      executionContract: new StubExecutionContract({
+        executionId: "exec-1",
+        workflowId: "design-to-code",
+        status: "completed",
+        artifacts: [],
+      }),
+      executionRepository: limited,
+      eventSource: new InMemoryExecutionEventCollector(),
+    });
+
+    // Returning one workflow's runs would be worse than returning none.
+    expect(await runner.history()).toEqual([]);
   });
 });

@@ -66,6 +66,15 @@ export interface ExecutionRepository {
   get(executionId: string): Promise<ExecutionRecord | null>;
   list(workflowId: string): Promise<readonly ExecutionRecord[]>;
 
+  /**
+   * Every execution, newest first, across all workflows.
+   *
+   * Optional so that adding it breaks no existing implementation. A consumer
+   * that needs "everything I have run" has no other way to ask: `list`
+   * requires a workflow id, which a caller browsing history does not have.
+   */
+  listAll?(limit?: number): Promise<readonly ExecutionRecord[]>;
+
   appendEvent(event: LifecycleEvent): Promise<void>;
   listEvents(executionId: string): Promise<readonly LifecycleEvent[]>;
 

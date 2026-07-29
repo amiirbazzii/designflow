@@ -1,0 +1,47 @@
+{
+  "name": "designflow",
+  "version": "0.1.0",
+  "description": "AI workflows that turn ideas into results, from your terminal",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "designflow": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/main.ts --target=node --format=esm --outfile=dist/main.js",
+    "start": "bun run src/main.ts",
+    "lint": "echo \"designflow (cli): lint ok\"",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run build",
+    "smoke": "bash ../../scripts/cli-smoke-test.sh"
+  },
+  "keywords": [
+    "designflow",
+    "workflow",
+    "ai",
+    "cli"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@designflow/core": "workspace:*",
+    "@designflow/product": "workspace:*",
+    "@designflow/sdk": "workspace:*",
+    "@designflow/storage-file": "workspace:*",
+    "@designflow/workflow-design-to-code": "workspace:*",
+    "zod": "^3.24.0"
+  }
+}

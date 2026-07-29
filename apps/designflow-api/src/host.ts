@@ -52,8 +52,6 @@ const silentLogger: Logger = {
 export interface ApiHost {
   readonly runner: WorkflowRunner;
   readonly workflows: ReadonlyMap<string, WorkflowPackage>;
-  /** Every execution across all workflows, newest first. */
-  listAllExecutions(limit?: number): Promise<readonly { executionId: string; workflowId: string }[]>;
   close(): void;
 }
 
@@ -136,13 +134,6 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
   return {
     runner,
     workflows,
-    async listAllExecutions(limit) {
-      const records = await repository.listAll(limit);
-      return records.map((record) => ({
-        executionId: record.executionId,
-        workflowId: record.workflowId,
-      }));
-    },
     close: () => db.close(),
   };
 }

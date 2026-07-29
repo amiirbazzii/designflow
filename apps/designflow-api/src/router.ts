@@ -109,24 +109,14 @@ async function route(
   if (request.method === "GET" && path === "/api/executions/history") {
     const workflowId = new URL(request.url).searchParams.get("workflowId");
 
-    if (workflowId !== null) {
-      return json({ history: await host.runner.history(workflowId) });
-    }
-
-    // No workflow named: every run the store knows about, newest first.
-    const all = await host.listAllExecutions();
-    const seen = new Set<string>();
-    const history = [];
-
-    for (const entry of all) {
-      if (seen.has(entry.workflowId)) continue;
-      seen.add(entry.workflowId);
-      history.push(...(await host.runner.history(entry.workflowId)));
-    }
-
-    history.sort((left, right) => right.startedAt - left.startedAt);
-
-    return json({ history });
+    // `history()` with no argument spans every workflow — the product layer
+    // owns that fan-out now, so the route stays a one-line translation.
+    return json({
+      history:
+        workflowId !== null
+          ? await host.runner.history(workflowId)
+          : await host.runner.history(),
+    });
   }
 
   const execution = path.match(/^\/api\/executions\/([^/]+)(\/[^/]+)?$/);

@@ -163,6 +163,34 @@ export class ProductExecutionService {
     return overviews;
   }
 
+  /**
+   * Overviews for every execution, most recent first.
+   *
+   * Uses the repository's optional `listAll`. A repository that does not
+   * implement it cannot answer "everything I have run", so this reports an
+   * empty list rather than guessing — silently returning one workflow's runs
+   * would be worse than returning none.
+   */
+  public async listAllOverviews(
+    limit?: number,
+  ): Promise<readonly ExecutionOverview[]> {
+    const listAll = this.executionRepository.listAll;
+    if (listAll === undefined) return [];
+
+    const records = await listAll.call(this.executionRepository, limit);
+
+    const sorted = [...records].sort(
+      (left, right) => right.startedAt - left.startedAt,
+    );
+
+    const overviews: ExecutionOverview[] = [];
+    for (const record of sorted) {
+      overviews.push(await this.getOverview(record.executionId));
+    }
+
+    return overviews;
+  }
+
   private async requireRecord(executionId: string): Promise<ExecutionRecord> {
     const record = await this.executionRepository.get(executionId);
 

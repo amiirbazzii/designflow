@@ -195,11 +195,20 @@ export class WorkflowRunner {
 
   // ── Look back ─────────────────────────────────────────────────
 
-  /** Answers "what have I run?", most recent first. */
+  /**
+   * Answers "what have I run?", most recent first.
+   *
+   * Omit `workflowId` for everything. A caller browsing history has an
+   * execution list, not a workflow in mind, and making them supply one meant
+   * every consumer reimplemented the same fan-out over the repository.
+   */
   public async history(
-    workflowId: string,
+    workflowId?: string,
   ): Promise<readonly WorkflowHistoryEntry[]> {
-    const overviews = await this.product.listOverviews(workflowId);
+    const overviews =
+      workflowId !== undefined
+        ? await this.product.listOverviews(workflowId)
+        : await this.product.listAllOverviews();
 
     return overviews.map((overview) =>
       workflowHistoryEntrySchema.parse({
