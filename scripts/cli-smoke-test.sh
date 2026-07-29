@@ -41,12 +41,13 @@ step "designflow --version"
 designflow --version
 
 step "designflow list"
-designflow list | grep -q "design-to-code" || fail "list did not show design-to-code"
+designflow list | grep -q "Design Engineer" || fail "list did not show the Design Engineer worker"
+designflow list | grep -q "design-to-code" && fail "list leaked a workflow id"
 echo "ok"
 
-step "designflow run design-to-code"
+step "designflow run design-engineer"
 printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
-  | designflow run design-to-code | grep -q "Complete" || fail "run did not complete"
+  | designflow run design-engineer | grep -q "Complete" || fail "run did not complete"
 echo "ok"
 
 step "designflow history (separate process)"

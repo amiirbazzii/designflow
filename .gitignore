@@ -6,6 +6,9 @@ dist/
 .turbo/
 *.tsbuildinfo
 
+# npm pack artifacts (the smoke test creates and discards these)
+*.tgz
+
 # OS / IDE
 .DS_Store
 .idea/

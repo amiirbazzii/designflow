@@ -43,6 +43,19 @@ export type {
   SemanticVersion,
 } from "./schemas";
 
+// ── Worker Catalogue ────────────────────────────────────────────
+export {
+  workerManifestSchema,
+  workerInputFieldSchema,
+  primaryWorkflowOf,
+} from "./worker-manifest";
+
+export type {
+  WorkerManifest,
+  WorkerInputField,
+  WorkerRegistry,
+} from "./worker-manifest";
+
 export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";

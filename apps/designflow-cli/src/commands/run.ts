@@ -1,73 +1,58 @@
 // apps/designflow-cli/src/commands/run.ts
 import { heading, stepMarker } from "../ui/terminal";
 import type { Terminal } from "../ui/terminal";
-import type { CliContext, WorkflowInfo } from "../services/cli-runner";
+import type { CliContext, ResolvedWorker } from "../services/cli-runner";
+import type { WorkerInputField } from "@designflow/sdk";
 
 /**
- * `designflow run <workflow>` — start a run and see it through.
+ * `designflow run <worker>` — hire a worker and see the job through.
  *
- * Everything shown comes from `WorkflowRunner`: the checklist, the approval
- * reason, the counts, the narration. The command counts nothing and tracks no
- * state of its own, so it cannot report a different result than the engine
- * produced.
- */
-
-/**
- * Input fields, per workflow.
+ * The name resolves through the worker catalogue to a workflow, and the run
+ * itself goes through `WorkflowRunner`. Everything shown — the checklist, the
+ * approval reason, the counts, the narration — comes from the product layer,
+ * so the command counts nothing and cannot disagree with the engine.
  *
- * They live here because `WorkflowManifest` carries no field metadata yet.
- * The form is *generated* from these descriptors rather than written per
- * workflow, so a second workflow is an entry rather than a new prompt
- * sequence — but the descriptors belong on the manifest, and moving them is
- * the right next change.
+ * Input fields come from the worker's own manifest rather than a table in this
+ * file, so adding a worker adds no code here.
  */
-interface InputField {
-  readonly key: string;
-  readonly label: string;
-  readonly placeholder: string;
-  readonly list?: boolean;
-  readonly choices?: readonly string[];
-}
-
-const INPUT_FIELDS: Record<string, readonly InputField[]> = {
-  "design-to-code": [
-    { key: "designFile", label: "Design file", placeholder: "homepage.fig" },
-    {
-      key: "framework",
-      label: "Framework",
-      placeholder: "react",
-      choices: ["react", "vue", "svelte"],
-    },
-    {
-      key: "frames",
-      label: "Frames (comma separated)",
-      placeholder: "brand/Header, brand/Footer, layout/Dashboard",
-      list: true,
-    },
-  ],
-};
 
 export async function runCommand(
   context: CliContext,
   terminal: Terminal,
-  workflowId: string,
+  name: string,
 ): Promise<number> {
-  const workflow = context
-    .listWorkflows()
-    .find((entry) => entry.workflowId === workflowId);
+  const resolved = context.resolve(name);
 
-  if (workflow === undefined) {
-    terminal.print(`Unknown workflow: ${workflowId}`);
+  if (resolved === null) {
+    terminal.print(`No such worker: ${name}`);
     terminal.print();
-    terminal.print("Run  designflow list  to see what is available.");
+    terminal.print("Run  designflow list  to see who is available.");
     return 1;
   }
 
-  terminal.print(heading(workflow.name));
-  terminal.print(workflow.description);
+  const { worker, workflowId } = resolved;
+
+  if (!resolved.workflowInstalled) {
+    terminal.print(
+      `${worker.name} needs the "${workflowId}" workflow, which is not installed.`,
+    );
+    terminal.print();
+    terminal.print("Install it, or run  designflow list  to see who is ready.");
+    return 1;
+  }
+
+  terminal.print(heading(worker.name));
+  terminal.print(worker.description);
+
+  // Teach the worker's name when someone reaches for the workflow id.
+  if (name !== worker.id) {
+    terminal.print();
+    terminal.print(`(${name} is a workflow — its worker is ${worker.id})`);
+  }
+
   terminal.print();
 
-  const input = await collectInput(terminal, workflow);
+  const input = await collectInput(terminal, resolved);
 
   // Attach before starting: events publish while `start` is awaited, so this
   // is what makes the checklist move rather than appear all at once.
@@ -84,10 +69,7 @@ export async function runCommand(
   terminal.print("Starting…");
   terminal.print();
 
-  const execution = await context.runner.start({
-    workflowId: workflow.workflowId,
-    input,
-  });
+  const execution = await context.runner.start({ workflowId, input });
 
   const approved = await resolveApproval(context, terminal, execution.executionId);
 
@@ -104,9 +86,9 @@ export async function runCommand(
 
 async function collectInput(
   terminal: Terminal,
-  workflow: WorkflowInfo,
+  resolved: ResolvedWorker,
 ): Promise<Record<string, unknown>> {
-  const fields = INPUT_FIELDS[workflow.workflowId] ?? [];
+  const fields: readonly WorkerInputField[] = resolved.worker.inputs;
   const input: Record<string, unknown> = {};
 
   for (const field of fields) {

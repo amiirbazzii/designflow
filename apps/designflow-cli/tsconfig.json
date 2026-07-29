@@ -21,6 +21,9 @@
       "path": "../../packages/product"
     },
     {
+      "path": "../../packages/workers"
+    },
+    {
       "path": "../../packages/storage-file"
     },
     {

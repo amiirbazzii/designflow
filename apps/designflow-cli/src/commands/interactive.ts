@@ -37,9 +37,9 @@ export async function interactiveCommand(
     }
 
     if (choice === "1" || choice === "run") {
-      const workflowId = await chooseWorkflow(context, terminal);
-      if (workflowId !== null) {
-        await runCommand(context, terminal, workflowId);
+      const workerId = await chooseWorker(context, terminal);
+      if (workerId !== null) {
+        await runCommand(context, terminal, workerId);
       }
       continue;
     }
@@ -50,34 +50,35 @@ export async function interactiveCommand(
 }
 
 /** Lets the user pick by number or by id. Returns null when none is installed. */
-async function chooseWorkflow(
+async function chooseWorker(
   context: CliContext,
   terminal: Terminal,
 ): Promise<string | null> {
-  const workflows = context.listWorkflows();
+  const workers = context.workers.listWorkers();
 
-  if (workflows.length === 0) {
+  if (workers.length === 0) {
     terminal.print();
-    terminal.print("No workflows are installed.");
+    terminal.print("No workers are installed.");
     return null;
   }
 
-  if (workflows.length === 1) {
+  if (workers.length === 1) {
     // Nothing to choose between; asking would be ceremony.
-    return workflows[0]?.workflowId ?? null;
+    return workers[0]?.id ?? null;
   }
 
   terminal.print();
-  workflows.forEach((workflow, index) => {
-    terminal.print(`  ${index + 1}. ${workflow.name}  (${workflow.workflowId})`);
+  workers.forEach((worker, index) => {
+    terminal.print(`  ${index + 1}. ${worker.name}`);
+    terminal.print(`     ${worker.description}`);
   });
 
-  const answer = (await terminal.ask("Which workflow?")).trim();
-  const byIndex = workflows[Number(answer) - 1];
+  const answer = (await terminal.ask("Which worker?")).trim();
+  const byIndex = workers[Number(answer) - 1];
 
   return (
-    byIndex?.workflowId ??
-    workflows.find((workflow) => workflow.workflowId === answer)?.workflowId ??
+    byIndex?.id ??
+    workers.find((worker) => worker.id === answer)?.id ??
     null
   );
 }

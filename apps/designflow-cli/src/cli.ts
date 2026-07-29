@@ -54,18 +54,18 @@ export async function dispatch(
     }
 
     case "run": {
-      const workflowId = rest[0];
+      const name = rest[0];
 
-      if (workflowId === undefined) {
-        terminal.print("Which workflow? For example:");
+      if (name === undefined) {
+        terminal.print("Which worker? For example:");
         terminal.print();
-        terminal.print("  designflow run design-to-code");
+        terminal.print("  designflow run design-engineer");
         terminal.print();
-        terminal.print("Run  designflow list  to see what is available.");
+        terminal.print("Run  designflow list  to see who is available.");
         return 1;
       }
 
-      return runCommand(context, terminal, workflowId);
+      return runCommand(context, terminal, name);
     }
 
     default:

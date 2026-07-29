@@ -70,7 +70,7 @@ describe("starting the CLI", () => {
     expect(terminal.transcript).toContain(
       "AI workflows that turn ideas into results.",
     );
-    expect(terminal.transcript).toContain("1. Run workflow");
+    expect(terminal.transcript).toContain("1. Hire a worker");
     expect(terminal.transcript).toContain("2. View history");
     expect(terminal.transcript).toContain("3. Exit");
   });
@@ -89,7 +89,7 @@ describe("starting the CLI", () => {
 
     // The session is a place to work, not a single command.
     const menus = terminal.output.filter((line) =>
-      line.includes("1. Run workflow"),
+      line.includes("1. Hire a worker"),
     );
     expect(menus.length).toBeGreaterThan(1);
   });
@@ -105,25 +105,44 @@ describe("starting the CLI", () => {
 // ── 2. `designflow list` returns workflows ──────────────────────
 
 describe("designflow list", () => {
-  test("shows the installed workflows", async () => {
+  test("shows AI workers, not workflows", async () => {
     const terminal = new ScriptedTerminal();
 
     const code = await dispatch(["list"], context(), terminal);
 
     expect(code).toBe(0);
-    expect(terminal.transcript).toContain("Design → Code");
-    expect(terminal.transcript).toContain("design-to-code");
-    expect(terminal.transcript).toContain("5 steps");
+    expect(terminal.transcript).toContain("Available AI Workers");
+    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).toContain(
+      "Transforms designs into production-ready applications",
+    );
   });
 
-  test("describes what each workflow does", async () => {
+  test("never shows a workflow id", async () => {
     const terminal = new ScriptedTerminal();
 
     await dispatch(["list"], context(), terminal);
 
-    expect(terminal.transcript).toContain(
-      "Convert design inputs into production-ready code artifacts",
-    );
+    // A person hires a Design Engineer; that it runs a design-to-code pipeline
+    // is an implementation detail they should not have to learn.
+    expect(terminal.transcript).not.toContain("design-to-code");
+    expect(terminal.transcript).not.toContain("Design → Code");
+  });
+
+  test("tells the reader how to start each worker", async () => {
+    const terminal = new ScriptedTerminal();
+
+    await dispatch(["list"], context(), terminal);
+
+    expect(terminal.transcript).toContain("designflow run design-engineer");
+  });
+
+  test("groups workers by category", async () => {
+    const terminal = new ScriptedTerminal();
+
+    await dispatch(["list"], context(), terminal);
+
+    expect(terminal.transcript).toContain("development");
   });
 });
 
@@ -134,7 +153,7 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     const code = await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       context({ requireApproval: false }),
       terminal,
     );
@@ -148,7 +167,7 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       context({ requireApproval: false }),
       terminal,
     );
@@ -164,7 +183,7 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       context({ requireApproval: false }),
       terminal,
     );
@@ -178,7 +197,7 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       context({ requireApproval: false }),
       terminal,
     );
@@ -190,7 +209,7 @@ describe("designflow run", () => {
   test("asks for approval when the workflow is gated", async () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS, "approve"]);
 
-    const code = await dispatch(["run", "design-to-code"], context(), terminal);
+    const code = await dispatch(["run", "design-engineer"], context(), terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Approval required");
@@ -200,7 +219,7 @@ describe("designflow run", () => {
   test("rejecting stops the run and reports a failure exit code", async () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS, "reject"]);
 
-    const code = await dispatch(["run", "design-to-code"], context(), terminal);
+    const code = await dispatch(["run", "design-engineer"], context(), terminal);
 
     expect(code).toBe(1);
     expect(terminal.transcript).toContain("Stopped. Nothing was written.");
@@ -210,7 +229,7 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(["", "", ""]);
 
     const code = await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       context({ requireApproval: false }),
       terminal,
     );
@@ -219,23 +238,23 @@ describe("designflow run", () => {
     expect(code).toBe(0);
   });
 
-  test("rejects an unknown workflow", async () => {
+  test("rejects an unknown worker", async () => {
     const terminal = new ScriptedTerminal();
 
     const code = await dispatch(["run", "nonsense"], context(), terminal);
 
     expect(code).toBe(1);
-    expect(terminal.transcript).toContain("Unknown workflow: nonsense");
+    expect(terminal.transcript).toContain("No such worker: nonsense");
     expect(terminal.transcript).toContain("designflow list");
   });
 
-  test("explains itself when no workflow is named", async () => {
+  test("explains itself when no worker is named", async () => {
     const terminal = new ScriptedTerminal();
 
     const code = await dispatch(["run"], context(), terminal);
 
     expect(code).toBe(1);
-    expect(terminal.transcript).toContain("designflow run design-to-code");
+    expect(terminal.transcript).toContain("designflow run design-engineer");
   });
 });
 
@@ -255,7 +274,7 @@ describe("designflow history", () => {
     const created = context({ requireApproval: false });
 
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       created,
       new ScriptedTerminal(RUN_ANSWERS),
     );
@@ -274,7 +293,7 @@ describe("designflow history", () => {
     // First "invocation".
     const first = createCliContext({ databasePath, requireApproval: false });
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       first,
       new ScriptedTerminal(RUN_ANSWERS),
     );
@@ -296,7 +315,7 @@ describe("designflow history", () => {
   test("can be narrowed to one workflow", async () => {
     const created = context({ requireApproval: false });
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "design-engineer"],
       created,
       new ScriptedTerminal(RUN_ANSWERS),
     );
@@ -390,7 +409,7 @@ describe("command parsing", () => {
 
     expect(await dispatch(["--help"], context(), terminal)).toBe(0);
     expect(terminal.transcript).toContain("designflow list");
-    expect(terminal.transcript).toContain("designflow run <workflow>");
+    expect(terminal.transcript).toContain("designflow run <worker>");
     expect(terminal.transcript).toContain("designflow history");
   });
 
@@ -490,5 +509,192 @@ describe("configuration on first use", () => {
     // exist before anyone can change it.
     expect(existsSync(join(home, "config.json"))).toBe(true);
     expect(loadConfig().environment).toBe("local");
+  });
+});
+
+// ── Worker resolution ───────────────────────────────────────────
+
+describe("worker resolution", () => {
+  test("a worker resolves to the workflow it wraps", () => {
+    const resolved = context().resolve("design-engineer");
+
+    expect(resolved?.worker.id).toBe("design-engineer");
+    expect(resolved?.workflowId).toBe("design-to-code");
+    expect(resolved?.steps).toBe(5);
+  });
+
+  test("an unknown name resolves to nothing", () => {
+    expect(context().resolve("nobody")).toBeNull();
+  });
+
+  test("a workflow id still resolves, so nothing is unreachable", () => {
+    const resolved = context().resolve("design-to-code");
+
+    // Workflow ids are no longer *shown*, but a workflow with no worker
+    // wrapping it would otherwise be impossible to run.
+    expect(resolved?.workflowId).toBe("design-to-code");
+    expect(resolved?.worker.id).toBe("design-engineer");
+  });
+
+  test("running by workflow id teaches the worker's name", async () => {
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(
+      ["run", "design-to-code"],
+      context({ requireApproval: false }),
+      terminal,
+    );
+
+    expect(terminal.transcript).toContain(
+      "(design-to-code is a workflow — its worker is design-engineer)",
+    );
+  });
+
+  test("running by worker name says nothing about workflows", async () => {
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(
+      ["run", "design-engineer"],
+      context({ requireApproval: false }),
+      terminal,
+    );
+
+    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).not.toContain("is a workflow");
+  });
+
+  test("the catalogue is reachable from the CLI context", () => {
+    const workers = context().workers.listWorkers();
+
+    expect(workers.map((worker) => worker.id)).toEqual(["design-engineer"]);
+  });
+});
+
+// ── Running a worker executes the right workflow ─────────────────
+
+describe("running a worker", () => {
+  test("executes the workflow the worker names", async () => {
+    const created = context({ requireApproval: false });
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(["run", "design-engineer"], created, terminal);
+
+    // The run is recorded against the workflow, not the worker: workers are a
+    // naming layer, and the engine never learns they exist.
+    const history = await created.runner.history();
+
+    expect(history).toHaveLength(1);
+    expect(history[0]?.workflowId).toBe("design-to-code");
+    expect(history[0]?.state).toBe("ready");
+  });
+
+  test("asks for the fields the worker's manifest declares", async () => {
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(
+      ["run", "design-engineer"],
+      context({ requireApproval: false }),
+      terminal,
+    );
+
+    // The questions come from the manifest, so adding a worker adds no code to
+    // the run command.
+    expect(terminal.questions).toEqual([
+      "Design file (homepage.fig)",
+      "Framework (react)",
+      "Frames (comma separated) (brand/Header, brand/Footer, layout/Dashboard)",
+    ]);
+  });
+
+  test("produces the workflow's artifacts", async () => {
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(
+      ["run", "design-engineer"],
+      context({ requireApproval: false }),
+      terminal,
+    );
+
+    expect(terminal.transcript).toContain("Design tokens");
+    expect(terminal.transcript).toContain("Created  5");
+  });
+
+  test("reports a worker whose workflow is not installed", async () => {
+    const created = context();
+    created.workers.registerWorker({
+      id: "ghost-worker",
+      name: "Ghost",
+      description: "Names a workflow that is not installed",
+      category: "testing",
+      workflows: ["not-installed"],
+      inputs: [],
+    });
+
+    const terminal = new ScriptedTerminal();
+    const code = await dispatch(["run", "ghost-worker"], created, terminal);
+
+    // A configuration problem named precisely, rather than an
+    // ERR_WORKFLOW_NOT_FOUND stack trace from under the engine.
+    expect(code).toBe(1);
+    expect(terminal.transcript).toContain(
+      'Ghost needs the "not-installed" workflow, which is not installed.',
+    );
+  });
+});
+
+// ── The CLI does not bypass WorkflowRunner ──────────────────────
+
+describe("execution boundary", () => {
+  test("every command call goes through WorkflowRunner", () => {
+    const commandDir = join(import.meta.dir, "commands");
+    const calls: string[] = [];
+
+    for (const entry of readdirSync(commandDir)) {
+      const contents = readFileSync(join(commandDir, entry), "utf8");
+
+      for (const match of contents.matchAll(/context\.runner\.(\w+)\(/g)) {
+        const method = match[1];
+        if (method !== undefined) calls.push(method);
+      }
+
+      // Nothing may reach for an engine service or a store.
+      for (const forbidden of [
+        "ExecutionService",
+        "ExecutionEngine",
+        "Repository",
+        "ArtifactStore",
+        "ApprovalManager",
+        "openDatabase",
+        "FileStore",
+      ]) {
+        expect(contents).not.toContain(forbidden);
+      }
+    }
+
+    // Public WorkflowRunner methods only.
+    const allowed = new Set([
+      "start",
+      "status",
+      "progress",
+      "explain",
+      "history",
+      "pendingApproval",
+      "approve",
+      "reject",
+    ]);
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) expect(allowed.has(call)).toBe(true);
+  });
+
+  test("the worker catalogue holds no execution logic", () => {
+    const runner = readFileSync(
+      join(import.meta.dir, "services", "cli-runner.ts"),
+      "utf8",
+    );
+
+    // Resolution is a lookup: worker → workflow id. The runner still executes.
+    expect(runner).toContain("primaryWorkflowOf");
+    expect(runner).toContain("createWorkerRegistry");
   });
 });

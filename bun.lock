@@ -52,6 +52,7 @@
         "@designflow/product": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "@designflow/storage-file": "workspace:*",
+        "@designflow/workers": "workspace:*",
         "@designflow/workflow-design-to-code": "workspace:*",
         "zod": "^3.24.0",
       },
@@ -149,6 +150,14 @@
         "zod": "^3.24.0",
       },
     },
+    "packages/workers": {
+      "name": "@designflow/workers",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+    },
     "workflows/workflow-design-to-code": {
       "name": "@designflow/workflow-design-to-code",
       "version": "0.1.0",
@@ -237,6 +246,8 @@
     "@designflow/storage-sqlite": ["@designflow/storage-sqlite@workspace:packages/storage-sqlite"],
 
     "@designflow/web": ["@designflow/web@workspace:apps/designflow-web"],
+
+    "@designflow/workers": ["@designflow/workers@workspace:packages/workers"],
 
     "@designflow/workflow-design-to-code": ["@designflow/workflow-design-to-code@workspace:workflows/workflow-design-to-code"],
 

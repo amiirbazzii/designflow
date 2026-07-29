@@ -4,30 +4,36 @@ import type { Terminal } from "../ui/terminal";
 import type { CliContext } from "../services/cli-runner";
 
 /**
- * `designflow list` — what this installation can do.
+ * `designflow list` — the workers this installation offers.
  *
- * Workflows are still shown by id. The worker abstraction that will replace
- * them is a later stage; naming them now would invent a vocabulary the product
- * does not yet have.
+ * Workers, not workflows. A person hires a Design Engineer; the fact that it
+ * runs a `design-to-code` pipeline is an implementation detail they should
+ * never need to learn. Workflow ids are still accepted by `run`, but they are
+ * no longer shown.
  */
 export async function listCommand(
   context: CliContext,
   terminal: Terminal,
 ): Promise<number> {
-  const workflows = context.listWorkflows();
+  const grouped = context.workers.listByCategory();
 
-  terminal.print(heading("Available workflows"));
+  terminal.print(heading("Available AI Workers"));
 
-  if (workflows.length === 0) {
-    terminal.print("No workflows are installed.");
+  if (grouped.size === 0) {
+    terminal.print("No workers are installed.");
     return 0;
   }
 
-  for (const workflow of workflows) {
+  for (const [category, workers] of grouped) {
     terminal.print();
-    terminal.print(`  ${workflow.name}  (${workflow.workflowId})`);
-    terminal.print(`    ${workflow.description}`);
-    terminal.print(`    ${workflow.steps.length} steps`);
+    terminal.print(`  ${category}`);
+
+    for (const worker of workers) {
+      terminal.print();
+      terminal.print(`    ${worker.name}`);
+      terminal.print(`      ${worker.description}`);
+      terminal.print(`      designflow run ${worker.id}`);
+    }
   }
 
   terminal.print();

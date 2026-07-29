@@ -11,10 +11,10 @@ npm install -g designflow
 ## Use
 
 ```bash
-designflow                       # interactive
-designflow list                  # what this installation can do
-designflow run design-to-code    # run a workflow
-designflow history               # previous runs
+designflow                        # interactive
+designflow list                   # available AI workers
+designflow run design-engineer    # put a worker to work
+designflow history                # previous runs
 designflow --help
 ```
 
@@ -22,7 +22,7 @@ Scriptable too:
 
 ```bash
 printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
-  | designflow run design-to-code
+  | designflow run design-engineer
 ```
 
 Blank answers take the placeholder, so you can press through the form.
@@ -49,7 +49,13 @@ No native modules, no database server — the CLI runs on any Node 18+.
 
 ```
 designflow CLI → @designflow/product → workflows → engine
+       ↑
+  @designflow/workers   (the worker catalogue: metadata only)
 ```
+
+A worker is a product-facing name wrapping one or more workflows. `designflow
+list` shows workers; workflow ids are still accepted by `run` so nothing is
+unreachable, but they are no longer part of the vocabulary.
 
 `src/services/cli-runner.ts` is the composition root and the only file that
 imports the engine. Commands and rendering speak `@designflow/product` alone; a

@@ -20,13 +20,16 @@ import {
   FileExecutionRepository,
   FileStore,
 } from "@designflow/storage-file";
-import { readChangedArtifacts } from "@designflow/sdk";
+import { primaryWorkflowOf, readChangedArtifacts } from "@designflow/sdk";
 import type {
   CapabilityReuseResolver,
   ExecutionEvent,
   Logger,
+  WorkerManifest,
   WorkflowPackage,
 } from "@designflow/sdk";
+import { createWorkerRegistry } from "@designflow/workers";
+import type { InMemoryWorkerRegistry } from "@designflow/workers";
 import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
@@ -68,11 +71,37 @@ export interface WorkflowInfo {
   readonly steps: readonly string[];
 }
 
+/** A worker plus the workflow it resolves to. */
+export interface ResolvedWorker {
+  readonly worker: WorkerManifest;
+  readonly workflowId: string;
+  /**
+   * False when the worker names a workflow this installation does not have.
+   *
+   * A worker is metadata, so it can reference a workflow that is not present.
+   * That is a configuration problem worth naming precisely rather than letting
+   * the engine raise `ERR_WORKFLOW_NOT_FOUND` from under a stack trace.
+   */
+  readonly workflowInstalled: boolean;
+  /** Number of steps the workflow declares, for the progress denominator. */
+  readonly steps: number;
+}
+
 export type ProgressListener = (progress: ExecutionProgress) => void;
 
 export interface CliContext {
   readonly runner: WorkflowRunner;
-  /** Installed workflows, for `list` and the interactive picker. */
+  /** The worker catalogue — what a person chooses from. */
+  readonly workers: InMemoryWorkerRegistry;
+  /**
+   * Resolves a name to something runnable.
+   *
+   * Accepts a worker id, and falls back to a workflow id so that a workflow
+   * with no worker wrapping it stays reachable. Returns null when neither
+   * matches.
+   */
+  resolve(name: string): ResolvedWorker | null;
+  /** Installed workflows. Still needed by `resolve`; no longer user-facing. */
   listWorkflows(): readonly WorkflowInfo[];
   /** Redraws while a run is in flight. */
   onProgress(listener: ProgressListener): void;
@@ -107,6 +136,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
   const capabilityRegistry = new CapabilityRegistry();
   const workflows = new Map<string, WorkflowPackage>();
+  const workers = createWorkerRegistry();
 
   for (const workflowPackage of [designToCodeWorkflowPackage]) {
     workflowPackage.load(capabilityRegistry);
@@ -171,6 +201,47 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
   return {
     runner,
+    workers,
+
+    resolve(name) {
+      const worker = workers.getWorker(name);
+
+      if (worker !== undefined) {
+        const workflowId = primaryWorkflowOf(worker);
+        const workflow = workflows.get(workflowId);
+
+        return {
+          worker,
+          workflowId,
+          workflowInstalled: workflow !== undefined,
+          steps: workflow?.definition.nodes.length ?? 0,
+        };
+      }
+
+      // A workflow with no worker would otherwise be unreachable from the CLI.
+      const workflow = workflows.get(name);
+      if (workflow === undefined) return null;
+
+      const owner = workers.findByWorkflow(name);
+
+      return {
+        // Synthesised so the caller has one shape to render either way. The
+        // real worker is used when one owns this workflow, so its name and
+        // input fields still apply.
+        worker:
+          owner ?? {
+            id: workflow.id,
+            name: workflow.name,
+            description: workflow.description ?? "",
+            category: "workflow",
+            workflows: [workflow.id],
+            inputs: [],
+          },
+        workflowId: workflow.id,
+        workflowInstalled: true,
+        steps: workflow.definition.nodes.length,
+      };
+    },
 
     listWorkflows() {
       return [...workflows.values()].map((workflow) => ({
