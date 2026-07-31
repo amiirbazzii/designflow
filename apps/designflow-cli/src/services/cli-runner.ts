@@ -11,8 +11,17 @@ import {
   IncrementalExecutionPlannerService,
   RegistryArtifactMaterializer,
 } from "@designflow/core";
-import { WorkflowRunner, buildProgress } from "@designflow/product";
-import type { ExecutionProgress } from "@designflow/product";
+import { WorkflowRunner, WorkerTaskRouter, buildProgress } from "@designflow/product";
+import type {
+  ExecutionProgress,
+  WorkerTaskRequest,
+  WorkerTaskResult,
+} from "@designflow/product";
+import {
+  AgentRuntime,
+  assertWorkerAgentAlignment,
+  createAgentRegistry,
+} from "@designflow/agents";
 import {
   FileApprovalManager,
   FileArtifactStore,
@@ -113,6 +122,14 @@ export interface CliContext {
    * matches.
    */
   resolve(name: string): ResolvedWorker | null;
+  /**
+   * Turns "this worker, this request" into a decision about what to do.
+   *
+   * The only way a command starts work. Whether a worker delegated to an agent
+   * or mapped straight to a workflow is settled behind this call, so no
+   * command learns which workflow was chosen or that agents exist.
+   */
+  routeTask(request: WorkerTaskRequest): Promise<WorkerTaskResult>;
   /** Installed workflows. Still needed by `resolve`; no longer user-facing. */
   listWorkflows(): readonly WorkflowInfo[];
   /** Redraws while a run is in flight. */
@@ -212,6 +229,31 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     executionReconciler: new ArtifactSetReconciler({ registry: artifactStore }),
   });
 
+  // Agents decide; they do not execute. The runtime is handed the installed
+  // workflow ids and nothing else — no repository, no artifact store, no
+  // execution service — so an agent can name a workflow and can do nothing
+  // with the name itself.
+  const agentRegistry = createAgentRegistry();
+
+  const agentRuntime = new AgentRuntime({
+    registry: agentRegistry,
+    availableWorkflows: [...workflows.keys()],
+    logger: silentLogger,
+  });
+
+  // A worker that advertises work its agent may never choose is a
+  // configuration mistake. Caught here, at wiring time, rather than on the
+  // first run that happens to hit the offending workflow.
+  for (const worker of workers.listWorkers()) {
+    if (worker.agentId === undefined) continue;
+    assertWorkerAgentAlignment(worker, agentRegistry.require(worker.agentId).manifest);
+  }
+
+  const taskRouter = new WorkerTaskRouter({
+    workers,
+    agents: agentRuntime,
+  });
+
   const runner = new WorkflowRunner({
     executionContract: service,
     executionRepository: repository,
@@ -222,51 +264,74 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     resolveWorkflowStepCount: (id) => workflows.get(id)?.definition.nodes.length,
   });
 
+  /**
+   * Worker or workflow id to something runnable.
+   *
+   * Named rather than inlined on the returned object so `routeTask` can reuse
+   * it: both answer the same question about the same name, and two copies of
+   * this would let `run <name>` and the decision behind it disagree.
+   */
+  const resolveName = (name: string): ResolvedWorker | null => {
+    const worker = workers.getWorker(name);
+
+    if (worker !== undefined) {
+      const workflowId = primaryWorkflowOf(worker);
+      const workflow = workflows.get(workflowId);
+
+      return {
+        worker,
+        workflowId,
+        workflowInstalled: workflow !== undefined,
+        steps: workflow?.definition.nodes.length ?? 0,
+      };
+    }
+
+    // A workflow with no worker would otherwise be unreachable from the CLI.
+    const workflow = workflows.get(name);
+    if (workflow === undefined) return null;
+
+    const owner = workers.findByWorkflow(name);
+
+    return {
+      // Synthesised so the caller has one shape to render either way. The
+      // real worker is used when one owns this workflow, so its name and
+      // input fields still apply.
+      worker:
+        owner ?? {
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description ?? "",
+          category: "workflow",
+          workflows: [workflow.id],
+          inputs: [],
+        },
+      workflowId: workflow.id,
+      workflowInstalled: true,
+      steps: workflow.definition.nodes.length,
+    };
+  };
+
   return {
     runner,
     workers,
     home,
     databasePath,
 
-    resolve(name) {
-      const worker = workers.getWorker(name);
+    /**
+     * Resolves the name the same way `run` does, then hands the manifest to
+     * the product boundary. Passing the manifest rather than the id is what
+     * keeps a workflow no worker owns routable — its synthesised manifest is
+     * in no catalogue, so a lookup by id would refuse it.
+     */
+    routeTask(request) {
+      const resolved = resolveName(request.workerId);
 
-      if (worker !== undefined) {
-        const workflowId = primaryWorkflowOf(worker);
-        const workflow = workflows.get(workflowId);
+      if (resolved === null) return taskRouter.route(request);
 
-        return {
-          worker,
-          workflowId,
-          workflowInstalled: workflow !== undefined,
-          steps: workflow?.definition.nodes.length ?? 0,
-        };
-      }
-
-      // A workflow with no worker would otherwise be unreachable from the CLI.
-      const workflow = workflows.get(name);
-      if (workflow === undefined) return null;
-
-      const owner = workers.findByWorkflow(name);
-
-      return {
-        // Synthesised so the caller has one shape to render either way. The
-        // real worker is used when one owns this workflow, so its name and
-        // input fields still apply.
-        worker:
-          owner ?? {
-            id: workflow.id,
-            name: workflow.name,
-            description: workflow.description ?? "",
-            category: "workflow",
-            workflows: [workflow.id],
-            inputs: [],
-          },
-        workflowId: workflow.id,
-        workflowInstalled: true,
-        steps: workflow.definition.nodes.length,
-      };
+      return taskRouter.routeWorker(resolved.worker, request);
     },
+
+    resolve: resolveName,
 
     listWorkflows() {
       return [...workflows.values()].map((workflow) => ({

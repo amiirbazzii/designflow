@@ -7,10 +7,17 @@ import type { WorkerInputField } from "@designflow/sdk";
 /**
  * `designflow run <worker>` — hire a worker and see the job through.
  *
- * The name resolves through the worker catalogue to a workflow, and the run
- * itself goes through `WorkflowRunner`. Everything shown — the checklist, the
- * approval reason, the counts, the narration — comes from the product layer,
- * so the command counts nothing and cannot disagree with the engine.
+ * The name resolves through the worker catalogue, the *decision* about what to
+ * do comes from the product boundary, and the run itself goes through
+ * `WorkflowRunner`. Everything shown — the checklist, the approval reason, the
+ * counts, the narration — comes from the product layer, so the command counts
+ * nothing and cannot disagree with the engine.
+ *
+ * This file does not know whether a worker delegated to an agent, and does not
+ * choose a workflow: it asks `routeTask` what should happen and renders the
+ * answer. Three answers are possible and all three are handled here — run,
+ * ask, refuse — with no fallback of its own, because a fallback would be this
+ * command quietly deciding after the layer that decides declined to.
  *
  * Input fields come from the worker's own manifest rather than a table in this
  * file, so adding a worker adds no code here.
@@ -54,6 +61,31 @@ export async function runCommand(
 
   const input = await collectInput(terminal, resolved);
 
+  // The collected answers are the request. What to do with them is not this
+  // command's call.
+  const { decision } = await context.routeTask({
+    workerId: name,
+    request: describeRequest(input),
+    input,
+  });
+
+  if (decision.type === "request_clarification") {
+    terminal.print();
+    terminal.print(heading("More detail needed"));
+    terminal.print(decision.question);
+    terminal.print();
+    terminal.print("Nothing was started. Run the worker again with an answer.");
+    return 1;
+  }
+
+  if (decision.type === "decline") {
+    terminal.print();
+    terminal.print(heading("Not started"));
+    terminal.print(decision.reason);
+    terminal.print();
+    return 1;
+  }
+
   // Attach before starting: events publish while `start` is awaited, so this
   // is what makes the checklist move rather than appear all at once.
   let lastFrame = "";
@@ -69,7 +101,10 @@ export async function runCommand(
   terminal.print("Starting…");
   terminal.print();
 
-  const execution = await context.runner.start({ workflowId, input });
+  const execution = await context.runner.start({
+    workflowId: decision.workflowId,
+    input: decision.input ?? input,
+  });
 
   const approved = await resolveApproval(context, terminal, execution.executionId);
 
@@ -111,6 +146,22 @@ async function collectInput(
   }
 
   return input;
+}
+
+/**
+ * The collected form as a sentence.
+ *
+ * `run <worker>` has no free-text prompt — the answers *are* the request — so
+ * this is what a decision-maker gets to read. Empty in, empty out: a form
+ * nobody filled in describes no work, and saying so honestly is what lets an
+ * agent ask for detail rather than be handed "{}" and guess.
+ */
+function describeRequest(input: Record<string, unknown>): string {
+  return Object.entries(input)
+    .map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : value] as const)
+    .filter(([, value]) => value !== undefined && value !== null && String(value).length > 0)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join("; ");
 }
 
 // ── Approval ─────────────────────────────────────────────────────

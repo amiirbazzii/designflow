@@ -7,6 +7,8 @@ import { dispatch, CLI_VERSION } from "./cli";
 import { createCliContext } from "./services/cli-runner";
 import type { CliContext } from "./services/cli-runner";
 import { ScriptedTerminal } from "./ui/terminal";
+import { explainError } from "./ui/errors";
+import { DesignFlowError } from "@designflow/sdk";
 import {
   configSchema,
   loadConfig,
@@ -388,6 +390,21 @@ describe("architecture", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("only the composition root constructs the agent layer", () => {
+    const offenders: string[] = [];
+
+    for (const path of sources(import.meta.dir)) {
+      if (path.endsWith("services/cli-runner.ts")) continue;
+      if (readFileSync(path, "utf8").includes("@designflow/agents")) {
+        offenders.push(path.split("/").slice(-2).join("/"));
+      }
+    }
+
+    // Agents are wired in one place, like the engine. Everything else asks the
+    // product boundary what should happen.
+    expect(offenders).toEqual([]);
+  });
+
   test("commands and rendering speak only the product layer", () => {
     const commandSources = sources(join(import.meta.dir, "commands")).concat(
       sources(join(import.meta.dir, "ui")),
@@ -655,6 +672,213 @@ describe("running a worker", () => {
   });
 });
 
+// ── Agent-backed workers ────────────────────────────────────────
+
+describe("running through an agent", () => {
+  test("the shipped Design Engineer delegates to an agent", () => {
+    const worker = context().workers.getWorker("design-engineer");
+
+    expect(worker?.agentId).toBe("design-engineer-agent");
+  });
+
+  test("the agent resolves the request to design-to-code", async () => {
+    const created = context();
+
+    const { decision } = await created.routeTask({
+      workerId: "design-engineer",
+      request: "designFile: homepage.fig",
+      input: { designFile: "homepage.fig" },
+    });
+
+    expect(decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+    });
+  });
+
+  test("designflow run design-engineer executes what the agent chose", async () => {
+    const created = context({ requireApproval: false });
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    const code = await dispatch(["run", "design-engineer"], created, terminal);
+
+    // Worker → product boundary → AgentRuntime → WorkflowRunner → design-to-code.
+    // The user experience is unchanged; the path underneath is not.
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain("Complete");
+
+    const history = await created.runner.history();
+    expect(history[0]?.workflowId).toBe("design-to-code");
+  });
+
+  test("the run says nothing about agents", async () => {
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(
+      ["run", "design-engineer"],
+      context({ requireApproval: false }),
+      terminal,
+    );
+
+    // A person hires a Design Engineer. That an agent picked the workflow is
+    // machinery they should not have to learn, exactly as workflow ids are.
+    expect(terminal.transcript).not.toContain("agent");
+    expect(terminal.transcript).not.toContain("Agent");
+  });
+
+  test("a workflow id still routes, through the worker that owns it", async () => {
+    const created = context();
+
+    const { worker, decision } = await created.routeTask({
+      workerId: "design-to-code",
+      request: "build it",
+    });
+
+    expect(worker.id).toBe("design-engineer");
+    expect(decision).toMatchObject({ workflowId: "design-to-code" });
+  });
+
+  test("a legacy worker with no agent still resolves directly", async () => {
+    const created = context();
+
+    created.workers.registerWorker({
+      id: "legacy-worker",
+      name: "Legacy",
+      description: "Written before agents existed",
+      category: "testing",
+      workflows: ["design-to-code"],
+      inputs: [],
+    });
+
+    const { decision } = await created.routeTask({
+      workerId: "legacy-worker",
+      request: "",
+    });
+
+    // No agentId, so no agent is consulted and the mapping is what it always was.
+    expect(decision).toEqual({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+    });
+  });
+
+  test("an empty request produces a clarification, and nothing runs", async () => {
+    const created = context();
+
+    const { decision } = await created.routeTask({
+      workerId: "design-engineer",
+      request: "",
+      input: {},
+    });
+
+    expect(decision.type).toBe("request_clarification");
+    expect(await created.runner.history()).toHaveLength(0);
+  });
+
+  test("the CLI shows a clarification and stops safely", async () => {
+    const created = context();
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    // A worker whose form collects nothing, so the request describes no work.
+    created.workers.registerWorker({
+      id: "silent-worker",
+      name: "Silent Worker",
+      description: "Collects no input",
+      category: "testing",
+      workflows: ["design-to-code"],
+      inputs: [],
+      agentId: "design-engineer-agent",
+    });
+
+    const code = await dispatch(["run", "silent-worker"], created, terminal);
+
+    expect(code).toBe(1);
+    expect(terminal.transcript).toContain("More detail needed");
+    expect(terminal.transcript).toContain("Which design should I build?");
+    expect(terminal.transcript).toContain("Nothing was started.");
+
+    // Stopped safely: no multi-turn loop, and no execution recorded.
+    expect(await created.runner.history()).toHaveLength(0);
+  });
+});
+
+// ── Agent failures stay in the user's vocabulary ────────────────
+
+describe("explaining an agent failure", () => {
+  /**
+   * Every code the agent layer can raise, with the raw message it carries.
+   *
+   * Built as plain `DesignFlowError`s rather than imported from
+   * `@designflow/agents`, so this asserts the CLI's mapping table and nothing
+   * else. The messages mirror the real ones because what is being tested is
+   * that they never reach a person.
+   */
+  const AGENT_FAILURES: readonly (readonly [string, string])[] = [
+    ["ERR_AGENT_NOT_FOUND", "No such agent: ghost-agent"],
+    ["ERR_AGENT_ALREADY_REGISTERED", "An agent is already registered as: x"],
+    ["ERR_AGENT_TASK_INVALID", "Invalid agent task: workerId required"],
+    [
+      "ERR_AGENT_DECISION_INVALID",
+      "Agent design-engineer-agent returned an invalid decision: Unrecognized key(s) in object: 'chainOfThought'",
+    ],
+    [
+      "ERR_AGENT_WORKFLOW_NOT_ALLOWED",
+      "Agent design-engineer-agent may not run workflow: some-other-workflow",
+    ],
+    [
+      "ERR_AGENT_WORKFLOW_UNAVAILABLE",
+      "Workflow design-to-code is not installed, so agent x cannot run it",
+    ],
+    [
+      "ERR_AGENT_RUNTIME_UNAVAILABLE",
+      "Worker design-engineer delegates to agent design-engineer-agent, but no agent runtime is configured",
+    ],
+  ];
+
+  test("every agent code is mapped rather than falling through", () => {
+    for (const [code, message] of AGENT_FAILURES) {
+      const explained = explainError(new DesignFlowError(code, message));
+
+      // The fallback suggestion is what an unmapped code produces.
+      expect(explained.suggestion).not.toContain("designflow --help");
+      expect(explained.problem).not.toBe(message);
+    }
+  });
+
+  test("no agent failure exposes agent vocabulary or internal ids", () => {
+    for (const [code, message] of AGENT_FAILURES) {
+      const { problem, suggestion } = explainError(
+        new DesignFlowError(code, message),
+      );
+      const shown = `${problem} ${suggestion}`.toLowerCase();
+
+      // A person hires a worker. That an agent decided anything on its behalf
+      // — and which workflow it reached for — is machinery, not an explanation.
+      for (const leak of [
+        "agent",
+        "design-engineer-agent",
+        "design-to-code",
+        "workflowid",
+        "chainofthought",
+        "allowedworkflows",
+      ]) {
+        expect(shown).not.toContain(leak);
+      }
+    }
+  });
+
+  test("each one still says what to do next", () => {
+    for (const [code, message] of AGENT_FAILURES) {
+      const { problem, suggestion } = explainError(
+        new DesignFlowError(code, message),
+      );
+
+      expect(problem.length).toBeGreaterThan(0);
+      expect(suggestion.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 // ── The CLI does not bypass WorkflowRunner ──────────────────────
 
 describe("execution boundary", () => {
@@ -698,6 +922,39 @@ describe("execution boundary", () => {
 
     expect(calls.length).toBeGreaterThan(0);
     for (const call of calls) expect(allowed.has(call)).toBe(true);
+  });
+
+  test("no command reaches the agent layer", () => {
+    const commandDir = join(import.meta.dir, "commands");
+
+    for (const entry of readdirSync(commandDir)) {
+      const contents = readFileSync(join(commandDir, entry), "utf8");
+
+      // The CLI asks what should happen; it does not resolve agents, read
+      // manifests or implement a decision rule of its own.
+      for (const forbidden of [
+        "@designflow/agents",
+        "AgentRegistry",
+        "AgentRuntime",
+        "AgentManifest",
+        "allowedWorkflows",
+      ]) {
+        expect(contents).not.toContain(forbidden);
+      }
+    }
+  });
+
+  test("the composition root wires agents but never asks one to decide", () => {
+    const runner = readFileSync(
+      join(import.meta.dir, "services", "cli-runner.ts"),
+      "utf8",
+    );
+
+    // Wiring is the composition root's job. Deciding is the router's, and
+    // going around it would put agent logic back in the application.
+    expect(runner).toContain("AgentRuntime");
+    expect(runner).toContain("WorkerTaskRouter");
+    expect(runner).not.toContain(".decide(");
   });
 
   test("the worker catalogue holds no execution logic", () => {

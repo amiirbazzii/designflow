@@ -37,12 +37,13 @@
     "node": ">=18"
   },
   "devDependencies": {
+    "@designflow/agents": "workspace:*",
     "@designflow/core": "workspace:*",
     "@designflow/product": "workspace:*",
     "@designflow/sdk": "workspace:*",
     "@designflow/storage-file": "workspace:*",
+    "@designflow/workers": "workspace:*",
     "@designflow/workflow-design-to-code": "workspace:*",
-    "zod": "^3.24.0",
-    "@designflow/workers": "workspace:*"
+    "zod": "^3.24.0"
   }
 }

@@ -17,6 +17,14 @@ export const designEngineer: WorkerManifest = workerManifestSchema.parse({
   description: "Transforms designs into production-ready applications",
   category: "development",
   workflows: ["design-to-code"],
+  /**
+   * Delegates its decision to an agent.
+   *
+   * `workflows` stays: it is what the catalogue advertises, what a host checks
+   * against the agent's allow-list, and what this worker falls back to for any
+   * consumer that has not wired an agent runtime.
+   */
+  agentId: "design-engineer-agent",
   inputs: [
     {
       key: "designFile",

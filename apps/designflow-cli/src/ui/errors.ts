@@ -65,6 +65,48 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "The details given for that run were not usable.",
     suggestion: "Start it again and check each answer as you go.",
   },
+
+  // Agent failures. A person hires a worker and never learns that an agent
+  // decided anything on its behalf, so none of these say "agent" — an
+  // unmapped code would fall through to the raw message, which names the
+  // agent, the workflow it tried to reach and the allow-list it broke.
+  ERR_AGENT_NOT_FOUND: {
+    problem: "That worker is missing a part it needs to decide what to do.",
+    suggestion:
+      "This is a packaging problem rather than something you did — please report it.",
+  },
+  ERR_AGENT_ALREADY_REGISTERED: {
+    problem: "Two workers are installed with the same internal component.",
+    suggestion:
+      "One of them has to go — check any worker packages you have added.",
+  },
+  ERR_AGENT_RUNTIME_UNAVAILABLE: {
+    problem: "That worker cannot be started in this installation.",
+    suggestion:
+      "This is a packaging problem rather than something you did — please report it.",
+  },
+  ERR_AGENT_TASK_INVALID: {
+    problem: "The details given for that run were not usable.",
+    suggestion: "Start it again and check each answer as you go.",
+  },
+  ERR_AGENT_DECISION_INVALID: {
+    problem: "That worker could not settle on what to do, so nothing was started.",
+    suggestion:
+      "Try again — if it keeps happening, please report it. Nothing was written.",
+  },
+  ERR_AGENT_WORKFLOW_NOT_ALLOWED: {
+    // A safety refusal, so it says plainly that DesignFlow stopped it. This is
+    // the one the user is most entitled to hear about, and the one whose raw
+    // message leaks the most.
+    problem:
+      "That worker tried to do something it is not permitted to do, so DesignFlow stopped it.",
+    suggestion:
+      "Nothing was started. Please report this — a worker should not be able to ask for that.",
+  },
+  ERR_AGENT_WORKFLOW_UNAVAILABLE: {
+    problem: "That worker needs a workflow this installation does not have.",
+    suggestion: LIST_WORKERS,
+  },
 };
 
 /**

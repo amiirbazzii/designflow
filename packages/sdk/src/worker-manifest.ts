@@ -57,6 +57,19 @@ export const workerManifestSchema = z.object({
    * input declares none.
    */
   inputs: z.array(workerInputFieldSchema).default([]),
+  /**
+   * The agent this worker delegates its decision to, if it has one.
+   *
+   * Optional, and additive on purpose. A worker without it resolves exactly as
+   * it always did — `workflows[0]`, no agent involved — so every manifest
+   * written before agents existed keeps working unchanged. A worker with it
+   * asks its agent which of `workflows` to run instead of assuming the first.
+   *
+   * `workflows` stays required either way. It is what the catalogue advertises
+   * and what `workerAgentWorkflowMismatch` checks the agent against; a worker
+   * that named only an agent would be a promise nobody could verify.
+   */
+  agentId: z.string().min(1).optional(),
   metadata: z
     .object({
       author: z.string().optional(),

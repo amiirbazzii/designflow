@@ -56,6 +56,25 @@ export type {
   WorkerRegistry,
 } from "./worker-manifest";
 
+// ── Agents ──────────────────────────────────────────────────────
+export {
+  agentManifestSchema,
+  agentTaskSchema,
+  agentDecisionSchema,
+  agentExecutionResultSchema,
+  workerAgentWorkflowMismatch,
+} from "./agent";
+
+export type {
+  Agent,
+  AgentManifest,
+  AgentTask,
+  AgentDecision,
+  AgentExecutionResult,
+  AgentContext,
+  AgentDecisionService,
+} from "./agent";
+
 export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";

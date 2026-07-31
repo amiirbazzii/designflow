@@ -1,0 +1,108 @@
+// packages/agents/src/errors.ts
+import { DesignFlowError } from "@designflow/sdk";
+
+/**
+ * Agent failures, each with a stable code.
+ *
+ * Codes rather than message text, because a caller deciding what to do about a
+ * failure — retry, ask the user, refuse — must not be reading English. The
+ * message is for a person; `code` is the contract.
+ *
+ * The two workflow refusals are separate codes on purpose. "The agent chose
+ * something it is not permitted to choose" is a trust problem, and "the agent
+ * chose something this installation does not have" is a deployment problem.
+ * One code for both would make the first invisible inside the second.
+ */
+
+export class AgentNotFoundError extends DesignFlowError {
+  public constructor(agentId: string, available: readonly string[]) {
+    super("ERR_AGENT_NOT_FOUND", `No such agent: ${agentId}`, {
+      agentId,
+      available: [...available],
+    });
+    this.name = "AgentNotFoundError";
+    Object.setPrototypeOf(this, AgentNotFoundError.prototype);
+  }
+}
+
+export class DuplicateAgentError extends DesignFlowError {
+  public constructor(agentId: string) {
+    super(
+      "ERR_AGENT_ALREADY_REGISTERED",
+      `An agent is already registered as: ${agentId}`,
+      { agentId },
+    );
+    this.name = "DuplicateAgentError";
+    Object.setPrototypeOf(this, DuplicateAgentError.prototype);
+  }
+}
+
+/**
+ * The task handed to the runtime was not a task.
+ *
+ * Raised before the agent is ever consulted — a malformed task cannot produce
+ * a meaningful decision, and consulting an agent with one would only move the
+ * failure somewhere harder to read.
+ */
+export class AgentTaskInvalidError extends DesignFlowError {
+  public constructor(issues: readonly string[]) {
+    super("ERR_AGENT_TASK_INVALID", `Invalid agent task: ${issues.join("; ")}`, {
+      issues: [...issues],
+    });
+    this.name = "AgentTaskInvalidError";
+    Object.setPrototypeOf(this, AgentTaskInvalidError.prototype);
+  }
+}
+
+/**
+ * The agent returned something that is not a decision.
+ *
+ * Includes the case that matters most: a decision carrying extra keys. The
+ * decision schema is strict, so private reasoning smuggled alongside a valid
+ * `run_workflow` lands here rather than in a log.
+ */
+export class AgentDecisionInvalidError extends DesignFlowError {
+  public constructor(agentId: string, issues: readonly string[]) {
+    super(
+      "ERR_AGENT_DECISION_INVALID",
+      `Agent ${agentId} returned an invalid decision: ${issues.join("; ")}`,
+      { agentId, issues: [...issues] },
+    );
+    this.name = "AgentDecisionInvalidError";
+    Object.setPrototypeOf(this, AgentDecisionInvalidError.prototype);
+  }
+}
+
+/** The agent chose a workflow its own manifest does not permit. */
+export class AgentWorkflowNotAllowedError extends DesignFlowError {
+  public constructor(
+    agentId: string,
+    workflowId: string,
+    allowedWorkflows: readonly string[],
+  ) {
+    super(
+      "ERR_AGENT_WORKFLOW_NOT_ALLOWED",
+      `Agent ${agentId} may not run workflow: ${workflowId}`,
+      { agentId, workflowId, allowedWorkflows: [...allowedWorkflows] },
+    );
+    this.name = "AgentWorkflowNotAllowedError";
+    Object.setPrototypeOf(this, AgentWorkflowNotAllowedError.prototype);
+  }
+}
+
+/** The agent chose a permitted workflow this installation does not have. */
+export class AgentWorkflowUnavailableError extends DesignFlowError {
+  public constructor(
+    agentId: string,
+    workflowId: string,
+    availableWorkflows: readonly string[],
+  ) {
+    super(
+      "ERR_AGENT_WORKFLOW_UNAVAILABLE",
+      `Workflow ${workflowId} is not installed, so agent ${agentId} cannot run it`,
+      { agentId, workflowId, availableWorkflows: [...availableWorkflows] },
+    );
+    this.name = "AgentWorkflowUnavailableError";
+    Object.setPrototypeOf(this, AgentWorkflowUnavailableError.prototype);
+  }
+}

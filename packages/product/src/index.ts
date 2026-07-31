@@ -19,6 +19,19 @@ export type {
   WorkflowStepCountResolver,
 } from "./runner";
 
+// ── Worker Task Boundary ────────────────────────────────────────
+export {
+  WorkerTaskRouter,
+  UnknownWorkerError,
+  AgentRuntimeUnavailableError,
+  workerTaskRequestSchema,
+} from "./worker-task";
+export type {
+  WorkerTaskRequest,
+  WorkerTaskResult,
+  WorkerTaskRouterOptions,
+} from "./worker-task";
+
 export { ApprovalService, ApprovalNotPendingError } from "./approvals";
 export type { ApprovalServiceOptions } from "./approvals";
 
