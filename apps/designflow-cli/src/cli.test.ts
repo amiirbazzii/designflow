@@ -9,6 +9,8 @@ import type { CliContext } from "./services/cli-runner";
 import { ScriptedTerminal } from "./ui/terminal";
 import { explainError } from "./ui/errors";
 import { DesignFlowError } from "@designflow/sdk";
+import { AGENT_ERROR_CODES } from "@designflow/agents";
+import { TOOL_ERROR_CODES } from "@designflow/tools";
 import {
   configSchema,
   loadConfig,
@@ -403,6 +405,55 @@ describe("architecture", () => {
     // Agents are wired in one place, like the engine. Everything else asks the
     // product boundary what should happen.
     expect(offenders).toEqual([]);
+  });
+
+  test("only the composition root constructs the tool layer", () => {
+    const offenders: string[] = [];
+
+    for (const path of sources(import.meta.dir)) {
+      if (path.endsWith("services/cli-runner.ts")) continue;
+      if (readFileSync(path, "utf8").includes("@designflow/tools")) {
+        offenders.push(path.split("/").slice(-2).join("/"));
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  test("no command reaches the tool layer or knows a tool id", () => {
+    const commandDir = join(import.meta.dir, "commands");
+
+    for (const entry of readdirSync(commandDir)) {
+      const contents = readFileSync(join(commandDir, entry), "utf8");
+
+      // The CLI asks what should happen. Which tools exist, which are
+      // permitted and what they are called is none of its business.
+      for (const forbidden of [
+        "@designflow/tools",
+        "ToolRegistry",
+        "ToolRuntime",
+        "allowedTools",
+        "toolId",
+        "classify-design-task",
+        "project-summary",
+      ]) {
+        expect(contents).not.toContain(forbidden);
+      }
+    }
+  });
+
+  test("the composition root wires tools but never calls one", () => {
+    const runner = readFileSync(
+      join(import.meta.dir, "services", "cli-runner.ts"),
+      "utf8",
+    );
+
+    expect(runner).toContain("ToolRuntime");
+    expect(runner).toContain("createToolRegistry");
+    // Wiring is the composition root's job. Invoking is the agent's, through
+    // a service port it cannot widen.
+    expect(runner).not.toContain(".invoke(");
+    expect(runner).not.toContain(".call(");
   });
 
   test("commands and rendering speak only the product layer", () => {
@@ -802,6 +853,109 @@ describe("running through an agent", () => {
   });
 });
 
+// ── Tool-backed decisions ───────────────────────────────────────
+
+describe("running through a tool-backed agent", () => {
+  test("designflow run design-engineer completes end to end", async () => {
+    const created = context({ requireApproval: false });
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    const code = await dispatch(["run", "design-engineer"], created, terminal);
+
+    // Worker → router → AgentRuntime → tool service → ToolRuntime →
+    // classifier → decision → WorkflowRunner → design-to-code.
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain("Complete");
+    expect((await created.runner.history())[0]?.workflowId).toBe("design-to-code");
+  });
+
+  test("the classifier's answer changes what happens", async () => {
+    const created = context();
+
+    // A request describing recognisable design work runs.
+    const built = await created.routeTask({
+      workerId: "design-engineer",
+      request: "build a login page",
+      input: { designFile: "homepage.fig" },
+    });
+
+    // One describing nothing recognisable asks instead — same worker, same
+    // shape of input, different tool answer, different outcome.
+    const asked = await created.routeTask({
+      workerId: "design-engineer",
+      request: "do the thing",
+      input: { note: "asdf" },
+    });
+
+    expect(built.decision.type).toBe("run_workflow");
+    expect(asked.decision.type).toBe("request_clarification");
+    expect(await created.runner.history()).toHaveLength(0);
+  });
+
+  test("an unrecognisable request stops safely at the CLI", async () => {
+    const created = context();
+
+    created.workers.registerWorker({
+      id: "vague-worker",
+      name: "Vague Worker",
+      description: "Collects a field that describes nothing",
+      category: "testing",
+      workflows: ["design-to-code"],
+      inputs: [{ key: "note", label: "Note", placeholder: "asdf" }],
+      agentId: "design-engineer-agent",
+    });
+
+    const terminal = new ScriptedTerminal(["asdf"]);
+    const code = await dispatch(["run", "vague-worker"], created, terminal);
+
+    expect(code).toBe(1);
+    expect(terminal.transcript).toContain("More detail needed");
+    expect(terminal.transcript).toContain("What would you like built?");
+    expect(await created.runner.history()).toHaveLength(0);
+  });
+
+  test("the run says nothing about tools", async () => {
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+
+    await dispatch(
+      ["run", "design-engineer"],
+      context({ requireApproval: false }),
+      terminal,
+    );
+
+    // A person hires a Design Engineer. That it consulted a classifier is
+    // machinery, exactly as agents and workflow ids are.
+    for (const leak of ["tool", "Tool", "classify", "agent", "Agent", "design-to-code"]) {
+      expect(terminal.transcript).not.toContain(leak);
+    }
+  });
+
+  test("a legacy worker with no agent runs with no tools at all", async () => {
+    const created = context();
+
+    created.workers.registerWorker({
+      id: "legacy-worker",
+      name: "Legacy",
+      description: "Written before agents or tools existed",
+      category: "testing",
+      workflows: ["design-to-code"],
+      inputs: [],
+    });
+
+    const { decision } = await created.routeTask({
+      workerId: "legacy-worker",
+      request: "",
+    });
+
+    // No agent, so no classifier, so no clarification — the Stage 33 mapping,
+    // untouched two stages later.
+    expect(decision).toEqual({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+    });
+  });
+});
+
 // ── Agent failures stay in the user's vocabulary ────────────────
 
 describe("explaining an agent failure", () => {
@@ -842,6 +996,73 @@ describe("explaining an agent failure", () => {
       // The fallback suggestion is what an unmapped code produces.
       expect(explained.suggestion).not.toContain("designflow --help");
       expect(explained.problem).not.toBe(message);
+    }
+  });
+
+  test("every code the agent and tool layers publish is mapped", () => {
+    // Driven from the packages' own enumerations rather than a list copied
+    // here, so a code added upstream fails this test instead of reaching a
+    // person as raw internal text. That is not hypothetical — it is exactly
+    // what happened when the agent layer was introduced in Stage 35.
+    const published = [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES];
+
+    expect(published.length).toBeGreaterThan(10);
+
+    const unmapped = published.filter((code) => {
+      const explained = explainError(new DesignFlowError(code, "raw internal text"));
+      return explained.suggestion.includes("designflow --help");
+    });
+
+    expect(unmapped).toEqual([]);
+  });
+
+  test("every published code says whether anything started", () => {
+    // The first question a person has after a failure. Six codes described the
+    // problem without ever answering it, which this now prevents.
+    const silent = [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES].filter((code) => {
+      const { problem, suggestion } = explainError(
+        new DesignFlowError(code, "raw internal text"),
+      );
+      return !/nothing was started|nothing was written/i.test(`${problem} ${suggestion}`);
+    });
+
+    expect(silent).toEqual([]);
+  });
+
+  test("every published code offers a next step", () => {
+    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES]) {
+      const { suggestion } = explainError(new DesignFlowError(code, "raw"));
+
+      expect(suggestion).toMatch(
+        /designflow list|designflow history|try again|start it again|report (it|this)|check /i,
+      );
+    }
+  });
+
+  test("no published code exposes a stack trace, even from a raw message", () => {
+    const raw =
+      "Agent x failed\n    at /Users/someone/secret/path.ts:1:1\n    at run (/opt/app/index.js:9:9)";
+
+    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES]) {
+      const { problem, suggestion } = explainError(new DesignFlowError(code, raw));
+      const shown = `${problem} ${suggestion}`;
+
+      expect(shown).not.toContain("    at ");
+      expect(shown).not.toContain("/Users/");
+      expect(shown).not.toContain("/opt/app");
+    }
+  });
+
+  test("no published code leaks internal vocabulary to a person", () => {
+    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES]) {
+      const { problem, suggestion } = explainError(
+        new DesignFlowError(code, "Agent x may not call tool classify-design-task"),
+      );
+      const shown = `${problem} ${suggestion}`.toLowerCase();
+
+      for (const leak of ["agent", "tool ", "workflow id", "classify-design-task", "design-to-code"]) {
+        expect(shown).not.toContain(leak);
+      }
     }
   });
 

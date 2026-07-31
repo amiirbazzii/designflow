@@ -37,7 +37,16 @@ export class InMemoryAgentRegistry {
       throw new DuplicateAgentError(manifest.id);
     }
 
-    this.agents.set(manifest.id, agent);
+    // The *parsed* manifest is what gets stored, not the object the agent was
+    // built with. Parsing applies defaults — `allowedTools` is `.default([])`
+    // — and an agent written before tools existed has no such field at all.
+    // Keeping the original would leave the runtime reading `undefined` from a
+    // manifest that had just been validated, which is the worst of both: a
+    // check that passed and a value that is missing anyway.
+    this.agents.set(manifest.id, {
+      manifest,
+      decide: (task, context) => agent.decide(task, context),
+    });
   }
 
   public get(agentId: string): Agent | undefined {

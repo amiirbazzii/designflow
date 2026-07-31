@@ -22,6 +22,7 @@ import {
   assertWorkerAgentAlignment,
   createAgentRegistry,
 } from "@designflow/agents";
+import { ToolRuntime, createToolRegistry } from "@designflow/tools";
 import {
   FileApprovalManager,
   FileArtifactStore,
@@ -235,9 +236,24 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // with the name itself.
   const agentRegistry = createAgentRegistry();
 
+  // Tools inform a decision; they never perform work. The runtime is handed a
+  // registry and nothing else — no runner, no repository, no artifact store —
+  // so a tool can report what it found and can do nothing with the finding.
+  //
+  // `project-summary` is deliberately absent: it reads a directory, and this
+  // host has no directory it is willing to name as safe to inspect. A tool
+  // that needs a filesystem grant does not get one by default, and the day
+  // this host wants project inspection, the grant appears on this line where
+  // it can be reviewed.
+  const toolRuntime = new ToolRuntime({
+    registry: createToolRegistry(),
+    logger: silentLogger,
+  });
+
   const agentRuntime = new AgentRuntime({
     registry: agentRegistry,
     availableWorkflows: [...workflows.keys()],
+    tools: toolRuntime,
     logger: silentLogger,
   });
 

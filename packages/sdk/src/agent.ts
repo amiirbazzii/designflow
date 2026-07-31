@@ -1,6 +1,7 @@
 // packages/sdk/src/agent.ts
 import { z } from "zod";
 import type { Logger } from "./context";
+import type { AgentToolService } from "./tool";
 import type { WorkerManifest } from "./worker-manifest";
 
 /**
@@ -69,6 +70,27 @@ export const agentManifestSchema = z
       .min(1)
       .refine((ids) => new Set(ids).size === ids.length, {
         message: "allowedWorkflows must not repeat a workflow id",
+      }),
+    /**
+     * The only tools this agent may call while deciding.
+     *
+     * The same allow-list discipline as `allowedWorkflows`, one layer down.
+     * Defaults to empty, which is both the backward-compatible answer for a
+     * manifest written before tools existed and the right default on its own
+     * merits: an agent that has not been granted a tool cannot call one, and
+     * nothing has to be revoked to keep it that way.
+     *
+     * No wildcard. `"*"` is a legal tool id as far as this schema knows, so it
+     * would grant exactly one tool named `*` and nothing else — but the reason
+     * it is absent is not syntactic. A wildcard grant would silently widen the
+     * moment a new tool is installed, which turns "what may this agent do?"
+     * into a question about install order rather than about a reviewed list.
+     */
+    allowedTools: z
+      .array(z.string().min(1))
+      .default([])
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "allowedTools must not repeat a tool id",
       }),
     metadata: z.record(z.unknown()).optional(),
   })
@@ -181,6 +203,22 @@ export interface AgentContext {
    * the runtime will then refuse.
    */
   readonly availableWorkflows: readonly string[];
+  /**
+   * The tools this agent may actually call right now.
+   *
+   * Narrowed the same way `availableWorkflows` is — permitted by the manifest
+   * *and* installed — so an agent choosing from this list cannot produce a
+   * call the runtime then refuses. Empty when the agent was granted none.
+   */
+  readonly availableTools: readonly string[];
+  /**
+   * The one way to call a tool.
+   *
+   * A service port with a single verb, never the registry. Every call through
+   * it is re-checked against the allow-list and the call budget, so an agent
+   * that ignores `availableTools` gains nothing by it.
+   */
+  readonly tools: AgentToolService;
   /** Ambient installation facts. Per-request data travels on the task. */
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;

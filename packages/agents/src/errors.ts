@@ -14,6 +14,26 @@ import { DesignFlowError } from "@designflow/sdk";
  * One code for both would make the first invisible inside the second.
  */
 
+/**
+ * Every stable code this layer can raise.
+ *
+ * Enumerated so the CLI's user-facing error table can be checked against it: a
+ * code added here without a message there fails a test rather than reaching a
+ * person as raw internal text. That is not hypothetical — it is exactly what
+ * happened when this package was introduced.
+ */
+export const AGENT_ERROR_CODES = [
+  "ERR_AGENT_NOT_FOUND",
+  "ERR_AGENT_ALREADY_REGISTERED",
+  "ERR_AGENT_TASK_INVALID",
+  "ERR_AGENT_DECISION_INVALID",
+  "ERR_AGENT_WORKFLOW_NOT_ALLOWED",
+  "ERR_AGENT_WORKFLOW_UNAVAILABLE",
+  "ERR_AGENT_TOOL_BUDGET_EXCEEDED",
+] as const;
+
+export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
+
 export class AgentNotFoundError extends DesignFlowError {
   public constructor(agentId: string, available: readonly string[]) {
     super("ERR_AGENT_NOT_FOUND", `No such agent: ${agentId}`, {

@@ -27,6 +27,17 @@ export interface UserFacingError {
 
 const LIST_WORKERS = "Run  designflow list  to see who is available.";
 
+const PACKAGING_PROBLEM =
+  "This is a packaging problem rather than something you did — please report it.";
+
+const NOTHING_STARTED_REPORT =
+  "Nothing was started. Please report this — a worker should not be able to do that.";
+
+const TRY_AGAIN = "Nothing was started. Try again — if it keeps happening, please report it.";
+
+const DUPLICATE_COMPONENT =
+  "One of them has to go — check any worker packages you have added.";
+
 /**
  * Domain codes the CLI can say something useful about.
  *
@@ -46,7 +57,7 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
   },
   ERR_WORKFLOW_NOT_FOUND: {
     problem: "That worker needs a workflow this installation does not have.",
-    suggestion: LIST_WORKERS,
+    suggestion: `Nothing was started. ${LIST_WORKERS}`,
   },
   ERR_CAPABILITY_NOT_FOUND: {
     problem: "A step in that workflow is missing its implementation.",
@@ -72,22 +83,19 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
   // agent, the workflow it tried to reach and the allow-list it broke.
   ERR_AGENT_NOT_FOUND: {
     problem: "That worker is missing a part it needs to decide what to do.",
-    suggestion:
-      "This is a packaging problem rather than something you did — please report it.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
   },
   ERR_AGENT_ALREADY_REGISTERED: {
     problem: "Two workers are installed with the same internal component.",
-    suggestion:
-      "One of them has to go — check any worker packages you have added.",
+    suggestion: `Nothing was started. ${DUPLICATE_COMPONENT}`,
   },
   ERR_AGENT_RUNTIME_UNAVAILABLE: {
     problem: "That worker cannot be started in this installation.",
-    suggestion:
-      "This is a packaging problem rather than something you did — please report it.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
   },
   ERR_AGENT_TASK_INVALID: {
     problem: "The details given for that run were not usable.",
-    suggestion: "Start it again and check each answer as you go.",
+    suggestion: "Nothing was started. Start it again and check each answer as you go.",
   },
   ERR_AGENT_DECISION_INVALID: {
     problem: "That worker could not settle on what to do, so nothing was started.",
@@ -105,7 +113,57 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
   },
   ERR_AGENT_WORKFLOW_UNAVAILABLE: {
     problem: "That worker needs a workflow this installation does not have.",
-    suggestion: LIST_WORKERS,
+    suggestion: `Nothing was started. ${LIST_WORKERS}`,
+  },
+
+  // Tool failures. A tool is something a worker consults while working out
+  // what to do; a person never asked for one and should not have to learn the
+  // word. These say what it means for their request instead — and in almost
+  // every case it means nothing was started.
+  ERR_AGENT_TOOL_BUDGET_EXCEEDED: {
+    problem: "That worker asked for too much information at once and was stopped.",
+    suggestion: NOTHING_STARTED_REPORT,
+  },
+  ERR_TOOL_NOT_FOUND: {
+    problem: "That worker is missing something it needs to look things up.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_TOOL_ALREADY_REGISTERED: {
+    problem: "Two workers are installed with the same internal component.",
+    suggestion: `Nothing was started. ${DUPLICATE_COMPONENT}`,
+  },
+  ERR_TOOL_NOT_ALLOWED: {
+    // A refusal worth stating plainly, like its workflow counterpart.
+    problem: "That worker tried to look something up it is not permitted to read.",
+    suggestion: NOTHING_STARTED_REPORT,
+  },
+  ERR_TOOL_CALL_INVALID: {
+    problem: "That worker could not look something up it needed.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_TOOL_INPUT_INVALID: {
+    problem: "That worker could not look something up it needed.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_TOOL_OUTPUT_INVALID: {
+    problem: "Something that worker looked up came back unusable.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_TOOL_RESULT_INVALID: {
+    problem: "Something that worker looked up came back unusable.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_TOOL_TIMEOUT: {
+    problem: "That worker took too long looking something up.",
+    suggestion: "Nothing was started. Try again — it may just have been slow.",
+  },
+  ERR_TOOL_ABORTED: {
+    problem: "That was cancelled before anything started.",
+    suggestion: "Nothing was written. Start it again when you are ready.",
+  },
+  ERR_TOOL_EXECUTION_FAILED: {
+    problem: "That worker could not look something up it needed.",
+    suggestion: TRY_AGAIN,
   },
 };
 

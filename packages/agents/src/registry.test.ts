@@ -154,7 +154,9 @@ describe("the built-in catalogue", () => {
 
   test("its manifest is valid and permits only design-to-code", () => {
     expect(designEngineerAgentManifest.allowedWorkflows).toEqual(["design-to-code"]);
-    expect(designEngineerAgentManifest.version).toBe("0.1.0");
+    // One tool, named explicitly. No wildcard exists to grant more.
+    expect(designEngineerAgentManifest.allowedTools).toEqual(["classify-design-task"]);
+    expect(designEngineerAgentManifest.version).toBe("0.2.0");
   });
 
   test("a fresh registry per call, so hosts cannot leak agents into each other", () => {

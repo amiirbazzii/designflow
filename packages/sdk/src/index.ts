@@ -75,6 +75,38 @@ export type {
   AgentDecisionService,
 } from "./agent";
 
+// ── Agent Tools ─────────────────────────────────────────────────
+export {
+  toolManifestSchema,
+  toolCallSchema,
+  toolResultSchema,
+  toolSchemaDescriptorSchema,
+  toolFieldDescriptorSchema,
+  DEFAULT_TOOL_TIMEOUT_MS,
+} from "./tool";
+
+export type {
+  Tool,
+  ToolManifest,
+  ToolCall,
+  ToolResult,
+  ToolContext,
+  ToolSchemaDescriptor,
+  ToolFieldDescriptor,
+  AgentToolService,
+  ToolInvoker,
+  ToolInvocationRequest,
+} from "./tool";
+
+// ── Agent Observability ─────────────────────────────────────────
+export {
+  agentObservationSchema,
+  NOOP_AGENT_OBSERVER,
+  shapeOf,
+} from "./agent-observability";
+
+export type { AgentObservation, AgentObserver } from "./agent-observability";
+
 export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";

@@ -8,6 +8,15 @@ export { AgentRuntime } from "./runtime";
 export type { AgentRuntimeOptions } from "./runtime";
 
 export {
+  AgentScopedToolService,
+  EMPTY_TOOL_SERVICE,
+  DEFAULT_MAX_TOOL_CALLS_PER_DECISION,
+} from "./tool-service";
+export type { AgentScopedToolServiceOptions } from "./tool-service";
+
+export { AGENT_ERROR_CODES } from "./errors";
+
+export {
   AgentNotFoundError,
   DuplicateAgentError,
   AgentTaskInvalidError,

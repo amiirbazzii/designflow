@@ -1,15 +1,28 @@
 // packages/agents/src/runtime.ts
-import { agentDecisionSchema, agentExecutionResultSchema, agentTaskSchema } from "@designflow/sdk";
+import {
+  NOOP_AGENT_OBSERVER,
+  agentDecisionSchema,
+  agentExecutionResultSchema,
+  agentTaskSchema,
+} from "@designflow/sdk";
 import type {
   AgentContext,
   AgentDecision,
   AgentDecisionService,
   AgentExecutionResult,
+  AgentObservation,
+  AgentObserver,
   AgentTask,
   Logger,
+  ToolInvoker,
 } from "@designflow/sdk";
 import type { ZodError } from "zod";
 import type { InMemoryAgentRegistry } from "./registry";
+import {
+  AgentScopedToolService,
+  DEFAULT_MAX_TOOL_CALLS_PER_DECISION,
+  EMPTY_TOOL_SERVICE,
+} from "./tool-service";
 import {
   AgentDecisionInvalidError,
   AgentTaskInvalidError,
@@ -54,9 +67,25 @@ export interface AgentRuntimeOptions {
    * is the composition root's knowledge, not the agent layer's.
    */
   readonly availableWorkflows: readonly string[];
+  /**
+   * The tool layer, if one is installed.
+   *
+   * A port rather than `ToolRuntime`, which is what keeps this package's
+   * dependency on `@designflow/sdk` alone true. Omitted, every agent gets a
+   * service whose every call fails as unpermitted — tools are opt-in.
+   */
+  readonly tools?: ToolInvoker | undefined;
+  /**
+   * How many tools one decision may call.
+   *
+   * Enforced outside the agent, so it is a property of the runtime rather than
+   * something an agent is trusted to respect.
+   */
+  readonly maxToolCallsPerDecision?: number | undefined;
   /** Ambient facts every agent sees. Per-request data travels on the task. */
   readonly metadata?: Readonly<Record<string, unknown>> | undefined;
   readonly logger?: Logger | undefined;
+  readonly observer?: AgentObserver | undefined;
 }
 
 export class AgentRuntime implements AgentDecisionService {
@@ -64,12 +93,21 @@ export class AgentRuntime implements AgentDecisionService {
   private readonly availableWorkflows: readonly string[];
   private readonly metadata: Readonly<Record<string, unknown>>;
   private readonly logger: Logger;
+  private readonly tools: ToolInvoker | undefined;
+  private readonly maxToolCalls: number;
+  private readonly observer: AgentObserver;
 
   public constructor(options: AgentRuntimeOptions) {
     this.registry = options.registry;
     this.availableWorkflows = [...options.availableWorkflows];
-    this.metadata = options.metadata ?? {};
+    // Frozen for the same reason the tool runtime freezes its own: the object
+    // is shared across every decision, and `Readonly<>` is a type, not a lock.
+    this.metadata = Object.freeze({ ...options.metadata });
     this.logger = options.logger ?? silentLogger;
+    this.tools = options.tools;
+    this.maxToolCalls =
+      options.maxToolCallsPerDecision ?? DEFAULT_MAX_TOOL_CALLS_PER_DECISION;
+    this.observer = options.observer ?? NOOP_AGENT_OBSERVER;
   }
 
   public async decide(
@@ -87,8 +125,31 @@ export class AgentRuntime implements AgentDecisionService {
       this.availableWorkflows.includes(workflowId),
     );
 
+    // The same narrowing, one layer down: permitted by the manifest *and*
+    // installed. An agent is never shown a tool it could not call.
+    const installedTools = this.tools?.installedToolIds() ?? [];
+    const availableTools = manifest.allowedTools.filter((toolId) =>
+      installedTools.includes(toolId),
+    );
+
+    // Scoped to this decision, so the budget cannot be reset by anything the
+    // agent does and cannot be carried over from a previous one.
+    const toolService =
+      this.tools === undefined || availableTools.length === 0
+        ? EMPTY_TOOL_SERVICE
+        : new AgentScopedToolService({
+            invoker: this.tools,
+            allowedTools: availableTools,
+            maxCalls: this.maxToolCalls,
+            agentId: manifest.id,
+            workerId: validated.workerId,
+            ...(signal !== undefined ? { signal } : {}),
+          });
+
     const context: AgentContext = {
       availableWorkflows,
+      availableTools,
+      tools: toolService,
       metadata: this.metadata,
       // A context without a signal would leave an agent unable to observe
       // cancellation, so one is always present — unaborted when none is given.
@@ -96,10 +157,36 @@ export class AgentRuntime implements AgentDecisionService {
       logger: this.logger,
     };
 
+    const startedAt = performance.now();
+
+    this.emit({
+      type: "agent.decision.started",
+      agentId: manifest.id,
+      workerId: validated.workerId,
+      // The length, never the request. What is being observed is that a
+      // decision happened and roughly how much it had to work with.
+      requestLength: validated.request.length,
+      availableWorkflows: [...availableWorkflows],
+      availableTools: [...availableTools],
+    });
+
     const decision = this.parseDecision(
       manifest.id,
       await agent.decide(validated, context),
     );
+
+    this.emit({
+      type: "agent.decision.completed",
+      agentId: manifest.id,
+      workerId: validated.workerId,
+      decision: decision.type,
+      ...(decision.type === "run_workflow"
+        ? { workflowId: decision.workflowId }
+        : {}),
+      toolCalls:
+        toolService instanceof AgentScopedToolService ? toolService.callCount : 0,
+      durationMs: Math.max(0, performance.now() - startedAt),
+    });
 
     if (decision.type === "run_workflow") {
       // Checked against the manifest even though `availableWorkflows` was
@@ -128,6 +215,17 @@ export class AgentRuntime implements AgentDecisionService {
       workerId: validated.workerId,
       decision,
     });
+  }
+
+  /** Observation must never be able to break the decision it is watching. */
+  private emit(observation: AgentObservation): void {
+    try {
+      this.observer.observe(observation);
+    } catch {
+      // Deliberately swallowed, for the same reason the tool runtime does:
+      // failing a decision over a broken observer would make adding
+      // observability riskier than going without.
+    }
   }
 
   private parseTask(task: AgentTask): AgentTask {

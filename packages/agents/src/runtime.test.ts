@@ -181,13 +181,18 @@ describe("the context an agent decides with", () => {
     expect(context?.signal.aborted).toBe(false);
 
     // An agent that could reach a repository or an artifact store could act
-    // instead of decide, and the boundary would exist only in the docs.
+    // instead of decide, and the boundary would exist only in the docs. The
+    // tool port is the one addition, and it is a service with a single verb —
+    // never the registry or the runtime behind it.
     expect(Object.keys(context ?? {}).sort()).toEqual([
+      "availableTools",
       "availableWorkflows",
       "logger",
       "metadata",
       "signal",
+      "tools",
     ]);
+    expect(Object.keys(context?.tools ?? {})).toEqual(["call"]);
   });
 
   test("passes the caller's signal through", async () => {
