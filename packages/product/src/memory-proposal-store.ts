@@ -1,6 +1,12 @@
 // packages/product/src/memory-proposal-store.ts
-import { memoryProposalSchema, selectMemoryProposals } from "@designflow/sdk";
-import type { MemoryProposal, MemoryProposalListFilter, MemoryProposalStore } from "@designflow/sdk";
+import {
+  memoryProposalSchema,
+  selectMemoryProposals,
+  type MemoryProposal,
+  type MemoryProposalListFilter,
+  type MemoryProposalStore,
+} from "@designflow/sdk";
+
 import {
   MemoryProposalInvalidError,
   MemoryProposalNotFoundError,

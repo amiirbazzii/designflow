@@ -1,6 +1,9 @@
 // apps/designflow-cli/src/commands/settings.ts
-import { settings } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  settings,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 import { CLI_VERSION } from "../version";
 

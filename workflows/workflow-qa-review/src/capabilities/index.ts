@@ -12,24 +12,22 @@ import {
   qaReviewInputSchema,
   reviewTargetSummarySchema,
   severityAssessmentSchema,
-} from "../types";
-import type {
-  AccessibilityCounts,
-  AccessibilityFinding,
-  AccessibilityReview,
-  AssessedIssue,
-  Issue,
-  IssueKind,
-  IssueList,
-  QaReport,
-  ReviewItem,
-  ReviewTargetSummary,
-  Severity,
-  SeverityAssessment,
-  SeverityCounts,
+  type AccessibilityCounts,
+  type AccessibilityFinding,
+  type AccessibilityReview,
+  type AssessedIssue,
+  type Issue,
+  type IssueKind,
+  type IssueList,
+  type QaReport,
+  type ReviewItem,
+  type ReviewTargetSummary,
+  type Severity,
+  type SeverityAssessment,
+  type SeverityCounts,
+  type CapabilityOutput,
 } from "../types";
 import { readArtifact, writeArtifact } from "../artifact-io";
-import type { CapabilityOutput } from "../types";
 
 /**
  * The five capabilities of the QA Review workflow.

@@ -2,8 +2,10 @@
 import { describe, expect, test } from "bun:test";
 import { InMemoryProjectContextStore, InMemoryProjectStore } from "./project-store";
 import { ProjectContextService } from "./project-context-service";
-import { ProjectService } from "./project-service";
-import type { ProjectInspector } from "./project-service";
+import {
+  ProjectService,
+  type ProjectInspector,
+} from "./project-service";
 
 const NOW = "2026-08-01T00:00:00.000Z";
 

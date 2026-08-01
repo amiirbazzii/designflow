@@ -1,6 +1,10 @@
 // apps/designflow-cli/src/commands/traces.ts
-import { formatWhen, heading } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  formatWhen,
+  heading,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 import type { AgentTrace, WorkerManifest } from "@designflow/sdk";
 

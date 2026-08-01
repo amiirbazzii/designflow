@@ -5,17 +5,16 @@ import {
   shapeOf,
   toolCallSchema,
   toolResultSchema,
+  type AgentObserver,
+  type Logger,
+  type Tool,
+  type ToolCall,
+  type ToolContext,
+  type ToolInvocationRequest,
+  type ToolInvoker,
+  type ToolResult,
 } from "@designflow/sdk";
-import type {
-  AgentObserver,
-  Logger,
-  Tool,
-  ToolCall,
-  ToolContext,
-  ToolInvocationRequest,
-  ToolInvoker,
-  ToolResult,
-} from "@designflow/sdk";
+
 import type { ZodError } from "zod";
 import type { InMemoryToolRegistry } from "./registry";
 import { ToolCallInvalidError, ToolResultInvalidError } from "./errors";

@@ -4,14 +4,12 @@ import {
   agentTraceSchema,
   selectTraces,
   traceEventSchema,
-} from "@designflow/sdk";
-import type {
-  AgentTrace,
-  AgentTracePatch,
-  TraceEvent,
-  TraceFilters,
-  TraceObserver,
-  TraceStore,
+  type AgentTrace,
+  type AgentTracePatch,
+  type TraceEvent,
+  type TraceFilters,
+  type TraceObserver,
+  type TraceStore,
 } from "@designflow/sdk";
 
 /**

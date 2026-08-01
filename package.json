@@ -1,6 +1,7 @@
 {
   "name": "designflow-monorepo",
   "private": true,
+  "type": "module",
   "packageManager": "bun@1.3.14",
   "workspaces": [
     "apps/*",
@@ -15,9 +16,12 @@
     "test": "turbo test"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/bun": "1.3.14",
     "bun-types": "1.3.14",
+    "eslint": "10.8.0",
     "turbo": "^2.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "8.65.0"
   }
 }

@@ -1,6 +1,10 @@
 // apps/designflow-cli/src/commands/session-flow.ts
-import { heading, stepMarker } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  heading,
+  stepMarker,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 import type { SessionResult } from "@designflow/sdk";
 

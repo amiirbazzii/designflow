@@ -18,8 +18,8 @@ import {
   SAMPLE_RESEARCH,
   createHost,
   incrementalMetadata,
+  type ResearchAnalysisHost,
 } from "./harness.test-support";
-import type { ResearchAnalysisHost } from "./harness.test-support";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -445,7 +445,7 @@ describe("approval gate", () => {
     expect(execution.state).toBe("needs_approval");
 
     const pending = await host.runner.pendingApproval(execution.executionId);
-    expect(pending?.reason).toContain("approve-research-brief");
+    expect(pending?.reason).toContain("Final cited output presented to the requester");
 
     // Nothing ran: the gate is evaluated before the workflow starts.
     expect(capabilitiesRun(host)).toEqual([]);

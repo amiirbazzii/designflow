@@ -3,8 +3,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DesignFlowError } from "@designflow/sdk";
-import type { Tool, ToolContext, ToolManifest } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  type Tool,
+  type ToolContext,
+  type ToolManifest,
+} from "@designflow/sdk";
+
 import { z } from "zod";
 import { InMemoryToolRegistry } from "./registry";
 import { ToolRuntime } from "./runtime";

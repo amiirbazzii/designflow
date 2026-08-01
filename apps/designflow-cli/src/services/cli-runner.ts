@@ -23,12 +23,11 @@ import {
   MemoryProposalService,
   ContextAssemblyService,
   buildProgress,
+  type ExecutionProgress,
+  type WorkerTaskRequest,
+  type WorkerTaskResult,
 } from "@designflow/product";
-import type {
-  ExecutionProgress,
-  WorkerTaskRequest,
-  WorkerTaskResult,
-} from "@designflow/product";
+
 import {
   AgentRuntime,
   assertWorkerAgentAlignment,
@@ -50,7 +49,16 @@ import {
   mergeModelProfileOverrides,
 } from "@designflow/models";
 import { OpenRouterProvider } from "@designflow/model-provider-openrouter";
-import type { ModelProfile } from "@designflow/sdk";
+import {
+  type ModelProfile,
+  primaryWorkflowOf,
+  readChangedArtifacts,
+  type CapabilityReuseResolver,
+  type ExecutionEvent,
+  type Logger,
+  type WorkerManifest,
+  type WorkflowPackage,
+} from "@designflow/sdk";
 import {
   FileAgentMemoryStore,
   FileApprovalManager,
@@ -64,16 +72,12 @@ import {
   FileStore,
   FileTraceStore,
 } from "@designflow/storage-file";
-import { primaryWorkflowOf, readChangedArtifacts } from "@designflow/sdk";
-import type {
-  CapabilityReuseResolver,
-  ExecutionEvent,
-  Logger,
-  WorkerManifest,
-  WorkflowPackage,
-} from "@designflow/sdk";
-import { createWorkerRegistry } from "@designflow/workers";
-import type { InMemoryWorkerRegistry } from "@designflow/workers";
+
+import {
+  createWorkerRegistry,
+  type InMemoryWorkerRegistry,
+} from "@designflow/workers";
+
 import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
@@ -91,11 +95,16 @@ import {
   productBriefWorkflowPackage,
 } from "@designflow/workflow-product-brief";
 import { resolveDatabasePath } from "./config";
-import { initializeHome } from "./home";
-import type { HomeState } from "./home";
+import {
+  initializeHome,
+  type HomeState,
+} from "./home";
+
 import { readModelProfileOverrides } from "./model-config";
-import { readSessionConfig } from "./session-config";
-import type { SessionConfig } from "./session-config";
+import {
+  readSessionConfig,
+  type SessionConfig,
+} from "./session-config";
 
 /**
  * The CLI's composition root — the one allowed exception to the import rule.

@@ -5,14 +5,12 @@ import {
   executionRecordSchema,
   lifecycleEventSchema,
   executionCheckpointDataSchema,
+  DesignFlowError,
+  type ExecutionRepository,
+  type ExecutionRecord,
+  type LifecycleEvent,
+  type ExecutionCheckpointData,
 } from "@designflow/sdk";
-import type {
-  ExecutionRepository,
-  ExecutionRecord,
-  LifecycleEvent,
-  ExecutionCheckpointData,
-} from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
 
 // ── Error Codes ────────────────────────────────────────────────
 

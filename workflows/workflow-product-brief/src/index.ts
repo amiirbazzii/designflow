@@ -14,6 +14,8 @@ export {
 
 export { readArtifact, writeArtifact, MissingUpstreamArtifactError } from "./artifact-io";
 
+export { evaluateProductManagerCriterion } from "./evaluate";
+
 export {
   ARTIFACT_IDS,
   ARTIFACT_TYPES,

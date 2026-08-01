@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "lint": "echo \"@designflow/artifacts: lint ok\"",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },

@@ -5,32 +5,29 @@ import {
   ARTIFACT_IDS,
   ARTIFACT_TYPES,
   capabilityOutputSchema,
-  claimSchema,
   comparisonMatrixSchema,
   extractedClaimsSchema,
   findingsSummarySchema,
   researchAnalysisInputSchema,
   researchBriefSchema,
   sourceInventorySchema,
-} from "../types";
-import type {
-  Agreement,
-  Citation,
-  Claim,
-  ComparisonGroup,
-  ComparisonMatrix,
-  Confidence,
-  Conflict,
-  ExtractedClaims,
-  FindingsSummary,
-  InvalidSource,
-  KeyFinding,
-  ResearchBrief,
-  SourceInventory,
-  ValidSource,
+  type Agreement,
+  type Citation,
+  type Claim,
+  type ComparisonGroup,
+  type ComparisonMatrix,
+  type Confidence,
+  type Conflict,
+  type ExtractedClaims,
+  type FindingsSummary,
+  type InvalidSource,
+  type KeyFinding,
+  type ResearchBrief,
+  type SourceInventory,
+  type ValidSource,
+  type CapabilityOutput,
 } from "../types";
 import { readArtifact, writeArtifact } from "../artifact-io";
-import type { CapabilityOutput } from "../types";
 
 /**
  * The five capabilities of the Research Analysis workflow.

@@ -1,6 +1,11 @@
 // packages/artifacts/src/local.ts
-import { DesignFlowError, artifactRefSchema } from "@designflow/sdk";
-import type { ArtifactRef, ArtifactLineage, ArtifactStore } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  artifactRefSchema,
+  type ArtifactRef,
+  type ArtifactLineage,
+  type ArtifactStore,
+} from "@designflow/sdk";
 import { ensureArtifactDir, readArtifact, writeArtifact } from "./storage";
 import { ArtifactErrorCodes, ARTIFACTS_DIR } from "./types";
 

@@ -1,7 +1,6 @@
 // packages/models/src/config.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError } from "@designflow/sdk";
-import type { ModelProfile } from "@designflow/sdk";
+import { DesignFlowError, type ModelProfile } from "@designflow/sdk";
 import { mergeModelProfileOverrides } from "./config";
 
 /**

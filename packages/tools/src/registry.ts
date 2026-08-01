@@ -1,6 +1,11 @@
 // packages/tools/src/registry.ts
-import { toolManifestSchema } from "@designflow/sdk";
-import type { Tool, ToolContext, ToolManifest } from "@designflow/sdk";
+import {
+  toolManifestSchema,
+  type Tool,
+  type ToolContext,
+  type ToolManifest,
+} from "@designflow/sdk";
+
 import { DuplicateToolError, ToolNotFoundError } from "./errors";
 
 /**

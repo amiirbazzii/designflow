@@ -11,6 +11,9 @@
     { "path": "../../packages/core" },
     { "path": "../../packages/product" },
     { "path": "../../packages/workers" },
-    { "path": "../../workflows/workflow-design-to-code" }
+    { "path": "../../workflows/workflow-design-to-code" },
+    { "path": "../../workflows/workflow-qa-review" },
+    { "path": "../../workflows/workflow-research-analysis" },
+    { "path": "../../workflows/workflow-product-brief" }
   ]
 }

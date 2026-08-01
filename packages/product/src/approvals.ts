@@ -1,15 +1,21 @@
 // packages/product/src/approvals.ts
-import { approvalOutcomeSchema, pendingApprovalSchema } from "./schemas";
-import type { ApprovalOutcome, ExecutionState, PendingApproval } from "./schemas";
+import {
+  approvalOutcomeSchema,
+  pendingApprovalSchema,
+  type ApprovalOutcome,
+  type ExecutionState,
+  type PendingApproval,
+} from "./schemas";
+
 import type { ExecutionEventSource } from "./event-collector";
 import { ExecutionNotFoundError } from "./errors";
-import type {
-  ApprovalManager,
-  ExecutionContract,
-  ExecutionRecord,
-  ExecutionRepository,
+import {
+  type ApprovalManager,
+  type ExecutionContract,
+  type ExecutionRecord,
+  type ExecutionRepository,
+  DesignFlowError,
 } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
 
 export class ApprovalNotPendingError extends DesignFlowError {
   public constructor(

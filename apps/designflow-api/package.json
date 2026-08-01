@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -b",
     "serve": "bun run src/main.ts",
-    "lint": "echo \"@designflow/api: lint ok\"",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },

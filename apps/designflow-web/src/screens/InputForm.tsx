@@ -1,20 +1,23 @@
 // apps/designflow-web/src/screens/InputForm.tsx
 import { useState } from "react";
-import type { WorkflowSummary } from "../api-client";
+import type { WorkerSummary } from "../api-client";
 
 /**
- * The workflow input form.
+ * The worker input form.
  *
- * Generated from `props.workflow.inputs` — the owning worker's own
- * `WorkerManifest.inputs`, forwarded by the API (`GET /api/workflows`) —
- * never hardcoded per workflow here. Installing a fifth worker/workflow adds
- * a working form with no change to this file, closing the gap an earlier
- * version of this component had: a workflow this table did not name got an
- * empty form.
+ * Generated from `props.workflow.inputs` — the worker's own
+ * `WorkerManifest.inputs`, forwarded by the API (`GET /workers`) — never
+ * hardcoded per worker here. Installing a fifth worker adds a working form
+ * with no change to this file, closing the gap an earlier version of this
+ * component had: a workflow this table did not name got an empty form.
+ *
+ * The prop is still named `workflow` for the value it carries — a worker's
+ * own input fields — even though its type is now `WorkerSummary`: the Worker
+ * Task Boundary is the only entry point into a run.
  */
 
 export function InputForm(props: {
-  readonly workflow: WorkflowSummary;
+  readonly workflow: WorkerSummary;
   readonly busy: boolean;
   readonly onCancel: () => void;
   readonly onSubmit: (input: Record<string, unknown>) => void;

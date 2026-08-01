@@ -15,8 +15,8 @@ import {
   SAMPLE_TARGET,
   createHost,
   incrementalMetadata,
+  type QaReviewHost,
 } from "./harness.test-support";
-import type { QaReviewHost } from "./harness.test-support";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -418,7 +418,7 @@ describe("approval gate", () => {
     expect(execution.state).toBe("needs_approval");
 
     const pending = await host.runner.pendingApproval(execution.executionId);
-    expect(pending?.reason).toContain("approve-qa-report");
+    expect(pending?.reason).toContain("Publishing a verdict the team will act on");
 
     // Nothing ran: the gate is evaluated before the workflow starts.
     expect(capabilitiesRun(host)).toEqual([]);

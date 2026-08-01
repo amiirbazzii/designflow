@@ -3,17 +3,20 @@ import {
   artifactMaterializationRequestSchema,
   artifactMaterializationResultSchema,
   executionEventSchema,
+  type ArtifactMaterializationRequest,
+  type ArtifactMaterializationResult,
+  type ArtifactMaterializer,
+  type ArtifactRegistry,
+  type ExecutionEventPublisher,
 } from "@designflow/sdk";
-import type {
-  ArtifactMaterializationRequest,
-  ArtifactMaterializationResult,
-  ArtifactMaterializer,
-  ArtifactRegistry,
-  ExecutionEventPublisher,
-} from "@designflow/sdk";
+
 import { ArtifactMaterializationError } from "../errors";
-import type { MaterializationIssue, MaterializedArtifact } from "./validation";
-import { checkArtifact, resolveSourceExecutionId } from "./validation";
+import {
+  type MaterializationIssue,
+  type MaterializedArtifact,
+  checkArtifact,
+  resolveSourceExecutionId,
+} from "./validation";
 
 export interface RegistryArtifactMaterializerOptions {
   readonly registry: ArtifactRegistry;

@@ -6,7 +6,6 @@ import { InMemoryMemoryProposalStore } from "./memory-proposal-store";
 import { AgentMemoryService, MemoryProposalService } from "./memory-service";
 
 const NOW = "2026-08-01T00:00:00.000Z";
-const LATER = "2026-08-02T00:00:00.000Z";
 
 function services(clock: { current: string }) {
   const memory = new AgentMemoryService({
@@ -81,7 +80,7 @@ describe("MemoryProposalService approval flow", () => {
   });
 
   test("approve creates active memory and records resolution", async () => {
-    const { memory, proposals } = services({ current: NOW });
+    const { proposals } = services({ current: NOW });
 
     const proposal = await proposals.propose({
       proposedByAgentId: "design-engineer-agent",

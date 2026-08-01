@@ -1,6 +1,9 @@
 // packages/product/src/worker-catalog-service.ts
-import { DesignFlowError } from "@designflow/sdk";
-import type { WorkerManifest, WorkerRegistry } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  type WorkerManifest,
+  type WorkerRegistry,
+} from "@designflow/sdk";
 
 /**
  * The product-facing worker catalogue.

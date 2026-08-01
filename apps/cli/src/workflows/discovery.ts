@@ -1,6 +1,5 @@
 // apps/cli/src/workflows/discovery.ts
-import type { WorkflowProvider } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
+import { DesignFlowError, type WorkflowProvider } from "@designflow/sdk";
 import { workflowPackages } from "./config";
 import { WorkflowRegistry } from "./registry";
 

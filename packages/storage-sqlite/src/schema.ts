@@ -125,6 +125,27 @@ function migrate(db: Database): void {
       ref_json   TEXT NOT NULL,
       data_json  TEXT NOT NULL
     );
+
+    -- One row per clarification conversation. The full session is kept as one
+    -- JSON blob (\`session_json\`) rather than normalised columns — the same
+    -- reasoning \`metadata_json\` elsewhere in this file already documents,
+    -- except here the *entire* record is the opaque bag the SDK already
+    -- validates end to end via \`agentSessionSchema\`. \`status\` and
+    -- \`worker_id\` are duplicated into their own columns purely so
+    -- \`SessionListFilter\` can be applied with a WHERE clause instead of a
+    -- full table scan; \`version\` is duplicated so optimistic concurrency
+    -- can be checked without parsing JSON first.
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id   TEXT PRIMARY KEY,
+      worker_id    TEXT NOT NULL,
+      status       TEXT NOT NULL,
+      version      INTEGER NOT NULL,
+      updated_at   TEXT NOT NULL,
+      session_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_worker_status
+      ON sessions (worker_id, status);
   `);
 }
 

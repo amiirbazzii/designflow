@@ -1,14 +1,17 @@
 // packages/state/src/local.ts
-import { DesignFlowError } from "@designflow/sdk";
-import type { StateStore, CheckpointState, CheckpointRecord } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  type StateStore,
+  type CheckpointState,
+  type CheckpointRecord,
+} from "@designflow/sdk";
 import {
   ensureCheckpointDir,
   readCheckpoint,
   writeCheckpoint,
   listCheckpointFiles,
 } from "./store";
-import { StateErrorCodes, STATE_DIR } from "./types";
-import type { StoredCheckpoint } from "./types";
+import { StateErrorCodes, STATE_DIR, type StoredCheckpoint } from "./types";
 
 export class LocalStateStore implements StateStore {
   private readonly basePath: string;

@@ -14,8 +14,8 @@ import {
   SAMPLE_DESIGN,
   createHost,
   incrementalMetadata,
+  type DesignToCodeHost,
 } from "./harness.test-support";
-import type { DesignToCodeHost } from "./harness.test-support";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -421,7 +421,7 @@ describe("approval gate", () => {
     expect(execution.state).toBe("needs_approval");
 
     const pending = await host.runner.pendingApproval(execution.executionId);
-    expect(pending?.reason).toContain("approve-code-generation");
+    expect(pending?.reason).toContain("Writing changes to production files");
 
     // Nothing ran: the gate is evaluated before the workflow starts.
     expect(capabilitiesRun(host)).toEqual([]);

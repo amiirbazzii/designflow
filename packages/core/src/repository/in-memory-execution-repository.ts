@@ -3,13 +3,12 @@ import {
   executionRecordSchema,
   lifecycleEventSchema,
   executionCheckpointDataSchema,
+  type ExecutionRepository,
+  type ExecutionRecord,
+  type LifecycleEvent,
+  type ExecutionCheckpointData,
 } from "@designflow/sdk";
-import type {
-  ExecutionRepository,
-  ExecutionRecord,
-  LifecycleEvent,
-  ExecutionCheckpointData,
-} from "@designflow/sdk";
+
 import { ExecutionRepositoryError } from "../errors";
 
 // ── In-Memory Execution Repository ─────────────────────────────

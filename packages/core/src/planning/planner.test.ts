@@ -1,11 +1,13 @@
 // packages/core/src/planning/planner.test.ts
 import { describe, expect, test } from "bun:test";
-import type {
-  ExecutionRecord,
-  WorkflowDefinition,
-  WorkflowGraph,
+import {
+  type ExecutionRecord,
+  type WorkflowDefinition,
+  type WorkflowGraph,
+  DesignFlowError,
+  workflowDefinitionSchema,
 } from "@designflow/sdk";
-import { DesignFlowError, workflowDefinitionSchema } from "@designflow/sdk";
+
 import { IncrementalExecutionPlannerService } from "./planner";
 import { buildDependentIndex, buildWorkflowGraph } from "./graph";
 import { analyzeNodeImpact } from "./impact";

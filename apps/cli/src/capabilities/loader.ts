@@ -1,6 +1,5 @@
 // apps/cli/src/capabilities/loader.ts
-import { DesignFlowError } from "@designflow/sdk";
-import type { CapabilityProvider } from "@designflow/sdk";
+import { DesignFlowError, type CapabilityProvider } from "@designflow/sdk";
 import { CapabilityRegistry } from "@designflow/core";
 import { capabilityPackages } from "./config";
 

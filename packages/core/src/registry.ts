@@ -2,11 +2,9 @@
 import {
   capabilityPackageSchema,
   DesignFlowError,
-} from "@designflow/sdk";
-import type {
-  Capability,
-  CapabilityPackage,
-  CapabilityManifest,
+  type Capability,
+  type CapabilityPackage,
+  type CapabilityManifest,
 } from "@designflow/sdk";
 
 export class CapabilityRegistryError extends DesignFlowError {

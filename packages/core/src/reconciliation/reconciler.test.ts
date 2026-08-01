@@ -1,7 +1,10 @@
 // packages/core/src/reconciliation/reconciler.test.ts
 import { describe, expect, test } from "bun:test";
-import type { ArtifactRef } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
+import {
+  type ArtifactRef,
+  DesignFlowError,
+} from "@designflow/sdk";
+
 import { ArtifactSetReconciler } from "./reconciler";
 import { findSetConflicts, identityOf } from "./comparison";
 import { InMemoryArtifactStore } from "../artifacts";
@@ -49,7 +52,7 @@ const expectCode = async (
     throw new Error(`Expected rejection with ${code}`);
   } catch (error) {
     if (!(error instanceof DesignFlowError)) {
-      throw new Error(`Expected a DesignFlowError, received ${String(error)}`);
+      throw new Error(`Expected a DesignFlowError, received ${String(error)}`, { cause: error });
     }
     expect(error.code).toBe(code);
     return error;

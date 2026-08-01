@@ -4,20 +4,22 @@ import {
   executionStatusSchema,
   workflowHistoryEntrySchema,
   workflowLaunchRequestSchema,
+  type ApprovalOutcome,
+  type ExecutionHandle,
+  type ExecutionProgress,
+  type ExecutionReport,
+  type ExecutionState,
+  type ExecutionStatus,
+  type PendingApproval,
+  type WorkflowHistoryEntry,
+  type WorkflowLaunchRequest,
 } from "./schemas";
-import type {
-  ApprovalOutcome,
-  ExecutionHandle,
-  ExecutionProgress,
-  ExecutionReport,
-  ExecutionState,
-  ExecutionStatus,
-  PendingApproval,
-  WorkflowHistoryEntry,
-  WorkflowLaunchRequest,
-} from "./schemas";
-import { ProductExecutionService } from "./service";
-import type { WorkflowNameResolver } from "./service";
+
+import {
+  ProductExecutionService,
+  type WorkflowNameResolver,
+} from "./service";
+
 import type { ExecutionEventSource } from "./event-collector";
 import { buildProgress } from "./progress";
 import { ApprovalService, toState } from "./approvals";

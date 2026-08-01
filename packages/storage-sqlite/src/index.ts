@@ -11,3 +11,9 @@ export {
   ArtifactCycleError,
 } from "./artifact-store";
 export type { SqliteArtifactStoreOptions } from "./artifact-store";
+export {
+  SqliteSessionStore,
+  SessionAlreadyExistsError,
+  SessionNotFoundError,
+  SessionConflictError,
+} from "./session-store";

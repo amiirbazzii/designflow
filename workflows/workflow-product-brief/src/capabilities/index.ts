@@ -12,18 +12,16 @@ import {
   requirementsSchema,
   riskAssumptionRegisterSchema,
   scopeDefinitionSchema,
-} from "../types";
-import type {
-  AcceptanceCriteria,
-  PriorityLevel,
-  ProblemStatement,
-  ProductBrief,
-  Requirements,
-  RiskAssumptionRegister,
-  ScopeDefinition,
+  type AcceptanceCriteria,
+  type PriorityLevel,
+  type ProblemStatement,
+  type ProductBrief,
+  type Requirements,
+  type RiskAssumptionRegister,
+  type ScopeDefinition,
+  type CapabilityOutput,
 } from "../types";
 import { readArtifact, writeArtifact } from "../artifact-io";
-import type { CapabilityOutput } from "../types";
 
 /**
  * The six capabilities of the Product Brief workflow.

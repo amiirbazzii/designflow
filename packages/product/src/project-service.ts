@@ -1,14 +1,17 @@
 // packages/product/src/project-service.ts
-import { NOOP_PROJECT_OBSERVER, createProjectRequestSchema, projectIdentitySchema } from "@designflow/sdk";
-import type {
-  CreateProjectRequest,
-  ProjectFactChange,
-  ProjectIdentity,
-  ProjectListFilter,
-  ProjectObserver,
-  ProjectPatch,
-  ProjectStore,
+import {
+  NOOP_PROJECT_OBSERVER,
+  createProjectRequestSchema,
+  projectIdentitySchema,
+  type CreateProjectRequest,
+  type ProjectFactChange,
+  type ProjectIdentity,
+  type ProjectListFilter,
+  type ProjectObserver,
+  type ProjectPatch,
+  type ProjectStore,
 } from "@designflow/sdk";
+
 import { ProjectContextService } from "./project-context-service";
 import { ProjectInvalidError, ProjectNotFoundError, ProjectPathInvalidError } from "./project-errors";
 

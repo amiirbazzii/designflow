@@ -1,7 +1,11 @@
 // workflows/workflow-test/src/index.test.ts
 import { describe, expect, test } from "bun:test";
-import type { CapabilityContext, Logger, ArtifactStore } from "@designflow/sdk";
-import { workflowDefinitionSchema } from "@designflow/sdk";
+import {
+  workflowDefinitionSchema,
+  type CapabilityContext,
+  type Logger,
+  type ArtifactStore,
+} from "@designflow/sdk";
 import { testArtifactCapability } from "./capability";
 import { testWorkflow } from "./workflow";
 import type { TestArtifactInput, TestArtifactOutput } from "./types";

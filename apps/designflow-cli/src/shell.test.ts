@@ -16,8 +16,11 @@ import { DesignFlowError } from "@designflow/sdk";
 import { InMemoryWorkerRegistry } from "@designflow/workers";
 import { dispatch } from "./cli";
 import { CLI_VERSION } from "./version";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
+
 import { ScriptedTerminal } from "./ui/terminal";
 import { explainError, formatError } from "./ui/errors";
 import { initializeHome } from "./services/home";

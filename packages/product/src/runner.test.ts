@@ -1,16 +1,17 @@
 // packages/product/src/runner.test.ts
 import { describe, expect, test } from "bun:test";
-import type {
-  ApprovalManager,
-  ApprovalRequest,
-  ExecutionContract,
-  ExecutionEvent,
-  ExecutionRecord,
-  ExecutionRepository,
-  ExecutionRequest,
-  ExecutionResult,
+import {
+  type ApprovalManager,
+  type ApprovalRequest,
+  type ExecutionContract,
+  type ExecutionEvent,
+  type ExecutionRecord,
+  type ExecutionRepository,
+  type ExecutionRequest,
+  type ExecutionResult,
+  DesignFlowError,
 } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
+
 import { WorkflowRunner } from "./runner";
 import { InMemoryExecutionEventCollector } from "./event-collector";
 import { buildProgress, humanizeCapabilityId } from "./progress";

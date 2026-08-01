@@ -489,12 +489,17 @@ describe("FileStore", () => {
     expect(store.data.executions).toEqual({});
   });
 
-  test("starts empty rather than throwing on a corrupt file", () => {
+  test("a corrupt file is quarantined and reported, not silently treated as empty", async () => {
     const path = newPath();
-    Bun.write(path, "{ not json");
+    await Bun.write(path, "{ not json");
 
-    // A broken store should not stop someone running a workflow.
-    expect(new FileStore(path).data.executions).toEqual({});
+    // A broken store must not look like an empty one — that would hide data
+    // loss from the person it happened to. See recovery.test.ts for the full
+    // corruption/locking contract.
+    await expectCode(
+      (async () => new FileStore(path))(),
+      "ERR_STORE_CORRUPTED",
+    );
   });
 
   test("fills in collections missing from an older document", () => {

@@ -1,6 +1,11 @@
 // apps/designflow-cli/src/commands/history.ts
-import { formatWhen, heading, runExample } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  formatWhen,
+  heading,
+  runExample,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 
 /**

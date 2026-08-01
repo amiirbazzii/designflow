@@ -8,8 +8,8 @@ import {
   historyDir,
   loadConfig,
   saveConfig,
+  type Config,
 } from "./config";
-import type { Config } from "./config";
 
 /**
  * The local application directory, and the first run that creates it.

@@ -20,7 +20,7 @@
   "scripts": {
     "build": "bun build src/main.ts --target=node --format=esm --outfile=dist/main.js",
     "start": "bun run src/main.ts",
-    "lint": "echo \"designflow (cli): lint ok\"",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run build",
@@ -33,6 +33,11 @@
     "cli"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amiirbazzii/designflow.git",
+    "directory": "apps/designflow-cli"
+  },
   "engines": {
     "node": ">=18"
   },

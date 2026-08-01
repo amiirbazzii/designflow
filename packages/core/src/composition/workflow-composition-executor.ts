@@ -6,16 +6,15 @@ import {
   workflowInvocationContextSchema,
   workflowInvocationResultSchema,
   workflowInvocationSchema,
+  type ArtifactRef,
+  type ExecutionErrorDetail,
+  type ExecutionEvent,
+  type ExecutionEventPublisher,
+  type WorkflowExecutionResolver,
+  type WorkflowInvocationStatus,
+  type WorkflowNode,
 } from "@designflow/sdk";
-import type {
-  ArtifactRef,
-  ExecutionErrorDetail,
-  ExecutionEvent,
-  ExecutionEventPublisher,
-  WorkflowExecutionResolver,
-  WorkflowInvocationStatus,
-  WorkflowNode,
-} from "@designflow/sdk";
+
 import {
   WorkflowCompositionCycleError,
   WorkflowCompositionError,

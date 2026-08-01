@@ -1,7 +1,7 @@
 // packages/core/src/registry.test.ts
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { CapabilityRegistry, CapabilityRegistryError } from "./registry";
+import { CapabilityRegistry } from "./registry";
 import type { Capability, CapabilityPackage } from "@designflow/sdk";
 
 function createTestCapability(id: string): Capability<unknown, unknown> {

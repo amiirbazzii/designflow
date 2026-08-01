@@ -2,16 +2,15 @@
 import {
   executionPlanningRequestSchema,
   executionPlanningResultSchema,
+  type ExecutionPlanningRequest,
+  type ExecutionPlanningResult,
+  type ExecutionRepository,
+  type IncrementalExecutionPlanner,
+  type NodeImpact,
+  type WorkflowDefinition,
+  type WorkflowGraph,
 } from "@designflow/sdk";
-import type {
-  ExecutionPlanningRequest,
-  ExecutionPlanningResult,
-  ExecutionRepository,
-  IncrementalExecutionPlanner,
-  NodeImpact,
-  WorkflowDefinition,
-  WorkflowGraph,
-} from "@designflow/sdk";
+
 import { ExecutionPlanningError } from "../errors";
 import { buildWorkflowGraph } from "./graph";
 import { analyzeNodeImpact } from "./impact";

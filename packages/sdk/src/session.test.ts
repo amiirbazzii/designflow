@@ -13,8 +13,8 @@ import {
   isValidSessionTransition,
   isTerminalSessionStatus,
   selectSessions,
+  type AgentSession,
 } from "./session";
-import type { AgentSession } from "./session";
 
 const SESSION: AgentSession = {
   id: "session-1",

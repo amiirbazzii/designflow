@@ -1,19 +1,21 @@
 // packages/core/src/materialization/materialization-integration.test.ts
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import type {
-  ArtifactMaterializer,
-  Capability,
-  CapabilityReuseDecision,
-  CapabilityReuseRequest,
-  CapabilityReuseResolver,
-  ExecutionContext,
-  ExecutionEvent,
-  ExecutionRecord,
-  Logger,
-  WorkflowDefinition,
+import {
+  type ArtifactMaterializer,
+  type Capability,
+  type CapabilityReuseDecision,
+  type CapabilityReuseRequest,
+  type CapabilityReuseResolver,
+  type ExecutionContext,
+  type ExecutionEvent,
+  type ExecutionRecord,
+  type Logger,
+  type WorkflowDefinition,
+  withChangedArtifacts,
+  workflowDefinitionSchema,
 } from "@designflow/sdk";
-import { withChangedArtifacts, workflowDefinitionSchema } from "@designflow/sdk";
+
 import { ExecutionEngine } from "../engine";
 import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";

@@ -13,6 +13,8 @@ export {
 
 export { readArtifact, writeArtifact, MissingUpstreamArtifactError } from "./artifact-io";
 
+export { evaluateQaReviewerCriterion } from "./evaluate";
+
 export {
   ARTIFACT_IDS,
   ARTIFACT_TYPES,

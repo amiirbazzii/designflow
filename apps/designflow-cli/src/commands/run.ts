@@ -1,6 +1,9 @@
 // apps/designflow-cli/src/commands/run.ts
-import { heading } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  heading,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext, ResolvedWorker } from "../services/cli-runner";
 import type { WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";

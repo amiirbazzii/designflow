@@ -1,11 +1,11 @@
 // packages/models/src/runtime.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError } from "@designflow/sdk";
-import type {
-  ModelProvider,
-  ModelProviderContext,
-  ModelRequest,
-  ModelResult,
+import {
+  DesignFlowError,
+  type ModelProvider,
+  type ModelProviderContext,
+  type ModelRequest,
+  type ModelResult,
 } from "@designflow/sdk";
 import { InMemoryModelProfileRegistry } from "./profile-registry";
 import { InMemoryModelProviderRegistry } from "./provider-registry";

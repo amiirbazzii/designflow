@@ -1,7 +1,11 @@
 // packages/workers/src/registry.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError, primaryWorkflowOf, workerManifestSchema } from "@designflow/sdk";
-import type { WorkerManifest } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  primaryWorkflowOf,
+  workerManifestSchema,
+  type WorkerManifest,
+} from "@designflow/sdk";
 import {
   DuplicateWorkerError,
   InMemoryWorkerRegistry,

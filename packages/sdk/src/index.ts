@@ -76,6 +76,18 @@ export type {
   WorkerEvaluationResult,
 } from "./worker-result";
 
+export {
+  isPresent,
+  payloadOf,
+  cannotDecide,
+  decided,
+} from "./worker-evaluation-helpers";
+export type {
+  EvaluableArtifact,
+  ArtifactPayloadReader,
+  WorkerCriterionEvaluator,
+} from "./worker-evaluation-helpers";
+
 // ── Agents ──────────────────────────────────────────────────────
 export {
   agentManifestSchema,

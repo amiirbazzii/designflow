@@ -1,13 +1,14 @@
 // packages/tools/src/runtime.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError } from "@designflow/sdk";
-import type {
-  AgentObservation,
-  Tool,
-  ToolContext,
-  ToolManifest,
-  ToolResult,
+import {
+  DesignFlowError,
+  type AgentObservation,
+  type Tool,
+  type ToolContext,
+  type ToolManifest,
+  type ToolResult,
 } from "@designflow/sdk";
+
 import { z } from "zod";
 import { InMemoryToolRegistry } from "./registry";
 import { ToolRuntime } from "./runtime";
@@ -418,7 +419,6 @@ describe("sanitising a thrown error", () => {
 
   test("a non-Error throw still produces a usable message", async () => {
     const result = await runtimeFor([
-      // eslint-disable-next-line @typescript-eslint/no-throw-literal
       tool({ execute: () => Promise.reject({ weird: true }) }),
     ]).invoke({ call: CALL, allowedTools: ALLOWED });
 

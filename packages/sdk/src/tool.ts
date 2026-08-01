@@ -1,6 +1,10 @@
 // packages/sdk/src/tool.ts
-import { z } from "zod";
-import type { ZodType, ZodTypeDef } from "zod";
+import {
+  z,
+  type ZodType,
+  type ZodTypeDef,
+} from "zod";
+
 import type { Logger } from "./context";
 
 /**

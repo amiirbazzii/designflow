@@ -1,9 +1,16 @@
 // apps/designflow-cli/src/commands/memory.ts
-import { heading } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  heading,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
-import { DesignFlowError } from "@designflow/sdk";
-import type { AgentMemory, MemoryProposal, MemoryScope } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  type AgentMemory,
+  type MemoryProposal,
+  type MemoryScope,
+} from "@designflow/sdk";
 
 /**
  * `designflow memory`, `memory add`, `memory revoke`, `memory proposals`,

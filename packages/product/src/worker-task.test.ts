@@ -1,13 +1,15 @@
 // packages/product/src/worker-task.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError, workerManifestSchema } from "@designflow/sdk";
-import type {
-  AgentDecisionService,
-  AgentExecutionResult,
-  AgentTask,
-  WorkerManifest,
-  WorkerRegistry,
+import {
+  DesignFlowError,
+  workerManifestSchema,
+  type AgentDecisionService,
+  type AgentExecutionResult,
+  type AgentTask,
+  type WorkerManifest,
+  type WorkerRegistry,
 } from "@designflow/sdk";
+
 import { WorkerTaskRouter } from "./worker-task";
 
 /**

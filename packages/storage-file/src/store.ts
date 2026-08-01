@@ -1,23 +1,34 @@
 // packages/storage-file/src/store.ts
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
-import type {
-  AgentMemory,
-  AgentSession,
-  AgentTrace,
-  Artifact,
-  ArtifactRef,
-  ArtifactRelation,
-  ArtifactVersion,
-  ApprovalRequest,
-  ExecutionCheckpointData,
-  ExecutionEvent,
-  ExecutionRecord,
-  LifecycleEvent,
-  MemoryProposal,
-  ProjectContext,
-  ProjectIdentity,
+import {
+  DesignFlowError,
+  type AgentMemory,
+  type AgentSession,
+  type AgentTrace,
+  type Artifact,
+  type ArtifactRef,
+  type ArtifactRelation,
+  type ArtifactVersion,
+  type ApprovalRequest,
+  type ExecutionCheckpointData,
+  type ExecutionEvent,
+  type ExecutionRecord,
+  type LifecycleEvent,
+  type MemoryProposal,
+  type ProjectContext,
+  type ProjectIdentity,
 } from "@designflow/sdk";
 
 /**
@@ -109,6 +120,9 @@ function emptyDocument(): StoreDocument {
   };
 }
 
+/** How stale a lockfile has to be before it is assumed abandoned by a crashed process. */
+const STALE_LOCK_THRESHOLD_MS = 30_000;
+
 export class FileStore {
   private readonly path: string;
   private document: StoreDocument;
@@ -122,11 +136,16 @@ export class FileStore {
     return this.document;
   }
 
-  /** Applies a change and persists it. */
+  /** Applies a change and persists it, holding the sibling lockfile for the duration. */
   public mutate<T>(change: (document: StoreDocument) => T): T {
-    const result = change(this.document);
-    this.write();
-    return result;
+    this.acquireLock();
+    try {
+      const result = change(this.document);
+      this.write();
+      return result;
+    } finally {
+      this.releaseLock();
+    }
   }
 
   /** Re-reads from disk, discarding anything held in memory. */
@@ -139,19 +158,44 @@ export class FileStore {
   }
 
   private read(): StoreDocument {
-    try {
-      const parsed: unknown = JSON.parse(readFileSync(this.path, "utf8"));
-
-      if (typeof parsed !== "object" || parsed === null) {
-        return emptyDocument();
-      }
-
-      // Missing collections are filled in rather than rejected, so a document
-      // written by an older version keeps working.
-      return { ...emptyDocument(), ...parsed };
-    } catch {
+    // A file that has simply never been written is the normal first-run case,
+    // not corruption — it must keep initializing an empty document.
+    if (!existsSync(this.path)) {
       return emptyDocument();
     }
+
+    const raw = readFileSync(this.path, "utf8");
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw this.quarantine();
+    }
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw this.quarantine();
+    }
+
+    // Missing collections are filled in rather than rejected, so a document
+    // written by an older version keeps working.
+    return { ...emptyDocument(), ...parsed };
+  }
+
+  /**
+   * Renames the unreadable file aside so its bytes are preserved rather than
+   * silently discarded, and returns the error to throw for it.
+   */
+  private quarantine(): DesignFlowError {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupPath = `${this.path}.corrupt-${timestamp}`;
+    renameSync(this.path, backupPath);
+
+    return new DesignFlowError(
+      "ERR_STORE_CORRUPTED",
+      `The store at ${this.path} could not be read as valid JSON and has been moved to ${backupPath}. A fresh store will be created; the original file was left intact for inspection or recovery.`,
+      { path: this.path, backupPath },
+    );
   }
 
   /**
@@ -167,6 +211,71 @@ export class FileStore {
     writeFileSync(temporary, `${JSON.stringify(this.document, null, 2)}\n`);
     renameSync(temporary, this.path);
   }
+
+  private get lockPath(): string {
+    return `${this.path}.lock`;
+  }
+
+  /**
+   * Exclusive-create a sibling lockfile so a second process cannot interleave
+   * a `mutate()` with this one and lose an update on `rename`.
+   *
+   * A lock left behind by a crashed process is reclaimed once, after which a
+   * lock that still cannot be acquired is treated as a genuinely live writer.
+   */
+  private acquireLock(): void {
+    mkdirSync(dirname(this.path), { recursive: true });
+
+    if (this.tryAcquireLock()) return;
+
+    if (this.reclaimStaleLock()) {
+      if (this.tryAcquireLock()) return;
+    }
+
+    throw new DesignFlowError(
+      "ERR_STORE_LOCKED",
+      `The store at ${this.path} is locked by another process (lockfile: ${this.lockPath}). Wait for it to finish, or remove the lockfile if you are certain nothing else is using this store.`,
+      { path: this.path, lockPath: this.lockPath },
+    );
+  }
+
+  private tryAcquireLock(): boolean {
+    try {
+      const fd = openSync(this.lockPath, "wx");
+      closeSync(fd);
+      return true;
+    } catch (error) {
+      if (isErrnoException(error) && error.code === "EEXIST") return false;
+      throw error;
+    }
+  }
+
+  /** Deletes the lockfile if it is older than the stale threshold. Returns whether it did. */
+  private reclaimStaleLock(): boolean {
+    try {
+      const { mtimeMs } = statSync(this.lockPath);
+      if (Date.now() - mtimeMs < STALE_LOCK_THRESHOLD_MS) return false;
+
+      unlinkSync(this.lockPath);
+      return true;
+    } catch (error) {
+      if (isErrnoException(error) && error.code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  private releaseLock(): void {
+    try {
+      unlinkSync(this.lockPath);
+    } catch (error) {
+      if (isErrnoException(error) && error.code === "ENOENT") return;
+      throw error;
+    }
+  }
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 /** Canonical, order-independent content hash. Node's crypto, not WebCrypto. */

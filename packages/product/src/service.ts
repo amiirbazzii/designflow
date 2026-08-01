@@ -3,16 +3,15 @@ import {
   artifactCountsSchema,
   executionOverviewSchema,
   executionReportSchema,
+  type ArtifactCounts,
+  type ArtifactSummary,
+  type ExecutionOverview,
+  type ExecutionReport,
+  type ExecutionState,
+  type ExecutionTimeline,
+  type NarrationEntry,
 } from "./schemas";
-import type {
-  ArtifactCounts,
-  ArtifactSummary,
-  ExecutionOverview,
-  ExecutionReport,
-  ExecutionState,
-  ExecutionTimeline,
-  NarrationEntry,
-} from "./schemas";
+
 import type { ExecutionEventSource } from "./event-collector";
 import { narrateEvents } from "./narration";
 import { buildTimeline } from "./timeline";

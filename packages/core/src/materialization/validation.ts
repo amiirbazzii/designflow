@@ -1,6 +1,9 @@
 // packages/core/src/materialization/validation.ts
-import { artifactRefSchema } from "@designflow/sdk";
-import type { ArtifactRef, ArtifactRegistry } from "@designflow/sdk";
+import {
+  artifactRefSchema,
+  type ArtifactRef,
+  type ArtifactRegistry,
+} from "@designflow/sdk";
 
 // ── Issues ──────────────────────────────────────────────────────
 

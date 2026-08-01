@@ -1,7 +1,6 @@
 // apps/designflow-demo/src/app.ts
 import type { ExecutionHandle, ExecutionReport } from "@designflow/product";
-import { DEMO_WORKFLOWS, findWorkflow } from "./catalog";
-import type { DemoWorkflow } from "./catalog";
+import { DEMO_WORKFLOWS, findWorkflow, type DemoWorkflow } from "./catalog";
 import type { DemoHost } from "./host";
 import type { DemoIO } from "./io";
 import {
@@ -166,7 +165,7 @@ async function startWithProgress(
 
   const execution = await host.runner.start({
     workflowId: workflow.workflowId,
-    input,
+    input: workflow.toInput?.(input) ?? input,
   });
 
   // A final frame from the runner itself, so the checklist reflects the

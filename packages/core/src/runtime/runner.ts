@@ -1,11 +1,12 @@
 // packages/core/src/runtime/runner.ts
-import type {
-  Capability,
-  CapabilityContext,
-  ExecutionEvent,
-  ExecutionEventPublisher,
+import {
+  type Capability,
+  type CapabilityContext,
+  type ExecutionEvent,
+  type ExecutionEventPublisher,
+  executionEventSchema,
 } from "@designflow/sdk";
-import { executionEventSchema } from "@designflow/sdk";
+
 import { CapabilityExecutionError } from "./errors";
 
 export interface CapabilityRunnerOptions {

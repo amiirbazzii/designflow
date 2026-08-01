@@ -1,6 +1,12 @@
 // packages/product/src/memory-store.ts
-import { agentMemorySchema, selectMemory } from "@designflow/sdk";
-import type { AgentMemory, AgentMemoryStore, MemoryListFilter } from "@designflow/sdk";
+import {
+  agentMemorySchema,
+  selectMemory,
+  type AgentMemory,
+  type AgentMemoryStore,
+  type MemoryListFilter,
+} from "@designflow/sdk";
+
 import { MemoryAlreadyExistsError, MemoryNotFoundError } from "./memory-errors";
 
 /** Where memory lives, for tests and embedding. Same shape as `InMemorySessionStore`. */

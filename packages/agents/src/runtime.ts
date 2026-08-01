@@ -5,39 +5,41 @@ import {
   agentDecisionSchema,
   agentExecutionResultSchema,
   agentTaskSchema,
+  DesignFlowError,
+  type AgentContext,
+  type AgentDecision,
+  type AgentDecisionService,
+  type AgentExecutionResult,
+  type AgentManifest,
+  type AgentObservation,
+  type AgentObserver,
+  type AgentTask,
+  type Logger,
+  type ModelInvoker,
+  type ToolInvoker,
+  type TraceEvent,
+  type TraceModelCall,
+  type TraceObserver,
+  type TraceToolCall,
 } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
-import type {
-  AgentContext,
-  AgentDecision,
-  AgentDecisionService,
-  AgentExecutionResult,
-  AgentManifest,
-  AgentObservation,
-  AgentObserver,
-  AgentTask,
-  Logger,
-  ModelInvoker,
-  ToolInvoker,
-  TraceEvent,
-  TraceModelCall,
-  TraceObserver,
-  TraceToolCall,
-} from "@designflow/sdk";
+
 import type { ZodError } from "zod";
 import type { InMemoryAgentRegistry } from "./registry";
 import {
   AgentScopedToolService,
   DEFAULT_MAX_TOOL_CALLS_PER_DECISION,
   EMPTY_TOOL_SERVICE,
+  type ObservedToolCall,
 } from "./tool-service";
-import type { ObservedToolCall } from "./tool-service";
+
 import {
   AgentScopedModelService,
   DEFAULT_MAX_MODEL_CALLS_PER_DECISION,
   EMPTY_MODEL_SERVICE,
+  type ObservedModelCall,
+  type ObservedModelStart,
 } from "./model-service";
-import type { ObservedModelCall, ObservedModelStart } from "./model-service";
+
 import {
   AgentDecisionInvalidError,
   AgentTaskInvalidError,

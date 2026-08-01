@@ -3,8 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApiHost } from "./host";
-import type { ApiHost, ApiHostOptions } from "./host";
+import { createApiHost, type ApiHost, type ApiHostOptions } from "./host";
 import { createRouter } from "./router";
 
 /**

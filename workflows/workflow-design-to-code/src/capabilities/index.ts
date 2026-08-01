@@ -11,16 +11,14 @@ import {
   designToCodeInputSchema,
   sourceCodeSchema,
   validationReportSchema,
-} from "../types";
-import type {
-  ComponentTree,
-  DesignAnalysis,
-  DesignTokens,
-  SourceCode,
-  ValidationReport,
+  type ComponentTree,
+  type DesignAnalysis,
+  type DesignTokens,
+  type SourceCode,
+  type ValidationReport,
+  type CapabilityOutput,
 } from "../types";
 import { readArtifact, writeArtifact } from "../artifact-io";
-import type { CapabilityOutput } from "../types";
 
 /**
  * The five capabilities of the Design → Code workflow.

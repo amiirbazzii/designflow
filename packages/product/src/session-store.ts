@@ -4,13 +4,12 @@ import {
   agentSessionSchema,
   applySessionPatch,
   selectSessions,
+  type AgentSession,
+  type AgentSessionPatch,
+  type SessionListFilter,
+  type SessionStore,
 } from "@designflow/sdk";
-import type {
-  AgentSession,
-  AgentSessionPatch,
-  SessionListFilter,
-  SessionStore,
-} from "@designflow/sdk";
+
 import { SessionAlreadyExistsError, SessionConflictError, SessionNotFoundError } from "./session-errors";
 
 /**

@@ -1,9 +1,10 @@
 // packages/core/src/approval/in-memory-approval-manager.ts
 import {
   approvalRequestSchema,
+  type ApprovalRequest,
+  type ApprovalManager,
+  DesignFlowError,
 } from "@designflow/sdk";
-import type { ApprovalRequest, ApprovalManager } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
 
 // ── Error ────────────────────────────────────────────────────────
 

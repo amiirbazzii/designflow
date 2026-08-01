@@ -1,20 +1,26 @@
 // packages/product/src/session-service.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError, workerManifestSchema } from "@designflow/sdk";
-import type {
-  AgentDecision,
-  AgentDecisionService,
-  AgentExecutionResult,
-  AgentTask,
-  SessionEvent,
-  SessionObserver,
-  WorkerManifest,
-  WorkerRegistry,
+import {
+  DesignFlowError,
+  workerManifestSchema,
+  type AgentDecision,
+  type AgentDecisionService,
+  type AgentExecutionResult,
+  type AgentTask,
+  type SessionEvent,
+  type SessionObserver,
+  type WorkerManifest,
+  type WorkerRegistry,
 } from "@designflow/sdk";
+
 import { WorkerTaskRouter } from "./worker-task";
 import { InMemorySessionStore } from "./session-store";
-import { AgentSessionService } from "./session-service";
-import type { SessionClock, SessionWorkflowStarter } from "./session-service";
+import {
+  AgentSessionService,
+  type SessionClock,
+  type SessionWorkflowStarter,
+} from "./session-service";
+
 import type { ExecutionHandle, WorkflowLaunchRequest } from "./schemas";
 
 /**
@@ -416,6 +422,52 @@ describe("concurrency", () => {
     ]);
 
     expect(first.session.executionId).toBe(second.session.executionId);
+  });
+
+  test("a duplicate session creation with the same idempotency key returns the same session", async () => {
+    const { service, store } = harness({
+      decisions: [{ type: "request_clarification", question: "Which component?" }],
+    });
+
+    const [first, second] = await Promise.all([
+      service.startSession({
+        workerId: "design-engineer",
+        request: "help",
+        idempotencyKey: "create-key-1",
+      }),
+      service.startSession({
+        workerId: "design-engineer",
+        request: "help",
+        idempotencyKey: "create-key-1",
+      }),
+    ]);
+
+    expect(first.session.id).toBe(second.session.id);
+
+    const all = await store.list();
+    expect(all).toHaveLength(1);
+  });
+
+  test("a repeated creation call after the first has settled still returns the same session", async () => {
+    const { service, store } = harness({
+      decisions: [{ type: "request_clarification", question: "Which component?" }],
+    });
+
+    const first = await service.startSession({
+      workerId: "design-engineer",
+      request: "help",
+      idempotencyKey: "create-key-2",
+    });
+    const second = await service.startSession({
+      workerId: "design-engineer",
+      request: "help",
+      idempotencyKey: "create-key-2",
+    });
+
+    expect(first.session.id).toBe(second.session.id);
+
+    const all = await store.list();
+    expect(all).toHaveLength(1);
   });
 });
 

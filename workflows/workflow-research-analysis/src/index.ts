@@ -16,6 +16,8 @@ export {
 
 export { readArtifact, writeArtifact, MissingUpstreamArtifactError } from "./artifact-io";
 
+export { evaluateResearchAnalystCriterion } from "./evaluate";
+
 export {
   ARTIFACT_IDS,
   ARTIFACT_TYPES,

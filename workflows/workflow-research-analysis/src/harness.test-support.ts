@@ -16,13 +16,14 @@ import {
   InMemoryExecutionEventCollector,
   WorkflowRunner,
 } from "@designflow/product";
-import { readChangedArtifacts, withChangedArtifacts } from "@designflow/sdk";
-import type {
-  CapabilityReuseResolver,
-  ExecutionEvent,
-  ExecutionPolicy,
-  Logger,
-  WorkflowPackage,
+import {
+  readChangedArtifacts,
+  withChangedArtifacts,
+  type CapabilityReuseResolver,
+  type ExecutionEvent,
+  type ExecutionPolicy,
+  type Logger,
+  type WorkflowPackage,
 } from "@designflow/sdk";
 import { researchAnalysisWorkflowPackage } from "./manifest";
 

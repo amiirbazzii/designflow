@@ -1,13 +1,14 @@
 // packages/agents/src/runtime.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError } from "@designflow/sdk";
-import type {
-  Agent,
-  AgentContext,
-  AgentDecision,
-  AgentManifest,
-  AgentTask,
+import {
+  DesignFlowError,
+  type Agent,
+  type AgentContext,
+  type AgentDecision,
+  type AgentManifest,
+  type AgentTask,
 } from "@designflow/sdk";
+
 import { InMemoryAgentRegistry } from "./registry";
 import { AgentRuntime } from "./runtime";
 import { createAgentRegistry } from "./index";

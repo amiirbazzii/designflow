@@ -1,6 +1,10 @@
 // packages/workers/src/registry.ts
-import { DesignFlowError, workerManifestSchema } from "@designflow/sdk";
-import type { WorkerManifest, WorkerRegistry } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  workerManifestSchema,
+  type WorkerManifest,
+  type WorkerRegistry,
+} from "@designflow/sdk";
 
 /**
  * The worker catalogue.

@@ -1,6 +1,12 @@
 // packages/agents/src/registry.ts
-import { agentManifestSchema, workerAgentWorkflowMismatch } from "@designflow/sdk";
-import type { Agent, AgentManifest, WorkerManifest } from "@designflow/sdk";
+import {
+  agentManifestSchema,
+  workerAgentWorkflowMismatch,
+  type Agent,
+  type AgentManifest,
+  type WorkerManifest,
+} from "@designflow/sdk";
+
 import { AgentNotFoundError, AgentWorkflowNotAllowedError, DuplicateAgentError } from "./errors";
 
 /**

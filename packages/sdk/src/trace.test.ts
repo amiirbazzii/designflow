@@ -7,8 +7,8 @@ import {
   traceEventSchema,
   traceFiltersSchema,
   NOOP_TRACE_OBSERVER,
+  type AgentTrace,
 } from "./trace";
-import type { AgentTrace } from "./trace";
 
 /**
  * The trace contracts.

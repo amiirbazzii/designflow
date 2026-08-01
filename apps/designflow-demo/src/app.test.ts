@@ -3,8 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { runDemo } from "./app";
-import { createDemoHost } from "./host";
-import type { DemoHost } from "./host";
+import { createDemoHost, type DemoHost } from "./host";
 import { ScriptedIO } from "./io";
 import { DEMO_WORKFLOWS } from "./catalog";
 import { renderProgress } from "./screens";
@@ -200,7 +199,7 @@ describe("approval", () => {
 
     expect(io.transcript).toContain("Approval Required");
     expect(io.transcript).toContain("Generate production code files");
-    expect(io.transcript).toContain("approve-code-generation");
+    expect(io.transcript).toContain("Writing changes to production files");
   });
 
   test("approving completes the workflow", async () => {
@@ -374,13 +373,73 @@ describe("architecture", () => {
   });
 
   test("the catalogue drives the screens", () => {
-    expect(DEMO_WORKFLOWS).toHaveLength(1);
+    expect(DEMO_WORKFLOWS).toHaveLength(4);
     expect(DEMO_WORKFLOWS[0]?.fields.map((field) => field.key)).toEqual([
       "designFile",
       "framework",
       "frames",
     ]);
   });
+});
+
+// ── 7. All four built-in workflows run through the demo host ───────
+
+describe("multi-worker workflow support", () => {
+  test("offers all four built-in workflows on the landing screen", () => {
+    expect(DEMO_WORKFLOWS.map((entry) => entry.workflowId)).toEqual([
+      "design-to-code",
+      "qa-review",
+      "research-analysis",
+      "product-brief",
+    ]);
+  });
+
+  const cases: {
+    readonly workflowId: string;
+    readonly answers: readonly string[];
+  }[] = [
+    { workflowId: "design-to-code", answers: DESIGN_ANSWERS },
+    {
+      workflowId: "qa-review",
+      answers: [
+        "src/components/CheckoutForm.tsx",
+        "correctness, accessibility",
+        "major",
+      ],
+    },
+    {
+      workflowId: "research-analysis",
+      answers: [
+        "What are the tradeoffs of server components vs. client components?",
+        "source-1, source-2",
+        "standard",
+      ],
+    },
+    {
+      workflowId: "product-brief",
+      answers: [
+        "Let users export their history as CSV",
+        "Existing DesignFlow CLI users",
+        "must ship without a new dependency",
+        "standard",
+      ],
+    },
+  ];
+
+  for (const { workflowId, answers } of cases) {
+    test(`runs ${workflowId} to completion, approval included`, async () => {
+      const host = createDemoHost();
+      const io = new ScriptedIO([...answers, "approve"]);
+
+      const result = await runDemo(host, io, { workflowId });
+
+      expect(result.workflowId).toBe(workflowId);
+      expect(result.state).toBe("ready");
+      expect(result.approved).toBe(true);
+      expect(io.transcript).toContain("Workflow Complete");
+      expect(result.report?.overview.state).toBe("ready");
+    });
+  }
 });
 
 // ── Artifact visualization ──────────────────────────────────────

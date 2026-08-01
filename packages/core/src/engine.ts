@@ -11,30 +11,30 @@ import {
   readCompositionCheckpoint,
   readExecutionInput,
   readExecutionLineage,
+  type ExecutionContext,
+  type WorkflowDefinition,
+  type ArtifactRef,
+  type ArtifactMaterializer,
+  type ArtifactRegistry,
+  type ArtifactStore,
+  type ArtifactVersionRef,
+  type CapabilityReuseDecision,
+  type CapabilityReuseResolver,
+  type CapabilityContext,
+  type Logger,
+  type ExecutionRepository,
+  type ExecutionCheckpointData,
+  type ExecutionRecord,
+  type ExecutionEventPublisher,
+  type ExecutionEvent,
+  type CompositionCheckpoint,
+  type ExecutionReconciler,
+  type IncrementalExecutionPlanner,
+  type PendingChildExecution,
+  type WorkflowExecutionResolver,
+  DesignFlowError,
 } from "@designflow/sdk";
-import type {
-  ExecutionContext,
-  WorkflowDefinition,
-  ArtifactRef,
-  ArtifactMaterializer,
-  ArtifactRegistry,
-  ArtifactStore,
-  ArtifactVersionRef,
-  CapabilityReuseDecision,
-  CapabilityReuseResolver,
-  CapabilityContext,
-  Logger,
-  ExecutionRepository,
-  ExecutionCheckpointData,
-  ExecutionRecord,
-  ExecutionEventPublisher,
-  ExecutionEvent,
-  CompositionCheckpoint,
-  ExecutionReconciler,
-  IncrementalExecutionPlanner,
-  PendingChildExecution,
-  WorkflowExecutionResolver,
-} from "@designflow/sdk";
+
 import type {
   CompiledNode,
   CompiledWorkflow,
@@ -57,7 +57,6 @@ import { CapabilityRunner } from "./runtime";
 import { contentEquals, hashContent, isArtifactRegistry } from "./artifacts";
 import { WorkflowCompositionExecutor } from "./composition";
 import { resolveNodeInput } from "./input";
-import { DesignFlowError } from "@designflow/sdk";
 
 interface LayerNodeResult {
   readonly artifacts: readonly ArtifactRef[];

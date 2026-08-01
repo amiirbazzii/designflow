@@ -1,7 +1,9 @@
 // packages/sdk/src/execution-reconciliation.ts
 import { z } from "zod";
-import { artifactRefSchema } from "./schemas";
-import type { ArtifactRef } from "./schemas";
+import {
+  artifactRefSchema,
+  type ArtifactRef,
+} from "./schemas";
 
 // ── Reconciliation Input ─────────────────────────────────────────
 

@@ -1,17 +1,18 @@
 // packages/core/src/artifacts/reuse-integration.test.ts
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { DesignFlowError } from "@designflow/sdk";
-import type {
-  Capability,
-  CapabilityReuseDecision,
-  CapabilityReuseRequest,
-  CapabilityReuseResolver,
-  ExecutionContext,
-  ExecutionEvent,
-  ExecutionRecord,
-  Logger,
+import {
+  DesignFlowError,
+  type Capability,
+  type CapabilityReuseDecision,
+  type CapabilityReuseRequest,
+  type CapabilityReuseResolver,
+  type ExecutionContext,
+  type ExecutionEvent,
+  type ExecutionRecord,
+  type Logger,
 } from "@designflow/sdk";
+
 import { ExecutionEngine } from "../engine";
 import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";

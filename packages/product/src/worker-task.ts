@@ -1,11 +1,13 @@
 // packages/product/src/worker-task.ts
-import { DesignFlowError, primaryWorkflowOf } from "@designflow/sdk";
-import type {
-  AgentDecision,
-  AgentDecisionService,
-  WorkerManifest,
-  WorkerRegistry,
+import {
+  DesignFlowError,
+  primaryWorkflowOf,
+  type AgentDecision,
+  type AgentDecisionService,
+  type WorkerManifest,
+  type WorkerRegistry,
 } from "@designflow/sdk";
+
 import { z } from "zod";
 
 /**

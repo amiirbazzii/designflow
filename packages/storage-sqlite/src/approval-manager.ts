@@ -1,7 +1,11 @@
 // packages/storage-sqlite/src/approval-manager.ts
 import type { Database } from "bun:sqlite";
-import { DesignFlowError, approvalRequestSchema } from "@designflow/sdk";
-import type { ApprovalManager, ApprovalRequest } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  approvalRequestSchema,
+  type ApprovalManager,
+  type ApprovalRequest,
+} from "@designflow/sdk";
 import { asRow } from "./execution-repository";
 import { fromJsonRecord, toJson } from "./schema";
 

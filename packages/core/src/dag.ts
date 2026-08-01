@@ -1,6 +1,10 @@
 // packages/core/src/dag.ts
-import type { WorkflowDefinition, WorkflowStepNode } from "@designflow/sdk";
-import { isWorkflowNode } from "@designflow/sdk";
+import {
+  type WorkflowDefinition,
+  type WorkflowStepNode,
+  isWorkflowNode,
+} from "@designflow/sdk";
+
 import { ExecutionError } from "./errors";
 import type { ExecutionLayer, ExecutionPlan, ExecutionStep } from "./types";
 

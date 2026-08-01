@@ -5,16 +5,15 @@ import {
   projectIdentitySchema,
   projectPatchSchema,
   selectProjects,
+  type ProjectContext,
+  type ProjectContextStore,
+  type ProjectFactChange,
+  type ProjectIdentity,
+  type ProjectListFilter,
+  type ProjectPatch,
+  type ProjectStore,
 } from "@designflow/sdk";
-import type {
-  ProjectContext,
-  ProjectContextStore,
-  ProjectFactChange,
-  ProjectIdentity,
-  ProjectListFilter,
-  ProjectPatch,
-  ProjectStore,
-} from "@designflow/sdk";
+
 import {
   ProjectAlreadyExistsError,
   ProjectContextConflictError,

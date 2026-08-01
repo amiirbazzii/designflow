@@ -9,24 +9,27 @@ import {
   startSessionRequestSchema,
   DesignFlowError,
   NOOP_SESSION_OBSERVER,
+  type AgentDecision,
+  type AgentSession,
+  type AgentSessionPatch,
+  type AnswerSessionRequest,
+  type CancelSessionRequest,
+  type SessionEvent,
+  type SessionListFilter,
+  type SessionObserver,
+  type SessionResult,
+  type SessionStore,
+  type StartSessionRequest,
+  type WorkerManifest,
+  type WorkerRegistry,
 } from "@designflow/sdk";
-import type {
-  AgentDecision,
-  AgentSession,
-  AgentSessionPatch,
-  AnswerSessionRequest,
-  CancelSessionRequest,
-  SessionEvent,
-  SessionListFilter,
-  SessionObserver,
-  SessionResult,
-  SessionStore,
-  StartSessionRequest,
-  WorkerManifest,
-  WorkerRegistry,
-} from "@designflow/sdk";
-import { buildInitialSessionContext, buildSessionContext } from "./session-context";
-import type { SessionContext } from "./session-context";
+
+import {
+  buildInitialSessionContext,
+  buildSessionContext,
+  type SessionContext,
+} from "./session-context";
+
 import type { AgentKnowledgeContext, AgentKnowledgeService } from "./context-assembly";
 import { WorkerTaskRouter, UnknownWorkerError } from "./worker-task";
 import type { ExecutionHandle, WorkflowLaunchRequest } from "./schemas";
@@ -150,6 +153,20 @@ export class AgentSessionService {
    */
   private readonly idempotency = new Map<string, Promise<SessionResult>>();
 
+  /**
+   * The same cache `answerSession` uses, applied to creation.
+   *
+   * There is no session id yet at creation time, so the key is the worker
+   * being started plus the caller's key rather than a session id plus the
+   * caller's key — otherwise this is exactly `idempotency` above: a duplicate
+   * `startSession`/`startSessionForWorker` call with the same key against the
+   * same worker returns the first attempt's session instead of starting a
+   * second one. A separate map, not a shared namespace with `idempotency`,
+   * because a worker id and a session id could otherwise collide on the same
+   * string.
+   */
+  private readonly startIdempotency = new Map<string, Promise<SessionResult>>();
+
   public constructor(options: AgentSessionServiceOptions) {
     this.store = options.store;
     this.workers = options.workers;
@@ -194,6 +211,27 @@ export class AgentSessionService {
   ): Promise<SessionResult> {
     const validated = startSessionRequestSchema.parse(request);
 
+    if (validated.idempotencyKey === undefined) {
+      return this.startSessionForWorkerOnce(worker, validated, signal);
+    }
+
+    const cacheKey = `${worker.id}:${validated.idempotencyKey}`;
+    const cached = this.startIdempotency.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const attempt = this.startSessionForWorkerOnce(worker, validated, signal);
+    this.startIdempotency.set(cacheKey, attempt);
+    // A failed attempt must not be replayed as if it had succeeded.
+    attempt.catch(() => this.startIdempotency.delete(cacheKey));
+
+    return attempt;
+  }
+
+  private async startSessionForWorkerOnce(
+    worker: WorkerManifest,
+    validated: StartSessionRequest,
+    signal?: AbortSignal,
+  ): Promise<SessionResult> {
     // A worker with no agent has no clarification loop to have — the router
     // resolves its one possible decision regardless of what is known here.
     // The worker's own id stands in for `agentId` in that case: there is no

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "echo \"@designflow/web: lint ok\"",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },

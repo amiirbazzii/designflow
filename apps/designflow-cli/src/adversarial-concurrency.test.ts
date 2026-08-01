@@ -1,12 +1,17 @@
 // apps/designflow-cli/src/adversarial-concurrency.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:http";
-import type { Server } from "node:http";
+import {
+  createServer,
+  type Server,
+} from "node:http";
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
 
 /**
  * Adversarial verification: ONE shared CliContext (one process, one

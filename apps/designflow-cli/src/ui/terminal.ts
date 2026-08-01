@@ -111,7 +111,7 @@ export interface SettingsModelAssignment {
  * translation this file does, and only for display. Everything DesignFlow
  * itself compares is still the lowercase id.
  */
-function displayProviderName(providerId: string): string {
+export function displayProviderName(providerId: string): string {
   return providerId === "openrouter"
     ? "OpenRouter"
     : providerId.charAt(0).toUpperCase() + providerId.slice(1);

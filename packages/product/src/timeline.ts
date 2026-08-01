@@ -1,6 +1,11 @@
 // packages/product/src/timeline.ts
-import { executionTimelineSchema, timelineEntrySchema } from "./schemas";
-import type { ExecutionTimeline, NarrationEntry, TimelineEntry } from "./schemas";
+import {
+  executionTimelineSchema,
+  timelineEntrySchema,
+  type ExecutionTimeline,
+  type NarrationEntry,
+  type TimelineEntry,
+} from "./schemas";
 
 /** Zero-padded UTC `HH:MM` for a timestamp. */
 function clockLabel(timestamp: number): string {

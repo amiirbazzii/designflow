@@ -1,8 +1,7 @@
 // packages/product/src/context-assembly.test.ts
 import { describe, expect, test } from "bun:test";
-import type { AgentMemory, MemoryListFilter, ProjectContext, ProjectIdentity } from "@designflow/sdk";
+import type { AgentMemory, MemoryListFilter, ProjectIdentity } from "@designflow/sdk";
 import { ContextAssemblyService } from "./context-assembly";
-import { InMemoryAgentMemoryStore } from "./memory-store";
 import { InMemoryProjectContextStore, InMemoryProjectStore } from "./project-store";
 import { ProjectContextService } from "./project-context-service";
 import { ProjectService } from "./project-service";

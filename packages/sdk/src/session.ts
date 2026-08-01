@@ -233,6 +233,12 @@ export const startSessionRequestSchema = z
     input: z.unknown().optional(),
     /** The project this conversation should be scoped to, if any. See `AgentSession.projectId`. */
     projectId: z.string().min(1).optional(),
+    /**
+     * Lets a caller that retries a submission — a flaky terminal, a repeated
+     * HTTP POST — get back the session the first attempt created instead of
+     * starting a second one. Same semantics as `AnswerSessionRequest.idempotencyKey`.
+     */
+    idempotencyKey: z.string().min(1).optional(),
   })
   .strict();
 

@@ -3,20 +3,26 @@ import { InMemoryAgentRegistry } from "./registry";
 import {
   createDesignEngineerAgent,
   designEngineerAgent,
+  type DesignEngineerStrategy,
 } from "./catalog/design-engineer-agent";
-import type { DesignEngineerStrategy } from "./catalog/design-engineer-agent";
-import { createQaReviewerAgent, qaReviewerAgent } from "./catalog/qa-reviewer-agent";
-import type { QaReviewerStrategy } from "./catalog/qa-reviewer-agent";
+
+import {
+  createQaReviewerAgent,
+  qaReviewerAgent,
+  type QaReviewerStrategy,
+} from "./catalog/qa-reviewer-agent";
+
 import {
   createResearchAnalystAgent,
   researchAnalystAgent,
+  type ResearchAnalystStrategy,
 } from "./catalog/research-analyst-agent";
-import type { ResearchAnalystStrategy } from "./catalog/research-analyst-agent";
+
 import {
   createProductManagerAgent,
   productManagerAgent,
+  type ProductManagerStrategy,
 } from "./catalog/product-manager-agent";
-import type { ProductManagerStrategy } from "./catalog/product-manager-agent";
 
 export { InMemoryAgentRegistry, assertWorkerAgentAlignment } from "./registry";
 

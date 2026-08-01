@@ -1,6 +1,10 @@
 // packages/tools/src/catalog/summarize-artifact-set.ts
-import { toolManifestSchema } from "@designflow/sdk";
-import type { Tool, ToolManifest } from "@designflow/sdk";
+import {
+  toolManifestSchema,
+  type Tool,
+  type ToolManifest,
+} from "@designflow/sdk";
+
 import { z } from "zod";
 
 /**

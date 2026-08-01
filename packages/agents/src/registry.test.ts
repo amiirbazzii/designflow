@@ -1,7 +1,13 @@
 // packages/agents/src/registry.test.ts
 import { describe, expect, test } from "bun:test";
-import { DesignFlowError, workerManifestSchema } from "@designflow/sdk";
-import type { Agent, AgentDecision, AgentManifest } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  workerManifestSchema,
+  type Agent,
+  type AgentDecision,
+  type AgentManifest,
+} from "@designflow/sdk";
+
 import { InMemoryAgentRegistry, assertWorkerAgentAlignment } from "./registry";
 import {
   BUILT_IN_AGENTS,

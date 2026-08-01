@@ -2,13 +2,11 @@
 import {
   executionPolicySchema,
   policyContextSchema,
-} from "@designflow/sdk";
-import type {
-  ExecutionPolicy,
-  PolicyContext,
-  PolicyEvaluationResult,
-  PolicyEvaluator,
-  PolicyRule,
+  type ExecutionPolicy,
+  type PolicyContext,
+  type PolicyEvaluationResult,
+  type PolicyEvaluator,
+  type PolicyRule,
 } from "@designflow/sdk";
 
 // ── In-Memory Policy Evaluator ─────────────────────────────────
@@ -97,18 +95,30 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
 
   private evaluateApprovalRule(
     rule: PolicyRule,
-    _context: PolicyContext,
+    context: PolicyContext,
     violations: PolicyEvaluationResult["violations"],
   ): void {
-    violations.push({
-      ruleId: rule.id,
-      type: "approval_required",
-      message: `Approval required by policy rule "${rule.id}"`,
-    });
+    if (rule.target === undefined) return;
+
+    const requiredCapability = rule.target;
+    const humanReason = typeof rule.metadata?.["reason"] === "string" ? rule.metadata["reason"] : undefined;
+    const message = humanReason !== undefined
+      ? `Approval required: ${humanReason}`
+      : "Approval required before this step can continue";
+
+    for (const capabilityId of context.capabilityIds) {
+      if (capabilityId === requiredCapability) {
+        violations.push({
+          ruleId: rule.id,
+          type: "approval_required",
+          message,
+        });
+      }
+    }
   }
 
   private evaluateResourceRule(
-    rule: PolicyRule,
+    _rule: PolicyRule,
     _context: PolicyContext,
     _violations: PolicyEvaluationResult["violations"],
   ): void {

@@ -1,16 +1,19 @@
 // packages/product/src/memory-service.ts
-import { NOOP_MEMORY_OBSERVER, agentMemorySchema, memoryProposalSchema } from "@designflow/sdk";
-import type {
-  AgentMemory,
-  AgentMemoryStore,
-  MemoryEvent,
-  MemoryListFilter,
-  MemoryObserver,
-  MemoryProposal,
-  MemoryProposalListFilter,
-  MemoryProposalStore,
-  MemoryScope,
+import {
+  NOOP_MEMORY_OBSERVER,
+  agentMemorySchema,
+  memoryProposalSchema,
+  type AgentMemory,
+  type AgentMemoryStore,
+  type MemoryEvent,
+  type MemoryListFilter,
+  type MemoryObserver,
+  type MemoryProposal,
+  type MemoryProposalListFilter,
+  type MemoryProposalStore,
+  type MemoryScope,
 } from "@designflow/sdk";
+
 import { MemoryApprovalRequiredError, MemoryProposalExpiredError } from "./memory-errors";
 
 /**

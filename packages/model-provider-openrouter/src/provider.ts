@@ -1,10 +1,10 @@
 // packages/model-provider-openrouter/src/provider.ts
-import { DesignFlowError } from "@designflow/sdk";
-import type {
-  ModelProvider,
-  ModelProviderContext,
-  ModelRequest,
-  ModelResponse,
+import {
+  DesignFlowError,
+  type ModelProvider,
+  type ModelProviderContext,
+  type ModelRequest,
+  type ModelResponse,
 } from "@designflow/sdk";
 
 /**

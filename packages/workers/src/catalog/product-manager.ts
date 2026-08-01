@@ -1,6 +1,5 @@
 // packages/workers/src/catalog/product-manager.ts
-import { workerManifestSchema } from "@designflow/sdk";
-import type { WorkerManifest } from "@designflow/sdk";
+import { workerManifestSchema, type WorkerManifest } from "@designflow/sdk";
 
 /**
  * Product Manager.

@@ -1,10 +1,15 @@
 // apps/designflow-cli/src/commands/projects.ts
 import { resolve } from "node:path";
-import { heading } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  heading,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
-import { DesignFlowError } from "@designflow/sdk";
-import type { ProjectIdentity } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  type ProjectIdentity,
+} from "@designflow/sdk";
 
 /**
  * `designflow projects`, `projects add`, `projects inspect` and `projects

@@ -2,8 +2,7 @@
 import { join } from "node:path";
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { DesignFlowError } from "@designflow/sdk";
-import type { StoredCheckpoint } from "./types";
-import { StateErrorCodes } from "./types";
+import { StateErrorCodes, type StoredCheckpoint } from "./types";
 
 function validateWorkflowId(workflowId: string): void {
   if (!workflowId) {

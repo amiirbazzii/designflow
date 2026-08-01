@@ -3,8 +3,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
 
 /**
  * The one test in this codebase permitted to reach the real OpenRouter API.

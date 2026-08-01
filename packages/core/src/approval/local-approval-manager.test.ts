@@ -2,8 +2,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { LocalApprovalManager } from "./local-approval-manager";
 import { ApprovalStateTransitionError, ApprovalNotFoundError } from "./in-memory-approval-manager";
-import { unlink, readdir, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { unlink, readdir } from "node:fs/promises";
 
 const TEST_DIR = ".designflow-test-approvals";
 

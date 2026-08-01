@@ -1,16 +1,21 @@
 // packages/agents/src/catalog/design-engineer-agent.ts
-import { agentManifestSchema, modelProfileSchema } from "@designflow/sdk";
-import type {
-  Agent,
-  AgentContext,
-  AgentDecision,
-  AgentManifest,
-  AgentTask,
-  ModelProfile,
-  ToolResult,
+import {
+  agentManifestSchema,
+  modelProfileSchema,
+  type Agent,
+  type AgentContext,
+  type AgentDecision,
+  type AgentManifest,
+  type AgentTask,
+  type ModelProfile,
+  type ToolResult,
 } from "@designflow/sdk";
-import { buildDecisionPrompt, modelDecisionSchema } from "../decision-prompt";
-import type { DecisionPromptFact } from "../decision-prompt";
+
+import {
+  buildDecisionPrompt,
+  modelDecisionSchema,
+  type DecisionPromptFact,
+} from "../decision-prompt";
 
 /**
  * The Design Engineer's agent.

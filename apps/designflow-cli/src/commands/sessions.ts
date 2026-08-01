@@ -1,6 +1,10 @@
 // apps/designflow-cli/src/commands/sessions.ts
-import { formatWhen, heading } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  formatWhen,
+  heading,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 import type { AgentSession, SessionStatus } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";

@@ -16,16 +16,31 @@ import {
   InMemoryExecutionEventCollector,
   WorkflowRunner,
   buildProgress,
+  type ExecutionProgress,
 } from "@designflow/product";
-import type { ExecutionProgress } from "@designflow/product";
-import { readChangedArtifacts } from "@designflow/sdk";
-import type {
-  CapabilityReuseResolver,
-  ExecutionEvent,
-  Logger,
-  WorkflowPackage,
+import {
+  readChangedArtifacts,
+  type CapabilityReuseResolver,
+  type ExecutionEvent,
+  type Logger,
+  type WorkflowPackage,
 } from "@designflow/sdk";
-import { designToCodeApprovalPolicy, designToCodeWorkflowPackage } from "@designflow/workflow-design-to-code";
+import {
+  designToCodeApprovalPolicy,
+  designToCodeWorkflowPackage,
+} from "@designflow/workflow-design-to-code";
+import {
+  qaReviewApprovalPolicy,
+  qaReviewWorkflowPackage,
+} from "@designflow/workflow-qa-review";
+import {
+  researchAnalysisApprovalPolicy,
+  researchAnalysisWorkflowPackage,
+} from "@designflow/workflow-research-analysis";
+import {
+  productBriefApprovalPolicy,
+  productBriefWorkflowPackage,
+} from "@designflow/workflow-product-brief";
 
 /**
  * The demo's composition root.
@@ -38,6 +53,15 @@ import { designToCodeApprovalPolicy, designToCodeWorkflowPackage } from "@design
  * takes an `ExecutionContract`, and the only thing that satisfies it is the
  * engine. Confining that to one file is what keeps "the demo consumes
  * DesignFlow" true of the application rather than merely aspirational.
+ *
+ * This demo is **workflow-engine-level** multi-worker support: any of the four
+ * built-in workflows (Design Engineer, QA Reviewer, Research Analyst, Product
+ * Manager) can be picked from a menu, given input, and run to completion. It
+ * does *not* go through the Worker Task Boundary the CLI/API/web use — no
+ * sessions, no clarification loop, no agent memory. `WorkflowRunner` is
+ * consumed directly, the same way it always has been here. That is a
+ * deliberately smaller surface than the other clients, kept small on purpose
+ * for demo purposes.
  */
 
 const silentLogger: Logger = {
@@ -81,7 +105,12 @@ export function createDemoHost(options?: DemoHostOptions): DemoHost {
   const capabilityRegistry = new CapabilityRegistry();
   const workflows = new Map<string, WorkflowPackage>();
 
-  for (const workflowPackage of [designToCodeWorkflowPackage]) {
+  for (const workflowPackage of [
+    designToCodeWorkflowPackage,
+    qaReviewWorkflowPackage,
+    researchAnalysisWorkflowPackage,
+    productBriefWorkflowPackage,
+  ]) {
     workflowPackage.load(capabilityRegistry);
     workflows.set(workflowPackage.id, workflowPackage);
   }
@@ -119,7 +148,19 @@ export function createDemoHost(options?: DemoHostOptions): DemoHost {
     approvalManager: approvals,
     ...(requireApproval
       ? {
-          policy: designToCodeApprovalPolicy,
+          // Combined the same way the API's composition root combines them —
+          // each workflow's rule `target` is that workflow's own step id, and
+          // step ids are unique across the four built-in workflows.
+          policy: {
+            id: "combined-approval",
+            name: "Combined approval gate",
+            rules: [
+              ...designToCodeApprovalPolicy.rules,
+              ...qaReviewApprovalPolicy.rules,
+              ...researchAnalysisApprovalPolicy.rules,
+              ...productBriefApprovalPolicy.rules,
+            ],
+          },
           policyEvaluator: new InMemoryPolicyEvaluator(),
         }
       : {}),

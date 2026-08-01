@@ -1,6 +1,5 @@
 // packages/models/src/profile-registry.ts
-import { modelProfileSchema } from "@designflow/sdk";
-import type { ModelProfile } from "@designflow/sdk";
+import { modelProfileSchema, type ModelProfile } from "@designflow/sdk";
 import { DuplicateModelProfileError } from "./errors";
 
 /**

@@ -8,20 +8,18 @@ import {
   artifactSchema,
   artifactVersionSchema,
   executionEventSchema,
-} from "@designflow/sdk";
-import type {
-  Artifact,
-  ArtifactInput,
-  ArtifactLineage,
-  ArtifactLineageGraph,
-  ArtifactRef,
-  ArtifactRelation,
-  ArtifactRelationType,
-  ArtifactProvenance,
-  ArtifactVersion,
-  ExecutionEventPublisher,
-  ExecutionEventType,
-  RegistryArtifactStore,
+  type Artifact,
+  type ArtifactInput,
+  type ArtifactLineage,
+  type ArtifactLineageGraph,
+  type ArtifactRef,
+  type ArtifactRelation,
+  type ArtifactRelationType,
+  type ArtifactProvenance,
+  type ArtifactVersion,
+  type ExecutionEventPublisher,
+  type ExecutionEventType,
+  type RegistryArtifactStore,
 } from "@designflow/sdk";
 import { asRow } from "./execution-repository";
 import { fromJson, fromJsonRecord, toJson } from "./schema";

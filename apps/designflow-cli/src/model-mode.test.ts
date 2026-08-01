@@ -1,14 +1,20 @@
 // apps/designflow-cli/src/model-mode.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:http";
-import type { Server } from "node:http";
+import {
+  createServer,
+  type Server,
+} from "node:http";
+
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DesignFlowError } from "@designflow/sdk";
 import { dispatch } from "./cli";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
+
 import { ScriptedTerminal } from "./ui/terminal";
 import { explainError, formatError } from "./ui/errors";
 

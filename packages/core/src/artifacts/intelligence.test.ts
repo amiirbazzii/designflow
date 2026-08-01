@@ -1,7 +1,10 @@
 // packages/core/src/artifacts/intelligence.test.ts
 import { describe, expect, test } from "bun:test";
-import type { ExecutionEvent } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
+import {
+  type ExecutionEvent,
+  DesignFlowError,
+} from "@designflow/sdk";
+
 import { InMemoryArtifactStore } from "./in-memory-artifact-store";
 import { ArtifactIntelligenceService } from "./intelligence";
 import { InMemoryEventPublisher } from "../events";

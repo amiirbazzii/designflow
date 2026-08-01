@@ -1,8 +1,13 @@
 // packages/tools/src/catalog/project-summary.ts
 import { realpathSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
-import { toolManifestSchema } from "@designflow/sdk";
-import type { Tool, ToolContext, ToolManifest } from "@designflow/sdk";
+import {
+  toolManifestSchema,
+  type Tool,
+  type ToolContext,
+  type ToolManifest,
+} from "@designflow/sdk";
+
 import { z } from "zod";
 import { inspectProjectDirectory } from "./project-inspection";
 

@@ -1,9 +1,16 @@
 // packages/model-provider-openrouter/src/provider.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:http";
-import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { DesignFlowError } from "@designflow/sdk";
-import type { ModelProviderContext, ModelRequest } from "@designflow/sdk";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import {
+  DesignFlowError,
+  type ModelProviderContext,
+  type ModelRequest,
+} from "@designflow/sdk";
 import { OpenRouterProvider } from "./provider";
 
 /**

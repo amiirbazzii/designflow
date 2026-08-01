@@ -1,6 +1,11 @@
 // apps/designflow-cli/src/commands/interactive.ts
-import { banner, menu, workerMenu } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  banner,
+  menu,
+  workerMenu,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 import { historyCommand } from "./history";
 import { runCommand } from "./run";

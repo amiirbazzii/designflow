@@ -1,6 +1,10 @@
 // apps/designflow-cli/src/commands/workers.ts
-import { heading } from "../ui/terminal";
-import type { Terminal } from "../ui/terminal";
+import {
+  displayProviderName,
+  heading,
+  type Terminal,
+} from "../ui/terminal";
+
 import type { CliContext } from "../services/cli-runner";
 
 /**
@@ -78,7 +82,7 @@ export async function workerDetailCommand(
 
   const assignment = context.modelAssignments.find((entry) => entry.workerName === worker.name);
   if (assignment !== undefined) {
-    terminal.print(`  Provider   ${assignment.providerId}`);
+    terminal.print(`  Provider   ${displayProviderName(assignment.providerId)}`);
     terminal.print(`  Model      ${assignment.model}`);
   }
 

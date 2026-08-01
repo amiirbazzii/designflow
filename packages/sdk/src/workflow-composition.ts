@@ -4,8 +4,8 @@ import { artifactRefSchema } from "./schemas";
 import {
   executionErrorSchema,
   executionRequestSchema,
+  type ExecutionResult,
 } from "./execution-contract";
-import type { ExecutionResult } from "./execution-contract";
 
 // ── Workflow Invocation ──────────────────────────────────────────
 

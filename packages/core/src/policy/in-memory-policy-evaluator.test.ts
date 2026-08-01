@@ -1,11 +1,7 @@
 // packages/core/src/policy/in-memory-policy-evaluator.test.ts
 import { describe, expect, test, beforeEach } from "bun:test";
 import { InMemoryPolicyEvaluator } from "./in-memory-policy-evaluator";
-import type {
-  ExecutionPolicy,
-  PolicyContext,
-  PolicyEvaluationResult,
-} from "@designflow/sdk";
+import type { ExecutionPolicy, PolicyContext } from "@designflow/sdk";
 
 // ── Tests ───────────────────────────────────────────────────────
 
@@ -111,7 +107,7 @@ describe("InMemoryPolicyEvaluator", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "cap-a" },
         ],
       };
 
@@ -126,6 +122,26 @@ describe("InMemoryPolicyEvaluator", () => {
       expect(result.violations).toHaveLength(1);
       expect(result.violations[0].ruleId).toBe("approval-1");
       expect(result.violations[0].message).toContain("Approval required");
+    });
+
+    test("require_approval does not fire for a capability the execution never touches", async () => {
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Approval Policy",
+        rules: [
+          { id: "approval-1", type: "require_approval", target: "cap-z" },
+        ],
+      };
+
+      const context: PolicyContext = {
+        workflowId: "wf-1",
+        capabilityIds: ["cap-a"],
+      };
+
+      const result = await evaluator.evaluate(policy, context);
+
+      expect(result.allowed).toBe(true);
+      expect(result.violations).toHaveLength(0);
     });
   });
 
@@ -159,7 +175,7 @@ describe("InMemoryPolicyEvaluator", () => {
         rules: [
           { id: "deny-1", type: "deny_capability", target: "filesystem.write" },
           { id: "deny-2", type: "deny_capability", target: "network.request" },
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "cap-a" },
         ],
       };
 
@@ -203,7 +219,7 @@ describe("InMemoryPolicyEvaluator", () => {
         rules: [
           { id: "deny-1", type: "deny_capability", target: "cap-a" },
           { id: "allow-1", type: "allow_capability", target: "cap-a" },
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "cap-a" },
         ],
       };
 
@@ -228,7 +244,7 @@ describe("InMemoryPolicyEvaluator", () => {
       const policy: ExecutionPolicy = {
         id: "policy-1",
         name: "Approval Policy",
-        rules: [{ id: "approval-1", type: "require_approval" }],
+        rules: [{ id: "approval-1", type: "require_approval", target: "cap-a" }],
       };
 
       const context: PolicyContext = {

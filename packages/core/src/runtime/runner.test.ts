@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CapabilityRunner } from "./runner";
 import { CapabilityExecutionError } from "./errors";
 import { InMemoryEventPublisher } from "../events";
-import type { Capability, CapabilityContext, ArtifactRef, ArtifactStore } from "@designflow/sdk";
+import type { Capability, CapabilityContext } from "@designflow/sdk";
 
 const createMockLogger = () => ({
   info: () => {},

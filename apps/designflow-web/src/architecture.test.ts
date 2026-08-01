@@ -88,6 +88,19 @@ describe("web application boundaries", () => {
     }
   });
 
+  test("the primary submit path calls the Worker Task Boundary, not the deprecated workflow-start route", () => {
+    // Regression: the real submit/poll/approve flow used to call
+    // `api.start`/`api.status`/`api.progress` against `/api/workflows` +
+    // `/api/executions/*`. This stage migrated it onto `/workers`,
+    // `/sessions` and `/results` — only `HistoryView`'s execution browsing
+    // path and the still-unreplaced approve/reject/explain calls may keep
+    // using the deprecated routes now.
+    const source = readFileSync(join(import.meta.dir, "App.tsx"), "utf8");
+
+    expect(source).toContain("api.startWorkerTask");
+    expect(source).not.toContain("api.start(");
+  });
+
   test("every network call goes through the api client", () => {
     const offenders: string[] = [];
 

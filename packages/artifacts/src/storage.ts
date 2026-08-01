@@ -2,8 +2,7 @@
 import { join } from "node:path";
 import { mkdir, rename } from "node:fs/promises";
 import { DesignFlowError } from "@designflow/sdk";
-import type { StoredArtifact } from "./types";
-import { ArtifactErrorCodes } from "./types";
+import { ArtifactErrorCodes, type StoredArtifact } from "./types";
 
 function validateArtifactId(id: string): void {
   if (!id) {

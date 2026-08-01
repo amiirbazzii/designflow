@@ -1,6 +1,9 @@
 // packages/core/src/compiler.ts
-import type { WorkflowDefinition } from "@designflow/sdk";
-import { isWorkflowNode } from "@designflow/sdk";
+import {
+  type WorkflowDefinition,
+  isWorkflowNode,
+} from "@designflow/sdk";
+
 import type { CompiledNode, CompiledWorkflow, ExecutionPlan } from "./types";
 import { CapabilityNotFoundError, WorkflowCompilationError } from "./errors";
 import type { CapabilityRegistry } from "./registry";

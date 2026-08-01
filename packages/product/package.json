@@ -12,12 +12,18 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "lint": "echo \"@designflow/product: lint ok\"",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {
     "@designflow/sdk": "workspace:*",
     "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@designflow/workers": "workspace:*",
+    "@designflow/agents": "workspace:*",
+    "@designflow/tools": "workspace:*",
+    "@designflow/core": "workspace:*"
   }
 }

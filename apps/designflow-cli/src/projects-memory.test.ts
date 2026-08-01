@@ -4,8 +4,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatch } from "./cli";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
+
 import { ScriptedTerminal } from "./ui/terminal";
 import { explainError } from "./ui/errors";
 import { DesignFlowError } from "@designflow/sdk";

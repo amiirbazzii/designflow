@@ -1,6 +1,10 @@
 // packages/core/src/planning/graph.ts
-import { workflowGraphSchema } from "@designflow/sdk";
-import type { WorkflowDefinition, WorkflowGraph } from "@designflow/sdk";
+import {
+  workflowGraphSchema,
+  type WorkflowDefinition,
+  type WorkflowGraph,
+} from "@designflow/sdk";
+
 import { ExecutionPlanningError } from "../errors";
 
 /**

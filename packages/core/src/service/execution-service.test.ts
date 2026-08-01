@@ -544,7 +544,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -583,7 +583,7 @@ describe("ExecutionService", () => {
         name: "Combined Policy",
         rules: [
           { id: "deny-1", type: "deny_capability", target: "test-cap" },
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -772,7 +772,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -811,7 +811,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -849,7 +849,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -896,7 +896,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -941,7 +941,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -1002,7 +1002,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -1049,7 +1049,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -1101,7 +1101,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 
@@ -1155,7 +1155,7 @@ describe("ExecutionService", () => {
         id: "policy-1",
         name: "Approval Policy",
         rules: [
-          { id: "approval-1", type: "require_approval" },
+          { id: "approval-1", type: "require_approval", target: "test-cap" },
         ],
       };
 

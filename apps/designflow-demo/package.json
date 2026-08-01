@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc -b",
     "demo": "bun run src/main.ts",
-    "lint": "echo \"@designflow/demo: lint ok\"",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
@@ -25,6 +25,9 @@
     "@designflow/product": "workspace:*",
     "@designflow/sdk": "workspace:*",
     "@designflow/workers": "workspace:*",
-    "@designflow/workflow-design-to-code": "workspace:*"
+    "@designflow/workflow-design-to-code": "workspace:*",
+    "@designflow/workflow-qa-review": "workspace:*",
+    "@designflow/workflow-research-analysis": "workspace:*",
+    "@designflow/workflow-product-brief": "workspace:*"
   }
 }

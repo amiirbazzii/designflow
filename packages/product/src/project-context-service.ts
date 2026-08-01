@@ -4,8 +4,12 @@ import {
   NOOP_PROJECT_OBSERVER,
   applyProjectFactChanges,
   projectContextSchema,
+  type ProjectContext,
+  type ProjectContextStore,
+  type ProjectFactChange,
+  type ProjectObserver,
 } from "@designflow/sdk";
-import type { ProjectContext, ProjectContextStore, ProjectFactChange, ProjectObserver } from "@designflow/sdk";
+
 import { ProjectContextTooLargeError } from "./project-errors";
 
 /**

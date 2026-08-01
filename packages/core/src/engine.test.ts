@@ -5,9 +5,14 @@ import { ExecutionEngine } from "./engine";
 import { CapabilityRegistry } from "./registry";
 import { InMemoryExecutionRepository } from "./repository";
 import { InMemoryEventPublisher } from "./events";
-import type { Capability, ArtifactRef, CapabilityPackage, ExecutionRecord } from "@designflow/sdk";
-import type { ArtifactStore, Logger, ExecutionRepository, ExecutionEventPublisher } from "@designflow/sdk";
-import { ExecutionError } from "./errors";
+import {
+  type Capability,
+  type ArtifactRef,
+  type CapabilityPackage,
+  type ExecutionRecord,
+  type ArtifactStore,
+  type Logger,
+} from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────
 
@@ -357,7 +362,6 @@ describe("ExecutionEngine with DAG execution", () => {
   });
 
   test("artifacts are collected in deterministic workflow order", async () => {
-    const artifactIds: string[] = [];
     const { engine, repository } = createEngine();
     const registry = engine.getRegistry();
 

@@ -2,8 +2,11 @@
 // apps/designflow-cli/src/main.ts
 import { createInterface } from "node:readline/promises";
 import { dispatch } from "./cli";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
+
 import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
 

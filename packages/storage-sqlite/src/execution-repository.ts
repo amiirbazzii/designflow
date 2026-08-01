@@ -4,12 +4,10 @@ import {
   executionCheckpointDataSchema,
   executionRecordSchema,
   lifecycleEventSchema,
-} from "@designflow/sdk";
-import type {
-  ExecutionCheckpointData,
-  ExecutionRecord,
-  ExecutionRepository,
-  LifecycleEvent,
+  type ExecutionCheckpointData,
+  type ExecutionRecord,
+  type ExecutionRepository,
+  type LifecycleEvent,
 } from "@designflow/sdk";
 import { fromJson, fromJsonRecord, toJson } from "./schema";
 

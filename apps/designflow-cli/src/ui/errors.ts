@@ -388,6 +388,21 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That proposal was already approved or rejected.",
     suggestion: "Run  designflow memory proposals  to see what is still waiting.",
   },
+
+  // Store failures. The store is `~/.designflow`'s single JSON document — a
+  // person never chose it and should not have to learn its name, but these
+  // are the two failures where the raw message is the most useful thing
+  // available: it names the exact file(s) involved.
+  ERR_STORE_CORRUPTED: {
+    problem: "DesignFlow's local data file could not be read and has been moved aside.",
+    suggestion:
+      "A fresh, empty store will be created. The original file was kept next to it in case you need to recover anything — set DESIGNFLOW_DEBUG=1 to see its exact path.",
+  },
+  ERR_STORE_LOCKED: {
+    problem: "DesignFlow's local data file is in use by another DesignFlow process.",
+    suggestion:
+      "Wait for the other command to finish and try again. If nothing else is actually running, it may be a leftover lock from a crash — set DESIGNFLOW_DEBUG=1 to see its exact path and remove it.",
+  },
 };
 
 /**

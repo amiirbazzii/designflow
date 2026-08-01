@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type {
   ExecutionEvent,
   ExecutionRecord,
+  WorkerCriterionEvaluator,
   ExecutionRepository,
   WorkerManifest,
   WorkerRegistry,
@@ -70,7 +71,12 @@ class FakeWorkerRegistry implements WorkerRegistry {
   }
 }
 
-function buildService(repository: StubRepository, workers: WorkerRegistry) {
+function buildService(
+  repository: StubRepository,
+  workers: WorkerRegistry,
+  getArtifactPayload?: (artifactId: string) => Promise<unknown | undefined>,
+  evaluators?: Record<string, WorkerCriterionEvaluator>,
+) {
   const execution = new ProductExecutionService({
     executionRepository: repository,
     eventSource: new FakeEventSource(),
@@ -80,6 +86,8 @@ function buildService(repository: StubRepository, workers: WorkerRegistry) {
     execution,
     workers,
     listAllOverviews: (limit) => execution.listAllOverviews(limit),
+    ...(getArtifactPayload !== undefined ? { getArtifactPayload } : {}),
+    ...(evaluators !== undefined ? { evaluators } : {}),
   });
 }
 
@@ -103,6 +111,67 @@ describe("WorkerResultService", () => {
     // No agent id, no raw workflow id, no prompt/reasoning field exists on the schema at all.
     expect(Object.keys(result)).not.toContain("agentId");
     expect(Object.keys(result)).not.toContain("workflowId");
+  });
+
+  test("a completed execution owned by a worker gets a computed, non-empty evaluation", async () => {
+    const repository = new StubRepository();
+    repository.add({
+      executionId: "exec-eval",
+      workflowId: "qa-review",
+      status: "completed",
+      startedAt: 1_000,
+      completedAt: 2_000,
+    });
+
+    const workerWithCriteria = worker({
+      evaluationCriteria: [
+        {
+          id: "findings-have-severity",
+          name: "Findings have severity",
+          description: "Every reported issue carries a severity level",
+          type: "boolean",
+          required: true,
+        },
+      ],
+    });
+
+    // A hand-written stand-in for the QA Reviewer's real evaluator (which now
+    // lives in `@designflow/workflow-qa-review` and is tested there): this
+    // test proves only that `WorkerResultService` runs whatever evaluator the
+    // caller registered for the worker's id, not the real criterion logic.
+    const fakeQaEvaluator: WorkerCriterionEvaluator = (criterionId, artifacts, getPayload) => ({
+      criterionId,
+      satisfied: artifacts.length > 0 && getPayload?.(criterionId) !== undefined,
+    });
+
+    const service = buildService(repository, new FakeWorkerRegistry([workerWithCriteria]), undefined, {
+      "qa-reviewer": fakeQaEvaluator,
+    });
+    const result = await service.getWorkerResult("exec-eval");
+
+    expect(result.evaluation).toBeDefined();
+    expect(result.evaluation?.results).toHaveLength(1);
+    expect(result.evaluation?.results[0]?.criterionId).toBe("findings-have-severity");
+    // No artifacts exist in this fixture, so the criterion is deterministically unsatisfied, not thrown.
+    expect(result.evaluation?.results[0]?.satisfied).toBe(false);
+    expect(result.evaluation?.requiredTotal).toBe(1);
+  });
+
+  test("a legacy execution (no owning worker) gets no evaluation, since no manifest names criteria to check", async () => {
+    const repository = new StubRepository();
+    repository.add({
+      executionId: "exec-legacy-eval",
+      workflowId: "some-retired-workflow",
+      status: "completed",
+      startedAt: 1_000,
+      completedAt: 1_200,
+    });
+
+    const service = buildService(repository, new FakeWorkerRegistry([worker()]));
+    const result = await service.getWorkerResult("exec-legacy-eval");
+
+    expect(result.workerId).toBe("legacy");
+    expect(result.evaluation).toBeUndefined();
   });
 
   test("maps a failed execution safely", async () => {

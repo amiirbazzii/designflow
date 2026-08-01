@@ -1,6 +1,12 @@
 // apps/designflow-cli/src/cli.ts
-import { onboarding, runExample, usage, version } from "./ui/terminal";
-import type { Terminal } from "./ui/terminal";
+import {
+  onboarding,
+  runExample,
+  usage,
+  version,
+  type Terminal,
+} from "./ui/terminal";
+
 import type { CliContext } from "./services/cli-runner";
 import { workerDetailCommand, workersCommand } from "./commands/workers";
 import { runCommand } from "./commands/run";

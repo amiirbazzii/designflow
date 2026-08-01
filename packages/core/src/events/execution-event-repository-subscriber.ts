@@ -1,13 +1,13 @@
 // packages/core/src/events/execution-event-repository-subscriber.ts
-import type {
-  ExecutionEvent,
-  ExecutionEventHandler,
-  ExecutionEventType,
-  ExecutionRepository,
-  LifecycleEventPhase,
-  Logger,
+import {
+  type ExecutionEvent,
+  type ExecutionEventHandler,
+  type ExecutionEventType,
+  type ExecutionRepository,
+  type LifecycleEventPhase,
+  type Logger,
+  lifecycleEventSchema,
 } from "@designflow/sdk";
-import { lifecycleEventSchema } from "@designflow/sdk";
 
 // ── Event Type to Lifecycle Phase Mapping ───────────────────────
 

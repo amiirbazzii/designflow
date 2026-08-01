@@ -120,6 +120,7 @@ async function route(
       request: typeof body.request === "string" ? body.request : "",
       ...(body.input !== undefined ? { input: body.input } : {}),
       ...(typeof body.projectId === "string" ? { projectId: body.projectId } : {}),
+      ...(typeof body.idempotencyKey === "string" ? { idempotencyKey: body.idempotencyKey } : {}),
     });
 
     return json(

@@ -3,18 +3,17 @@ import {
   artifactReconciliationInputSchema,
   artifactReconciliationResultSchema,
   reconciliationReportSchema,
+  type ArtifactReconciliationInput,
+  type ArtifactReconciliationResult,
+  type ArtifactRef,
+  type ArtifactRegistry,
+  type ExecutionReconciler,
+  type ReconciliationReport,
 } from "@designflow/sdk";
-import type {
-  ArtifactReconciliationInput,
-  ArtifactReconciliationResult,
-  ArtifactRef,
-  ArtifactRegistry,
-  ExecutionReconciler,
-  ReconciliationReport,
-} from "@designflow/sdk";
+
 import { ArtifactReconciliationError } from "../errors";
-import type { ReconciliationConflict, VersionedArtifact } from "./comparison";
 import {
+  type ReconciliationConflict,
   findContentConflicts,
   findSetConflicts,
   identityOf,

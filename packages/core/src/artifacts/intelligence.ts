@@ -6,23 +6,22 @@ import {
   artifactReuseReportSchema,
   artifactVersionRefSchema,
   executionEventSchema,
+  type Artifact,
+  type ArtifactDependency,
+  type ArtifactDiff,
+  type ArtifactImpact,
+  type ArtifactIntelligence,
+  type ArtifactLineageGraph,
+  type ArtifactMetadataChanges,
+  type ArtifactProvenance,
+  type ArtifactRegistry,
+  type ArtifactReuseCandidate,
+  type ArtifactReuseReport,
+  type ArtifactVersionRef,
+  type ExecutionEventPublisher,
+  type ExecutionEventType,
 } from "@designflow/sdk";
-import type {
-  Artifact,
-  ArtifactDependency,
-  ArtifactDiff,
-  ArtifactImpact,
-  ArtifactIntelligence,
-  ArtifactLineageGraph,
-  ArtifactMetadataChanges,
-  ArtifactProvenance,
-  ArtifactRegistry,
-  ArtifactReuseCandidate,
-  ArtifactReuseReport,
-  ArtifactVersionRef,
-  ExecutionEventPublisher,
-  ExecutionEventType,
-} from "@designflow/sdk";
+
 import { ArtifactVersionNotFoundError } from "../errors";
 import { contentEquals } from "./immutability";
 import { isLineageRelation } from "./relations";

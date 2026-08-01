@@ -7,14 +7,12 @@ import {
   executionReportSchema,
   executionStatusSchema,
   workflowHistoryEntrySchema,
-} from "@designflow/product";
-import type {
-  ApprovalOutcome,
-  ExecutionHandle,
-  ExecutionProgress,
-  ExecutionReport,
-  ExecutionStatus,
-  WorkflowHistoryEntry,
+  type ApprovalOutcome,
+  type ExecutionHandle,
+  type ExecutionProgress,
+  type ExecutionReport,
+  type ExecutionStatus,
+  type WorkflowHistoryEntry,
 } from "@designflow/product";
 
 /**
@@ -69,6 +67,51 @@ const workerSummarySchema = z.object({
 
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 
+/**
+ * A session as the Worker Task Boundary (`/sessions`) returns it — the
+ * `toSafeSession()` shape the API actually sends (`apps/designflow-api/src/router.ts`),
+ * agentId already stripped server-side. Deliberately narrower than the SDK's
+ * `AgentSession`: only the fields this client renders or acts on (the pending
+ * question, the decline reason, and the `executionId` a resolved decision
+ * produces — the same id `/api/executions/:id` and its approve/reject routes
+ * key on).
+ */
+const sessionSchema = z.object({
+  id: z.string().min(1),
+  workerId: z.string().min(1),
+  status: z.enum([
+    "active",
+    "waiting_for_user",
+    "completed",
+    "declined",
+    "failed",
+    "cancelled",
+  ]),
+  currentQuestion: z.string().min(1).optional(),
+  declineReason: z.string().min(1).optional(),
+  /** The workflow execution this session produced, once one has started. */
+  executionId: z.string().min(1).optional(),
+});
+
+export type Session = z.infer<typeof sessionSchema>;
+
+/**
+ * A result as the Worker Task Boundary (`/results`) returns it. Narrower than
+ * the SDK's `WorkerResult`, the same "only what this client renders"
+ * philosophy `workerSummarySchema` already documents — this client uses it
+ * only to tell whether a run has finished, not to render outputs (the
+ * existing `explain()`/`ExecutionReport` path still does that).
+ */
+const workerResultSchema = z.object({
+  id: z.string().min(1),
+  workerId: z.string().min(1),
+  status: z.enum(["completed", "failed", "cancelled"]),
+  summary: z.string(),
+  executionId: z.string().min(1).optional(),
+});
+
+export type WorkerResult = z.infer<typeof workerResultSchema>;
+
 export class ApiError extends Error {
   public readonly code: string;
 
@@ -122,6 +165,51 @@ export const api = {
 
   getWorker: (workerId: string): Promise<WorkerSummary> =>
     request(`/workers/${encodeURIComponent(workerId)}`, "worker", workerSummarySchema),
+
+  /** Starts a session for a worker — the primary way a run begins now. */
+  startWorkerTask: (
+    workerId: string,
+    requestText: string,
+    input?: unknown,
+    projectId?: string,
+  ): Promise<Session> =>
+    request(
+      `/workers/${encodeURIComponent(workerId)}/tasks`,
+      "session",
+      sessionSchema,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request: requestText,
+          ...(input !== undefined ? { input } : {}),
+          ...(projectId !== undefined ? { projectId } : {}),
+        }),
+      },
+    ),
+
+  getSession: (sessionId: string): Promise<Session> =>
+    request(`/sessions/${encodeURIComponent(sessionId)}`, "session", sessionSchema),
+
+  answerSession: (
+    sessionId: string,
+    answer: string,
+    idempotencyKey?: string,
+  ): Promise<Session> =>
+    request(
+      `/sessions/${encodeURIComponent(sessionId)}/answers`,
+      "session",
+      sessionSchema,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          answer,
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        }),
+      },
+    ),
+
+  getWorkerResult: (resultId: string): Promise<WorkerResult> =>
+    request(`/results/${encodeURIComponent(resultId)}`, "result", workerResultSchema),
 
   // ── Deprecated: raw workflow-centric routes ─────────────────────
   // Retained for the existing screens below, which predate the Worker Task

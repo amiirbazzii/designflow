@@ -13,7 +13,6 @@ import {
   WorkflowRunner,
   WorkerTaskRouter,
   AgentSessionService,
-  InMemorySessionStore,
   ProductExecutionService,
   WorkerCatalogService,
   WorkerResultService,
@@ -23,13 +22,14 @@ import {
   SqliteArtifactStore,
   SqliteExecutionEventStore,
   SqliteExecutionRepository,
+  SqliteSessionStore,
   openDatabase,
 } from "@designflow/storage-sqlite";
-import { readChangedArtifacts } from "@designflow/sdk";
-import type {
-  CapabilityReuseResolver,
-  Logger,
-  WorkflowPackage,
+import {
+  readChangedArtifacts,
+  type CapabilityReuseResolver,
+  type Logger,
+  type WorkflowPackage,
 } from "@designflow/sdk";
 import { AgentRuntime, assertWorkerAgentAlignment, createAgentRegistry } from "@designflow/agents";
 import { ToolRuntime, createToolRegistry } from "@designflow/tools";
@@ -37,18 +37,22 @@ import { createWorkerRegistry } from "@designflow/workers";
 import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
+  evaluateDesignEngineerCriterion,
 } from "@designflow/workflow-design-to-code";
 import {
   qaReviewApprovalPolicy,
   qaReviewWorkflowPackage,
+  evaluateQaReviewerCriterion,
 } from "@designflow/workflow-qa-review";
 import {
   researchAnalysisApprovalPolicy,
   researchAnalysisWorkflowPackage,
+  evaluateResearchAnalystCriterion,
 } from "@designflow/workflow-research-analysis";
 import {
   productBriefApprovalPolicy,
   productBriefWorkflowPackage,
+  evaluateProductManagerCriterion,
 } from "@designflow/workflow-product-brief";
 
 /**
@@ -200,7 +204,7 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
   const taskRouter = new WorkerTaskRouter({ workers, agents: agentRuntime });
 
   const sessions = new AgentSessionService({
-    store: new InMemorySessionStore(),
+    store: new SqliteSessionStore(db),
     workers,
     router: taskRouter,
     runner,
@@ -217,6 +221,13 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
     execution,
     workers,
     listAllOverviews: (limit) => execution.listAllOverviews(limit),
+    getArtifactPayload: async (artifactId) => (await artifactStore.get(artifactId))?.data,
+    evaluators: {
+      "design-engineer": evaluateDesignEngineerCriterion,
+      "qa-reviewer": evaluateQaReviewerCriterion,
+      "research-analyst": evaluateResearchAnalystCriterion,
+      "product-manager": evaluateProductManagerCriterion,
+    },
   });
 
   return {

@@ -44,6 +44,8 @@ export type {
 } from "./worker-catalog-service";
 export { WorkerResultService, WorkerResultNotReadyError } from "./worker-result-service";
 export type { WorkerResultServiceOptions } from "./worker-result-service";
+export { evaluateWorkerResult } from "./worker-evaluation-service";
+export type { ArtifactPayloadReader, WorkerCriterionEvaluator } from "@designflow/sdk";
 
 // ── Agent Sessions ──────────────────────────────────────────────
 export { InMemorySessionStore } from "./session-store";

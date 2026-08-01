@@ -1,6 +1,10 @@
 // packages/product/src/artifacts.ts
-import { artifactSummarySchema } from "./schemas";
-import type { ArtifactStatus, ArtifactSummary } from "./schemas";
+import {
+  artifactSummarySchema,
+  type ArtifactStatus,
+  type ArtifactSummary,
+} from "./schemas";
+
 import type { Artifact, ArtifactRegistry, ExecutionEvent } from "@designflow/sdk";
 
 /**

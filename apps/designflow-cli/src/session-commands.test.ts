@@ -1,15 +1,24 @@
 // apps/designflow-cli/src/session-commands.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:http";
-import type { Server } from "node:http";
+import {
+  createServer,
+  type Server,
+} from "node:http";
+
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatch } from "./cli";
-import { createCliContext } from "./services/cli-runner";
-import type { CliContext } from "./services/cli-runner";
-import { ScriptedTerminal } from "./ui/terminal";
-import type { Terminal } from "./ui/terminal";
+import {
+  createCliContext,
+  type CliContext,
+} from "./services/cli-runner";
+
+import {
+  ScriptedTerminal,
+  type Terminal,
+} from "./ui/terminal";
+
 import { explainError } from "./ui/errors";
 import { answerSessionRequestSchema, DesignFlowError } from "@designflow/sdk";
 import { SESSION_ERROR_CODES } from "@designflow/product";
@@ -60,9 +69,9 @@ async function mockOpenRouterSequence(decisions: readonly unknown[]): Promise<st
   let index = 0;
 
   const server = createServer((req, res) => {
-    let raw = "";
-    req.on("data", (chunk: Buffer) => {
-      raw += chunk.toString();
+    req.on("data", () => {
+      // Request body is not needed by this mock — it always answers with
+      // the next scripted decision regardless of what was asked.
     });
     req.on("end", () => {
       const decision = decisions[Math.min(index, decisions.length - 1)];

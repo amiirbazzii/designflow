@@ -1,12 +1,13 @@
 // packages/core/src/materialization/materializer.test.ts
 import { describe, expect, test } from "bun:test";
-import type {
-  Artifact,
-  ArtifactRegistry,
-  ArtifactVersion,
-  ExecutionEvent,
+import {
+  type Artifact,
+  type ArtifactRegistry,
+  type ArtifactVersion,
+  type ExecutionEvent,
+  DesignFlowError,
 } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
+
 import { RegistryArtifactMaterializer } from "./materializer";
 import { checkArtifact, resolveSourceExecutionId } from "./validation";
 import { InMemoryArtifactStore } from "../artifacts";
@@ -75,7 +76,7 @@ const expectCode = async (
     throw new Error(`Expected rejection with ${code}`);
   } catch (error) {
     if (!(error instanceof DesignFlowError)) {
-      throw new Error(`Expected a DesignFlowError, received ${String(error)}`);
+      throw new Error(`Expected a DesignFlowError, received ${String(error)}`, { cause: error });
     }
 
     expect(error.code).toBe(code);

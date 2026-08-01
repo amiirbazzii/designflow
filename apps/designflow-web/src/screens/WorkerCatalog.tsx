@@ -4,17 +4,20 @@ import type { WorkerSummary } from "../api-client";
 /**
  * The Worker Task Boundary's catalogue view.
  *
- * Read-only, additive alongside the existing workflow-driven home screen —
- * this stage aligns the web app's vocabulary around Workers without
- * redesigning `InputForm`/`RunningView`/etc., which still speak workflows.
- * Every field comes from `WorkerSummary`, itself built from the same
- * `WorkerManifest` the CLI and API read — no worker id, category or
+ * The home screen's entry point into a run: selecting a worker starts a
+ * session for it (`POST /workers/:workerId/tasks`) by way of `InputForm`,
+ * fed by that same worker's own `inputs`. This replaced the workflow-driven
+ * list that used to lead into `InputForm` via `listWorkflows`/`start` — every
+ * field here comes from `WorkerSummary`, itself built from the same
+ * `WorkerManifest` the CLI and API read, no worker id, category or
  * description is hand-duplicated here.
  */
 export function WorkerCatalog({
   workers,
+  onSelect,
 }: {
   readonly workers: readonly WorkerSummary[];
+  readonly onSelect: (worker: WorkerSummary) => void;
 }): JSX.Element {
   return (
     <section aria-label="AI workers">
@@ -26,6 +29,9 @@ export function WorkerCatalog({
           <p className="meta">
             {worker.category} — {worker.description}
           </p>
+          <button className="primary" onClick={() => onSelect(worker)}>
+            Start
+          </button>
         </div>
       ))}
     </section>

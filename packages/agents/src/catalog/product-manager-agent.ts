@@ -1,6 +1,15 @@
 // packages/agents/src/catalog/product-manager-agent.ts
-import { agentManifestSchema, modelProfileSchema } from "@designflow/sdk";
-import type { Agent, AgentContext, AgentDecision, AgentManifest, AgentTask, ModelProfile } from "@designflow/sdk";
+import {
+  agentManifestSchema,
+  modelProfileSchema,
+  type Agent,
+  type AgentContext,
+  type AgentDecision,
+  type AgentManifest,
+  type AgentTask,
+  type ModelProfile,
+} from "@designflow/sdk";
+
 import { buildDecisionPrompt, modelDecisionSchema } from "../decision-prompt";
 import {
   describeTask,

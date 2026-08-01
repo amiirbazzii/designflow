@@ -1,15 +1,16 @@
 // packages/product/src/service.test.ts
 import { describe, expect, test } from "bun:test";
-import type {
-  Artifact,
-  ArtifactLineageGraph,
-  ArtifactRegistry,
-  ArtifactVersion,
-  ExecutionEvent,
-  ExecutionRecord,
-  ExecutionRepository,
+import {
+  type Artifact,
+  type ArtifactLineageGraph,
+  type ArtifactRegistry,
+  type ArtifactVersion,
+  type ExecutionEvent,
+  type ExecutionRecord,
+  type ExecutionRepository,
+  DesignFlowError,
 } from "@designflow/sdk";
-import { DesignFlowError } from "@designflow/sdk";
+
 import { ProductExecutionService, countArtifacts, formatDuration } from "./service";
 import { InMemoryExecutionEventCollector } from "./event-collector";
 import { narrateEvents } from "./narration";

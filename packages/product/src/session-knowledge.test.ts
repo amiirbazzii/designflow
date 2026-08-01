@@ -1,14 +1,15 @@
 // packages/product/src/session-knowledge.test.ts
 import { describe, expect, test } from "bun:test";
-import { workerManifestSchema } from "@designflow/sdk";
-import type {
-  AgentDecision,
-  AgentDecisionService,
-  AgentExecutionResult,
-  AgentTask,
-  WorkerManifest,
-  WorkerRegistry,
+import {
+  workerManifestSchema,
+  type AgentDecision,
+  type AgentDecisionService,
+  type AgentExecutionResult,
+  type AgentTask,
+  type WorkerManifest,
+  type WorkerRegistry,
 } from "@designflow/sdk";
+
 import { WorkerTaskRouter } from "./worker-task";
 import { InMemorySessionStore } from "./session-store";
 import { AgentSessionService } from "./session-service";

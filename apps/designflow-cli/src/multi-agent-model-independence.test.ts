@@ -1,7 +1,10 @@
 // apps/designflow-cli/src/multi-agent-model-independence.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:http";
-import type { Server } from "node:http";
+import {
+  createServer,
+  type Server,
+} from "node:http";
+
 import {
   createDesignEngineerAgent,
   deterministicDesignEngineerStrategy,

@@ -10,8 +10,11 @@ import {
   requirementsSchema,
   riskAssumptionRegisterSchema,
 } from "./types";
-import { SAMPLE_REQUEST, createHost } from "./harness.test-support";
-import type { ProductBriefHost } from "./harness.test-support";
+import {
+  SAMPLE_REQUEST,
+  createHost,
+  type ProductBriefHost,
+} from "./harness.test-support";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -261,7 +264,7 @@ describe("approval gate", () => {
     expect(execution.state).toBe("needs_approval");
 
     const pending = await host.runner.pendingApproval(execution.executionId);
-    expect(pending?.reason).toContain("approve-product-brief");
+    expect(pending?.reason).toContain("Finalizing the brief that downstream planning will rely on");
 
     // Nothing ran: the gate is evaluated before the workflow starts.
     expect(capabilitiesRun(host)).toEqual([]);

@@ -3,8 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApiHost } from "./host";
-import type { ApiHost, ApiHostOptions } from "./host";
+import { createApiHost, type ApiHost, type ApiHostOptions } from "./host";
 import { createRouter } from "./router";
 
 /**
@@ -365,7 +364,7 @@ describe("approval", () => {
     expect(pick(status.body, ["status", "state"])).toBe("needs_approval");
     expect(
       String(pick(status.body, ["status", "approval", "reason"])),
-    ).toContain("approve-code-generation");
+    ).toContain("Writing changes to production files");
   });
 
   test("approving completes the run", async () => {
@@ -683,6 +682,28 @@ describe("the worker task boundary", () => {
     const response = await client.post("/workers/nobody/tasks", {});
 
     expect(response.status).toBe(404);
+  });
+
+  test("POST /workers/:workerId/tasks with a repeated idempotencyKey returns the same session and creates no second one", async () => {
+    const client = createClient();
+
+    const first = await client.post("/workers/qa-reviewer/tasks", {
+      idempotencyKey: "task-key-1",
+    });
+    const second = await client.post("/workers/qa-reviewer/tasks", {
+      idempotencyKey: "task-key-1",
+    });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    const firstId = (first.body.session as Record<string, unknown>)["id"];
+    const secondId = (second.body.session as Record<string, unknown>)["id"];
+    expect(firstId).toBe(secondId);
+
+    const list = await client.get("/sessions?workerId=qa-reviewer");
+    const sessions = list.body.sessions as Record<string, unknown>[];
+    expect(sessions).toHaveLength(1);
   });
 
   test("GET /results starts empty and GET /results/:resultId 404s for an unknown run", async () => {

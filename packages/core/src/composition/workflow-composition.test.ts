@@ -6,34 +6,35 @@ import { CapabilityRegistry } from "../registry";
 import { InMemoryExecutionRepository } from "../repository";
 import { InMemoryEventPublisher } from "../events";
 import { InMemoryApprovalManager } from "../approval";
-import { ExecutionService } from "../service";
-import type { WorkflowResolver } from "../service";
+import {
+  ExecutionService,
+  type WorkflowResolver,
+} from "../service";
+
 import { WorkflowCompositionExecutor } from "./workflow-composition-executor";
 import { WorkflowCompositionCycleError } from "../errors";
-import { DesignFlowError } from "@designflow/sdk";
 import {
+  DesignFlowError,
   readCompositionCheckpoint,
   readExecutionInput,
   readExecutionLineage,
-} from "@designflow/sdk";
-import type {
-  ArtifactRef,
-  ArtifactStore,
-  Capability,
-  ExecutionContext,
-  ExecutionEvent,
-  ExecutionPolicy,
-  ExecutionRecord,
-  Logger,
-  PolicyContext,
-  PolicyEvaluationResult,
-  PolicyEvaluator,
-  WorkflowDefinition,
-  WorkflowExecutionResolver,
-  WorkflowInvocation,
-  WorkflowInvocationContext,
-  WorkflowInvocationResult,
-  WorkflowPackage,
+  type ArtifactRef,
+  type ArtifactStore,
+  type Capability,
+  type ExecutionContext,
+  type ExecutionEvent,
+  type ExecutionPolicy,
+  type ExecutionRecord,
+  type Logger,
+  type PolicyContext,
+  type PolicyEvaluationResult,
+  type PolicyEvaluator,
+  type WorkflowDefinition,
+  type WorkflowExecutionResolver,
+  type WorkflowInvocation,
+  type WorkflowInvocationContext,
+  type WorkflowInvocationResult,
+  type WorkflowPackage,
 } from "@designflow/sdk";
 
 // ── Test Helpers ────────────────────────────────────────────────

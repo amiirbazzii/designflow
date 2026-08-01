@@ -1,7 +1,6 @@
 // packages/core/src/approval/in-memory-approval-manager.test.ts
 import { describe, expect, test, beforeEach } from "bun:test";
 import { InMemoryApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./in-memory-approval-manager";
-import type { ApprovalRequest } from "@designflow/sdk";
 
 // ── Tests ───────────────────────────────────────────────────────
 
