@@ -6,6 +6,7 @@ export type {
   CliContext,
   CliContextOptions,
   WorkflowInfo,
+  CleanupReport,
 } from "./services/cli-runner";
 
 export {

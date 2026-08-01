@@ -3,6 +3,8 @@ import type { Database } from "bun:sqlite";
 import {
   DesignFlowError,
   approvalRequestSchema,
+  isApprovalExpired,
+  DEFAULT_APPROVAL_EXPIRATION_MS,
   type ApprovalManager,
   type ApprovalRequest,
 } from "@designflow/sdk";
@@ -31,6 +33,15 @@ export class ApprovalStateTransitionError extends DesignFlowError {
   }
 }
 
+/** The request's `expiresAt` has passed. It can no longer authorize or refuse execution. */
+export class ApprovalExpiredError extends DesignFlowError {
+  public constructor(approvalId: string) {
+    super("ERR_APPROVAL_EXPIRED", `Approval ${approvalId} has expired`, { approvalId });
+    this.name = "ApprovalExpiredError";
+    Object.setPrototypeOf(this, ApprovalExpiredError.prototype);
+  }
+}
+
 /**
  * `ApprovalManager` backed by SQLite.
  *
@@ -53,21 +64,24 @@ export class SqliteApprovalManager implements ApprovalManager {
     executionId: string,
     workflowId: string,
     reason: string,
+    expiresAt?: number,
   ): Promise<ApprovalRequest> {
+    const now = Date.now();
     const request = approvalRequestSchema.parse({
       id: crypto.randomUUID(),
       executionId,
       workflowId,
       status: "pending",
       reason,
-      createdAt: Date.now(),
+      createdAt: now,
+      expiresAt: expiresAt ?? now + DEFAULT_APPROVAL_EXPIRATION_MS,
     });
 
     this.db
       .query(
         `INSERT INTO approvals
-           (approval_id, execution_id, workflow_id, status, reason, created_at, resolved_at, metadata_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (approval_id, execution_id, workflow_id, status, reason, created_at, resolved_at, expires_at, metadata_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         request.id,
@@ -77,6 +91,7 @@ export class SqliteApprovalManager implements ApprovalManager {
         request.reason,
         request.createdAt,
         null,
+        request.expiresAt ?? null,
         null,
       );
 
@@ -120,6 +135,33 @@ export class SqliteApprovalManager implements ApprovalManager {
     return row === null ? null : toApproval(row);
   }
 
+  /**
+   * Persists `expired` onto every still-`pending` request whose `expiresAt`
+   * has passed. Not part of `ApprovalManager` — a cleanup concern, exercised
+   * by `designflow cleanup`, never by the approval flow itself. Idempotent:
+   * a request already settled or already `expired` is skipped.
+   */
+  public async expireStale(nowMs: number): Promise<readonly ApprovalRequest[]> {
+    const rows = this.db
+      .query("SELECT * FROM approvals WHERE status = 'pending'")
+      .all();
+
+    const expired: ApprovalRequest[] = [];
+
+    for (const row of rows) {
+      const approval = toApproval(row);
+      if (!isApprovalExpired(approval, nowMs)) continue;
+
+      this.db
+        .query(`UPDATE approvals SET status = 'expired', resolved_at = ? WHERE approval_id = ?`)
+        .run(nowMs, approval.id);
+
+      expired.push(approvalRequestSchema.parse({ ...approval, status: "expired", resolvedAt: nowMs }));
+    }
+
+    return expired;
+  }
+
   private async settle(
     approvalId: string,
     status: "approved" | "rejected",
@@ -128,6 +170,8 @@ export class SqliteApprovalManager implements ApprovalManager {
     const existing = await this.get(approvalId);
 
     if (existing === null) throw new ApprovalNotFoundError(approvalId);
+
+    if (isApprovalExpired(existing, Date.now())) throw new ApprovalExpiredError(approvalId);
 
     if (existing.status !== "pending") {
       throw new ApprovalStateTransitionError(
@@ -169,6 +213,9 @@ function toApproval(row: unknown): ApprovalRequest {
     createdAt: record.created_at,
     ...(record.resolved_at !== null && record.resolved_at !== undefined
       ? { resolvedAt: record.resolved_at }
+      : {}),
+    ...(record.expires_at !== null && record.expires_at !== undefined
+      ? { expiresAt: record.expires_at }
       : {}),
     metadata: fromJsonRecord(record.metadata_json),
   });

@@ -1,7 +1,11 @@
 // packages/core/src/approval/local-approval-manager.test.ts
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { LocalApprovalManager } from "./local-approval-manager";
-import { ApprovalStateTransitionError, ApprovalNotFoundError } from "./in-memory-approval-manager";
+import {
+  ApprovalStateTransitionError,
+  ApprovalNotFoundError,
+  ApprovalExpiredError,
+} from "./in-memory-approval-manager";
 import { unlink, readdir } from "node:fs/promises";
 
 const TEST_DIR = ".designflow-test-approvals";
@@ -138,6 +142,30 @@ describe("LocalApprovalManager", () => {
       const loaded = await manager.get(request.id);
       expect(loaded).not.toBeNull();
       expect(loaded!.status).toBe("pending");
+    });
+  });
+
+  describe("expiry", () => {
+    test("an expired pending request cannot be approved or rejected", async () => {
+      const request = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() - 1);
+
+      await expect(manager.approve(request.id)).rejects.toThrow(ApprovalExpiredError);
+      await expect(manager.reject(request.id)).rejects.toThrow(ApprovalExpiredError);
+    });
+
+    test("expireStale persists expired to disk and is idempotent", async () => {
+      const stale = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() - 1);
+      const fresh = await manager.createRequest("exec-2", "wf-2", "reason", Date.now() + 100_000);
+
+      const first = await manager.expireStale(Date.now());
+      expect(first.map((request) => request.id)).toEqual([stale.id]);
+
+      const manager2 = new LocalApprovalManager(TEST_DIR);
+      expect((await manager2.get(stale.id))?.status).toBe("expired");
+      expect((await manager2.get(fresh.id))?.status).toBe("pending");
+
+      const second = await manager.expireStale(Date.now());
+      expect(second).toEqual([]);
     });
   });
 

@@ -213,6 +213,34 @@ describe("FileApprovalManager", () => {
 
     await expectCode(approvals.approve("missing"), "ERR_APPROVAL_NOT_FOUND");
   });
+
+  test("an expired pending approval cannot authorize or refuse execution", async () => {
+    const approvals = new FileApprovalManager(new FileStore(newPath()));
+    const request = await approvals.createRequest("exec-1", "wf", "writes files", Date.now() - 1);
+
+    await expectCode(approvals.approve(request.id), "ERR_APPROVAL_EXPIRED");
+    await expectCode(approvals.reject(request.id), "ERR_APPROVAL_EXPIRED");
+  });
+
+  test("expireStale marks stale pending approvals and never touches a decided one, idempotently", async () => {
+    const path = newPath();
+    const approvals = new FileApprovalManager(new FileStore(path));
+
+    const stale = await approvals.createRequest("exec-1", "wf", "writes files", Date.now() - 1);
+    const fresh = await approvals.createRequest("exec-2", "wf", "writes files", Date.now() + 100_000);
+    const decided = await approvals.createRequest("exec-3", "wf", "writes files", Date.now() + 50);
+    await approvals.approve(decided.id);
+
+    const first = await approvals.expireStale(Date.now());
+    expect(first.map((request) => request.id)).toEqual([stale.id]);
+
+    expect((await approvals.get(stale.id))?.status).toBe("expired");
+    expect((await approvals.get(fresh.id))?.status).toBe("pending");
+    expect((await approvals.get(decided.id))?.status).toBe("approved");
+
+    const second = await approvals.expireStale(Date.now());
+    expect(second).toEqual([]);
+  });
 });
 
 // ── Event store ─────────────────────────────────────────────────

@@ -214,6 +214,9 @@ export {
   NOOP_SESSION_OBSERVER,
   isValidSessionTransition,
   isTerminalSessionStatus,
+  isSessionExpired,
+  effectiveSessionStatus,
+  withEffectiveSessionStatus,
   selectSessions,
 } from "./session";
 
@@ -511,6 +514,8 @@ export {
   approvalStatusSchema,
   approvalRequestSchema,
   approvalDecisionSchema,
+  isApprovalExpired,
+  DEFAULT_APPROVAL_EXPIRATION_MS,
 } from "./approval";
 
 export type {

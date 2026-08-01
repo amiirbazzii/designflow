@@ -2,7 +2,12 @@
 export { openDatabase } from "./schema";
 
 export { SqliteExecutionRepository } from "./execution-repository";
-export { SqliteApprovalManager, ApprovalNotFoundError, ApprovalStateTransitionError } from "./approval-manager";
+export {
+  SqliteApprovalManager,
+  ApprovalNotFoundError,
+  ApprovalStateTransitionError,
+  ApprovalExpiredError,
+} from "./approval-manager";
 export { SqliteExecutionEventStore } from "./event-store";
 export {
   SqliteArtifactStore,

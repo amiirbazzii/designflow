@@ -39,6 +39,7 @@ export const sessionStatusSchema = z.enum([
   "declined",
   "failed",
   "cancelled",
+  "expired",
 ]);
 
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
@@ -47,18 +48,25 @@ export type SessionStatus = z.infer<typeof sessionStatusSchema>;
  * The state machine, as data rather than as scattered `if` statements.
  *
  * A map from a status to the statuses it may become. Every terminal status —
- * `completed`, `declined`, `failed`, `cancelled` — maps to an empty list: a
- * session that finished stays finished, which is what makes "did this
- * conversation already start a workflow?" a question answerable by reading
- * one field rather than by reconstructing history.
+ * `completed`, `declined`, `failed`, `cancelled`, `expired` — maps to an
+ * empty list: a session that finished stays finished, which is what makes
+ * "did this conversation already start a workflow?" a question answerable by
+ * reading one field rather than by reconstructing history.
+ *
+ * `expired` is reachable from `active` and `waiting_for_user` only — the two
+ * non-terminal statuses a stale `expiresAt` can catch mid-conversation. Once
+ * a session is `expired` it cannot resume, the same as any other terminal
+ * status; see `isSessionExpired`/`effectiveSessionStatus` for how that status
+ * is computed rather than merely enforced.
  */
 const SESSION_TRANSITIONS: Readonly<Record<SessionStatus, readonly SessionStatus[]>> = {
-  active: ["waiting_for_user", "completed", "declined", "failed", "cancelled"],
-  waiting_for_user: ["active", "cancelled", "failed"],
+  active: ["waiting_for_user", "completed", "declined", "failed", "cancelled", "expired"],
+  waiting_for_user: ["active", "cancelled", "failed", "expired"],
   completed: [],
   declined: [],
   failed: [],
   cancelled: [],
+  expired: [],
 };
 
 /** Pure. The service consults this rather than inferring a transition from field presence. */
@@ -69,6 +77,53 @@ export function isValidSessionTransition(from: SessionStatus, to: SessionStatus)
 /** True once a session can no longer move — used to refuse resuming it. */
 export function isTerminalSessionStatus(status: SessionStatus): boolean {
   return SESSION_TRANSITIONS[status].length === 0;
+}
+
+/**
+ * Whether a session's `expiresAt` has passed, given the moment to check
+ * against.
+ *
+ * A terminal session is never "expired" by this check, even past its
+ * `expiresAt` — `completed`, `declined`, `failed` and `cancelled` already
+ * answer "can this resume?" on their own, and a session that finished before
+ * it expired should keep reading as what it actually finished as. Only
+ * `active` and `waiting_for_user` — the statuses a stale conversation can
+ * still be caught in — are subject to expiry.
+ *
+ * The one place this comparison is made; `AgentSessionService` and every
+ * cleanup path consult this rather than re-deriving it.
+ */
+export function isSessionExpired(session: AgentSession, nowIso: string): boolean {
+  return (
+    !isTerminalSessionStatus(session.status) &&
+    session.expiresAt !== undefined &&
+    session.expiresAt <= nowIso
+  );
+}
+
+/**
+ * The status a session should be *reported* as right now — `expired` in
+ * place of a stale `active`/`waiting_for_user`, the stored status otherwise.
+ *
+ * Does not write anything; a caller that also wants the expiry persisted
+ * (`designflow cleanup`) still has to patch the store itself. This is only
+ * the read-time view, so `get`/`list` never show a status that a stale
+ * `expiresAt` has already invalidated.
+ */
+export function effectiveSessionStatus(session: AgentSession, nowIso: string): SessionStatus {
+  return isSessionExpired(session, nowIso) ? "expired" : session.status;
+}
+
+/**
+ * `session`, but with `status` normalized to `effectiveSessionStatus`.
+ *
+ * Returns the same object (no allocation) when nothing changed, so a caller
+ * that compares by reference — a cache, a test's `toBe` — is not fooled into
+ * thinking a fresh object means a fresh read.
+ */
+export function withEffectiveSessionStatus(session: AgentSession, nowIso: string): AgentSession {
+  const status = effectiveSessionStatus(session, nowIso);
+  return status === session.status ? session : { ...session, status };
 }
 
 // ── Answers ─────────────────────────────────────────────────────

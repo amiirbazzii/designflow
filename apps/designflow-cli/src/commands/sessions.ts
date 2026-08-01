@@ -131,6 +131,8 @@ function describeStatus(status: SessionStatus): string {
       return "stopped";
     case "cancelled":
       return "cancelled";
+    case "expired":
+      return "expired";
   }
 }
 
@@ -178,6 +180,11 @@ export async function answerCommand(
     // leaving a person staring at a dead end.
     if (session.status === "active") {
       terminal.print(`Run  designflow cancel ${sessionId}  and start again — nothing further can be resumed.`);
+      terminal.print();
+    }
+
+    if (session.status === "expired") {
+      terminal.print("This conversation went too long unanswered. Start again with the same worker.");
       terminal.print();
     }
 

@@ -3,10 +3,13 @@ import {
   agentSessionSchema,
   answerSessionRequestSchema,
   cancelSessionRequestSchema,
+  isSessionExpired,
   isTerminalSessionStatus,
+  selectSessions,
   sessionEventSchema,
   sessionResultSchema,
   startSessionRequestSchema,
+  withEffectiveSessionStatus,
   DesignFlowError,
   NOOP_SESSION_OBSERVER,
   type AgentDecision,
@@ -387,12 +390,76 @@ export class AgentSessionService {
 
   // ── Read ──────────────────────────────────────────────────────
 
+  /**
+   * `get`, with `status` normalized to what it actually is right now.
+   *
+   * A session whose `expiresAt` has passed since it was last written still
+   * reports whatever status the store has for it — `waiting_for_user`, most
+   * often — until something patches it. Reporting a stale status here would
+   * make "did this conversation expire?" a question answerable only by also
+   * checking `expiresAt` by hand, so this normalizes on every read instead;
+   * `designflow cleanup` is what actually persists it.
+   */
   public async getSession(sessionId: string): Promise<AgentSession> {
-    return this.requireSession(sessionId);
+    const session = await this.requireSession(sessionId);
+    return withEffectiveSessionStatus(session, this.clock.now());
   }
 
+  /**
+   * `list`, with the same status normalization `getSession` applies.
+   *
+   * A store's own `status` filter would miss a session that is stale but not
+   * yet patched, so a `status` filter is applied here, after normalization,
+   * rather than pushed down to the store — `workerId` still narrows what the
+   * store itself fetches, since that part of a session never changes with
+   * the clock.
+   */
   public async listSessions(filters?: SessionListFilter): Promise<readonly AgentSession[]> {
-    return this.store.list(filters);
+    const raw = await this.store.list(
+      filters?.workerId !== undefined ? { workerId: filters.workerId } : undefined,
+    );
+
+    const now = this.clock.now();
+    const normalized = raw.map((session) => withEffectiveSessionStatus(session, now));
+
+    return selectSessions(normalized, filters);
+  }
+
+  // ── Cleanup ───────────────────────────────────────────────────
+
+  /**
+   * Persists `expired` onto every stale `active`/`waiting_for_user` session.
+   *
+   * `getSession`/`listSessions` already *report* expiry without writing
+   * anything; this is the one place it is actually recorded, so a store never
+   * accumulates conversations that look resumable forever. Manual or
+   * startup-triggered only — nothing here runs on a timer — and idempotent:
+   * a session already patched to `expired` is terminal, so `isSessionExpired`
+   * skips it on a second call.
+   */
+  public async cleanupExpiredSessions(): Promise<readonly AgentSession[]> {
+    const now = this.clock.now();
+    const all = await this.store.list();
+
+    const stale = all.filter((session) => isSessionExpired(session, now));
+    const expired: AgentSession[] = [];
+
+    for (const session of stale) {
+      try {
+        const updated = await this.persistUpdate(session, { status: "expired", updatedAt: now });
+        expired.push(updated);
+        await this.emit({ type: "session.expired", sessionId: updated.id, timestamp: now });
+      } catch (error) {
+        // A version conflict means another writer already moved this
+        // session on — nothing left here for cleanup to do to it. Any other
+        // store failure is a real problem, and must not be swallowed the
+        // same way.
+        if (error instanceof DesignFlowError && error.code === "ERR_SESSION_CONFLICT") continue;
+        throw error;
+      }
+    }
+
+    return expired;
   }
 
   // ── Cancel ────────────────────────────────────────────────────
@@ -552,15 +619,11 @@ export class AgentSessionService {
 
   /** Checked before an answer is accepted, most specific reason first. */
   private assertAnswerable(session: AgentSession): void {
-    if (this.isExpired(session)) throw new SessionExpiredError(session.id);
+    if (isSessionExpired(session, this.clock.now())) throw new SessionExpiredError(session.id);
     if (session.status === "cancelled") throw new SessionCancelledError(session.id);
     if (session.status !== "waiting_for_user") {
       throw new SessionNotWaitingError(session.id, session.status);
     }
-  }
-
-  private isExpired(session: AgentSession): boolean {
-    return session.expiresAt !== undefined && session.expiresAt <= this.clock.now();
   }
 
   private async persistCreate(session: AgentSession): Promise<void> {

@@ -67,10 +67,30 @@ npm pack --dry-run
 
 - [ ] Confirm the file list only includes `dist/` (per the `files` field in
       `package.json`) plus npm's always-included files (`package.json`,
-      `README.md` if present, `LICENSE` if present). No `src/`, tests, or
-      other extraneous files should appear.
+      `README.md`, `LICENSE`). No `src/`, tests, or other extraneous files
+      should appear. Expected: exactly 4 files
+      (`LICENSE`, `README.md`, `dist/main.js`, `package.json`).
 - [ ] Confirm `dist/main.js` starts with `#!/usr/bin/env node` (so it runs
       under plain Node, not just Bun).
+- [ ] `LICENSE` lives at `apps/designflow-cli/LICENSE`, a copy of the root
+      `LICENSE` (npm only packs files inside the package directory being
+      published, not the repo root). If the root `LICENSE` ever changes,
+      copy it here again before publishing — it is not a symlink and will
+      not update itself.
+- [ ] Verify the isolated-install experience directly, not just the file
+      list:
+      ```bash
+      npm pack
+      mkdir -p /tmp/designflow-release-test && cd /tmp/designflow-release-test
+      npm install -g --prefix ./npm-global <path-to-tarball>
+      PATH="$PWD/npm-global/bin:$PATH" DESIGNFLOW_HOME=$PWD/df-home designflow --version
+      PATH="$PWD/npm-global/bin:$PATH" DESIGNFLOW_HOME=$PWD/df-home designflow workers
+      ```
+      Confirm no `@designflow/*` or `workspace:*` resolution errors — the
+      published bundle is dependency-free (verified: `bun build`'s
+      `--target=node --format=esm` bundling already inlines every
+      `@designflow/*` internal package into the one `dist/main.js` file; a
+      plain `npm install -g` needs to fetch zero additional packages).
 
 ## 5. Commit and tag
 

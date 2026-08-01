@@ -1,6 +1,8 @@
 // packages/core/src/approval/in-memory-approval-manager.ts
 import {
   approvalRequestSchema,
+  isApprovalExpired,
+  DEFAULT_APPROVAL_EXPIRATION_MS,
   type ApprovalRequest,
   type ApprovalManager,
   DesignFlowError,
@@ -36,6 +38,15 @@ export class ApprovalNotFoundError extends DesignFlowError {
   }
 }
 
+/** The request's `expiresAt` has passed. It can no longer authorize or refuse execution. */
+export class ApprovalExpiredError extends DesignFlowError {
+  public constructor(approvalId: string) {
+    super("ERR_APPROVAL_EXPIRED", `Approval ${approvalId} has expired`, { approvalId });
+    this.name = "ApprovalExpiredError";
+    Object.setPrototypeOf(this, ApprovalExpiredError.prototype);
+  }
+}
+
 // ── Allowed Transitions ─────────────────────────────────────────
 
 const ALLOWED_TRANSITIONS: Record<string, ReadonlySet<string>> = {
@@ -63,14 +74,17 @@ export class InMemoryApprovalManager implements ApprovalManager {
     executionId: string,
     workflowId: string,
     reason: string,
+    expiresAt?: number,
   ): Promise<ApprovalRequest> {
+    const now = Date.now();
     const request: ApprovalRequest = {
       id: crypto.randomUUID(),
       executionId,
       workflowId,
       status: "pending",
       reason,
-      createdAt: Date.now(),
+      createdAt: now,
+      expiresAt: expiresAt ?? now + DEFAULT_APPROVAL_EXPIRATION_MS,
     };
 
     const validated = approvalRequestSchema.parse(request);
@@ -87,6 +101,8 @@ export class InMemoryApprovalManager implements ApprovalManager {
     if (request === null) {
       throw new ApprovalNotFoundError(approvalId);
     }
+
+    if (isApprovalExpired(request, Date.now())) throw new ApprovalExpiredError(approvalId);
 
     assertValidTransition(approvalId, request.status, "approved");
 
@@ -115,6 +131,8 @@ export class InMemoryApprovalManager implements ApprovalManager {
       throw new ApprovalNotFoundError(approvalId);
     }
 
+    if (isApprovalExpired(request, Date.now())) throw new ApprovalExpiredError(approvalId);
+
     assertValidTransition(approvalId, request.status, "rejected");
 
     const updated: ApprovalRequest = {
@@ -138,5 +156,30 @@ export class InMemoryApprovalManager implements ApprovalManager {
     if (raw === undefined) return null;
 
     return approvalRequestSchema.parse(raw);
+  }
+
+  /**
+   * Persists `expired` onto every still-`pending` request whose `expiresAt`
+   * has passed. Not part of `ApprovalManager` — a cleanup concern, exercised
+   * by `designflow cleanup`, never by the approval flow itself. Idempotent:
+   * a request already settled or already `expired` is skipped.
+   */
+  public async expireStale(nowMs: number): Promise<readonly ApprovalRequest[]> {
+    const expired: ApprovalRequest[] = [];
+
+    for (const [id, request] of this.requests) {
+      if (!isApprovalExpired(request, nowMs)) continue;
+
+      const settled = approvalRequestSchema.parse({
+        ...request,
+        status: "expired",
+        resolvedAt: nowMs,
+      });
+
+      this.requests.set(id, settled);
+      expired.push(settled);
+    }
+
+    return expired;
   }
 }

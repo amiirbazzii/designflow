@@ -1,6 +1,12 @@
 // packages/core/src/approval/in-memory-approval-manager.test.ts
 import { describe, expect, test, beforeEach } from "bun:test";
-import { InMemoryApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./in-memory-approval-manager";
+import { isApprovalExpired } from "@designflow/sdk";
+import {
+  InMemoryApprovalManager,
+  ApprovalStateTransitionError,
+  ApprovalNotFoundError,
+  ApprovalExpiredError,
+} from "./in-memory-approval-manager";
 
 // ── Tests ───────────────────────────────────────────────────────
 
@@ -128,6 +134,65 @@ describe("InMemoryApprovalManager", () => {
           expect(error.message).toContain("rejected");
         }
       }
+    });
+  });
+
+  describe("expiry", () => {
+    test("createRequest defaults expiresAt to roughly seven days out", async () => {
+      const before = Date.now();
+      const request = await manager.createRequest("exec-1", "wf-1", "reason");
+      const after = Date.now();
+
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      expect(request.expiresAt).toBeGreaterThanOrEqual(before + sevenDaysMs);
+      expect(request.expiresAt).toBeLessThanOrEqual(after + sevenDaysMs);
+    });
+
+    test("an expired pending request cannot be approved", async () => {
+      const request = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() - 1);
+
+      await expect(manager.approve(request.id)).rejects.toThrow(ApprovalExpiredError);
+    });
+
+    test("an expired pending request cannot be rejected", async () => {
+      const request = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() - 1);
+
+      await expect(manager.reject(request.id)).rejects.toThrow(ApprovalExpiredError);
+    });
+
+    test("an approved request is never reported as expired, no matter its expiresAt", async () => {
+      const request = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() + 10);
+      const approved = await manager.approve(request.id);
+
+      // `isApprovalExpired` is the single source of truth every manager
+      // consults — a settled request stays reading as what it settled as,
+      // even once wall-clock time passes its (now irrelevant) `expiresAt`.
+      expect(isApprovalExpired(approved, Date.now() + 1_000_000)).toBe(false);
+    });
+
+    test("expireStale marks a stale pending request expired and is idempotent", async () => {
+      const stale = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() - 1);
+      const fresh = await manager.createRequest("exec-2", "wf-2", "reason", Date.now() + 100_000);
+
+      const first = await manager.expireStale(Date.now());
+      expect(first.map((request) => request.id)).toEqual([stale.id]);
+      expect((await manager.get(stale.id))?.status).toBe("expired");
+      expect((await manager.get(fresh.id))?.status).toBe("pending");
+
+      const second = await manager.expireStale(Date.now());
+      expect(second).toEqual([]);
+    });
+
+    test("expireStale never touches an already-decided request", async () => {
+      // Decided while still within its window...
+      const request = await manager.createRequest("exec-1", "wf-1", "reason", Date.now() + 50);
+      await manager.reject(request.id, "handled before expiry check ran");
+
+      // ...then `expireStale` runs long after that same `expiresAt` passed.
+      // A decided request is never `pending`, so it is never a candidate.
+      const expired = await manager.expireStale(Date.now() + 1_000_000);
+      expect(expired).toEqual([]);
+      expect((await manager.get(request.id))?.status).toBe("rejected");
     });
   });
 

@@ -11,6 +11,7 @@ export {
   FileSessionStore,
   ApprovalNotFoundError,
   ApprovalStateTransitionError,
+  ApprovalExpiredError,
   ArtifactConflictError,
   ArtifactNotFoundError,
   ArtifactCycleError,
@@ -31,4 +32,4 @@ export {
   MemoryProposalAlreadyExistsError,
   MemoryProposalStateInvalidError,
 } from "./adapters";
-export type { FileArtifactStoreOptions } from "./adapters";
+export type { FileArtifactStoreOptions, FileApprovalManagerOptions } from "./adapters";

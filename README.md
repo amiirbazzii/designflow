@@ -76,6 +76,11 @@ in the terminal. If you step away (or close the terminal) before answering,
 the conversation is saved — `designflow answer <session-id>` picks it back up
 later exactly where you left off.
 
+A conversation left unanswered for too long (7 days by default) eventually
+expires rather than waiting forever. `designflow cleanup` marks anything
+stale as expired and tells you what it touched — it never removes your
+completed history.
+
 ## Memory
 
 Workers can remember useful, project-specific notes between runs — things
@@ -115,6 +120,4 @@ under [`docs/adr/`](docs/adr/), not here.
 
 ## License
 
-This project's `package.json` declares an MIT license, but no `LICENSE` file
-currently exists in this repository. Someone with authority to choose the
-project's license should add one before this package is published.
+MIT — see [`LICENSE`](LICENSE).

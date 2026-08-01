@@ -2,6 +2,8 @@
 import {
   DesignFlowError,
   approvalRequestSchema,
+  isApprovalExpired,
+  DEFAULT_APPROVAL_EXPIRATION_MS,
   artifactInputSchema,
   artifactRefSchema,
   artifactRelationSchema,
@@ -197,25 +199,50 @@ export class ApprovalStateTransitionError extends DesignFlowError {
   }
 }
 
+/** The request's `expiresAt` has passed. It can no longer authorize or refuse execution. */
+export class ApprovalExpiredError extends DesignFlowError {
+  public constructor(approvalId: string) {
+    super("ERR_APPROVAL_EXPIRED", `Approval ${approvalId} has expired`, { approvalId });
+    this.name = "ApprovalExpiredError";
+    Object.setPrototypeOf(this, ApprovalExpiredError.prototype);
+  }
+}
+
+export interface FileApprovalManagerOptions {
+  /**
+   * How long a request stays answerable when `createRequest` is not given an
+   * explicit `expiresAt`, in milliseconds. Defaults to
+   * `DEFAULT_APPROVAL_EXPIRATION_MS`. A host that already has an expiration
+   * policy — the CLI's own `sessions.expirationDays`, for instance — passes
+   * it here instead of this package inventing a second, disagreeing default.
+   */
+  readonly defaultExpirationMs?: number;
+}
+
 export class FileApprovalManager implements ApprovalManager {
   private readonly store: FileStore;
+  private readonly defaultExpirationMs: number;
 
-  public constructor(store: FileStore) {
+  public constructor(store: FileStore, options?: FileApprovalManagerOptions) {
     this.store = store;
+    this.defaultExpirationMs = options?.defaultExpirationMs ?? DEFAULT_APPROVAL_EXPIRATION_MS;
   }
 
   public async createRequest(
     executionId: string,
     workflowId: string,
     reason: string,
+    expiresAt?: number,
   ): Promise<ApprovalRequest> {
+    const now = Date.now();
     const request = approvalRequestSchema.parse({
       id: crypto.randomUUID(),
       executionId,
       workflowId,
       status: "pending",
       reason,
-      createdAt: Date.now(),
+      createdAt: now,
+      expiresAt: expiresAt ?? now + this.defaultExpirationMs,
     });
 
     this.store.mutate((document) => {
@@ -244,6 +271,33 @@ export class FileApprovalManager implements ApprovalManager {
     return request === undefined ? null : clone(request);
   }
 
+  /**
+   * Persists `expired` onto every still-`pending` request whose `expiresAt`
+   * has passed. Not part of `ApprovalManager` — a cleanup concern, exercised
+   * by `designflow cleanup`, never by the approval flow itself. Idempotent:
+   * a request already settled or already `expired` is skipped.
+   */
+  public async expireStale(nowMs: number): Promise<readonly ApprovalRequest[]> {
+    return this.store.mutate((document) => {
+      const expired: ApprovalRequest[] = [];
+
+      for (const [id, request] of Object.entries(document.approvals)) {
+        if (!isApprovalExpired(request, nowMs)) continue;
+
+        const settled = approvalRequestSchema.parse({
+          ...request,
+          status: "expired",
+          resolvedAt: nowMs,
+        });
+
+        document.approvals[id] = settled;
+        expired.push(settled);
+      }
+
+      return expired;
+    });
+  }
+
   private async settle(
     approvalId: string,
     status: "approved" | "rejected",
@@ -251,6 +305,8 @@ export class FileApprovalManager implements ApprovalManager {
   ): Promise<ApprovalRequest> {
     const existing = await this.get(approvalId);
     if (existing === null) throw new ApprovalNotFoundError(approvalId);
+
+    if (isApprovalExpired(existing, Date.now())) throw new ApprovalExpiredError(approvalId);
 
     // Only pending may transition, so a double-answered approval cannot flip
     // a rejection into an approval.

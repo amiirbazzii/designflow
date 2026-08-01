@@ -84,7 +84,13 @@ export type {
 } from "./composition";
 
 // ── Approval ───────────────────────────────────────────────────────
-export { InMemoryApprovalManager, LocalApprovalManager, ApprovalStateTransitionError, ApprovalNotFoundError } from "./approval";
+export {
+  InMemoryApprovalManager,
+  LocalApprovalManager,
+  ApprovalStateTransitionError,
+  ApprovalNotFoundError,
+  ApprovalExpiredError,
+} from "./approval";
 
 // ── Lifecycle ──────────────────────────────────────────────────────
 export type {

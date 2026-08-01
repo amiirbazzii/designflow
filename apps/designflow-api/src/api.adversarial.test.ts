@@ -33,6 +33,11 @@ interface Client {
     path: string,
     body?: unknown,
   ): Promise<{ status: number; body: Record<string, unknown>; raw: string }>;
+  /** Sends a raw, already-serialized string as the body — for bodies that are not valid JSON at all. */
+  postRaw(
+    path: string,
+    raw: string,
+  ): Promise<{ status: number; body: Record<string, unknown>; raw: string }>;
 }
 
 function createClient(options?: ApiHostOptions): Client {
@@ -40,18 +45,7 @@ function createClient(options?: ApiHostOptions): Client {
   openHosts.push(host);
   const handle = createRouter(host);
 
-  const send = async (
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<{ status: number; body: Record<string, unknown>; raw: string }> => {
-    const request = new Request(`http://localhost${path}`, {
-      method,
-      ...(body !== undefined
-        ? { body: JSON.stringify(body), headers: { "content-type": "application/json" } }
-        : {}),
-    });
-
+  const dispatch = async (request: Request): Promise<{ status: number; body: Record<string, unknown>; raw: string }> => {
     const response = await handle(request);
     const raw = await response.text();
     let parsed: unknown = {};
@@ -71,7 +65,33 @@ function createClient(options?: ApiHostOptions): Client {
     };
   };
 
-  return { host, get: (p) => send("GET", p), post: (p, b) => send("POST", p, b ?? {}) };
+  const send = (
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; body: Record<string, unknown>; raw: string }> =>
+    dispatch(
+      new Request(`http://localhost${path}`, {
+        method,
+        ...(body !== undefined
+          ? { body: JSON.stringify(body), headers: { "content-type": "application/json" } }
+          : {}),
+      }),
+    );
+
+  const sendRaw = (
+    path: string,
+    raw: string,
+  ): Promise<{ status: number; body: Record<string, unknown>; raw: string }> =>
+    dispatch(
+      new Request(`http://localhost${path}`, {
+        method: "POST",
+        body: raw,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+  return { host, get: (p) => send("GET", p), post: (p, b) => send("POST", p, b ?? {}), postRaw: sendRaw };
 }
 
 function pick(body: Record<string, unknown>, path: readonly string[]): unknown {
@@ -269,6 +289,39 @@ describe("3. POST /workers/:workerId/tasks field smuggling", () => {
     expect(response.status).toBe(201);
     expect(JSON.stringify(response.body)).not.toContain("some-other-agent");
     expect(JSON.stringify(response.body)).not.toContain("some-other-profile");
+  });
+
+  test("a garbage (non-JSON) body never 500s or leaks a stack trace — readJson swallows the parse failure", async () => {
+    const client = createClient();
+
+    const response = await client.postRaw("/workers/qa-reviewer/tasks", "not json at all {{{");
+    record(response.raw);
+
+    // `readJson` catches the parse error and falls back to `{}`, so this is
+    // treated as a request with no fields at all (`request: ""`) rather than
+    // ever reaching a raw `JSON.parse` exception at the route.
+    expect(response.status).not.toBe(500);
+    expect(response.raw).not.toContain("    at ");
+    expect(response.raw).not.toContain("SyntaxError");
+  });
+
+  test("wrong-typed fields (number for request, string for input, array/null bodies) are coerced away, never crash", async () => {
+    const client = createClient();
+    const bodies: unknown[] = [
+      { request: 12345, input: "a string, not an object" },
+      [1, 2, 3],
+      null,
+      { request: { nested: "object instead of string" } },
+    ];
+
+    for (const body of bodies) {
+      const response = await client.postRaw("/workers/qa-reviewer/tasks", JSON.stringify(body));
+      record(response.raw);
+
+      expect(response.status).not.toBe(500);
+      expect(response.raw).not.toContain("    at ");
+      expect(response.raw).not.toContain("TypeError");
+    }
   });
 });
 

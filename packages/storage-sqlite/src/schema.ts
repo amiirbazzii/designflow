@@ -71,6 +71,7 @@ function migrate(db: Database): void {
       reason        TEXT NOT NULL,
       created_at    INTEGER NOT NULL,
       resolved_at   INTEGER,
+      expires_at    INTEGER,
       metadata_json TEXT
     );
 
@@ -147,6 +148,27 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_sessions_worker_status
       ON sessions (worker_id, status);
   `);
+
+  // A database created before `expires_at` existed has an `approvals` table
+  // missing the column outright — `CREATE TABLE IF NOT EXISTS` above is a
+  // no-op against it, since the table already exists. Added defensively
+  // rather than as a numbered migration: the column is nullable, every read
+  // already tolerates it being absent (`fromJsonRecord`-style optional
+  // handling), and a second run against a database that already has it is a
+  // harmless no-op.
+  addColumnIfMissing(db, "approvals", "expires_at", "INTEGER");
+}
+
+function addColumnIfMissing(
+  db: Database,
+  table: string,
+  column: string,
+  type: string,
+): void {
+  const columns = db.query(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((existing) => existing.name === column)) return;
+
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
 }
 
 /** JSON helpers. `undefined` round-trips as SQL NULL rather than "undefined". */

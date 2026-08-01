@@ -15,6 +15,7 @@ import { tracesCommand } from "./commands/traces";
 import { interactiveCommand } from "./commands/interactive";
 import { settingsCommand } from "./commands/settings";
 import { answerCommand, cancelCommand, sessionsCommand } from "./commands/sessions";
+import { cleanupCommand } from "./commands/cleanup";
 import { projectsAddCommand, projectsCommand, projectsInspectCommand, projectsShowCommand } from "./commands/projects";
 import {
   memoryAddCommand,
@@ -84,6 +85,9 @@ export async function dispatch(
 
     case "settings":
       return settingsCommand(context, terminal);
+
+    case "cleanup":
+      return cleanupCommand(context, terminal);
 
     case "history": {
       const workflowId = rest[0];

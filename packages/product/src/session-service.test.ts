@@ -322,6 +322,28 @@ describe("the session state machine", () => {
     );
   });
 
+  test("an expired session's get/list report status \"expired\", not its prior status", async () => {
+    const testClock = clock("2026-08-01T10:00:00.000Z");
+    const { service } = harness({
+      decisions: [{ type: "request_clarification", question: "Which component?" }],
+      clock: testClock,
+      expirationDays: 0,
+    });
+    const result = await service.startSession({ workerId: "design-engineer", request: "help" });
+    expect(result.session.status).toBe("waiting_for_user");
+
+    // Nothing was patched — the store still literally has `waiting_for_user`
+    // — but `getSession` reports the effective status, computed fresh.
+    const read = await service.getSession(result.session.id);
+    expect(read.status).toBe("expired");
+
+    const asExpired = await service.listSessions({ status: "expired" });
+    expect(asExpired.map((session) => session.id)).toContain(result.session.id);
+
+    const asWaiting = await service.listSessions({ status: "waiting_for_user" });
+    expect(asWaiting.map((session) => session.id)).not.toContain(result.session.id);
+  });
+
   test("waiting_for_user may be cancelled", async () => {
     const { service } = harness({
       decisions: [{ type: "request_clarification", question: "Which component?" }],
@@ -597,5 +619,63 @@ describe("session events", () => {
     const result = await service.startSession({ workerId: "design-engineer", request: "help" });
     expect(result.session.status).toBe("completed");
     expect(runner.started).toHaveLength(1);
+  });
+});
+
+// ── 42. Cleanup ──────────────────────────────────────────────────
+
+describe("cleanupExpiredSessions", () => {
+  test("persists `expired` onto a stale waiting_for_user session and is idempotent", async () => {
+    const testClock = clock("2026-08-01T10:00:00.000Z");
+    const { service, store } = harness({
+      decisions: [{ type: "request_clarification", question: "Which component?" }],
+      clock: testClock,
+      expirationDays: 0,
+    });
+    const result = await service.startSession({ workerId: "design-engineer", request: "help" });
+
+    // The store still literally has `waiting_for_user` until cleanup runs.
+    expect((await store.get(result.session.id))?.status).toBe("waiting_for_user");
+
+    const first = await service.cleanupExpiredSessions();
+    expect(first.map((session) => session.id)).toEqual([result.session.id]);
+    expect((await store.get(result.session.id))?.status).toBe("expired");
+
+    // Second run: the session is now genuinely terminal, so it is no longer
+    // a candidate — nothing to do, nothing reported.
+    const second = await service.cleanupExpiredSessions();
+    expect(second).toEqual([]);
+  });
+
+  test("never touches a completed session, even one created long ago", async () => {
+    const testClock = clock("2026-08-01T10:00:00.000Z");
+    const { service } = harness({
+      decisions: [{ type: "run_workflow", workflowId: "design-to-code" }],
+      clock: testClock,
+      expirationDays: 0,
+    });
+
+    const result = await service.startSession({ workerId: "design-engineer", request: "help" });
+    expect(result.session.status).toBe("completed");
+
+    const expired = await service.cleanupExpiredSessions();
+    expect(expired).toEqual([]);
+
+    const read = await service.getSession(result.session.id);
+    expect(read.status).toBe("completed");
+  });
+
+  test("leaves a session with plenty of time left untouched", async () => {
+    const { service } = harness({
+      decisions: [{ type: "request_clarification", question: "Which component?" }],
+      expirationDays: 7,
+    });
+    const result = await service.startSession({ workerId: "design-engineer", request: "help" });
+
+    const expired = await service.cleanupExpiredSessions();
+    expect(expired).toEqual([]);
+
+    const read = await service.getSession(result.session.id);
+    expect(read.status).toBe("waiting_for_user");
   });
 });

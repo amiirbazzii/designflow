@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { mkdir, readdir } from "node:fs/promises";
 import {
   approvalRequestSchema,
+  isApprovalExpired,
+  DEFAULT_APPROVAL_EXPIRATION_MS,
   type ApprovalRequest,
   type ApprovalManager,
   DesignFlowError,
@@ -11,6 +13,7 @@ import {
 import {
   ApprovalStateTransitionError,
   ApprovalNotFoundError,
+  ApprovalExpiredError,
 } from "./in-memory-approval-manager";
 
 // ── Error Codes ─────────────────────────────────────────────────
@@ -68,14 +71,17 @@ export class LocalApprovalManager implements ApprovalManager {
     executionId: string,
     workflowId: string,
     reason: string,
+    expiresAt?: number,
   ): Promise<ApprovalRequest> {
+    const now = Date.now();
     const request: ApprovalRequest = {
       id: crypto.randomUUID(),
       executionId,
       workflowId,
       status: "pending",
       reason,
-      createdAt: Date.now(),
+      createdAt: now,
+      expiresAt: expiresAt ?? now + DEFAULT_APPROVAL_EXPIRATION_MS,
     };
 
     const validated = approvalRequestSchema.parse(request);
@@ -92,6 +98,8 @@ export class LocalApprovalManager implements ApprovalManager {
     if (request === null) {
       throw new ApprovalNotFoundError(approvalId);
     }
+
+    if (isApprovalExpired(request, Date.now())) throw new ApprovalExpiredError(approvalId);
 
     assertValidTransition(approvalId, request.status, "approved");
 
@@ -119,6 +127,8 @@ export class LocalApprovalManager implements ApprovalManager {
     if (request === null) {
       throw new ApprovalNotFoundError(approvalId);
     }
+
+    if (isApprovalExpired(request, Date.now())) throw new ApprovalExpiredError(approvalId);
 
     assertValidTransition(approvalId, request.status, "rejected");
 
@@ -198,6 +208,33 @@ export class LocalApprovalManager implements ApprovalManager {
         { approvalId: approval.id, error: String(error) },
       );
     }
+  }
+
+  /**
+   * Persists `expired` onto every still-`pending` request whose `expiresAt`
+   * has passed. Not part of `ApprovalManager` — a cleanup concern, exercised
+   * by `designflow cleanup`, never by the approval flow itself. Idempotent:
+   * a request already settled or already `expired` is skipped.
+   */
+  public async expireStale(nowMs: number): Promise<readonly ApprovalRequest[]> {
+    const ids = await this.listApprovals();
+    const expired: ApprovalRequest[] = [];
+
+    for (const id of ids) {
+      const request = await this.readApproval(id);
+      if (request === null || !isApprovalExpired(request, nowMs)) continue;
+
+      const settled = approvalRequestSchema.parse({
+        ...request,
+        status: "expired",
+        resolvedAt: nowMs,
+      });
+
+      await this.writeApproval(settled);
+      expired.push(settled);
+    }
+
+    return expired;
   }
 
   public async listApprovals(): Promise<readonly string[]> {

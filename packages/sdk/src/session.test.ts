@@ -135,7 +135,7 @@ describe("isValidSessionTransition", () => {
 });
 
 describe("sessionStatusSchema", () => {
-  test("enumerates exactly the six statuses", () => {
+  test("enumerates exactly the seven statuses", () => {
     expect(sessionStatusSchema.options).toEqual([
       "active",
       "waiting_for_user",
@@ -143,6 +143,7 @@ describe("sessionStatusSchema", () => {
       "declined",
       "failed",
       "cancelled",
+      "expired",
     ]);
   });
 });

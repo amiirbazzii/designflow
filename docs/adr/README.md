@@ -25,3 +25,5 @@ This directory contains Architecture Decision Records for DesignFlow.
 - [20260801-multi-worker-product-alignment.md](20260801-multi-worker-product-alignment.md)
 - [20260801-project-context-and-agent-memory.md](20260801-project-context-and-agent-memory.md)
 - [20260801-provider-neutral-model-runtime.md](20260801-provider-neutral-model-runtime.md)
+- [20260801-v1-release-hardening.md](20260801-v1-release-hardening.md)
+- [20260802-release-candidate-validation.md](20260802-release-candidate-validation.md)

@@ -179,17 +179,16 @@ execution; it only measures completed output quality, wired into
 
 ## 8. Known limitations
 
-- **npm packaging is not yet a single dependency-free artifact.** The
-  published `designflow` package still resolves ~15 `workspace:*` internal
-  packages rather than bundling them into one file. A bundler migration
-  (esbuild/rollup bundling all internal deps into `dist/main.js`) was
-  explicitly descoped this stage as a redesign of the build pipeline, not a
-  hardening fix — tracked as v1.1 follow-up work.
-- **No stale-session/abandoned-approval expiry mechanism.** A session left
+- **npm packaging.** ~~The published `designflow` package still resolves
+  ~15 `workspace:*` internal packages~~ — **corrected in Stage 42.5**: `bun
+  build --target=node --format=esm` (`apps/designflow-cli`'s existing build
+  script) already inlines every `@designflow/*` internal package into one
+  `dist/main.js`. This was never actually a gap; it was undiagnosed. See
+  [`20260802-release-candidate-validation.md`](20260802-release-candidate-validation.md).
+- **No stale-session/abandoned-approval expiry mechanism.** ~~A session left
   in `waiting_for_user`, or an approval left pending indefinitely, has no
-  TTL or automatic cleanup. Adding one is a product policy decision (how
-  long is "stale"? what happens on expiry?) rather than a pure hardening
-  fix, and was intentionally not half-implemented this stage.
+  TTL or automatic cleanup.~~ **Closed in Stage 42.5** — see the ADR linked
+  above.
 - **The demo app's multi-worker support is workflow-engine-level, not
   Worker-Task-Boundary-level.** `apps/designflow-demo` now runs any of the
   4 workflows to completion (Stage 42, §4 of the source spec, Option A), but

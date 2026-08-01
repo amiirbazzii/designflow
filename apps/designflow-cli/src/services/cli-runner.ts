@@ -24,6 +24,7 @@ import {
   ContextAssemblyService,
   buildProgress,
   type ExecutionProgress,
+  type SessionClock,
   type WorkerTaskRequest,
   type WorkerTaskResult,
 } from "@designflow/product";
@@ -127,6 +128,8 @@ import {
  * right choice for the API tier, where concurrency and volume matter.
  */
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
 const silentLogger: Logger = {
   info: () => {},
   warn: () => {},
@@ -189,6 +192,20 @@ export interface ModelAssignment {
   readonly providerId: string;
   readonly model: string;
   readonly credentialConfigured: boolean;
+}
+
+/**
+ * What `designflow cleanup` did, for the command to render.
+ *
+ * Only ever reports sessions and approvals moved into a terminal `expired`
+ * state — nothing here is ever deleted, and completed history is never
+ * touched. See `cleanup` on `CliContext` for the guarantee this reports on.
+ */
+export interface CleanupReport {
+  /** Sessions this run moved from a stale `active`/`waiting_for_user` into `expired`. */
+  readonly expiredSessionIds: readonly string[];
+  /** Approval requests this run moved from a stale `pending` into `expired`. */
+  readonly expiredApprovalIds: readonly string[];
 }
 
 export interface CliContext {
@@ -272,6 +289,17 @@ export interface CliContext {
   listWorkflows(): readonly WorkflowInfo[];
   /** Redraws while a run is in flight. */
   onProgress(listener: ProgressListener): void;
+  /**
+   * Marks stale, unresumable state as `expired` — `designflow cleanup`.
+   *
+   * Deterministic and idempotent: a session or approval past its
+   * `expiresAt` is marked once and reported once; running this again with
+   * nothing newly stale returns an empty report rather than re-reporting the
+   * same ones. Never deletes anything and never touches a `completed`
+   * session or a decided (`approved`/`rejected`) approval — this only ever
+   * moves transient, still-pending state into its own terminal status.
+   */
+  cleanup(): Promise<CleanupReport>;
   close(): void;
 }
 
@@ -301,6 +329,18 @@ export interface CliContextOptions {
    * to reach.
    */
   readonly modelEndpointOverride?: string;
+  /**
+   * Test-only. Overrides the clock `AgentSessionService` uses to stamp and
+   * evaluate `expiresAt`.
+   *
+   * `readSessionConfig` only accepts a positive `expirationDays` — zero is
+   * refused, on purpose, so a config typo cannot make every session expire
+   * on arrival — so there is no way to make a session stale *immediately*
+   * through config alone. This is the same seam `modelEndpointOverride`
+   * already is: explicit dependency injection a test reaches by calling this
+   * function directly, with no config file or env var able to reach it.
+   */
+  readonly sessionClockOverride?: SessionClock;
 }
 
 export function createCliContext(options?: CliContextOptions): CliContext {
@@ -323,7 +363,15 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
   const artifactStore = new FileArtifactStore(store, { eventPublisher });
   const repository = new FileExecutionRepository(store);
-  const approvals = new FileApprovalManager(store);
+
+  // An approval's own default expiration reuses the same `expirationDays`
+  // config a session already reads — one expiration policy per installation,
+  // not two that could quietly disagree. Read once, early, since both
+  // `approvals` and `sessions` below need it.
+  const sessionConfig = readSessionConfig(home.config);
+  const approvals = new FileApprovalManager(store, {
+    defaultExpirationMs: sessionConfig.expirationDays * ONE_DAY_MS,
+  });
 
   const capabilityRegistry = new CapabilityRegistry();
   const workflows = new Map<string, WorkflowPackage>();
@@ -560,8 +608,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
   // Sessions share the same document as executions and traces, so a session,
   // the run it starts and the trace behind it are all written in one atomic
-  // rename.
-  const sessionConfig = readSessionConfig(home.config);
+  // rename. `sessionConfig` was already read above, for `approvals`.
   const sessionStore = new FileSessionStore(store);
   const sessions = new AgentSessionService({
     store: sessionStore,
@@ -573,6 +620,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     expirationDays: sessionConfig.expirationDays,
     resolveModelProfileId: (agentId) => agentRegistry.get(agentId)?.manifest.modelProfileId,
     knowledge,
+    ...(options?.sessionClockOverride !== undefined ? { clock: options.sessionClockOverride } : {}),
   });
 
   /**
@@ -665,6 +713,16 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
     onProgress(listener) {
       listeners.push(listener);
+    },
+
+    async cleanup() {
+      const expiredSessions = await sessions.cleanupExpiredSessions();
+      const expiredApprovals = await approvals.expireStale(Date.now());
+
+      return {
+        expiredSessionIds: expiredSessions.map((session) => session.id),
+        expiredApprovalIds: expiredApprovals.map((approval) => approval.id),
+      };
     },
 
     close: () => store.close(),

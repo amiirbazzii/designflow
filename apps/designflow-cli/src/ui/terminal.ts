@@ -213,6 +213,7 @@ export function usage(): string {
     "  designflow answer <id>     Answer a worker's question",
     "  designflow cancel <id>     Cancel a waiting conversation",
     "  designflow settings        Show where things are kept",
+    "  designflow cleanup         Mark expired conversations and approvals",
     "",
     "Options:",
     "  -h, --help                 Show this help",
