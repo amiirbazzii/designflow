@@ -113,20 +113,40 @@ describe("starting a workflow", () => {
     const response = await client.get("/api/workflows");
 
     expect(response.status).toBe(200);
-    expect(response.body.workflows).toEqual([
-      {
-        workflowId: "design-to-code",
-        name: "Design → Code",
-        description: "Convert design inputs into production-ready code artifacts",
-        steps: [
-          "analyze-design",
-          "extract-design-tokens",
-          "create-component-structure",
-          "generate-code",
-          "validate-output",
-        ],
-      },
+    expect(response.body.workflows).toHaveLength(4);
+    // Inputs come from the owning worker's own manifest — proves the
+    // deprecated route no longer returns an empty form for a worker whose
+    // fields it does not hand-duplicate.
+    const designEngineerInputs = (response.body.workflows[0] as Record<string, unknown>)["inputs"];
+    expect(Array.isArray(designEngineerInputs) && designEngineerInputs.length).toBe(3);
+    expect((designEngineerInputs as { key: string }[]).map((f) => f.key)).toEqual([
+      "designFile",
+      "framework",
+      "frames",
     ]);
+
+    const { inputs: _inputs, ...withoutInputs } = response.body.workflows[0] as Record<string, unknown>;
+    expect(withoutInputs).toEqual({
+      workflowId: "design-to-code",
+      name: "Design → Code",
+      description: "Convert design inputs into production-ready code artifacts",
+      steps: [
+        "analyze-design",
+        "extract-design-tokens",
+        "create-component-structure",
+        "generate-code",
+        "validate-output",
+      ],
+    });
+
+    // The regression this guards against: a workflow whose owning worker
+    // wasn't in a web-side hardcoded table got an empty `inputs: []`, which
+    // rendered an empty form. Every one of the four now carries its own
+    // non-empty, correctly-shaped `inputs`.
+    for (const workflow of response.body.workflows as Record<string, unknown>[]) {
+      const inputs = workflow["inputs"];
+      expect(Array.isArray(inputs) && inputs.length > 0).toBe(true);
+    }
   });
 
   test("starts a run and returns a handle", async () => {
@@ -587,3 +607,133 @@ describe("history", () => {
     expect(pick(response.body, ["history"])).toEqual([]);
   });
 });
+
+// ── Stage 41: the Worker Task Boundary ───────────────────────────
+
+describe("the worker task boundary", () => {
+  test("GET /workers lists the catalogue with no agent or workflow ids", async () => {
+    const client = createClient();
+
+    const response = await client.get("/workers");
+
+    expect(response.status).toBe(200);
+    const workers = response.body.workers as Record<string, unknown>[];
+    expect(workers.map((w) => w["id"])).toEqual([
+      "design-engineer",
+      "qa-reviewer",
+      "research-analyst",
+      "product-manager",
+    ]);
+
+    for (const worker of workers) {
+      expect(worker["agentId"]).toBeUndefined();
+      expect(worker["workflows"]).toBeUndefined();
+    }
+  });
+
+  test("GET /workers/:workerId returns one worker's safe detail", async () => {
+    const client = createClient();
+
+    const response = await client.get("/workers/qa-reviewer");
+
+    expect(response.status).toBe(200);
+    expect((response.body.worker as Record<string, unknown>)["name"]).toBe("QA Reviewer");
+    expect((response.body.worker as Record<string, unknown>)["agentId"]).toBeUndefined();
+  });
+
+  test("GET /workers/:workerId 404s for an unknown worker", async () => {
+    const client = createClient();
+
+    const response = await client.get("/workers/nobody");
+
+    expect(response.status).toBe(404);
+    expect((response.body.error as Record<string, unknown>)["code"]).toBe("ERR_WORKER_NOT_FOUND");
+  });
+
+  test("POST /workers/:workerId/tasks with nothing to act on asks a clarifying question, never leaking an agent id", async () => {
+    const client = createClient();
+
+    const response = await client.post("/workers/qa-reviewer/tasks", {});
+
+    expect(response.status).toBe(201);
+    const session = response.body.session as Record<string, unknown>;
+    expect(session["status"]).toBe("waiting_for_user");
+    expect(session["agentId"]).toBeUndefined();
+    expect(typeof response.body.message).toBe("string");
+  });
+
+  test("GET /sessions and GET /sessions/:sessionId both find the session just started", async () => {
+    const client = createClient();
+
+    const started = await client.post("/workers/product-manager/tasks", {});
+    const sessionId = (started.body.session as Record<string, unknown>)["id"] as string;
+
+    const list = await client.get("/sessions");
+    expect(response_ids(list.body.sessions as Record<string, unknown>[])).toContain(sessionId);
+
+    const detail = await client.get(`/sessions/${sessionId}`);
+    expect(detail.status).toBe(200);
+    expect((detail.body.session as Record<string, unknown>)["id"]).toBe(sessionId);
+    expect((detail.body.session as Record<string, unknown>)["agentId"]).toBeUndefined();
+  });
+
+  test("POST /workers/:workerId/tasks 404s for an unknown worker", async () => {
+    const client = createClient();
+
+    const response = await client.post("/workers/nobody/tasks", {});
+
+    expect(response.status).toBe(404);
+  });
+
+  test("GET /results starts empty and GET /results/:resultId 404s for an unknown run", async () => {
+    const client = createClient();
+
+    const list = await client.get("/results");
+    expect(list.body.results).toEqual([]);
+
+    const detail = await client.get("/results/nobody");
+    expect(detail.status).toBe(404);
+  });
+
+  test("a completed run started through the deprecated raw endpoint is discoverable as a legacy result", async () => {
+    const client = createClient({ requireApproval: false });
+
+    const start = await client.post("/api/workflows/design-to-code/start", {
+      input: DESIGN_INPUT,
+    });
+    const executionId = (start.body.execution as Record<string, unknown>)["executionId"] as string;
+
+    await waitForStatus(client, executionId, "ready");
+
+    const result = await client.get(`/results/${executionId}`);
+    expect(result.status).toBe(200);
+    // design-to-code is owned by the design-engineer worker, so this is not
+    // actually "legacy" — it proves the mapping resolves from workflow id to
+    // worker id without needing a session at all.
+    expect((result.body.result as Record<string, unknown>)["workerId"]).toBe("design-engineer");
+    expect((result.body.result as Record<string, unknown>)["status"]).toBe("completed");
+    expect(Object.keys(result.body.result as Record<string, unknown>)).not.toContain("agentId");
+    expect(Object.keys(result.body.result as Record<string, unknown>)).not.toContain("workflowId");
+
+    const list = await client.get("/results");
+    expect((list.body.results as Record<string, unknown>[]).map((r) => r["id"])).toContain(executionId);
+  });
+});
+
+function response_ids(sessions: Record<string, unknown>[]): string[] {
+  return sessions.map((s) => s["id"] as string);
+}
+
+async function waitForStatus(
+  client: Client,
+  executionId: string,
+  status: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const response = await client.get(`/api/executions/${executionId}`);
+    const current = (response.body.status as Record<string, unknown> | undefined)?.["state"];
+    if (current === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`execution ${executionId} never reached ${status}`);
+}

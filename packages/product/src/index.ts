@@ -35,6 +35,16 @@ export type {
 // ── Agent Tracing ───────────────────────────────────────────────
 export { InMemoryTraceStore, TraceCollector, TraceService } from "./traces";
 
+// ── Worker Catalogue & Results (Stage 41) ───────────────────────
+export { WorkerCatalogService, WorkerNotFoundInCatalogError } from "./worker-catalog-service";
+export type {
+  WorkerCatalogOptions,
+  WorkerSummary,
+  WorkerDebugDetail,
+} from "./worker-catalog-service";
+export { WorkerResultService, WorkerResultNotReadyError } from "./worker-result-service";
+export type { WorkerResultServiceOptions } from "./worker-result-service";
+
 // ── Agent Sessions ──────────────────────────────────────────────
 export { InMemorySessionStore } from "./session-store";
 export { buildSessionContext } from "./session-context";

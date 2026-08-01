@@ -19,10 +19,16 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@designflow/agents": "workspace:*",
     "@designflow/core": "workspace:*",
     "@designflow/product": "workspace:*",
     "@designflow/sdk": "workspace:*",
     "@designflow/storage-sqlite": "workspace:*",
-    "@designflow/workflow-design-to-code": "workspace:*"
+    "@designflow/tools": "workspace:*",
+    "@designflow/workers": "workspace:*",
+    "@designflow/workflow-design-to-code": "workspace:*",
+    "@designflow/workflow-qa-review": "workspace:*",
+    "@designflow/workflow-research-analysis": "workspace:*",
+    "@designflow/workflow-product-brief": "workspace:*"
   }
 }

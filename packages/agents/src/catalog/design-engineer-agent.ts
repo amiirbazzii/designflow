@@ -137,6 +137,12 @@ function describe(task: AgentTask): string {
     }
   }
 
+  // A resumed session's clarification answer is the only thing left to
+  // classify when the original request/input was empty — see `readyToDecide`.
+  if (!hasSomethingToDo(task)) {
+    for (const clarification of readClarifications(task)) parts.push(clarification.answer);
+  }
+
   return parts.filter((part) => part.length > 0).join(" ");
 }
 
@@ -169,6 +175,22 @@ function readClarifications(
       ? [{ question, answer }]
       : [];
   });
+}
+
+/**
+ * Whether there is now anything to act on — the original request/input, OR a
+ * clarification answer a resumed session carries.
+ *
+ * A session that started with a genuinely empty request/input (reachable
+ * through the product API's `POST /workers/:id/tasks` with an empty body,
+ * unlike the CLI's interactive form, which always fills a placeholder) is
+ * resumed by `AgentSessionService.answerSession` re-routing with that same
+ * empty `originalRequest`/`originalInput` — the answer only ever lands in
+ * `task.context.clarifications`. `hasSomethingToDo` alone never sees it, and
+ * without this, the session would ask the same question forever.
+ */
+function readyToDecide(task: AgentTask): boolean {
+  return hasSomethingToDo(task) || readClarifications(task).length > 0;
 }
 
 /**
@@ -292,7 +314,7 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
     };
   }
 
-  if (!hasSomethingToDo(task)) {
+  if (!readyToDecide(task)) {
     return {
       type: "request_clarification",
       question:
@@ -361,7 +383,7 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
   context,
   manifest,
 ) => {
-  if (!hasSomethingToDo(task)) {
+  if (!readyToDecide(task)) {
     return {
       type: "request_clarification",
       question:

@@ -35,6 +35,12 @@ import {
   createAgentRegistry,
   designEngineerDefaultModelProfile,
   modelDesignEngineerStrategy,
+  qaReviewerDefaultModelProfile,
+  modelQaReviewerStrategy,
+  researchAnalystDefaultModelProfile,
+  modelResearchAnalystStrategy,
+  productManagerDefaultModelProfile,
+  modelProductManagerStrategy,
 } from "@designflow/agents";
 import { ToolRuntime, createToolRegistry, createProjectInspector } from "@designflow/tools";
 import {
@@ -72,6 +78,18 @@ import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
 } from "@designflow/workflow-design-to-code";
+import {
+  qaReviewApprovalPolicy,
+  qaReviewWorkflowPackage,
+} from "@designflow/workflow-qa-review";
+import {
+  researchAnalysisApprovalPolicy,
+  researchAnalysisWorkflowPackage,
+} from "@designflow/workflow-research-analysis";
+import {
+  productBriefApprovalPolicy,
+  productBriefWorkflowPackage,
+} from "@designflow/workflow-product-brief";
 import { resolveDatabasePath } from "./config";
 import { initializeHome } from "./home";
 import type { HomeState } from "./home";
@@ -117,7 +135,12 @@ const silentLogger: Logger = {
  * `services/cli-runner.ts` is exactly the mistake this list exists to avoid;
  * see `shell.test.ts`'s scan for why.
  */
-const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [designEngineerDefaultModelProfile];
+const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
+  designEngineerDefaultModelProfile,
+  qaReviewerDefaultModelProfile,
+  researchAnalystDefaultModelProfile,
+  productManagerDefaultModelProfile,
+];
 
 export interface WorkflowInfo {
   readonly workflowId: string;
@@ -297,7 +320,12 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const workflows = new Map<string, WorkflowPackage>();
   const workers = options?.workers ?? createWorkerRegistry();
 
-  for (const workflowPackage of [designToCodeWorkflowPackage]) {
+  for (const workflowPackage of [
+    designToCodeWorkflowPackage,
+    qaReviewWorkflowPackage,
+    researchAnalysisWorkflowPackage,
+    productBriefWorkflowPackage,
+  ]) {
     workflowPackage.load(capabilityRegistry);
     workflows.set(workflowPackage.id, workflowPackage);
   }
@@ -332,7 +360,21 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     approvalManager: approvals,
     ...(requireApproval
       ? {
-          policy: designToCodeApprovalPolicy,
+          // One combined policy across every installed workflow. Safe to
+          // concatenate rather than pick one: each workflow's `target` is
+          // that workflow's own step id, and step ids are unique across the
+          // four built-in workflows, so no rule can ever match a step it was
+          // not written for.
+          policy: {
+            id: "combined-approval",
+            name: "Combined approval gate",
+            rules: [
+              ...designToCodeApprovalPolicy.rules,
+              ...qaReviewApprovalPolicy.rules,
+              ...researchAnalysisApprovalPolicy.rules,
+              ...productBriefApprovalPolicy.rules,
+            ],
+          },
           policyEvaluator: new InMemoryPolicyEvaluator(),
         }
       : {}),
@@ -403,6 +445,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // with the name itself.
   const agentRegistry = createAgentRegistry({
     designEngineerStrategy: modelModeRequested ? modelDesignEngineerStrategy : undefined,
+    qaReviewerStrategy: modelModeRequested ? modelQaReviewerStrategy : undefined,
+    researchAnalystStrategy: modelModeRequested ? modelResearchAnalystStrategy : undefined,
+    productManagerStrategy: modelModeRequested ? modelProductManagerStrategy : undefined,
   });
 
   // Traces share the same document as executions, so a run and the decision
@@ -561,6 +606,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           category: "workflow",
           workflows: [workflow.id],
           inputs: [],
+          evaluationCriteria: [],
         },
       workflowId: workflow.id,
       workflowInstalled: true,

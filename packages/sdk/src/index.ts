@@ -56,6 +56,26 @@ export type {
   WorkerRegistry,
 } from "./worker-manifest";
 
+export {
+  workerEvaluationCriterionSchema,
+} from "./worker-evaluation";
+export type { WorkerEvaluationCriterion } from "./worker-evaluation";
+
+export {
+  workerResultSchema,
+  workerResultOutputSchema,
+  workerResultStatusSchema,
+  workerEvaluationSummarySchema,
+  workerEvaluationResultSchema,
+} from "./worker-result";
+export type {
+  WorkerResult,
+  WorkerResultOutput,
+  WorkerResultStatus,
+  WorkerEvaluationSummary,
+  WorkerEvaluationResult,
+} from "./worker-result";
+
 // ── Agents ──────────────────────────────────────────────────────
 export {
   agentManifestSchema,

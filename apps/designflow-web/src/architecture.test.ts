@@ -64,6 +64,30 @@ describe("web application boundaries", () => {
     expect(client).toContain("/api/");
   });
 
+  test("InputForm derives its fields from the server, not a hardcoded per-workflow table", () => {
+    // Regression: an earlier version hardcoded design-to-code's three
+    // fields in a `FIELDS` table keyed by workflow id, so any other
+    // workflow — including all three added this stage — silently got an
+    // empty form. Fields must now come from `props.workflow.inputs`.
+    const source = readFileSync(join(import.meta.dir, "screens/InputForm.tsx"), "utf8");
+
+    expect(source).toContain("props.workflow.inputs");
+    expect(source).not.toContain("homepage.fig");
+    expect(source).not.toMatch(/const FIELDS/);
+  });
+
+  test("the worker schema names no internal id — a worker response is never a workflow/agent id carrier", () => {
+    const client = readFileSync(join(import.meta.dir, "api-client.ts"), "utf8");
+    const workerSchemaSource = client.slice(
+      client.indexOf("const workerSummarySchema"),
+      client.indexOf("export type WorkerSummary"),
+    );
+
+    for (const forbidden of ["agentId", "workflowId", "modelProfileId"]) {
+      expect(workerSchemaSource).not.toContain(forbidden);
+    }
+  });
+
   test("every network call goes through the api client", () => {
     const offenders: string[] = [];
 

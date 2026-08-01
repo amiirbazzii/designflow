@@ -24,6 +24,7 @@
     "@designflow/core": "workspace:*",
     "@designflow/product": "workspace:*",
     "@designflow/sdk": "workspace:*",
+    "@designflow/workers": "workspace:*",
     "@designflow/workflow-design-to-code": "workspace:*"
   }
 }

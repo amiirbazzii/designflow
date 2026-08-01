@@ -1,5 +1,6 @@
 // packages/sdk/src/worker-manifest.ts
 import { z } from "zod";
+import { workerEvaluationCriterionSchema } from "./worker-evaluation";
 
 /**
  * A Worker is a product-facing identity that wraps one or more workflows.
@@ -70,6 +71,27 @@ export const workerManifestSchema = z.object({
    * that named only an agent would be a promise nobody could verify.
    */
   agentId: z.string().min(1).optional(),
+  /**
+   * What "good" means for this worker's result.
+   *
+   * Typed product metadata, not an evaluation engine — declaring a criterion
+   * here does not run it. Optional and additive, so every manifest written
+   * before Stage 41 keeps parsing unchanged.
+   */
+  evaluationCriteria: z.array(workerEvaluationCriterionSchema).default([]),
+  /**
+   * The project facts and memory notes this worker draws on, named for
+   * display and documentation — not an access grant. Stage 40's scoping
+   * (`MemoryScope`, `ProjectContextService`) is what actually enforces
+   * isolation; this is descriptive metadata a settings/help surface can show
+   * ("Design Engineer uses: framework, design-system path").
+   */
+  projectContext: z
+    .object({
+      relevantFacts: z.array(z.string().min(1)).default([]),
+      relevantMemory: z.array(z.string().min(1)).default([]),
+    })
+    .optional(),
   metadata: z
     .object({
       author: z.string().optional(),

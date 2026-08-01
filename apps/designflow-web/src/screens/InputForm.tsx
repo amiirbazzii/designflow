@@ -5,40 +5,13 @@ import type { WorkflowSummary } from "../api-client";
 /**
  * The workflow input form.
  *
- * Generated from the workflow's own field descriptors, not hardcoded per
- * workflow. Installing a second workflow adds a screen without changing one:
- * the fields, their placeholders and their choices all travel with the
- * workflow.
- *
- * The descriptors live here for now because `WorkflowManifest` has no field
- * metadata yet — see the ADR's limitations.
+ * Generated from `props.workflow.inputs` — the owning worker's own
+ * `WorkerManifest.inputs`, forwarded by the API (`GET /api/workflows`) —
+ * never hardcoded per workflow here. Installing a fifth worker/workflow adds
+ * a working form with no change to this file, closing the gap an earlier
+ * version of this component had: a workflow this table did not name got an
+ * empty form.
  */
-
-interface Field {
-  readonly key: string;
-  readonly label: string;
-  readonly placeholder: string;
-  readonly list?: boolean;
-  readonly choices?: readonly string[];
-}
-
-const FIELDS: Record<string, readonly Field[]> = {
-  "design-to-code": [
-    { key: "designFile", label: "Design file", placeholder: "homepage.fig" },
-    {
-      key: "framework",
-      label: "Framework",
-      placeholder: "react",
-      choices: ["react", "vue", "svelte"],
-    },
-    {
-      key: "frames",
-      label: "Frames",
-      placeholder: "brand/Header, brand/Footer, layout/Dashboard",
-      list: true,
-    },
-  ],
-};
 
 export function InputForm(props: {
   readonly workflow: WorkflowSummary;
@@ -46,7 +19,7 @@ export function InputForm(props: {
   readonly onCancel: () => void;
   readonly onSubmit: (input: Record<string, unknown>) => void;
 }): JSX.Element {
-  const fields = FIELDS[props.workflow.workflowId] ?? [];
+  const fields = props.workflow.inputs;
   const [values, setValues] = useState<Record<string, string>>({});
 
   const submit = (): void => {

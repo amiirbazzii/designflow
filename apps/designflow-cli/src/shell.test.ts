@@ -335,7 +335,7 @@ describe("main menu", () => {
     expect(terminal.transcript).toContain("Settings");
     expect(terminal.transcript).toContain(home);
     expect(terminal.transcript).toContain(`DesignFlow ${CLI_VERSION}`);
-    expect(terminal.transcript).toContain("1 installed");
+    expect(terminal.transcript).toContain("4 installed");
   });
 
   test("settings offers no account, key or endpoint", async () => {
@@ -398,7 +398,7 @@ describe("the menu reads the worker registry", () => {
     // The picker reads the registry every time. Nothing in commands/ or ui/
     // names a worker, so adding one is a registration rather than an edit.
     expect(terminal.transcript).toContain("1. Design Engineer");
-    expect(terminal.transcript).toContain("2. Copy Editor");
+    expect(terminal.transcript).toContain("5. Copy Editor");
     expect(terminal.transcript).toContain(
       "Invented by this test, never named in the CLI",
     );

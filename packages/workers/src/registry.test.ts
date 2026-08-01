@@ -7,7 +7,14 @@ import {
   InMemoryWorkerRegistry,
   WorkerNotFoundError,
 } from "./registry";
-import { BUILT_IN_WORKERS, createWorkerRegistry, designEngineer } from "./index";
+import {
+  BUILT_IN_WORKERS,
+  createWorkerRegistry,
+  designEngineer,
+  productManager,
+  qaReviewer,
+  researchAnalyst,
+} from "./index";
 
 const worker = (overrides?: Partial<WorkerManifest>): WorkerManifest =>
   workerManifestSchema.parse({
@@ -117,8 +124,13 @@ describe("listing workers", () => {
   test("lists the built-in catalogue", () => {
     const registry = createWorkerRegistry();
 
-    expect(registry.listWorkers().map((w) => w.id)).toEqual(["design-engineer"]);
-    expect(BUILT_IN_WORKERS).toHaveLength(1);
+    expect(registry.listWorkers().map((w) => w.id)).toEqual([
+      "design-engineer",
+      "qa-reviewer",
+      "research-analyst",
+      "product-manager",
+    ]);
+    expect(BUILT_IN_WORKERS).toHaveLength(4);
   });
 
   test("preserves registration order", () => {
@@ -180,7 +192,12 @@ describe("resolving a worker", () => {
       if (!(error instanceof DesignFlowError)) throw error;
 
       expect(error.code).toBe("ERR_WORKER_NOT_FOUND");
-      expect(error.metadata.available).toEqual(["design-engineer"]);
+      expect(error.metadata.available).toEqual([
+        "design-engineer",
+        "qa-reviewer",
+        "research-analyst",
+        "product-manager",
+      ]);
       expect(error).toBeInstanceOf(WorkerNotFoundError);
     }
   });
@@ -211,7 +228,7 @@ describe("registering a worker", () => {
     registry.registerWorker(worker({ id: "extra" }));
 
     expect(registry.getWorker("extra")?.name).toBe("Test Worker");
-    expect(registry.listWorkers()).toHaveLength(2);
+    expect(registry.listWorkers()).toHaveLength(5);
   });
 
   test("validates at the boundary", () => {
@@ -293,5 +310,52 @@ describe("architecture", () => {
         expect(contents).not.toContain(forbidden);
       }
     }
+  });
+});
+
+// ── Stage 41: four-worker catalogue ─────────────────────────────
+
+describe("stage 41 worker catalogue", () => {
+  test("four workers ship, all validate, ids are unique", () => {
+    expect(BUILT_IN_WORKERS).toHaveLength(4);
+
+    for (const manifest of BUILT_IN_WORKERS) {
+      expect(() => workerManifestSchema.parse(manifest)).not.toThrow();
+    }
+
+    const ids = BUILT_IN_WORKERS.map((w) => w.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("every new worker names exactly one workflow and an agent", () => {
+    for (const manifest of [qaReviewer, researchAnalyst, productManager]) {
+      expect(manifest.workflows).toHaveLength(1);
+      expect(manifest.agentId).toBeDefined();
+    }
+  });
+
+  test("qa-reviewer, research-analyst and product-manager resolve to distinct workflows", () => {
+    expect(qaReviewer.workflows).toEqual(["qa-review"]);
+    expect(researchAnalyst.workflows).toEqual(["research-analysis"]);
+    expect(productManager.workflows).toEqual(["product-brief"]);
+  });
+
+  test("every worker declares required evaluation criteria", () => {
+    for (const manifest of BUILT_IN_WORKERS) {
+      expect(manifest.evaluationCriteria.length).toBeGreaterThan(0);
+      expect(manifest.evaluationCriteria.some((c) => c.required)).toBe(true);
+    }
+  });
+
+  test("no worker manifest names a global/shared model — model choice lives on the agent", () => {
+    for (const manifest of BUILT_IN_WORKERS) {
+      expect((manifest as Record<string, unknown>)["model"]).toBeUndefined();
+      expect((manifest as Record<string, unknown>)["modelProfileId"]).toBeUndefined();
+    }
+  });
+
+  test("design-engineer keeps its Stage 33 workflow/input shape unchanged", () => {
+    expect(designEngineer.workflows).toEqual(["design-to-code"]);
+    expect(designEngineer.inputs).toHaveLength(3);
   });
 });

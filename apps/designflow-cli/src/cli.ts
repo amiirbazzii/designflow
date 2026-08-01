@@ -2,7 +2,7 @@
 import { onboarding, runExample, usage, version } from "./ui/terminal";
 import type { Terminal } from "./ui/terminal";
 import type { CliContext } from "./services/cli-runner";
-import { listCommand } from "./commands/list";
+import { workerDetailCommand, workersCommand } from "./commands/workers";
 import { runCommand } from "./commands/run";
 import { historyCommand } from "./commands/history";
 import { tracesCommand } from "./commands/traces";
@@ -67,8 +67,14 @@ export async function dispatch(
   }
 
   switch (command) {
+    // `list` is the original name, kept as an alias.
     case "list":
-      return listCommand(context, terminal);
+    case "workers": {
+      const workerId = rest[0];
+      return workerId !== undefined
+        ? workerDetailCommand(context, terminal, workerId)
+        : workersCommand(context, terminal);
+    }
 
     case "settings":
       return settingsCommand(context, terminal);

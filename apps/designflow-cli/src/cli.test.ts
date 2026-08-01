@@ -161,6 +161,41 @@ describe("designflow list", () => {
   });
 });
 
+describe("designflow workers", () => {
+  test("workers is the same command as list", async () => {
+    const terminal = new ScriptedTerminal();
+
+    await dispatch(["workers"], context(), terminal);
+
+    expect(terminal.transcript).toContain("Available AI Workers");
+    expect(terminal.transcript).toContain("QA Reviewer");
+    expect(terminal.transcript).toContain("Research Analyst");
+    expect(terminal.transcript).toContain("Product Manager");
+  });
+
+  test("workers <id> shows one worker's detail with no internal ids", async () => {
+    const terminal = new ScriptedTerminal();
+
+    const code = await dispatch(["workers", "qa-reviewer"], context(), terminal);
+
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain("QA Reviewer");
+    expect(terminal.transcript).toContain("quality");
+    expect(terminal.transcript).toContain("designflow run qa-reviewer");
+    expect(terminal.transcript).not.toContain("qa-reviewer-agent");
+    expect(terminal.transcript).not.toContain("qa-review\n");
+  });
+
+  test("workers <id> reports an unknown worker without a stack trace", async () => {
+    const terminal = new ScriptedTerminal();
+
+    const code = await dispatch(["workers", "nobody"], context(), terminal);
+
+    expect(code).toBe(1);
+    expect(terminal.transcript).toContain("No such worker: nobody");
+  });
+});
+
 // ── 3. `designflow run` starts a workflow ───────────────────────
 
 describe("designflow run", () => {
@@ -575,7 +610,7 @@ describe("command parsing", () => {
     const terminal = new ScriptedTerminal();
 
     expect(await dispatch(["--help"], context(), terminal)).toBe(0);
-    expect(terminal.transcript).toContain("designflow list");
+    expect(terminal.transcript).toContain("designflow workers");
     expect(terminal.transcript).toContain("designflow run <worker>");
     expect(terminal.transcript).toContain("designflow history");
     expect(terminal.transcript).toContain("designflow settings");
@@ -734,7 +769,12 @@ describe("worker resolution", () => {
   test("the catalogue is reachable from the CLI context", () => {
     const workers = context().workers.listWorkers();
 
-    expect(workers.map((worker) => worker.id)).toEqual(["design-engineer"]);
+    expect(workers.map((worker) => worker.id)).toEqual([
+      "design-engineer",
+      "qa-reviewer",
+      "research-analyst",
+      "product-manager",
+    ]);
   });
 });
 
@@ -913,9 +953,12 @@ describe("running through an agent", () => {
     expect(await created.runner.history()).toHaveLength(0);
   });
 
-  test("the CLI shows a clarification and stops safely", async () => {
+  test("the CLI shows a clarification and stops safely when nothing is answered", async () => {
     const created = context();
-    const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
+    // No scripted answers at all: the very first "Answer" prompt for the
+    // clarification returns empty, exercising the "nothing was lost" safe
+    // path rather than depending on how many turns a loop takes to give up.
+    const terminal = new ScriptedTerminal([]);
 
     // A worker whose form collects nothing, so the request describes no work.
     created.workers.registerWorker({
@@ -935,9 +978,45 @@ describe("running through an agent", () => {
     expect(terminal.transcript).toContain("Which design should I build?");
     expect(terminal.transcript).toContain("Session saved.");
 
-    // Stopped safely once the scripted answers ran out: bounded by the turn
-    // limit either way, and no execution recorded.
+    // Stopped safely with no answer given, no execution recorded.
     expect(await created.runner.history()).toHaveLength(0);
+  });
+
+  test("answering a clarification with a real answer resolves it rather than asking again", async () => {
+    const created = context({ requireApproval: false });
+    // Nothing typed into the form (`silent-worker` collects none) — but the
+    // clarification's own answer is real, on-topic text. Before the fix for
+    // an adversarial-verification finding, this asked the identical question
+    // a second time no matter what was answered here, forever. It now
+    // resolves and the workflow actually starts — Design Engineer has no
+    // `shapeWorkflowInput`-style mapper from a clarification answer to
+    // `design-to-code`'s structured fields (unlike QA Reviewer/Research
+    // Analyst/Product Manager — see `clarification-resume-regression.test.ts`
+    // for a worker that carries an answer all the way to a completed run),
+    // so it fails on its own missing `designFile`. Failing cleanly on a
+    // second, *different* reason is still proof the loop is broken; the
+    // question is never repeated.
+    const terminal = new ScriptedTerminal(["Build the homepage from homepage.fig in react"]);
+
+    created.workers.registerWorker({
+      id: "silent-worker-2",
+      name: "Silent Worker Two",
+      description: "Collects no input",
+      category: "testing",
+      workflows: ["design-to-code"],
+      inputs: [],
+      agentId: "design-engineer-agent",
+    });
+
+    const code = await dispatch(["run", "silent-worker-2"], created, terminal);
+
+    // Asked exactly once — the regression this guards against asked it
+    // (and every scripted answer) again, then gave up with "Session saved."
+    expect(terminal.transcript.match(/needs more information/g)).toHaveLength(1);
+    expect(terminal.transcript).not.toContain("Session saved.");
+    // Progressed into real execution rather than staying `waiting_for_user`.
+    expect(terminal.transcript).toContain("Analyze design");
+    expect(code).toBe(1);
   });
 });
 

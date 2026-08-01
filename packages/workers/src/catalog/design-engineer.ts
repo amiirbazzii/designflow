@@ -44,6 +44,33 @@ export const designEngineer: WorkerManifest = workerManifestSchema.parse({
       list: true,
     },
   ],
+  evaluationCriteria: [
+    {
+      id: "output-validates",
+      name: "Output validates",
+      description: "Generated code passes the workflow's own validation step",
+      type: "boolean",
+      required: true,
+    },
+    {
+      id: "expected-artifacts-produced",
+      name: "Expected artifacts produced",
+      description: "Analysis, tokens, component structure and source code artifacts all exist",
+      type: "boolean",
+      required: true,
+    },
+    {
+      id: "design-system-reuse-detected",
+      name: "Design-system reuse detected",
+      description: "At least one existing approved component was reused rather than recreated",
+      type: "boolean",
+      required: false,
+    },
+  ],
+  projectContext: {
+    relevantFacts: ["framework", "sourceRoot", "designSystemPath", "componentConventions", "testFramework"],
+    relevantMemory: ["componentPlacement", "designSystemPreferences", "testExpectations"],
+  },
   metadata: {
     author: "DesignFlow",
     tags: ["design", "frontend", "codegen"],

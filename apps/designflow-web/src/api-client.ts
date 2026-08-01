@@ -30,14 +30,44 @@ import type {
  * which is the only tier permitted to wire an implementation.
  */
 
+/**
+ * A worker as the Worker Task Boundary (`/workers`) returns it — never a
+ * workflow id, an agent id or a model profile id. The schema is deliberately
+ * narrower than the product layer's own `WorkerManifest`: a field this web
+ * client does not render yet is a field it should not be validating either.
+ */
+const workerInputFieldSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  placeholder: z.string().min(1),
+  list: z.boolean().optional(),
+  choices: z.array(z.string().min(1)).optional(),
+});
+
 const workflowSummarySchema = z.object({
   workflowId: z.string().min(1),
   name: z.string().min(1),
   description: z.string(),
   steps: z.array(z.string().min(1)),
+  /**
+   * The owning worker's own input fields, forwarded by the API from
+   * `WorkerManifest.inputs` — never a second, web-side list of fields kept
+   * in sync by hand.
+   */
+  inputs: z.array(workerInputFieldSchema),
 });
 
 export type WorkflowSummary = z.infer<typeof workflowSummarySchema>;
+
+const workerSummarySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  category: z.string().min(1),
+  inputs: z.array(workerInputFieldSchema),
+});
+
+export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 
 export class ApiError extends Error {
   public readonly code: string;
@@ -86,6 +116,16 @@ async function request<T>(
 }
 
 export const api = {
+  // ── The Worker Task Boundary (Stage 41) ────────────────────────
+  listWorkers: (): Promise<readonly WorkerSummary[]> =>
+    request("/workers", "workers", z.array(workerSummarySchema)),
+
+  getWorker: (workerId: string): Promise<WorkerSummary> =>
+    request(`/workers/${encodeURIComponent(workerId)}`, "worker", workerSummarySchema),
+
+  // ── Deprecated: raw workflow-centric routes ─────────────────────
+  // Retained for the existing screens below, which predate the Worker Task
+  // Boundary. New UI should read through `listWorkers`/`getWorker` instead.
   listWorkflows: (): Promise<readonly WorkflowSummary[]> =>
     request("/api/workflows", "workflows", z.array(workflowSummarySchema)),
 

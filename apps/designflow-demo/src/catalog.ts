@@ -1,19 +1,27 @@
 // apps/designflow-demo/src/catalog.ts
+import { designEngineer } from "@designflow/workers";
 
 /**
  * The workflows this demo offers.
  *
- * Plain data, so the landing screen and the input form are driven by the same
- * description. Adding a second vertical workflow means adding an entry here,
- * not touching a screen.
+ * This demo is a workflow-level engine showcase (its own architecture test,
+ * "the catalogue drives the screens", is about screens reading this table —
+ * not about worker vocabulary), so `workflowId`/`name`/`tagline` stay this
+ * table's own display text. `fields` do not: they come straight from
+ * `designEngineer.inputs` in `@designflow/workers` — the same manifest the
+ * CLI and API read — rather than a second, hand-typed copy that could drift
+ * from it. Only `design-to-code` is wired into `host.ts`'s engine today, so
+ * only one entry exists; adding a second vertical workflow still means
+ * adding an entry here, but its `fields` would read from its own worker's
+ * `inputs` the same way.
  */
 export interface DemoField {
   readonly key: string;
   readonly label: string;
   readonly placeholder: string;
   /** Split the answer on commas into a list. */
-  readonly list?: boolean;
-  readonly choices?: readonly string[];
+  readonly list?: boolean | undefined;
+  readonly choices?: readonly string[] | undefined;
 }
 
 export interface DemoWorkflow {
@@ -28,25 +36,7 @@ export const DEMO_WORKFLOWS: readonly DemoWorkflow[] = [
     workflowId: "design-to-code",
     name: "Design → Code",
     tagline: "Turn a design file into reviewed, production-ready components",
-    fields: [
-      {
-        key: "designFile",
-        label: "Design file",
-        placeholder: "homepage.fig",
-      },
-      {
-        key: "framework",
-        label: "Framework",
-        placeholder: "react",
-        choices: ["react", "vue", "svelte"],
-      },
-      {
-        key: "frames",
-        label: "Frames (comma separated)",
-        placeholder: "brand/Header, brand/Footer, layout/Dashboard",
-        list: true,
-      },
-    ],
+    fields: designEngineer.inputs,
   },
 ];
 

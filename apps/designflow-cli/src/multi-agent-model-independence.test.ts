@@ -8,7 +8,8 @@ import {
   designEngineerAgentManifest,
   designEngineerDefaultModelProfile,
   modelDesignEngineerStrategy,
-  qaReviewerAgent,
+  createQaReviewerAgent,
+  modelQaReviewerStrategy,
   qaReviewerAgentManifest,
   qaReviewerDefaultModelProfile,
   AgentRuntime,
@@ -53,9 +54,17 @@ interface Captured {
   readonly body: { model?: string; response_format?: unknown } & Record<string, unknown>;
 }
 
-/** One real HTTP server, answering every request with a fixed decision, echoing the requested model. */
+/**
+ * One real HTTP server, answering every request with a decision picked for
+ * the requested model — each agent's own workflow, by default — echoing the
+ * requested model back.
+ */
 async function mockOpenRouter(
-  decision: unknown = { type: "run_workflow", workflowId: "design-to-code", reasoningSummary: "ok" },
+  decisionFor: (model: string | undefined) => unknown = (model) => ({
+    type: "run_workflow",
+    workflowId: model === qaReviewerDefaultModelProfile.model ? "qa-review" : "design-to-code",
+    reasoningSummary: "ok",
+  }),
 ): Promise<{ endpoint: string; requests: Captured[] }> {
   const requests: Captured[] = [];
 
@@ -73,7 +82,7 @@ async function mockOpenRouter(
         JSON.stringify({
           id: `gen-${requests.length}`,
           model: body.model,
-          choices: [{ message: { role: "assistant", content: JSON.stringify(decision) } }],
+          choices: [{ message: { role: "assistant", content: JSON.stringify(decisionFor(body.model)) } }],
           usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
         }),
       );
@@ -111,9 +120,9 @@ describe("two real agents, one provider-neutral runtime", () => {
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
         createDesignEngineerAgent(modelDesignEngineerStrategy),
-        qaReviewerAgent,
+        createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -143,9 +152,9 @@ describe("two real agents, one provider-neutral runtime", () => {
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
         createDesignEngineerAgent(modelDesignEngineerStrategy),
-        qaReviewerAgent,
+        createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -171,9 +180,9 @@ describe("two real agents, one provider-neutral runtime", () => {
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
         createDesignEngineerAgent(modelDesignEngineerStrategy),
-        qaReviewerAgent,
+        createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -202,9 +211,9 @@ describe("two real agents, one provider-neutral runtime", () => {
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
         createDesignEngineerAgent(modelDesignEngineerStrategy),
-        qaReviewerAgent,
+        createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -243,8 +252,8 @@ describe("two real agents, one provider-neutral runtime", () => {
     });
 
     const agentRuntime = new AgentRuntime({
-      registry: new InMemoryAgentRegistry([qaReviewerAgent]),
-      availableWorkflows: ["design-to-code"],
+      registry: new InMemoryAgentRegistry([createQaReviewerAgent(modelQaReviewerStrategy)]),
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -274,7 +283,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([createDesignEngineerAgent(modelDesignEngineerStrategy)]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -299,7 +308,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([createDesignEngineerAgent(deterministicDesignEngineerStrategy)]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
       // No classifier tool installed — `hasSomethingToDo` still resolves
       // from the task's own request/input, so this exercises the fully
@@ -328,9 +337,9 @@ describe("two real agents, one provider-neutral runtime", () => {
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
         createDesignEngineerAgent(modelDesignEngineerStrategy),
-        qaReviewerAgent,
+        createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 
@@ -362,9 +371,9 @@ describe("two real agents, one provider-neutral runtime", () => {
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
         createDesignEngineerAgent(modelDesignEngineerStrategy),
-        qaReviewerAgent,
+        createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "qa-review"],
       models: runtime,
     });
 

@@ -11,6 +11,12 @@
     { "path": "../../packages/core" },
     { "path": "../../packages/product" },
     { "path": "../../packages/storage-sqlite" },
-    { "path": "../../workflows/workflow-design-to-code" }
+    { "path": "../../packages/agents" },
+    { "path": "../../packages/tools" },
+    { "path": "../../packages/workers" },
+    { "path": "../../workflows/workflow-design-to-code" },
+    { "path": "../../workflows/workflow-qa-review" },
+    { "path": "../../workflows/workflow-research-analysis" },
+    { "path": "../../workflows/workflow-product-brief" }
   ]
 }

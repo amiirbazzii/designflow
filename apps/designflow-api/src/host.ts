@@ -9,7 +9,15 @@ import {
   IncrementalExecutionPlannerService,
   RegistryArtifactMaterializer,
 } from "@designflow/core";
-import { WorkflowRunner } from "@designflow/product";
+import {
+  WorkflowRunner,
+  WorkerTaskRouter,
+  AgentSessionService,
+  InMemorySessionStore,
+  ProductExecutionService,
+  WorkerCatalogService,
+  WorkerResultService,
+} from "@designflow/product";
 import {
   SqliteApprovalManager,
   SqliteArtifactStore,
@@ -23,10 +31,25 @@ import type {
   Logger,
   WorkflowPackage,
 } from "@designflow/sdk";
+import { AgentRuntime, assertWorkerAgentAlignment, createAgentRegistry } from "@designflow/agents";
+import { ToolRuntime, createToolRegistry } from "@designflow/tools";
+import { createWorkerRegistry } from "@designflow/workers";
 import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
 } from "@designflow/workflow-design-to-code";
+import {
+  qaReviewApprovalPolicy,
+  qaReviewWorkflowPackage,
+} from "@designflow/workflow-qa-review";
+import {
+  researchAnalysisApprovalPolicy,
+  researchAnalysisWorkflowPackage,
+} from "@designflow/workflow-research-analysis";
+import {
+  productBriefApprovalPolicy,
+  productBriefWorkflowPackage,
+} from "@designflow/workflow-product-brief";
 
 /**
  * The API's composition root.
@@ -52,6 +75,10 @@ const silentLogger: Logger = {
 export interface ApiHost {
   readonly runner: WorkflowRunner;
   readonly workflows: ReadonlyMap<string, WorkflowPackage>;
+  /** The Worker Task Boundary — Stage 41's product surface, not raw workflow ids. */
+  readonly workerCatalog: WorkerCatalogService;
+  readonly workerResults: WorkerResultService;
+  readonly sessions: AgentSessionService;
   close(): void;
 }
 
@@ -79,7 +106,12 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
   const capabilityRegistry = new CapabilityRegistry();
   const workflows = new Map<string, WorkflowPackage>();
 
-  for (const workflowPackage of [designToCodeWorkflowPackage]) {
+  for (const workflowPackage of [
+    designToCodeWorkflowPackage,
+    qaReviewWorkflowPackage,
+    researchAnalysisWorkflowPackage,
+    productBriefWorkflowPackage,
+  ]) {
     workflowPackage.load(capabilityRegistry);
     workflows.set(workflowPackage.id, workflowPackage);
   }
@@ -94,7 +126,19 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
     approvalManager: approvals,
     ...(requireApproval
       ? {
-          policy: designToCodeApprovalPolicy,
+          // Combined the same way the CLI's composition root combines them —
+          // each workflow's rule `target` is that workflow's own step id, and
+          // step ids are unique across the four built-in workflows.
+          policy: {
+            id: "combined-approval",
+            name: "Combined approval gate",
+            rules: [
+              ...designToCodeApprovalPolicy.rules,
+              ...qaReviewApprovalPolicy.rules,
+              ...researchAnalysisApprovalPolicy.rules,
+              ...productBriefApprovalPolicy.rules,
+            ],
+          },
           policyEvaluator: new InMemoryPolicyEvaluator(),
         }
       : {}),
@@ -131,9 +175,56 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
       workflows.get(id)?.definition.nodes.length,
   });
 
+  // The Worker Task Boundary (Stage 41): the API speaks Workers, not raw
+  // workflow ids, from here down. Every catalog agent runs in its
+  // deterministic (offline) strategy by default — this host names no
+  // OpenRouter credential, matching the "web/demo may use deterministic
+  // mode... where model credentials are unavailable" allowance, so nothing
+  // here depends on a live provider being reachable.
+  const workers = createWorkerRegistry();
+  const toolRuntime = new ToolRuntime({ registry: createToolRegistry(), logger: silentLogger });
+  const agentRegistry = createAgentRegistry();
+
+  for (const worker of workers.listWorkers()) {
+    if (worker.agentId === undefined) continue;
+    assertWorkerAgentAlignment(worker, agentRegistry.require(worker.agentId).manifest);
+  }
+
+  const agentRuntime = new AgentRuntime({
+    registry: agentRegistry,
+    availableWorkflows: [...workflows.keys()],
+    tools: toolRuntime,
+    logger: silentLogger,
+  });
+
+  const taskRouter = new WorkerTaskRouter({ workers, agents: agentRuntime });
+
+  const sessions = new AgentSessionService({
+    store: new InMemorySessionStore(),
+    workers,
+    router: taskRouter,
+    runner,
+  });
+
+  const execution = new ProductExecutionService({
+    executionRepository: repository,
+    eventSource: eventStore,
+    artifactRegistry: artifactStore,
+    resolveWorkflowName: (id) => workflows.get(id)?.name,
+  });
+
+  const workerResults = new WorkerResultService({
+    execution,
+    workers,
+    listAllOverviews: (limit) => execution.listAllOverviews(limit),
+  });
+
   return {
     runner,
     workflows,
+    workerCatalog: new WorkerCatalogService(workers),
+    workerResults,
+    sessions,
     close: () => db.close(),
   };
 }

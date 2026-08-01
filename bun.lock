@@ -34,11 +34,17 @@
         "wf-api": "./dist/main.js",
       },
       "dependencies": {
+        "@designflow/agents": "workspace:*",
         "@designflow/core": "workspace:*",
         "@designflow/product": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "@designflow/storage-sqlite": "workspace:*",
+        "@designflow/tools": "workspace:*",
+        "@designflow/workers": "workspace:*",
         "@designflow/workflow-design-to-code": "workspace:*",
+        "@designflow/workflow-product-brief": "workspace:*",
+        "@designflow/workflow-qa-review": "workspace:*",
+        "@designflow/workflow-research-analysis": "workspace:*",
       },
     },
     "apps/designflow-cli": {
@@ -58,6 +64,9 @@
         "@designflow/tools": "workspace:*",
         "@designflow/workers": "workspace:*",
         "@designflow/workflow-design-to-code": "workspace:*",
+        "@designflow/workflow-product-brief": "workspace:*",
+        "@designflow/workflow-qa-review": "workspace:*",
+        "@designflow/workflow-research-analysis": "workspace:*",
         "zod": "^3.24.0",
       },
     },
@@ -71,6 +80,7 @@
         "@designflow/core": "workspace:*",
         "@designflow/product": "workspace:*",
         "@designflow/sdk": "workspace:*",
+        "@designflow/workers": "workspace:*",
         "@designflow/workflow-design-to-code": "workspace:*",
       },
     },
@@ -205,6 +215,42 @@
         "@designflow/product": "workspace:*",
       },
     },
+    "workflows/workflow-product-brief": {
+      "name": "@designflow/workflow-product-brief",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+      "devDependencies": {
+        "@designflow/core": "workspace:*",
+        "@designflow/product": "workspace:*",
+      },
+    },
+    "workflows/workflow-qa-review": {
+      "name": "@designflow/workflow-qa-review",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+      "devDependencies": {
+        "@designflow/core": "workspace:*",
+        "@designflow/product": "workspace:*",
+      },
+    },
+    "workflows/workflow-research-analysis": {
+      "name": "@designflow/workflow-research-analysis",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+      "devDependencies": {
+        "@designflow/core": "workspace:*",
+        "@designflow/product": "workspace:*",
+      },
+    },
     "workflows/workflow-test": {
       "name": "@designflow/workflow-test",
       "version": "0.1.0",
@@ -293,6 +339,12 @@
     "@designflow/workers": ["@designflow/workers@workspace:packages/workers"],
 
     "@designflow/workflow-design-to-code": ["@designflow/workflow-design-to-code@workspace:workflows/workflow-design-to-code"],
+
+    "@designflow/workflow-product-brief": ["@designflow/workflow-product-brief@workspace:workflows/workflow-product-brief"],
+
+    "@designflow/workflow-qa-review": ["@designflow/workflow-qa-review@workspace:workflows/workflow-qa-review"],
+
+    "@designflow/workflow-research-analysis": ["@designflow/workflow-research-analysis@workspace:workflows/workflow-research-analysis"],
 
     "@designflow/workflow-test": ["@designflow/workflow-test@workspace:workflows/workflow-test"],
 

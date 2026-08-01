@@ -5,6 +5,18 @@ import {
   designEngineerAgent,
 } from "./catalog/design-engineer-agent";
 import type { DesignEngineerStrategy } from "./catalog/design-engineer-agent";
+import { createQaReviewerAgent, qaReviewerAgent } from "./catalog/qa-reviewer-agent";
+import type { QaReviewerStrategy } from "./catalog/qa-reviewer-agent";
+import {
+  createResearchAnalystAgent,
+  researchAnalystAgent,
+} from "./catalog/research-analyst-agent";
+import type { ResearchAnalystStrategy } from "./catalog/research-analyst-agent";
+import {
+  createProductManagerAgent,
+  productManagerAgent,
+} from "./catalog/product-manager-agent";
+import type { ProductManagerStrategy } from "./catalog/product-manager-agent";
 
 export { InMemoryAgentRegistry, assertWorkerAgentAlignment } from "./registry";
 
@@ -54,7 +66,31 @@ export {
   qaReviewerAgent,
   qaReviewerAgentManifest,
   qaReviewerDefaultModelProfile,
+  createQaReviewerAgent,
+  deterministicQaReviewerStrategy,
+  modelQaReviewerStrategy,
 } from "./catalog/qa-reviewer-agent";
+export type { QaReviewerStrategy } from "./catalog/qa-reviewer-agent";
+
+export {
+  researchAnalystAgent,
+  researchAnalystAgentManifest,
+  researchAnalystDefaultModelProfile,
+  createResearchAnalystAgent,
+  deterministicResearchAnalystStrategy,
+  modelResearchAnalystStrategy,
+} from "./catalog/research-analyst-agent";
+export type { ResearchAnalystStrategy } from "./catalog/research-analyst-agent";
+
+export {
+  productManagerAgent,
+  productManagerAgentManifest,
+  productManagerDefaultModelProfile,
+  createProductManagerAgent,
+  deterministicProductManagerStrategy,
+  modelProductManagerStrategy,
+} from "./catalog/product-manager-agent";
+export type { ProductManagerStrategy } from "./catalog/product-manager-agent";
 
 export {
   buildDecisionPrompt,
@@ -64,19 +100,29 @@ export {
 export type { DecisionPromptInput, ModelDecision } from "./decision-prompt";
 
 /** Every agent that ships with DesignFlow, in its default (deterministic) form. */
-export const BUILT_IN_AGENTS = [designEngineerAgent] as const;
+export const BUILT_IN_AGENTS = [
+  designEngineerAgent,
+  qaReviewerAgent,
+  researchAnalystAgent,
+  productManagerAgent,
+] as const;
 
 export interface AgentCatalogOptions {
   /**
-   * Which strategy the Design Engineer decides with.
+   * Which strategy each built-in agent decides with.
    *
-   * Defaults to the deterministic one — offline, no credential required,
-   * unchanged since Stage 36. A host opts into `modelDesignEngineerStrategy`
-   * explicitly; nothing here inspects an environment variable or guesses.
-   * That choice belongs to the composition root, which is the one place that
-   * actually knows whether a model layer was wired in at all.
+   * Each defaults to its deterministic form — offline, no credential
+   * required. A host opts into a model-backed strategy explicitly, per
+   * agent; nothing here inspects an environment variable or guesses. That
+   * choice belongs to the composition root, which is the one place that
+   * actually knows whether a model layer was wired in at all, and it makes
+   * the choice independently for every agent — one agent's model never
+   * decides another's.
    */
   readonly designEngineerStrategy?: DesignEngineerStrategy | undefined;
+  readonly qaReviewerStrategy?: QaReviewerStrategy | undefined;
+  readonly researchAnalystStrategy?: ResearchAnalystStrategy | undefined;
+  readonly productManagerStrategy?: ProductManagerStrategy | undefined;
 }
 
 /**
@@ -97,5 +143,20 @@ export function createAgentRegistry(options?: AgentCatalogOptions): InMemoryAgen
       ? designEngineerAgent
       : createDesignEngineerAgent(options.designEngineerStrategy);
 
-  return new InMemoryAgentRegistry([designEngineer]);
+  const qaReviewer =
+    options?.qaReviewerStrategy === undefined
+      ? qaReviewerAgent
+      : createQaReviewerAgent(options.qaReviewerStrategy);
+
+  const researchAnalyst =
+    options?.researchAnalystStrategy === undefined
+      ? researchAnalystAgent
+      : createResearchAnalystAgent(options.researchAnalystStrategy);
+
+  const productManager =
+    options?.productManagerStrategy === undefined
+      ? productManagerAgent
+      : createProductManagerAgent(options.productManagerStrategy);
+
+  return new InMemoryAgentRegistry([designEngineer, qaReviewer, researchAnalyst, productManager]);
 }

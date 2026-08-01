@@ -110,15 +110,28 @@ describe("resolving a tool", () => {
 });
 
 describe("the built-in catalogue", () => {
-  test("ships the classifier and nothing that needs a filesystem grant", () => {
+  const DETERMINISTIC_TOOL_IDS = [
+    "classify-design-task",
+    "classify-review-target",
+    "summarize-artifact-set",
+    "accessibility-checklist",
+    "classify-research-request",
+    "validate-source-metadata",
+    "extract-structured-claims",
+    "classify-product-request",
+    "identify-requirement-gaps",
+    "structure-acceptance-criteria",
+  ];
+
+  test("ships every agent's tools and nothing that needs a filesystem grant", () => {
     // `project-summary` reads a directory, so it appears only when a host has
     // named one. A tool needing a grant does not get one by default.
-    expect(createToolRegistry().ids()).toEqual(["classify-design-task"]);
+    expect(createToolRegistry().ids()).toEqual(DETERMINISTIC_TOOL_IDS);
   });
 
   test("adds project-summary only when a root is supplied", () => {
     expect(builtInTools({ projectRoot: "/tmp" }).map((t) => t.manifest.id)).toEqual([
-      "classify-design-task",
+      ...DETERMINISTIC_TOOL_IDS,
       "project-summary",
     ]);
   });

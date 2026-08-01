@@ -1,0 +1,27 @@
+{
+  "name": "@designflow/workflow-qa-review",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "echo \"@designflow/workflow-qa-review: lint ok\"",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@designflow/sdk": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@designflow/core": "workspace:*",
+    "@designflow/product": "workspace:*"
+  }
+}

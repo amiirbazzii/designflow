@@ -7,7 +7,8 @@ import type {
   WorkflowHistoryEntry,
 } from "@designflow/product";
 import { api } from "./api-client";
-import type { WorkflowSummary } from "./api-client";
+import type { WorkerSummary, WorkflowSummary } from "./api-client";
+import { WorkerCatalog } from "./screens/WorkerCatalog";
 import { InputForm } from "./screens/InputForm";
 import { RunningView } from "./screens/RunningView";
 import { ApprovalView } from "./screens/ApprovalView";
@@ -31,6 +32,7 @@ type Screen =
 export function App(): JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [workflows, setWorkflows] = useState<readonly WorkflowSummary[]>([]);
+  const [workers, setWorkers] = useState<readonly WorkerSummary[]>([]);
   const [history, setHistory] = useState<readonly WorkflowHistoryEntry[]>([]);
   const [status, setStatus] = useState<ExecutionStatus | null>(null);
   const [progress, setProgress] = useState<ExecutionProgress | null>(null);
@@ -50,6 +52,13 @@ export function App(): JSX.Element {
     void (async () => {
       try {
         setWorkflows(await api.listWorkflows());
+      } catch (cause) {
+        setError(messageOf(cause));
+      }
+    })();
+    void (async () => {
+      try {
+        setWorkers(await api.listWorkers());
       } catch (cause) {
         setError(messageOf(cause));
       }
@@ -133,6 +142,8 @@ export function App(): JSX.Element {
 
       {screen.name === "home" && (
         <>
+          <WorkerCatalog workers={workers} />
+
           <h2>Available workflows</h2>
           {workflows.length === 0 && (
             <p className="meta">No workflows are installed.</p>

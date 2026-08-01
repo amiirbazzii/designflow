@@ -77,13 +77,78 @@ designflow list | grep -q "Design Engineer" || fail "list did not show the Desig
 designflow list | grep -q "design-to-code" && fail "list leaked a workflow id"
 echo "ok"
 
-step "designflow run design-engineer"
-printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
-  | designflow run design-engineer | grep -q "Complete" || fail "run did not complete"
+# ── Stage 41: the full four-worker catalogue ─────────────────────
+
+step "designflow workers lists all four workers"
+WORKERS="$(designflow workers)"
+for name in "Design Engineer" "QA Reviewer" "Research Analyst" "Product Manager"; do
+  grep -q "$name" <<<"$WORKERS" || fail "workers did not list: $name"
+done
 echo "ok"
 
-step "designflow history (separate process)"
-designflow history | grep -q "Design → Code" || fail "history did not list the run"
+step "designflow workers <id> — detail for every worker, no internal ids"
+for id in design-engineer qa-reviewer research-analyst product-manager; do
+  DETAIL="$(designflow workers "$id")"
+  grep -q "designflow run $id" <<<"$DETAIL" || fail "workers $id did not show its run command"
+  grep -qE "\-agent" <<<"$DETAIL" && fail "workers $id leaked an agent id"
+done
+echo "ok"
+
+step "designflow run design-engineer"
+printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
+  | designflow run design-engineer | grep -q "Complete" || fail "design-engineer run did not complete"
+echo "ok"
+
+step "designflow run qa-reviewer"
+printf 'src/components/Header.tsx\naccessibility\nmajor\napprove\n' \
+  | designflow run qa-reviewer | grep -q "Complete" || fail "qa-reviewer run did not complete"
+echo "ok"
+
+step "designflow run research-analyst"
+printf 'What are the tradeoffs of server components?\nreact-docs, perf-blog\nstandard\napprove\n' \
+  | designflow run research-analyst | grep -q "Complete" || fail "research-analyst run did not complete"
+echo "ok"
+
+step "designflow run product-manager"
+printf 'Let users export their history as CSV\nExisting CLI users\nmust ship without a new dependency\nstandard\napprove\n' \
+  | designflow run product-manager | grep -q "Complete" || fail "product-manager run did not complete"
+echo "ok"
+
+step "designflow history (separate process) — all four workflows, worker vocabulary"
+HISTORY="$(designflow history)"
+for name in "Design → Code" "QA Review" "Research Analysis" "Product Brief"; do
+  grep -q "$name" <<<"$HISTORY" || fail "history did not list: $name"
+done
+echo "ok"
+
+step "designflow settings — every worker's own provider/model"
+SETTINGS="$(designflow settings)"
+grep -q "4 installed" <<<"$SETTINGS" || fail "settings did not report four workers"
+for line in "Design Engineer" "QA Reviewer" "Research Analyst" "Product Manager"; do
+  grep -q "$line" <<<"$SETTINGS" || fail "settings did not show an assignment for: $line"
+done
+# Two distinct providers/models proves no single global model is in effect.
+grep -q "openai/gpt-4o-mini" <<<"$SETTINGS" || fail "settings did not show the Design Engineer's model"
+grep -q "anthropic/claude-3.5-haiku" <<<"$SETTINGS" || fail "settings did not show the QA Reviewer's model"
+echo "ok"
+
+step "designflow projects and designflow memory still work alongside four workers"
+designflow projects | grep -q "No projects registered yet." || fail "projects did not run"
+designflow memory | grep -q "Nothing remembered yet." || fail "memory did not run"
+echo "ok"
+
+step "no internal vocabulary leaked anywhere so far"
+for OUTPUT in "$WORKERS" "$HISTORY" "$SETTINGS"; do
+  grep -qE "\-agent\b" <<<"$OUTPUT" && fail "an agent id leaked"
+  grep -q "modelProfileId" <<<"$OUTPUT" && fail "a model profile id field name leaked"
+done
+echo "ok"
+
+step "restart (new process): every worker's run survives"
+RESTARTED_HISTORY="$(designflow history)"
+for name in "Design → Code" "QA Review" "Research Analysis" "Product Brief"; do
+  grep -q "$name" <<<"$RESTARTED_HISTORY" || fail "history lost a run across a restart: $name"
+done
 echo "ok"
 
 step "designflow (interactive)"

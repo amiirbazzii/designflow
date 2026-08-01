@@ -47,6 +47,9 @@
     "@designflow/tools": "workspace:*",
     "@designflow/workers": "workspace:*",
     "@designflow/workflow-design-to-code": "workspace:*",
+    "@designflow/workflow-qa-review": "workspace:*",
+    "@designflow/workflow-research-analysis": "workspace:*",
+    "@designflow/workflow-product-brief": "workspace:*",
     "zod": "^3.24.0"
   }
 }

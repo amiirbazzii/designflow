@@ -10,6 +10,7 @@
     { "path": "../../packages/sdk" },
     { "path": "../../packages/core" },
     { "path": "../../packages/product" },
+    { "path": "../../packages/workers" },
     { "path": "../../workflows/workflow-design-to-code" }
   ]
 }
