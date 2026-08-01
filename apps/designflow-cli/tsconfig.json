@@ -34,6 +34,12 @@
     },
     {
       "path": "../../packages/tools"
+    },
+    {
+      "path": "../../packages/models"
+    },
+    {
+      "path": "../../packages/model-provider-openrouter"
     }
   ]
 }

@@ -165,6 +165,81 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That worker could not look something up it needed.",
     suggestion: TRY_AGAIN,
   },
+
+  // Model failures. A worker's AI is an implementation detail the same way
+  // its tools and its workflow are — nobody asked for OpenRouter, a provider
+  // or a model slug, so none of these say those words. The one exception is
+  // the missing-credential case: setting it is the actual fix, so that one
+  // names exactly what to set.
+  ERR_MODEL_PROFILE_NOT_FOUND: {
+    problem: "That worker's AI is not configured in this installation.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_MODEL_PROFILE_ALREADY_REGISTERED: {
+    problem: "Two workers are installed with the same internal component.",
+    suggestion: `Nothing was started. ${DUPLICATE_COMPONENT}`,
+  },
+  ERR_MODEL_PROVIDER_NOT_FOUND: {
+    problem: "That worker's AI is not configured in this installation.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_MODEL_PROVIDER_ALREADY_REGISTERED: {
+    problem: "Two workers are installed with the same internal component.",
+    suggestion: `Nothing was started. ${DUPLICATE_COMPONENT}`,
+  },
+  ERR_MODEL_REQUEST_INVALID: {
+    problem: "That worker could not put together what it needed to ask its AI.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MODEL_RESPONSE_INVALID: {
+    problem: "That worker's AI sent back something unusable.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MODEL_OUTPUT_INVALID: {
+    problem: "That worker's AI sent back something unusable.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MODEL_AUTHENTICATION: {
+    problem: "That worker's AI rejected the configured credential.",
+    suggestion:
+      "Nothing was started. Check OPENROUTER_API_KEY, or report this if it looks correct.",
+  },
+  ERR_MODEL_RATE_LIMITED: {
+    problem: "That worker's AI is being rate-limited right now.",
+    suggestion: "Nothing was started. Wait a moment and try again.",
+  },
+  ERR_MODEL_UNAVAILABLE: {
+    problem: "That worker's AI is temporarily unavailable.",
+    suggestion: "Nothing was started. Try again shortly.",
+  },
+  ERR_MODEL_TIMEOUT: {
+    problem: "That worker's AI took too long to respond.",
+    suggestion: "Nothing was started. Try again — it may just have been slow.",
+  },
+  ERR_MODEL_ABORTED: {
+    problem: "That was cancelled before anything started.",
+    suggestion: "Nothing was written. Start it again when you are ready.",
+  },
+  ERR_MODEL_PROVIDER_FAILED: {
+    problem: "That worker's AI could not be reached.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MODEL_CONFIGURATION_INVALID: {
+    problem: "That worker's AI is configured incorrectly.",
+    suggestion:
+      "Nothing was started. Check your local configuration, or report this.",
+  },
+  ERR_MODEL_API_KEY_MISSING: {
+    // The one code allowed to name the real thing: setting the credential is
+    // the actual fix, and a person cannot act on "a credential is missing"
+    // without knowing which one.
+    problem: "OpenRouter is not configured for that worker's AI.",
+    suggestion: "Nothing was started. Set OPENROUTER_API_KEY and try again.",
+  },
+  ERR_AGENT_MODEL_BUDGET_EXCEEDED: {
+    problem: "That worker asked its AI for too much at once and was stopped.",
+    suggestion: NOTHING_STARTED_REPORT,
+  },
 };
 
 /**

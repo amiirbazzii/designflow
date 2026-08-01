@@ -39,6 +39,8 @@
   "devDependencies": {
     "@designflow/agents": "workspace:*",
     "@designflow/core": "workspace:*",
+    "@designflow/model-provider-openrouter": "workspace:*",
+    "@designflow/models": "workspace:*",
     "@designflow/product": "workspace:*",
     "@designflow/sdk": "workspace:*",
     "@designflow/storage-file": "workspace:*",

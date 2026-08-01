@@ -189,10 +189,14 @@ describe("the context an agent decides with", () => {
       "availableWorkflows",
       "logger",
       "metadata",
+      "model",
       "signal",
       "tools",
     ]);
     expect(Object.keys(context?.tools ?? {})).toEqual(["call"]);
+    // The model port is the Stage 38 addition, and it is a service with a
+    // single verb — never the registry or the runtime behind it.
+    expect(Object.keys(context?.model ?? {})).toEqual(["generate"]);
   });
 
   test("passes the caller's signal through", async () => {

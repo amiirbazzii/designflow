@@ -13,7 +13,9 @@ import { CLI_VERSION } from "../version";
  * users already know how to do, and which cannot be corrupted by a half-answered
  * prompt.
  *
- * There is deliberately no account, no key and no endpoint to configure here.
+ * There is deliberately no account, no key and no endpoint to configure here —
+ * and, as of the AI assignments this now shows, still no credential: whether
+ * one is configured is the one fact reported, never its value.
  */
 export async function settingsCommand(
   context: CliContext,
@@ -25,6 +27,7 @@ export async function settingsCommand(
       environment: context.home.config.environment,
       historyFile: context.databasePath,
       workerCount: context.workers.listWorkers().length,
+      modelAssignments: context.modelAssignments,
     }),
   );
 

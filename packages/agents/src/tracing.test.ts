@@ -6,6 +6,7 @@ import type {
   AgentDecision,
   AgentManifest,
   AgentTask,
+  ModelInvoker,
   ToolInvoker,
   TraceEvent,
 } from "@designflow/sdk";
@@ -78,8 +79,43 @@ function agentDoing(
   };
 }
 
+function modelInvoker(
+  behavior: "success" | "failure" = "success",
+): ModelInvoker {
+  return {
+    installedProfileIds: () => ["test-profile"],
+    generate: (request) =>
+      Promise.resolve(
+        behavior === "failure"
+          ? {
+              type: "failure",
+              requestId: request.requestId,
+              code: "ERR_MODEL_TIMEOUT",
+              message: "the provider took too long to answer with something private",
+              retryable: true,
+              durationMs: 9,
+            }
+          : {
+              type: "success",
+              requestId: request.requestId,
+              providerId: "test-provider",
+              model: "test-model",
+              output: { secretDecision: "sk-live-secret", note: "a private reasoning trail" },
+              usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
+              durationMs: 6,
+            },
+      ),
+  };
+}
+
 /** A runtime with a recording tracer and deterministic ids and clock. */
-function traced(agent: Agent, options: { installed?: readonly string[] } = {}) {
+function traced(
+  agent: Agent,
+  options: {
+    installed?: readonly string[];
+    models?: ModelInvoker;
+  } = {},
+) {
   const events: TraceEvent[] = [];
   let tick = 0;
 
@@ -87,6 +123,7 @@ function traced(agent: Agent, options: { installed?: readonly string[] } = {}) {
     registry: new InMemoryAgentRegistry([agent]),
     availableWorkflows: ["alpha"],
     tools: invoker(options.installed ?? ["granted"]),
+    ...(options.models !== undefined ? { models: options.models } : {}),
     tracer: { onEvent: (event) => { events.push(event); return Promise.resolve(); } },
     generateTraceId: () => "trace-fixed",
     now: () => new Date(Date.UTC(2026, 7, 1, 10, 0, tick++)),
@@ -386,5 +423,182 @@ describe("trace ids", () => {
     }
 
     expect(seen.size).toBe(50);
+  });
+});
+
+// ── 49/50/51. Model observations ────────────────────────────────
+
+describe("model call tracing", () => {
+  function agentCallingModel(manifest: Partial<AgentManifest> = {}): Agent {
+    return agentDoing(
+      async (context) => {
+        await context.model.generate({
+          messages: [{ role: "user", content: TASK.request }],
+          responseSchema: { type: "object" },
+        });
+        return { type: "run_workflow", workflowId: "alpha" };
+      },
+      { modelProfileId: "test-profile", ...manifest },
+    );
+  }
+
+  test("a successful call emits started then completed, correlated by traceId", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("success") });
+
+    await runtime.decide(TASK);
+
+    const modelEvents = events.filter((event) => event.type.startsWith("model."));
+    expect(modelEvents.map((event) => event.type)).toEqual([
+      "model.request.started",
+      "model.request.completed",
+    ]);
+    expect(new Set(modelEvents.map((event) => event.traceId))).toEqual(
+      new Set(["trace-fixed"]),
+    );
+  });
+
+  test("started carries only the profile — provider and model are not yet known", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("success") });
+
+    await runtime.decide(TASK);
+
+    const started = events.find((event) => event.type === "model.request.started");
+    expect(started).toMatchObject({ profileId: "test-profile" });
+    expect(started).not.toHaveProperty("providerId");
+    expect(started).not.toHaveProperty("model");
+  });
+
+  test("completed carries provider, model and usage, once known", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("success") });
+
+    await runtime.decide(TASK);
+
+    const completed = events.find((event) => event.type === "model.request.completed");
+    expect(completed).toMatchObject({
+      providerId: "test-provider",
+      model: "test-model",
+      usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
+    });
+  });
+
+  test("a failed call emits started then failed, with a stable code", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("failure") });
+
+    await runtime.decide(TASK);
+
+    const modelEvents = events.filter((event) => event.type.startsWith("model."));
+    expect(modelEvents.map((event) => event.type)).toEqual([
+      "model.request.started",
+      "model.request.failed",
+    ]);
+
+    const failed = events.find((event) => event.type === "model.request.failed");
+    expect(failed).toMatchObject({ errorCode: "ERR_MODEL_TIMEOUT" });
+  });
+
+  // 50/51. Traces contain only safe metadata — never a message, a prompt or
+  // a completion.
+  test("no message, prompt, output, or usage-adjacent secret ever appears", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("failure") });
+
+    await runtime.decide(TASK);
+    const serialized = JSON.stringify(events);
+
+    expect(serialized).not.toContain("the provider took too long to answer with something private");
+    expect(serialized).not.toContain("sk-live-secret");
+    expect(serialized).not.toContain("private reasoning trail");
+    expect(serialized).not.toContain(TASK.request);
+  });
+
+  test("a successful call's output is never in the trace stream either", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("success") });
+
+    await runtime.decide(TASK);
+    const serialized = JSON.stringify(events);
+
+    expect(serialized).not.toContain("secretDecision");
+    expect(serialized).not.toContain("sk-live-secret");
+  });
+
+  test("no event has a field for messages, a prompt, or output", async () => {
+    const { runtime, events } = traced(agentCallingModel(), { models: modelInvoker("success") });
+
+    await runtime.decide(TASK);
+
+    for (const event of events) {
+      for (const forbidden of ["messages", "prompt", "output", "content"]) {
+        expect(Object.keys(event)).not.toContain(forbidden);
+      }
+    }
+  });
+
+  // 52. Trace failure does not break a model decision.
+  test("a broken tracer does not break a model-backed decision", async () => {
+    const runtime = new AgentRuntime({
+      registry: new InMemoryAgentRegistry([agentCallingModel()]),
+      availableWorkflows: ["alpha"],
+      models: modelInvoker("success"),
+      tracer: {
+        onEvent: () => {
+          throw new Error("trace store on fire");
+        },
+      },
+    });
+
+    expect((await runtime.decide(TASK)).decision.type).toBe("run_workflow");
+  });
+
+  // 53. Model failure closes the agent trace safely.
+  test("a model failure that leads to a thrown decision still closes the trace", async () => {
+    // An agent that (mis)treats a model failure as fatal rather than
+    // deciding gracefully — the trace must still close as failed, not hang
+    // open as `running` forever.
+    const throwing = agentDoing(
+      async (context) => {
+        const result = await context.model.generate({
+          messages: [{ role: "user", content: "x" }],
+          responseSchema: {},
+        });
+        if (result.type === "failure") throw new Error("model call failed");
+        return { type: "run_workflow", workflowId: "alpha" };
+      },
+      { modelProfileId: "test-profile" },
+    );
+
+    const { runtime, events } = traced(throwing, { models: modelInvoker("failure") });
+
+    await expect(runtime.decide(TASK)).rejects.toThrow();
+
+    expect(events.map((event) => event.type)).toEqual([
+      "agent.decision.started",
+      "model.request.started",
+      "model.request.failed",
+      "agent.decision.failed",
+    ]);
+  });
+
+  test("tool and model calls in the same decision both appear, in order", async () => {
+    const both = agentDoing(
+      async (context) => {
+        await context.tools.call({ id: "c1", toolId: "granted", input: {} });
+        await context.model.generate({
+          messages: [{ role: "user", content: "x" }],
+          responseSchema: {},
+        });
+        return { type: "run_workflow", workflowId: "alpha" };
+      },
+      { modelProfileId: "test-profile" },
+    );
+
+    const { runtime, events } = traced(both, { models: modelInvoker("success") });
+    await runtime.decide(TASK);
+
+    expect(events.map((event) => event.type)).toEqual([
+      "agent.decision.started",
+      "tool.call.observed",
+      "model.request.started",
+      "model.request.completed",
+      "agent.decision.completed",
+    ]);
   });
 });

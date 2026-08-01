@@ -1,6 +1,7 @@
 // packages/sdk/src/agent.ts
 import { z } from "zod";
 import type { Logger } from "./context";
+import type { AgentModelService } from "./model";
 import type { AgentToolService } from "./tool";
 import type { WorkerManifest } from "./worker-manifest";
 
@@ -92,6 +93,26 @@ export const agentManifestSchema = z
       .refine((ids) => new Set(ids).size === ids.length, {
         message: "allowedTools must not repeat a tool id",
       }),
+    /**
+     * The model profile this agent decides with, if it decides with one.
+     *
+     * A reference, never a configuration. `modelProfileId` names a
+     * `ModelProfile` registered elsewhere — it carries no provider id, no
+     * model slug and certainly no credential, so a manifest can be written to
+     * a worker package, committed and reviewed without any of that ever
+     * appearing in it. Resolving the name to an actual provider and model is
+     * `ModelRuntime`'s job, done fresh at call time, which is also what lets
+     * the same manifest run against a different model in a test without a
+     * single line of agent code changing.
+     *
+     * Optional and absent by default, which is both the backward-compatible
+     * answer for a manifest written before models existed and the load-bearing
+     * design decision this stage was built around: there is no mandatory
+     * global model, so an agent that names no profile simply has no model
+     * access — nothing to revoke, nothing silently shared with any other
+     * agent's configuration.
+     */
+    modelProfileId: z.string().min(1).optional(),
     metadata: z.record(z.unknown()).optional(),
   })
   .strict();
@@ -228,6 +249,19 @@ export interface AgentContext {
    * that ignores `availableTools` gains nothing by it.
    */
   readonly tools: AgentToolService;
+  /**
+   * The one way to call this agent's model.
+   *
+   * Always present, even for an agent with no `modelProfileId` — calling it
+   * then fails cleanly with a stable code rather than requiring every agent
+   * to null-check a port that might not exist, the same reasoning behind
+   * `tools` always being present. Bound to exactly one profile at
+   * construction: the one this agent's own manifest names. There is no field
+   * anywhere on this service for a different profile id, so an agent cannot
+   * ask for another agent's model — the request shape makes it
+   * unrepresentable, not merely forbidden.
+   */
+  readonly model: AgentModelService;
   /** Ambient installation facts. Per-request data travels on the task. */
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;

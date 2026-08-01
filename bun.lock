@@ -50,6 +50,8 @@
       "devDependencies": {
         "@designflow/agents": "workspace:*",
         "@designflow/core": "workspace:*",
+        "@designflow/model-provider-openrouter": "workspace:*",
+        "@designflow/models": "workspace:*",
         "@designflow/product": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "@designflow/storage-file": "workspace:*",
@@ -118,6 +120,21 @@
         "@designflow/artifacts": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "@designflow/state": "workspace:*",
+        "zod": "^3.24.0",
+      },
+    },
+    "packages/model-provider-openrouter": {
+      "name": "@designflow/model-provider-openrouter",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+      },
+    },
+    "packages/models": {
+      "name": "@designflow/models",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
         "zod": "^3.24.0",
       },
     },
@@ -254,6 +271,10 @@
     "@designflow/core": ["@designflow/core@workspace:packages/core"],
 
     "@designflow/demo": ["@designflow/demo@workspace:apps/designflow-demo"],
+
+    "@designflow/model-provider-openrouter": ["@designflow/model-provider-openrouter@workspace:packages/model-provider-openrouter"],
+
+    "@designflow/models": ["@designflow/models@workspace:packages/models"],
 
     "@designflow/product": ["@designflow/product@workspace:packages/product"],
 

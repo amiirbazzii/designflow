@@ -17,8 +17,10 @@ import type {
   AgentObserver,
   AgentTask,
   Logger,
+  ModelInvoker,
   ToolInvoker,
   TraceEvent,
+  TraceModelCall,
   TraceObserver,
   TraceToolCall,
 } from "@designflow/sdk";
@@ -30,6 +32,12 @@ import {
   EMPTY_TOOL_SERVICE,
 } from "./tool-service";
 import type { ObservedToolCall } from "./tool-service";
+import {
+  AgentScopedModelService,
+  DEFAULT_MAX_MODEL_CALLS_PER_DECISION,
+  EMPTY_MODEL_SERVICE,
+} from "./model-service";
+import type { ObservedModelCall, ObservedModelStart } from "./model-service";
 import {
   AgentDecisionInvalidError,
   AgentTaskInvalidError,
@@ -89,6 +97,24 @@ export interface AgentRuntimeOptions {
    * something an agent is trusted to respect.
    */
   readonly maxToolCallsPerDecision?: number | undefined;
+  /**
+   * The model layer, if one is installed.
+   *
+   * A port rather than `ModelRuntime`, for the same reason `tools` is a port
+   * rather than `ToolRuntime` — it keeps this package's dependency on
+   * `@designflow/sdk` alone true. Omitted, every agent gets a service whose
+   * every call fails with `ERR_MODEL_PROFILE_NOT_FOUND` — models are opt-in,
+   * exactly like tools.
+   */
+  readonly models?: ModelInvoker | undefined;
+  /**
+   * How many model calls one decision may make.
+   *
+   * Enforced outside the agent for the same reason the tool budget is: an
+   * agent trusted to count its own calls is an agent that, once `decide`
+   * becomes a model call, cannot be trusted to count them.
+   */
+  readonly maxModelCallsPerDecision?: number | undefined;
   /** Ambient facts every agent sees. Per-request data travels on the task. */
   readonly metadata?: Readonly<Record<string, unknown>> | undefined;
   readonly logger?: Logger | undefined;
@@ -123,6 +149,8 @@ export class AgentRuntime implements AgentDecisionService {
   private readonly logger: Logger;
   private readonly tools: ToolInvoker | undefined;
   private readonly maxToolCalls: number;
+  private readonly models: ModelInvoker | undefined;
+  private readonly maxModelCalls: number;
   private readonly observer: AgentObserver;
   private readonly tracer: TraceObserver;
   private readonly generateTraceId: () => string;
@@ -138,6 +166,9 @@ export class AgentRuntime implements AgentDecisionService {
     this.tools = options.tools;
     this.maxToolCalls =
       options.maxToolCallsPerDecision ?? DEFAULT_MAX_TOOL_CALLS_PER_DECISION;
+    this.models = options.models;
+    this.maxModelCalls =
+      options.maxModelCallsPerDecision ?? DEFAULT_MAX_MODEL_CALLS_PER_DECISION;
     this.observer = options.observer ?? NOOP_AGENT_OBSERVER;
     this.tracer = options.tracer ?? NOOP_TRACE_OBSERVER;
     this.generateTraceId = options.generateTraceId ?? (() => crypto.randomUUID());
@@ -208,10 +239,97 @@ export class AgentRuntime implements AgentDecisionService {
             ...(signal !== undefined ? { signal } : {}),
           });
 
+    // The same narrowing, one layer further: the agent's own profile, but
+    // only if this installation actually has it configured. An agent is
+    // never handed a service for a profile that does not resolve — calling
+    // it would just fail on the first attempt, and failing before that
+    // attempt is cheaper and no less honest.
+    const installedProfiles = this.models?.installedProfileIds() ?? [];
+    const modelAvailable =
+      manifest.modelProfileId !== undefined &&
+      installedProfiles.includes(manifest.modelProfileId);
+
+    const modelCalls: TraceModelCall[] = [];
+
+    // Fired before the call reaches the model layer, so a live view can show
+    // "waiting on the model" rather than learning about a call only once it
+    // is already over. Carries only the profile — the provider and model are
+    // not resolved yet, and `model.request.started` has no field for either.
+    const onModelStart = (info: ObservedModelStart): void => {
+      void this.trace({
+        type: "model.request.started",
+        traceId,
+        requestId: info.requestId,
+        profileId: info.profileId,
+        timestamp: this.now().toISOString(),
+      });
+    };
+
+    // Recorded as each call resolves, mirroring `onCall` for tools: a
+    // decision that throws mid-call still leaves the calls it had already
+    // made in the trace.
+    const onModelCall = (observed: ObservedModelCall): void => {
+      modelCalls.push({
+        requestId: observed.requestId,
+        profileId: observed.profileId,
+        durationMs: observed.durationMs,
+        status: observed.type,
+        ...(observed.type === "success"
+          ? {
+              providerId: observed.providerId,
+              model: observed.model,
+              ...(observed.usage !== undefined ? { usage: observed.usage } : {}),
+            }
+          : { errorCode: observed.code }),
+      });
+
+      void this.trace(
+        observed.type === "success"
+          ? {
+              type: "model.request.completed",
+              traceId,
+              requestId: observed.requestId,
+              profileId: observed.profileId,
+              providerId: observed.providerId,
+              model: observed.model,
+              durationMs: observed.durationMs,
+              ...(observed.usage !== undefined ? { usage: observed.usage } : {}),
+              timestamp: this.now().toISOString(),
+            }
+          : {
+              type: "model.request.failed",
+              traceId,
+              requestId: observed.requestId,
+              profileId: observed.profileId,
+              errorCode: observed.code,
+              durationMs: observed.durationMs,
+              timestamp: this.now().toISOString(),
+            },
+      );
+    };
+
+    // Scoped to this decision, exactly like the tool service: the budget
+    // cannot be reset by anything the agent does and cannot be carried over
+    // from a previous decision.
+    const modelService =
+      !modelAvailable || manifest.modelProfileId === undefined
+        ? EMPTY_MODEL_SERVICE
+        : new AgentScopedModelService({
+            invoker: this.models as ModelInvoker,
+            profileId: manifest.modelProfileId,
+            maxCalls: this.maxModelCalls,
+            agentId: manifest.id,
+            workerId: validated.workerId,
+            onStart: onModelStart,
+            onCall: onModelCall,
+            ...(signal !== undefined ? { signal } : {}),
+          });
+
     const context: AgentContext = {
       availableWorkflows,
       availableTools,
       tools: toolService,
+      model: modelService,
       metadata: this.metadata,
       // A context without a signal would leave an agent unable to observe
       // cancellation, so one is always present — unaborted when none is given.

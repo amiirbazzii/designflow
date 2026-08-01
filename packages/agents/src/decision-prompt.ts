@@ -1,0 +1,221 @@
+// packages/agents/src/decision-prompt.ts
+import { z } from "zod";
+import type { JsonSchemaObject, ModelMessage } from "@designflow/sdk";
+
+/**
+ * The bounded prompt a model-backed decision is built from.
+ *
+ * Deliberately its own file, outside every provider adapter. A provider
+ * translates messages into an HTTP call; it never sees an `AgentManifest`, a
+ * task, or a tool result, and could not construct a prompt even if it wanted
+ * to. This is the one place that assembly happens, which is what makes it
+ * possible to say precisely what a model is and is not shown — read this
+ * file, not the provider, to answer "what does the model see?".
+ *
+ * Deterministic and pure: the same inputs produce the same messages, every
+ * time, with no clock, no randomness and no I/O. That is what makes it
+ * separately testable without a model, a provider or a network in sight.
+ *
+ * ## What goes in
+ *
+ *   - the agent's own instructions (its standing brief)
+ *   - the user-safe request, exactly as the agent itself received it
+ *   - a bounded summary of the structured input, key/value pairs only
+ *   - the workflows the agent may choose, by id
+ *   - the tools the agent may consult, by id
+ *   - the exact schema the answer must satisfy
+ *
+ * ## What never goes in
+ *
+ *   - an API key, a header, or anything about how the call will be made
+ *   - hidden infrastructure state — no execution ids, no file paths, no
+ *     internal configuration
+ *   - a repository credential, or any fact about how DesignFlow stores data
+ *   - a raw trace, an unrelated config value, or the trace id this decision
+ *     will itself be recorded under
+ *   - a request for chain-of-thought. The prompt asks for a concise
+ *     `reasoningSummary` explicitly, and asks for nothing more private than
+ *     that — the same distinction `agentDecisionSchema` enforces structurally
+ *     is asked for here in words, so the model is never invited to produce
+ *     what the schema would refuse anyway.
+ */
+
+const REASONING_INSTRUCTION =
+  "Explain your choice in one short, user-safe sentence for `reasoningSummary`. " +
+  "Do not include private reasoning, step-by-step thinking, or anything beyond that one sentence.";
+
+/**
+ * The model's answer, before it becomes an `AgentDecision`.
+ *
+ * Narrower than `agentDecisionSchema` in one deliberate way: no `input`
+ * field. The model chooses *which* workflow, never *what to run it with* —
+ * the structured input a workflow receives still comes from the task the
+ * person actually submitted, copied over unchanged by whichever strategy
+ * calls this. A model that could invent workflow input would be a model that
+ * could smuggle content into a capability's input that nobody reviewed;
+ * keeping that field off the vocabulary the model is even offered means there
+ * is nothing to smuggle it through.
+ *
+ * Every member `.strict()`, for the identical reason `agentDecisionSchema`
+ * is: a model attaching anything beyond what is named here — chain-of-thought
+ * under a different key, an invented field — produces an answer that fails to
+ * parse rather than one that quietly reaches the decision that gets acted on.
+ */
+export const modelDecisionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("run_workflow"),
+      workflowId: z.string().min(1),
+      reasoningSummary: z.string().min(1).max(400),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("request_clarification"),
+      question: z.string().min(1).max(400),
+      reasoningSummary: z.string().min(1).max(400),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("decline"),
+      reason: z.string().min(1).max(400),
+      reasoningSummary: z.string().min(1).max(400),
+    })
+    .strict(),
+]);
+
+export type ModelDecision = z.infer<typeof modelDecisionSchema>;
+
+/**
+ * The JSON Schema sent to the provider, matching `modelDecisionSchema`
+ * structurally.
+ *
+ * Hand-written rather than derived from the Zod schema by a converter —
+ * building a general Zod-to-JSON-Schema translator for one call site would be
+ * exactly the kind of unsupported generalisation this stage was told not to
+ * add. `workflowId` is constrained to an enum of the agent's own
+ * `availableWorkflows`, tightening the model's choices at the schema level —
+ * genuinely useful, since some providers reject an answer outside an enum
+ * before it is even returned — but this is a courtesy, not the enforcement.
+ * `modelDecisionSchema` re-parses the answer regardless, and the workflow
+ * allow-list check downstream of that does not know or care that the schema
+ * already tried to narrow things.
+ */
+export function decisionResponseSchema(availableWorkflows: readonly string[]): JsonSchemaObject {
+  return {
+    type: "object",
+    oneOf: [
+      {
+        type: "object",
+        properties: {
+          type: { const: "run_workflow" },
+          workflowId:
+            availableWorkflows.length > 0
+              ? { type: "string", enum: [...availableWorkflows] }
+              : { type: "string" },
+          reasoningSummary: { type: "string", maxLength: 400 },
+        },
+        required: ["type", "workflowId", "reasoningSummary"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: { const: "request_clarification" },
+          question: { type: "string", maxLength: 400 },
+          reasoningSummary: { type: "string", maxLength: 400 },
+        },
+        required: ["type", "question", "reasoningSummary"],
+        additionalProperties: false,
+      },
+      {
+        type: "object",
+        properties: {
+          type: { const: "decline" },
+          reason: { type: "string", maxLength: 400 },
+          reasoningSummary: { type: "string", maxLength: 400 },
+        },
+        required: ["type", "reason", "reasoningSummary"],
+        additionalProperties: false,
+      },
+    ],
+  };
+}
+
+export interface DecisionPromptInput {
+  readonly instructions: string;
+  readonly request: string;
+  /** Bounded key/value pairs. Values are stringified and truncated. */
+  readonly inputSummary?: Readonly<Record<string, unknown>> | undefined;
+  readonly availableWorkflows: readonly string[];
+  readonly availableTools: readonly string[];
+}
+
+const MAX_VALUE_LENGTH = 200;
+const MAX_SUMMARY_FIELDS = 20;
+
+/** One line per field, truncated, so a single oversized answer cannot blow the prompt open. */
+function summarizeInput(input: Readonly<Record<string, unknown>> | undefined): string {
+  if (input === undefined) return "(none)";
+
+  const entries = Object.entries(input).slice(0, MAX_SUMMARY_FIELDS);
+  if (entries.length === 0) return "(none)";
+
+  return entries
+    .map(([key, value]) => {
+      const rendered = Array.isArray(value) ? value.join(", ") : String(value);
+      const bounded =
+        rendered.length > MAX_VALUE_LENGTH
+          ? `${rendered.slice(0, MAX_VALUE_LENGTH)}…`
+          : rendered;
+      return `- ${key}: ${bounded}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Builds the messages and response schema for one decision.
+ *
+ * Two messages: a `system` message carrying the agent's standing instructions
+ * plus the bounded menu of what it may choose from, and a `user` message
+ * carrying the request itself. Splitting them this way is what lets the same
+ * instructions be reused verbatim across many requests, and is the
+ * conventional shape most providers optimise for.
+ */
+export function buildDecisionPrompt(input: DecisionPromptInput): {
+  readonly messages: readonly ModelMessage[];
+  readonly responseSchema: JsonSchemaObject;
+} {
+  const system = [
+    input.instructions,
+    "",
+    "You are deciding what should happen next for a bounded task. You must respond " +
+      "with exactly one structured decision matching the schema you have been given.",
+    "",
+    `Permitted workflows: ${input.availableWorkflows.length > 0 ? input.availableWorkflows.join(", ") : "(none)"}`,
+    `Permitted tools already consulted: ${input.availableTools.length > 0 ? input.availableTools.join(", ") : "(none)"}`,
+    "",
+    "You may only choose a workflow from the permitted list above. You may not name " +
+      "a tool, a capability, a shell command, a file path or any other operation — your " +
+      "only choices are: run one of the permitted workflows, ask a clarifying question, " +
+      "or decline.",
+    "",
+    REASONING_INSTRUCTION,
+  ].join("\n");
+
+  const user = [
+    `Request: ${input.request.length > 0 ? input.request : "(empty)"}`,
+    "",
+    "Structured input:",
+    summarizeInput(input.inputSummary),
+  ].join("\n");
+
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    responseSchema: decisionResponseSchema(input.availableWorkflows),
+  };
+}

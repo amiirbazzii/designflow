@@ -156,7 +156,7 @@ describe("the built-in catalogue", () => {
     expect(designEngineerAgentManifest.allowedWorkflows).toEqual(["design-to-code"]);
     // One tool, named explicitly. No wildcard exists to grant more.
     expect(designEngineerAgentManifest.allowedTools).toEqual(["classify-design-task"]);
-    expect(designEngineerAgentManifest.version).toBe("0.2.0");
+    expect(designEngineerAgentManifest.version).toBe("0.3.0");
   });
 
   test("a fresh registry per call, so hosts cannot leak agents into each other", () => {

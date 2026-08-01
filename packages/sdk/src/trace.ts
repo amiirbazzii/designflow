@@ -1,5 +1,6 @@
 // packages/sdk/src/trace.ts
 import { z } from "zod";
+import { modelUsageSchema } from "./model";
 
 /**
  * A trace is the record that an AI decision happened, and what it decided.
@@ -60,6 +61,40 @@ export const traceToolCallSchema = z
 
 export type TraceToolCall = z.infer<typeof traceToolCallSchema>;
 
+/**
+ * One model call, as it appears on a trace.
+ *
+ * The same discipline as `TraceToolCall`, one layer up: which provider and
+ * model, how long, whether it worked, and safe usage counts when the provider
+ * reported any. Never the messages sent, never the structured output that
+ * came back — a model call is the highest-density place secrets and user
+ * content pass through this system, and the schema's strictness is what makes
+ * "does a trace ever hold a prompt?" answerable by reading the type rather
+ * than auditing every call site that builds one.
+ *
+ * `model` — the exact slug, e.g. `anthropic/claude-3.5-sonnet` — is
+ * considered safe trace metadata and is stored deliberately. It identifies
+ * *which model decided*, the same category of fact `workflowId` already is;
+ * it is provider/version information, not user content, and withholding it
+ * would make a trace useless for the one thing Stage 38 exists to support:
+ * telling two model configurations apart after the fact.
+ */
+export const traceModelCallSchema = z
+  .object({
+    requestId: z.string().min(1),
+    profileId: z.string().min(1),
+    /** Absent for a failure that never reached a resolved provider. */
+    providerId: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    durationMs: z.number().nonnegative(),
+    status: z.enum(["success", "failure"]),
+    errorCode: z.string().min(1).optional(),
+    usage: modelUsageSchema.optional(),
+  })
+  .strict();
+
+export type TraceModelCall = z.infer<typeof traceModelCallSchema>;
+
 // ── The trace ───────────────────────────────────────────────────
 
 export const agentTraceSchema = z
@@ -95,6 +130,16 @@ export const agentTraceSchema = z
      */
     toolCalls: z.array(traceToolCallSchema).default([]),
     /**
+     * The model calls consulted, in call order.
+     *
+     * Additive in this stage, the same way `toolCalls` was additive in
+     * Stage 37: a trace written before models existed has none, and a
+     * deterministic agent's trace still has none — the field is present and
+     * empty rather than the schema growing a second, model-flavoured trace
+     * shape.
+     */
+    modelCalls: z.array(traceModelCallSchema).default([]),
+    /**
      * Host-supplied facts about the installation, not about the request.
      *
      * The one open field, and the one place a careless caller could put
@@ -118,6 +163,7 @@ export const agentTracePatchSchema = z
     errorCode: z.string().min(1).optional(),
     durationMs: z.number().nonnegative().optional(),
     toolCalls: z.array(traceToolCallSchema).optional(),
+    modelCalls: z.array(traceModelCallSchema).optional(),
   })
   .strict();
 
@@ -155,6 +201,61 @@ export const traceEventSchema = z.discriminatedUnion("type", [
       durationMs: z.number().nonnegative(),
       status: z.enum(["success", "failure"]),
       errorCode: z.string().min(1).optional(),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("model.request.started"),
+      traceId: z.string().min(1),
+      requestId: z.string().min(1),
+      /**
+       * Only the profile, not the provider or model.
+       *
+       * Both are genuinely unknown at this point: the profile is what the
+       * caller asked for, and resolving it to an actual provider and model
+       * slug is the model layer's job, not finished until the call returns.
+       * `model.request.completed` and `model.request.failed` carry both once
+       * they are known, rather than this event guessing or leaving a
+       * placeholder.
+       */
+      profileId: z.string().min(1),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("model.request.completed"),
+      traceId: z.string().min(1),
+      requestId: z.string().min(1),
+      profileId: z.string().min(1),
+      providerId: z.string().min(1),
+      model: z.string().min(1),
+      durationMs: z.number().nonnegative(),
+      usage: modelUsageSchema.optional(),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("model.request.failed"),
+      traceId: z.string().min(1),
+      requestId: z.string().min(1),
+      profileId: z.string().min(1),
+      /**
+       * Optional, unlike on `model.request.completed`.
+       *
+       * A failure that never reached a provider — an unresolved profile, an
+       * unresolved provider id — has neither. `ModelResult`'s failure member
+       * carries no such fields at all; there is nothing to fill this in from
+       * for most failure codes, and a placeholder string would be a value
+       * pretending to be data.
+       */
+      providerId: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+      /** A stable `ERR_MODEL_*` code. Never the provider's own error text. */
+      errorCode: z.string().min(1),
+      durationMs: z.number().nonnegative(),
       timestamp: z.string().min(1),
     })
     .strict(),

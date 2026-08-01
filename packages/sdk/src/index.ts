@@ -75,6 +75,37 @@ export type {
   AgentDecisionService,
 } from "./agent";
 
+// ── Model Runtime ────────────────────────────────────────────────
+export {
+  modelMessageRoleSchema,
+  modelMessageSchema,
+  jsonSchemaObjectSchema,
+  modelProviderRoutingSchema,
+  modelProfileSchema,
+  modelUsageSchema,
+  modelRequestSchema,
+  modelResponseSchema,
+  modelResultSchema,
+} from "./model";
+
+export type {
+  ModelMessageRole,
+  ModelMessage,
+  JsonSchemaObject,
+  ModelProviderRouting,
+  ModelProfile,
+  ModelUsage,
+  ModelRequest,
+  ModelResponse,
+  ModelResult,
+  ModelProviderContext,
+  ModelProvider,
+  ModelInvocationRequest,
+  ModelInvoker,
+  AgentModelRequest,
+  AgentModelService,
+} from "./model";
+
 // ── Agent Tools ─────────────────────────────────────────────────
 export {
   toolManifestSchema,
@@ -113,6 +144,7 @@ export {
   agentTracePatchSchema,
   traceEventSchema,
   traceToolCallSchema,
+  traceModelCallSchema,
   traceStatusSchema,
   traceDecisionTypeSchema,
   traceFiltersSchema,
@@ -125,6 +157,7 @@ export type {
   AgentTracePatch,
   TraceEvent,
   TraceToolCall,
+  TraceModelCall,
   TraceStatus,
   TraceDecisionType,
   TraceFilters,

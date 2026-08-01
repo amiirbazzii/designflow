@@ -91,7 +91,9 @@ export class InMemoryTraceStore implements TraceStore {
 export class TraceCollector implements TraceObserver {
   private readonly store: TraceStore;
   /** Tool calls seen for a trace that has not closed yet. */
-  private readonly pending = new Map<string, AgentTrace["toolCalls"]>();
+  private readonly pendingTools = new Map<string, AgentTrace["toolCalls"]>();
+  /** Model calls seen for a trace that has not closed yet. */
+  private readonly pendingModels = new Map<string, AgentTrace["modelCalls"]>();
 
   public constructor(store: TraceStore) {
     this.store = store;
@@ -102,7 +104,8 @@ export class TraceCollector implements TraceObserver {
 
     switch (validated.type) {
       case "agent.decision.started": {
-        this.pending.set(validated.traceId, []);
+        this.pendingTools.set(validated.traceId, []);
+        this.pendingModels.set(validated.traceId, []);
 
         await this.store.create(
           agentTraceSchema.parse({
@@ -112,6 +115,7 @@ export class TraceCollector implements TraceObserver {
             startedAt: validated.timestamp,
             status: "running",
             toolCalls: [],
+            modelCalls: [],
           }),
         );
         return;
@@ -119,7 +123,7 @@ export class TraceCollector implements TraceObserver {
 
       case "tool.call.observed": {
         const calls = [
-          ...(this.pending.get(validated.traceId) ?? []),
+          ...(this.pendingTools.get(validated.traceId) ?? []),
           {
             toolId: validated.toolId,
             durationMs: validated.durationMs,
@@ -130,8 +134,54 @@ export class TraceCollector implements TraceObserver {
           },
         ];
 
-        this.pending.set(validated.traceId, calls);
+        this.pendingTools.set(validated.traceId, calls);
         await this.store.update(validated.traceId, { toolCalls: calls });
+        return;
+      }
+
+      // A `started` event exists for a live view to consume; the persisted
+      // trace itself only ever needs the terminal outcome, so this collector
+      // does not record it as a partial call — it would leave a
+      // half-finished entry behind for any decision this trace's `completed`
+      // or `failed` event races with `onEvent`'s own await, which never
+      // actually happens since every call here is awaited in order.
+      case "model.request.started": {
+        return;
+      }
+
+      case "model.request.completed": {
+        const calls = [
+          ...(this.pendingModels.get(validated.traceId) ?? []),
+          {
+            requestId: validated.requestId,
+            profileId: validated.profileId,
+            providerId: validated.providerId,
+            model: validated.model,
+            durationMs: validated.durationMs,
+            status: "success" as const,
+            ...(validated.usage !== undefined ? { usage: validated.usage } : {}),
+          },
+        ];
+
+        this.pendingModels.set(validated.traceId, calls);
+        await this.store.update(validated.traceId, { modelCalls: calls });
+        return;
+      }
+
+      case "model.request.failed": {
+        const calls = [
+          ...(this.pendingModels.get(validated.traceId) ?? []),
+          {
+            requestId: validated.requestId,
+            profileId: validated.profileId,
+            durationMs: validated.durationMs,
+            status: "failure" as const,
+            errorCode: validated.errorCode,
+          },
+        ];
+
+        this.pendingModels.set(validated.traceId, calls);
+        await this.store.update(validated.traceId, { modelCalls: calls });
         return;
       }
 
@@ -145,7 +195,8 @@ export class TraceCollector implements TraceObserver {
           durationMs: validated.durationMs,
           completedAt: validated.timestamp,
         });
-        this.pending.delete(validated.traceId);
+        this.pendingTools.delete(validated.traceId);
+        this.pendingModels.delete(validated.traceId);
         return;
       }
 
@@ -156,7 +207,8 @@ export class TraceCollector implements TraceObserver {
           durationMs: validated.durationMs,
           completedAt: validated.timestamp,
         });
-        this.pending.delete(validated.traceId);
+        this.pendingTools.delete(validated.traceId);
+        this.pendingModels.delete(validated.traceId);
         return;
       }
     }

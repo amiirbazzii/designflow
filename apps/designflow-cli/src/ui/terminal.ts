@@ -98,6 +98,25 @@ export function workerMenu(
  * There is nothing here to authenticate, and by design nothing here to point at
  * a server.
  */
+/** A worker's AI assignment, as `designflow settings` may show it. */
+export interface SettingsModelAssignment {
+  readonly workerName: string;
+  readonly providerId: string;
+  readonly model: string;
+  readonly credentialConfigured: boolean;
+}
+
+/**
+ * "Provider: OpenRouter" reads better than "Provider: openrouter" — the only
+ * translation this file does, and only for display. Everything DesignFlow
+ * itself compares is still the lowercase id.
+ */
+function displayProviderName(providerId: string): string {
+  return providerId === "openrouter"
+    ? "OpenRouter"
+    : providerId.charAt(0).toUpperCase() + providerId.slice(1);
+}
+
 export function settings(
   layout: HomeLayout,
   values: {
@@ -105,9 +124,10 @@ export function settings(
     readonly environment: string;
     readonly historyFile: string;
     readonly workerCount: number;
+    readonly modelAssignments?: readonly SettingsModelAssignment[];
   },
 ): string {
-  return [
+  const lines = [
     "",
     heading("Settings"),
     "",
@@ -119,11 +139,32 @@ export function settings(
     `  Config        ${layout.configFile}`,
     `  History       ${values.historyFile}`,
     `  Cache         ${layout.cache}`,
+  ];
+
+  const assignments = values.modelAssignments ?? [];
+
+  if (assignments.length > 0) {
+    lines.push("", "  AI assignments");
+
+    for (const assignment of assignments) {
+      lines.push(
+        "",
+        `    ${assignment.workerName}`,
+        `      Provider:    ${displayProviderName(assignment.providerId)}`,
+        `      Model:       ${assignment.model}`,
+        `      Credential:  ${assignment.credentialConfigured ? "configured" : "missing"}`,
+      );
+    }
+  }
+
+  lines.push(
     "",
     "  Edit config.json to change these. Set DESIGNFLOW_HOME to move the",
     "  whole directory somewhere else.",
     "",
-  ].join("\n");
+  );
+
+  return lines.join("\n");
 }
 
 /**

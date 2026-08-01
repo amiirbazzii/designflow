@@ -203,6 +203,7 @@ describe("what a completed trace holds", () => {
       "decisionType",
       "durationMs",
       "id",
+      "modelCalls",
       "startedAt",
       "status",
       "toolCalls",
@@ -359,5 +360,137 @@ describe("TraceService", () => {
       "getTrace",
       "listTraces",
     ]);
+  });
+});
+
+// ── Model call collection ────────────────────────────────────────
+
+describe("building a trace with model calls", () => {
+  test("a completed model call is recorded with provider, model and usage", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent(STARTED);
+
+    await observer.onEvent({
+      type: "model.request.started",
+      traceId: "trace-1",
+      requestId: "req-1",
+      profileId: "design-engineer-default",
+      timestamp: "2026-08-01T10:00:01.000Z",
+    });
+    await observer.onEvent({
+      type: "model.request.completed",
+      traceId: "trace-1",
+      requestId: "req-1",
+      profileId: "design-engineer-default",
+      providerId: "openrouter",
+      model: "openai/gpt-4o-mini",
+      durationMs: 320,
+      usage: { inputTokens: 40, outputTokens: 10, totalTokens: 50 },
+      timestamp: "2026-08-01T10:00:01.320Z",
+    });
+
+    const trace = await store.get("trace-1");
+    expect(trace?.modelCalls).toEqual([
+      {
+        requestId: "req-1",
+        profileId: "design-engineer-default",
+        providerId: "openrouter",
+        model: "openai/gpt-4o-mini",
+        durationMs: 320,
+        status: "success",
+        usage: { inputTokens: 40, outputTokens: 10, totalTokens: 50 },
+      },
+    ]);
+    // Still open — a model call is not the decision's own outcome.
+    expect(trace?.status).toBe("running");
+  });
+
+  test("a failed model call is recorded with a code, no provider or model", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent(STARTED);
+
+    await observer.onEvent({
+      type: "model.request.failed",
+      traceId: "trace-1",
+      requestId: "req-1",
+      profileId: "design-engineer-default",
+      errorCode: "ERR_MODEL_TIMEOUT",
+      durationMs: 30_000,
+      timestamp: "2026-08-01T10:00:30.000Z",
+    });
+
+    const trace = await store.get("trace-1");
+    expect(trace?.modelCalls).toEqual([
+      {
+        requestId: "req-1",
+        profileId: "design-engineer-default",
+        durationMs: 30_000,
+        status: "failure",
+        errorCode: "ERR_MODEL_TIMEOUT",
+      },
+    ]);
+  });
+
+  test("a started event alone leaves no partial entry behind", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent(STARTED);
+
+    await observer.onEvent({
+      type: "model.request.started",
+      traceId: "trace-1",
+      requestId: "req-1",
+      profileId: "design-engineer-default",
+      timestamp: "2026-08-01T10:00:01.000Z",
+    });
+
+    expect((await store.get("trace-1"))?.modelCalls).toEqual([]);
+  });
+
+  test("model and tool calls both accumulate on the same trace", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent(STARTED);
+
+    await observer.onEvent({
+      type: "tool.call.observed",
+      traceId: "trace-1",
+      toolId: "classify-design-task",
+      durationMs: 2,
+      status: "success",
+      timestamp: "2026-08-01T10:00:01.000Z",
+    });
+    await observer.onEvent({
+      type: "model.request.completed",
+      traceId: "trace-1",
+      requestId: "req-1",
+      profileId: "design-engineer-default",
+      providerId: "openrouter",
+      model: "openai/gpt-4o-mini",
+      durationMs: 300,
+      timestamp: "2026-08-01T10:00:02.000Z",
+    });
+
+    const trace = await store.get("trace-1");
+    expect(trace?.toolCalls).toHaveLength(1);
+    expect(trace?.modelCalls).toHaveLength(1);
+  });
+
+  test("no prompt, completion, or usage-adjacent secret ever reaches the store", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent(STARTED);
+    await observer.onEvent({
+      type: "model.request.completed",
+      traceId: "trace-1",
+      requestId: "req-1",
+      profileId: "design-engineer-default",
+      providerId: "openrouter",
+      model: "openai/gpt-4o-mini",
+      durationMs: 1,
+      timestamp: "2026-08-01T10:00:01.000Z",
+    });
+
+    const serialized = JSON.stringify(await store.get("trace-1"));
+    for (const forbidden of ["prompt", "message", "completion", "output", "content"]) {
+      expect(serialized.toLowerCase()).not.toContain(forbidden);
+    }
   });
 });

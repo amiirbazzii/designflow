@@ -51,6 +51,9 @@ const FORBIDDEN = [
   "@designflow/storage-sqlite",
   "@designflow/product",
   "@designflow/workers",
+  "@designflow/tools",
+  "@designflow/models",
+  "@designflow/model-provider-openrouter",
   "designflow-cli",
 ];
 
@@ -116,16 +119,41 @@ describe("the agents package depends on the SDK alone", () => {
     }
   });
 
-  test("carries no LLM or agent-tool dependency", () => {
-    // Stage 35 is contracts and a boundary. Tools, memory and model calls are
-    // later stages, and a placeholder for them now would be an interface
-    // invented before there was a caller to shape it.
+  test("carries no LLM provider SDK dependency", () => {
+    // Stage 38 makes this package model-capable, so "no LLM dependency" no
+    // longer means "no mention of a model at all" — the Design Engineer's
+    // default profile names a real model slug, and that slug legitimately
+    // contains a vendor prefix (`openai/gpt-4o-mini`, routed through
+    // OpenRouter). What must still be true is narrower and just as real: no
+    // provider *SDK* is imported. Every model call goes through the
+    // `ModelInvoker` port declared in `@designflow/sdk`, resolved by
+    // `@designflow/models` — never a vendor's own client library, which is
+    // exactly the coupling `ModelProvider` exists to keep one layer away.
     for (const path of sources(import.meta.dir)) {
       const contents = code(path);
+      const imports = [...contents.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);
 
-      for (const forbidden of ["@ai-sdk/", "openai", "anthropic", "langchain"]) {
-        expect(contents.toLowerCase()).not.toContain(forbidden);
+      for (const forbidden of [
+        "@ai-sdk/",
+        "openai",
+        "@anthropic-ai/",
+        "langchain",
+        "@designflow/model-provider-openrouter",
+      ]) {
+        for (const specifier of imports) {
+          expect(specifier?.toLowerCase().includes(forbidden)).toBe(false);
+        }
       }
+    }
+  });
+
+  test("never calls a provider endpoint directly", () => {
+    // Every model call reaches a provider through `ModelInvoker.generate`,
+    // resolved by whatever this package was constructed with — never a raw
+    // HTTP call this package makes on its own. `fetch` appearing here at all
+    // would mean a provider integration had leaked into the agent layer.
+    for (const path of sources(import.meta.dir)) {
+      expect(code(path)).not.toContain("fetch(");
     }
   });
 });

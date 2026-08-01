@@ -27,8 +27,18 @@ import {
   AgentRuntime,
   assertWorkerAgentAlignment,
   createAgentRegistry,
+  designEngineerDefaultModelProfile,
+  modelDesignEngineerStrategy,
 } from "@designflow/agents";
 import { ToolRuntime, createToolRegistry } from "@designflow/tools";
+import {
+  InMemoryModelProfileRegistry,
+  InMemoryModelProviderRegistry,
+  ModelRuntime,
+  mergeModelProfileOverrides,
+} from "@designflow/models";
+import { OpenRouterProvider } from "@designflow/model-provider-openrouter";
+import type { ModelProfile } from "@designflow/sdk";
 import {
   FileApprovalManager,
   FileArtifactStore,
@@ -54,6 +64,7 @@ import {
 import { resolveDatabasePath } from "./config";
 import { initializeHome } from "./home";
 import type { HomeState } from "./home";
+import { readModelProfileOverrides } from "./model-config";
 
 /**
  * The CLI's composition root — the one allowed exception to the import rule.
@@ -83,6 +94,18 @@ const silentLogger: Logger = {
   debug: () => {},
 };
 
+/**
+ * The model each installed agent is assigned by default, before any local
+ * override.
+ *
+ * Collected from the agent packages themselves — one entry per agent that
+ * ships one, imported rather than reconstructed — so this file never repeats
+ * an agent's own profile id or model choice. A worker/agent name appearing in
+ * `services/cli-runner.ts` is exactly the mistake this list exists to avoid;
+ * see `shell.test.ts`'s scan for why.
+ */
+const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [designEngineerDefaultModelProfile];
+
 export interface WorkflowInfo {
   readonly workflowId: string;
   readonly name: string;
@@ -107,6 +130,21 @@ export interface ResolvedWorker {
 }
 
 export type ProgressListener = (progress: ExecutionProgress) => void;
+
+/**
+ * A worker's AI, in the vocabulary `designflow settings` shows.
+ *
+ * Safe by construction rather than by care taken when building it: nothing
+ * here is capable of holding a credential, because the profile it is built
+ * from — `ModelProfile` — has no field for one at all. `credentialConfigured`
+ * is a boolean, never the value it is reporting on.
+ */
+export interface ModelAssignment {
+  readonly workerName: string;
+  readonly providerId: string;
+  readonly model: string;
+  readonly credentialConfigured: boolean;
+}
 
 export interface CliContext {
   readonly runner: WorkflowRunner;
@@ -147,6 +185,15 @@ export interface CliContext {
    * the only party that learns which execution a decision produced.
    */
   readonly traces: TraceService;
+  /**
+   * What AI each worker is assigned, for `designflow settings` to display.
+   *
+   * Computed once, at wiring time, from the same profiles the live model
+   * layer (if any) was actually built from — so this can never drift from
+   * what a run would really use, the way a second, hand-maintained summary
+   * could.
+   */
+  readonly modelAssignments: readonly ModelAssignment[];
   /** Installed workflows. Still needed by `resolve`; no longer user-facing. */
   listWorkflows(): readonly WorkflowInfo[];
   /** Redraws while a run is in flight. */
@@ -167,6 +214,19 @@ export interface CliContextOptions {
    * could then check for.
    */
   readonly workers?: InMemoryWorkerRegistry;
+  /**
+   * Test-only. Overrides the OpenRouter endpoint a real request would go to.
+   *
+   * The highest precedence in the model configuration hierarchy — explicit
+   * dependency injection, never read from `config.json` or an environment
+   * variable. That asymmetry is deliberate: a local config or env override
+   * for the endpoint would let a compromised or careless config point a real
+   * install at an unreviewed server and have its credential sent there. A
+   * test, in contrast, calls this function directly and can simply pass the
+   * override in — no config file, no env var, no surface for anything else
+   * to reach.
+   */
+  readonly modelEndpointOverride?: string;
 }
 
 export function createCliContext(options?: CliContextOptions): CliContext {
@@ -246,12 +306,6 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     executionReconciler: new ArtifactSetReconciler({ registry: artifactStore }),
   });
 
-  // Agents decide; they do not execute. The runtime is handed the installed
-  // workflow ids and nothing else — no repository, no artifact store, no
-  // execution service — so an agent can name a workflow and can do nothing
-  // with the name itself.
-  const agentRegistry = createAgentRegistry();
-
   // Tools inform a decision; they never perform work. The runtime is handed a
   // registry and nothing else — no runner, no repository, no artifact store —
   // so a tool can report what it found and can do nothing with the finding.
@@ -266,6 +320,49 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     logger: silentLogger,
   });
 
+  // Model profiles: registered whether or not a credential is configured, so
+  // `designflow settings` can always show what *would* run — but a live
+  // `ModelRuntime` is only ever built when `OPENROUTER_API_KEY` is actually
+  // present. This is the one and only place mode is decided, and it is
+  // decided once, at wiring time, never per-request and never by falling back
+  // silently after a failed attempt.
+  const modelProfiles = new InMemoryModelProfileRegistry(
+    mergeModelProfileOverrides(BUILT_IN_MODEL_PROFILES, readModelProfileOverrides(home.config)),
+  );
+
+  // `!== undefined` rather than a truthiness check: a credential set to an
+  // empty string is a real, if broken, signal that OpenRouter was expected —
+  // it still reaches `OpenRouterProvider`'s constructor, which refuses an
+  // empty key immediately with `ERR_MODEL_API_KEY_MISSING`, before any
+  // command has run. An unset variable, in contrast, means OpenRouter was
+  // never expected at all, and the CLI stays in deterministic mode with no
+  // error of any kind.
+  const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
+  const modelModeRequested = openRouterApiKey !== undefined;
+
+  const modelRuntime = modelModeRequested
+    ? new ModelRuntime({
+        profiles: modelProfiles,
+        providers: new InMemoryModelProviderRegistry([
+          new OpenRouterProvider({
+            apiKey: openRouterApiKey,
+            ...(options?.modelEndpointOverride !== undefined
+              ? { endpoint: options.modelEndpointOverride }
+              : {}),
+          }),
+        ]),
+        logger: silentLogger,
+      })
+    : undefined;
+
+  // Agents decide; they do not execute. The runtime is handed the installed
+  // workflow ids and nothing else — no repository, no artifact store, no
+  // execution service — so an agent can name a workflow and can do nothing
+  // with the name itself.
+  const agentRegistry = createAgentRegistry({
+    designEngineerStrategy: modelModeRequested ? modelDesignEngineerStrategy : undefined,
+  });
+
   // Traces share the same document as executions, so a run and the decision
   // that started it are written in one atomic rename.
   const traceStore = new FileTraceStore(store);
@@ -275,9 +372,31 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     registry: agentRegistry,
     availableWorkflows: [...workflows.keys()],
     tools: toolRuntime,
+    ...(modelRuntime !== undefined ? { models: modelRuntime } : {}),
     tracer: new TraceCollector(traceStore),
     logger: silentLogger,
   });
+
+  // Safe assignments for `designflow settings` — computed from the same
+  // registered profiles a real call would resolve, so this can never show
+  // something a run would not actually use.
+  const modelAssignments: ModelAssignment[] = [];
+  for (const worker of workers.listWorkers()) {
+    if (worker.agentId === undefined) continue;
+
+    const agentManifest = agentRegistry.get(worker.agentId)?.manifest;
+    if (agentManifest?.modelProfileId === undefined) continue;
+
+    const profile = modelProfiles.get(agentManifest.modelProfileId);
+    if (profile === undefined) continue;
+
+    modelAssignments.push({
+      workerName: worker.name,
+      providerId: profile.providerId,
+      model: profile.model,
+      credentialConfigured: modelModeRequested && openRouterApiKey.trim().length > 0,
+    });
+  }
 
   // A worker that advertises work its agent may never choose is a
   // configuration mistake. Caught here, at wiring time, rather than on the
@@ -355,6 +474,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     home,
     databasePath,
     traces,
+    modelAssignments,
 
     /**
      * Resolves the name the same way `run` does, then hands the manifest to
