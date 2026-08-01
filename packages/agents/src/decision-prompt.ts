@@ -143,6 +143,11 @@ export function decisionResponseSchema(availableWorkflows: readonly string[]): J
   };
 }
 
+export interface DecisionPromptClarification {
+  readonly question: string;
+  readonly answer: string;
+}
+
 export interface DecisionPromptInput {
   readonly instructions: string;
   readonly request: string;
@@ -150,10 +155,24 @@ export interface DecisionPromptInput {
   readonly inputSummary?: Readonly<Record<string, unknown>> | undefined;
   readonly availableWorkflows: readonly string[];
   readonly availableTools: readonly string[];
+  /**
+   * Clarifying questions already asked and answered earlier in this same
+   * bounded task, oldest first — present only when a session resumed this
+   * decision after `request_clarification`. Absent on a first decision.
+   *
+   * This is the *only* way a resumed decision differs from a fresh one: the
+   * request and input are unchanged, and this is additional bounded context,
+   * not a replacement for either. Still no chain-of-thought and no raw
+   * session state — a caller building this list from a stored session is
+   * expected to have already stripped everything but the question and the
+   * answer, the same discipline `SessionContextBuilder` documents.
+   */
+  readonly clarifications?: readonly DecisionPromptClarification[] | undefined;
 }
 
 const MAX_VALUE_LENGTH = 200;
 const MAX_SUMMARY_FIELDS = 20;
+const MAX_CLARIFICATIONS = 10;
 
 /** One line per field, truncated, so a single oversized answer cannot blow the prompt open. */
 function summarizeInput(input: Readonly<Record<string, unknown>> | undefined): string {
@@ -172,6 +191,30 @@ function summarizeInput(input: Readonly<Record<string, unknown>> | undefined): s
       return `- ${key}: ${bounded}`;
     })
     .join("\n");
+}
+
+/**
+ * Renders a resumed decision's prior exchange, or nothing at all.
+ *
+ * Returns lines to append rather than a string, so a fresh decision's prompt
+ * is byte-identical to what it was before this existed — an empty array
+ * joins to nothing, adding no blank section for a task that was never
+ * clarified.
+ */
+function summarizeClarifications(
+  clarifications: readonly DecisionPromptClarification[] | undefined,
+): readonly string[] {
+  if (clarifications === undefined || clarifications.length === 0) return [];
+
+  const bounded = clarifications.slice(0, MAX_CLARIFICATIONS);
+
+  return [
+    "",
+    "Already asked and answered for this same request:",
+    ...bounded.map(
+      (exchange, index) => `${index + 1}. Q: ${exchange.question}\n   A: ${exchange.answer}`,
+    ),
+  ];
 }
 
 /**
@@ -209,6 +252,7 @@ export function buildDecisionPrompt(input: DecisionPromptInput): {
     "",
     "Structured input:",
     summarizeInput(input.inputSummary),
+    ...summarizeClarifications(input.clarifications),
   ].join("\n");
 
   return {

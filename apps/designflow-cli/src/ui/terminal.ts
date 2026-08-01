@@ -125,6 +125,7 @@ export function settings(
     readonly historyFile: string;
     readonly workerCount: number;
     readonly modelAssignments?: readonly SettingsModelAssignment[];
+    readonly sessionConfig?: { readonly maxClarificationTurns: number; readonly expirationDays: number };
   },
 ): string {
   const lines = [
@@ -155,6 +156,15 @@ export function settings(
         `      Credential:  ${assignment.credentialConfigured ? "configured" : "missing"}`,
       );
     }
+  }
+
+  if (values.sessionConfig !== undefined) {
+    lines.push(
+      "",
+      "  Sessions",
+      `    Clarification limit:   ${values.sessionConfig.maxClarificationTurns} turns`,
+      `    Session expiration:    ${values.sessionConfig.expirationDays} days`,
+    );
   }
 
   lines.push(
@@ -198,6 +208,9 @@ export function usage(): string {
     "  designflow run <worker>    Put a worker to work",
     "  designflow history         Show previous runs",
     "  designflow traces          Show what past AI decisions did",
+    "  designflow sessions        Show conversations waiting on you",
+    "  designflow answer <id>     Answer a worker's question",
+    "  designflow cancel <id>     Cancel a waiting conversation",
     "  designflow settings        Show where things are kept",
     "",
     "Options:",

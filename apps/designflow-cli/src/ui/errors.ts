@@ -1,5 +1,6 @@
 // apps/designflow-cli/src/ui/errors.ts
 import { DesignFlowError } from "@designflow/sdk";
+import { ZodError } from "zod";
 
 /**
  * Turns a thrown value into something worth reading.
@@ -26,6 +27,8 @@ export interface UserFacingError {
 }
 
 const LIST_WORKERS = "Run  designflow list  to see who is available.";
+
+const SEE_SESSIONS = "Run  designflow sessions  to see its current status.";
 
 const PACKAGING_PROBLEM =
   "This is a packaging problem rather than something you did — please report it.";
@@ -240,6 +243,56 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That worker asked its AI for too much at once and was stopped.",
     suggestion: NOTHING_STARTED_REPORT,
   },
+
+  // Session failures. A session is the conversation behind a clarifying
+  // question, and the vocabulary here matches what `designflow sessions`
+  // already shows — never "agent", never a decision type, never an internal
+  // status code.
+  ERR_SESSION_NOT_FOUND: {
+    problem: "No conversation by that id was found.",
+    suggestion: SEE_SESSIONS,
+  },
+  ERR_SESSION_ALREADY_EXISTS: {
+    problem: "Two conversations were started under the same id.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_SESSION_INVALID: {
+    problem: "That request could not be understood.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_SESSION_STATE_INVALID: {
+    problem: "That conversation cannot be changed the way you asked.",
+    suggestion: `Nothing was started. ${SEE_SESSIONS}`,
+  },
+  ERR_SESSION_NOT_WAITING: {
+    problem: "That conversation is not waiting for an answer.",
+    suggestion: `It has already finished or was cancelled. ${SEE_SESSIONS}`,
+  },
+  ERR_SESSION_EXPIRED: {
+    problem: "That conversation has expired.",
+    suggestion: "Nothing was started. Run the worker again to start a new one.",
+  },
+  ERR_SESSION_TURN_LIMIT_EXCEEDED: {
+    problem: "That conversation asked too many questions and was stopped.",
+    suggestion: "Nothing was started. Run the worker again with more detail up front.",
+  },
+  ERR_SESSION_ANSWER_INVALID: {
+    problem: "That answer could not be recorded.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_SESSION_CANCELLED: {
+    problem: "That conversation was cancelled.",
+    suggestion: "Nothing was started. Run the worker again to start a new one.",
+  },
+  ERR_SESSION_STORE_FAILED: {
+    problem: "DesignFlow could not save that conversation.",
+    suggestion:
+      "Nothing was started. Check available disk space, or report this if it keeps happening.",
+  },
+  ERR_SESSION_CONFLICT: {
+    problem: "That conversation had already moved on by the time this reached it.",
+    suggestion: `Nothing was started. ${SEE_SESSIONS}`,
+  },
 };
 
 /**
@@ -290,6 +343,19 @@ export function explainError(error: unknown): UserFacingError {
   if (code !== undefined) {
     const known = BY_CODE[code] ?? BY_SYSCALL[code];
     if (known !== undefined) return known;
+  }
+
+  // A validation library's own error, escaping uncaught from some call this
+  // file did not anticipate. Its `.message` is a JSON dump of field paths and
+  // codes — internal shape, not a sentence — so it gets the same generic
+  // treatment a `DesignFlowError` with no mapped code would, rather than
+  // reaching a person as raw schema internals.
+  if (error instanceof ZodError) {
+    return {
+      problem: "Something given to that command was not usable.",
+      suggestion:
+        "Try again — if it keeps happening, set DESIGNFLOW_DEBUG=1 to see the full details.",
+    };
   }
 
   // Only an Error's message or a thrown string is worth showing. Anything else

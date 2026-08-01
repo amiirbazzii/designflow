@@ -408,6 +408,26 @@ describe("architecture", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("only the composition root constructs FileSessionStore or AgentSessionService", () => {
+    const offenders: string[] = [];
+
+    for (const path of sources(import.meta.dir)) {
+      if (path.endsWith("services/cli-runner.ts")) continue;
+      const contents = readFileSync(path, "utf8");
+
+      for (const forbidden of ["FileSessionStore", "new AgentSessionService"]) {
+        if (contents.includes(forbidden)) {
+          offenders.push(`${path.split("/").slice(-2).join("/")} → ${forbidden}`);
+        }
+      }
+    }
+
+    // Every command reaches sessions through `context.sessions` — the same
+    // `AgentSessionService` instance the composition root built, never a
+    // second one and never the concrete file store underneath it.
+    expect(offenders).toEqual([]);
+  });
+
   test("only the composition root constructs the tool layer", () => {
     const offenders: string[] = [];
 
@@ -880,11 +900,12 @@ describe("running through an agent", () => {
     const code = await dispatch(["run", "silent-worker"], created, terminal);
 
     expect(code).toBe(1);
-    expect(terminal.transcript).toContain("More detail needed");
+    expect(terminal.transcript).toContain("needs more information");
     expect(terminal.transcript).toContain("Which design should I build?");
-    expect(terminal.transcript).toContain("Nothing was started.");
+    expect(terminal.transcript).toContain("Session saved.");
 
-    // Stopped safely: no multi-turn loop, and no execution recorded.
+    // Stopped safely once the scripted answers ran out: bounded by the turn
+    // limit either way, and no execution recorded.
     expect(await created.runner.history()).toHaveLength(0);
   });
 });
@@ -945,7 +966,7 @@ describe("running through a tool-backed agent", () => {
     const code = await dispatch(["run", "vague-worker"], created, terminal);
 
     expect(code).toBe(1);
-    expect(terminal.transcript).toContain("More detail needed");
+    expect(terminal.transcript).toContain("needs more information");
     expect(terminal.transcript).toContain("What would you like built?");
     expect(await created.runner.history()).toHaveLength(0);
   });

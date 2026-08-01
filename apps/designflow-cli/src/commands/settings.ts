@@ -28,6 +28,7 @@ export async function settingsCommand(
       historyFile: context.databasePath,
       workerCount: context.workers.listWorkers().length,
       modelAssignments: context.modelAssignments,
+      sessionConfig: context.sessionConfig,
     }),
   );
 

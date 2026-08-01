@@ -38,6 +38,16 @@ export const workerTaskRequestSchema = z
      */
     request: z.string().default(""),
     input: z.unknown().optional(),
+    /**
+     * Bounded per-request facts, forwarded to `AgentTask.context` unchanged.
+     *
+     * Additive: absent by default, and a caller that never sets it — every
+     * caller before Stage 39 — behaves exactly as before. Stage 39 uses it to
+     * carry a resumed session's clarification history; nothing about that is
+     * specific to sessions, so the field is named for what it is rather than
+     * for the one caller that populates it today.
+     */
+    context: z.record(z.unknown()).optional(),
   })
   .strict();
 
@@ -166,6 +176,7 @@ export class WorkerTaskRouter {
         agentId,
         request: validated.request,
         ...(validated.input !== undefined ? { input: validated.input } : {}),
+        ...(validated.context !== undefined ? { context: validated.context } : {}),
       },
       signal,
     );

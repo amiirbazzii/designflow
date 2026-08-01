@@ -234,6 +234,83 @@ describe("the model strategy: tool results inform the prompt", () => {
   });
 });
 
+// ── A resumed session's clarification reaches the model ─────────
+
+describe("the model strategy: a resumed session's answer reaches the model", () => {
+  test("task.context.clarifications appears in what the model is shown", async () => {
+    const tools = classifierTool("unknown");
+    const models = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+
+    const resumedTask: AgentTask = {
+      ...TASK,
+      context: {
+        clarifications: [{ question: "Which component?", answer: "the header" }],
+      },
+    };
+
+    await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(
+      resumedTask,
+    );
+
+    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
+    expect(prompt).toContain("Which component?");
+    expect(prompt).toContain("the header");
+  });
+
+  test("a fresh task (no context) produces the same prompt as before context existed", async () => {
+    const tools = classifierTool("new_component");
+    const modelsFresh = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+    const modelsNoContext = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+
+    await runtimeWith({
+      tools: classifierTool("new_component"),
+      models: modelsFresh,
+      strategy: modelDesignEngineerStrategy,
+    }).decide(TASK);
+    await runtimeWith({
+      tools,
+      models: modelsNoContext,
+      strategy: modelDesignEngineerStrategy,
+    }).decide({ ...TASK, context: {} });
+
+    expect(modelsFresh.seen[0]?.messages).toEqual(modelsNoContext.seen[0]?.messages);
+  });
+
+  test("a malformed context is ignored rather than breaking the decision", async () => {
+    const tools = classifierTool("new_component");
+    const models = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+
+    const malformed: AgentTask = {
+      ...TASK,
+      context: { clarifications: "not-an-array" },
+    };
+
+    const result = await runtimeWith({
+      tools,
+      models,
+      strategy: modelDesignEngineerStrategy,
+    }).decide(malformed);
+
+    expect(result.decision.type).toBe("run_workflow");
+  });
+});
+
 // ── No silent fallback on model failure ─────────────────────────
 
 describe("the model strategy: failure handling", () => {

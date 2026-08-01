@@ -213,3 +213,48 @@ describe("modelDecisionSchema", () => {
     ).toThrow();
   });
 });
+
+// ── Resumed clarifications ────────────────────────────────────────
+
+describe("buildDecisionPrompt with clarifications", () => {
+  test("a fresh decision (no clarifications) is byte-identical to before this existed", () => {
+    const withEmpty = buildDecisionPrompt({ ...INPUT, clarifications: [] });
+    const withUndefined = buildDecisionPrompt(INPUT);
+
+    expect(withEmpty).toEqual(withUndefined);
+  });
+
+  test("a resumed decision's prompt actually carries the prior exchange", () => {
+    const { messages } = buildDecisionPrompt({
+      ...INPUT,
+      clarifications: [{ question: "Which component?", answer: "the header" }],
+    });
+
+    const user = messages[1]?.content ?? "";
+    expect(user).toContain("Which component?");
+    expect(user).toContain("the header");
+  });
+
+  test("two decisions differing only by clarifications produce different prompts", () => {
+    const first = buildDecisionPrompt(INPUT);
+    const second = buildDecisionPrompt({
+      ...INPUT,
+      clarifications: [{ question: "Which component?", answer: "the header" }],
+    });
+
+    expect(first).not.toEqual(second);
+  });
+
+  test("bounds the number of clarifications rendered", () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      question: `q${i}`,
+      answer: `a${i}`,
+    }));
+
+    const { messages } = buildDecisionPrompt({ ...INPUT, clarifications: many });
+    const user = messages[1]?.content ?? "";
+
+    expect(user).toContain("q0");
+    expect(user).not.toContain("q49");
+  });
+});

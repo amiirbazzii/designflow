@@ -16,6 +16,7 @@ import {
   WorkerTaskRouter,
   TraceCollector,
   TraceService,
+  AgentSessionService,
   buildProgress,
 } from "@designflow/product";
 import type {
@@ -44,6 +45,7 @@ import {
   FileArtifactStore,
   FileExecutionEventStore,
   FileExecutionRepository,
+  FileSessionStore,
   FileStore,
   FileTraceStore,
 } from "@designflow/storage-file";
@@ -65,6 +67,8 @@ import { resolveDatabasePath } from "./config";
 import { initializeHome } from "./home";
 import type { HomeState } from "./home";
 import { readModelProfileOverrides } from "./model-config";
+import { readSessionConfig } from "./session-config";
+import type { SessionConfig } from "./session-config";
 
 /**
  * The CLI's composition root — the one allowed exception to the import rule.
@@ -185,6 +189,18 @@ export interface CliContext {
    * the only party that learns which execution a decision produced.
    */
   readonly traces: TraceService;
+  /**
+   * Agent Sessions — resumable clarification state.
+   *
+   * The only way a command starts or resumes work that might need a
+   * clarifying question answered. `routeTask` above still exists for a
+   * caller that genuinely wants one bounded decision and nothing else;
+   * `run` uses `sessions` so a `request_clarification` decision has
+   * somewhere to go instead of ending the process.
+   */
+  readonly sessions: AgentSessionService;
+  /** Turn limit and expiration in effect for this installation, for `designflow settings` to display. */
+  readonly sessionConfig: SessionConfig;
   /**
    * What AI each worker is assigned, for `designflow settings` to display.
    *
@@ -421,6 +437,22 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     resolveWorkflowStepCount: (id) => workflows.get(id)?.definition.nodes.length,
   });
 
+  // Sessions share the same document as executions and traces, so a session,
+  // the run it starts and the trace behind it are all written in one atomic
+  // rename.
+  const sessionConfig = readSessionConfig(home.config);
+  const sessionStore = new FileSessionStore(store);
+  const sessions = new AgentSessionService({
+    store: sessionStore,
+    workers,
+    router: taskRouter,
+    runner,
+    traces,
+    maxClarificationTurns: sessionConfig.maxClarificationTurns,
+    expirationDays: sessionConfig.expirationDays,
+    resolveModelProfileId: (agentId) => agentRegistry.get(agentId)?.manifest.modelProfileId,
+  });
+
   /**
    * Worker or workflow id to something runnable.
    *
@@ -474,6 +506,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     home,
     databasePath,
     traces,
+    sessions,
+    sessionConfig,
     modelAssignments,
 
     /**

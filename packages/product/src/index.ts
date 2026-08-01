@@ -35,6 +35,34 @@ export type {
 // ── Agent Tracing ───────────────────────────────────────────────
 export { InMemoryTraceStore, TraceCollector, TraceService } from "./traces";
 
+// ── Agent Sessions ──────────────────────────────────────────────
+export { InMemorySessionStore } from "./session-store";
+export { buildSessionContext } from "./session-context";
+export type {
+  SessionContext,
+  SessionContextClarification,
+  SessionContextOptions,
+} from "./session-context";
+export { AgentSessionService, SYSTEM_CLOCK } from "./session-service";
+export type {
+  AgentSessionServiceOptions,
+  SessionClock,
+  SessionWorkflowStarter,
+} from "./session-service";
+export {
+  SESSION_ERROR_CODES,
+  SessionNotFoundError,
+  SessionInvalidError,
+  SessionStateInvalidError,
+  SessionNotWaitingError,
+  SessionExpiredError,
+  SessionTurnLimitExceededError,
+  SessionAnswerInvalidError,
+  SessionCancelledError,
+  SessionStoreFailedError,
+} from "./session-errors";
+export type { SessionErrorCode } from "./session-errors";
+
 export { ApprovalService, ApprovalNotPendingError } from "./approvals";
 export type { ApprovalServiceOptions } from "./approvals";
 

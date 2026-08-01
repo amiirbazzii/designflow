@@ -1,23 +1,31 @@
 // apps/designflow-cli/src/commands/run.ts
-import { heading, stepMarker } from "../ui/terminal";
+import { heading } from "../ui/terminal";
 import type { Terminal } from "../ui/terminal";
 import type { CliContext, ResolvedWorker } from "../services/cli-runner";
 import type { WorkerInputField } from "@designflow/sdk";
+import { clarify, finishSession, watchProgress } from "./session-flow";
 
 /**
  * `designflow run <worker>` — hire a worker and see the job through.
  *
  * The name resolves through the worker catalogue, the *decision* about what to
- * do comes from the product boundary, and the run itself goes through
+ * do comes from an Agent Session, and the run itself goes through
  * `WorkflowRunner`. Everything shown — the checklist, the approval reason, the
  * counts, the narration — comes from the product layer, so the command counts
  * nothing and cannot disagree with the engine.
  *
  * This file does not know whether a worker delegated to an agent, and does not
- * choose a workflow: it asks `routeTask` what should happen and renders the
- * answer. Three answers are possible and all three are handled here — run,
- * ask, refuse — with no fallback of its own, because a fallback would be this
- * command quietly deciding after the layer that decides declined to.
+ * choose a workflow: it asks the session what should happen and renders the
+ * answer. Three outcomes are possible — run, ask, refuse — with no fallback of
+ * its own, because a fallback would be this command quietly deciding after the
+ * layer that decides declined to.
+ *
+ * `request_clarification` used to end the process here. Stage 39 gave it
+ * somewhere to go instead: while the person is still at the terminal, this
+ * loops — ask, answer, resume — bounded by the session's own externally
+ * enforced turn limit. Stepping away (or running out of scripted answers, in
+ * a test) leaves the session waiting rather than losing it; `designflow answer
+ * <session-id>` picks the same conversation back up later.
  *
  * Input fields come from the worker's own manifest rather than a table in this
  * file, so adding a worker adds no code here.
@@ -61,81 +69,25 @@ export async function runCommand(
 
   const input = await collectInput(terminal, resolved);
 
+  // Attached before the session starts, and left attached through the whole
+  // clarification loop: a workflow might start on the very first decision, or
+  // only after several resumed ones, and either way `runner.start` runs and
+  // settles inside whichever `sessions` call gets there — there is no later
+  // point at which attaching this would still see every step land.
+  watchProgress(context, terminal);
+
   // The collected answers are the request. What to do with them is not this
-  // command's call.
-  const { decision, traceId } = await context.routeTask({
-    workerId: name,
+  // command's call — a session starts, and the session decides.
+  const started = await context.sessions.startSessionForWorker(resolved.worker, {
+    workerId: resolved.worker.id,
     request: describeRequest(input),
     input,
   });
 
-  if (decision.type === "request_clarification") {
-    terminal.print();
-    terminal.print(heading("More detail needed"));
-    terminal.print(decision.question);
-    terminal.print();
-    terminal.print("Nothing was started. Run the worker again with an answer.");
-    return 1;
-  }
+  const result = await clarify(context, terminal, worker.name, started);
+  if (result === null) return 1;
 
-  if (decision.type === "decline") {
-    terminal.print();
-    terminal.print(heading("Not started"));
-    terminal.print(decision.reason);
-    terminal.print();
-    return 1;
-  }
-
-  // Attach before starting: events publish while `start` is awaited, so this
-  // is what makes the checklist move rather than appear all at once.
-  let lastFrame = "";
-  context.onProgress((progress) => {
-    const frame = renderProgress(progress);
-    if (frame === lastFrame) return;
-
-    lastFrame = frame;
-    terminal.print(frame);
-  });
-
-  terminal.print();
-  terminal.print("Starting…");
-  terminal.print();
-
-  const execution = await context.runner.start({
-    workflowId: decision.workflowId,
-    input: decision.input ?? input,
-  });
-
-  // Ties the decision to the run it produced. Recorded here because this is
-  // the only place both ids exist: the agent decided and returned before an
-  // execution existed, and the engine never learns a decision was involved.
-  //
-  // Swallowed on failure, and that is the whole point. By this line the
-  // workflow has already started — artifacts may exist, an approval may be
-  // pending — so letting a full disk propagate would turn a run that worked
-  // into an error the user cannot act on. The agent runtime protects its own
-  // trace writes for the same reason; this is the one that happens out here,
-  // and it was the one left unguarded.
-  //
-  // The cost is an uncorrelated trace: the decision is still recorded, it just
-  // does not name the run. A degraded record beats a broken run.
-  if (traceId !== undefined) {
-    try {
-      await context.traces.correlate(traceId, execution.executionId);
-    } catch {
-      // Tracing must never break the thing it traces.
-    }
-  }
-
-  const approved = await resolveApproval(context, terminal, execution.executionId);
-
-  if (approved === false) {
-    terminal.print();
-    terminal.print("Stopped. Nothing was written.");
-    return 1;
-  }
-
-  return report(context, terminal, execution.executionId);
+  return finishSession(context, terminal, result);
 }
 
 // ── Input ────────────────────────────────────────────────────────
@@ -183,108 +135,4 @@ function describeRequest(input: Record<string, unknown>): string {
     .filter(([, value]) => value !== undefined && value !== null && String(value).length > 0)
     .map(([key, value]) => `${key}: ${String(value)}`)
     .join("; ");
-}
-
-// ── Approval ─────────────────────────────────────────────────────
-
-/** Returns undefined when no approval was required. */
-async function resolveApproval(
-  context: CliContext,
-  terminal: Terminal,
-  executionId: string,
-): Promise<boolean | undefined> {
-  const pending = await context.runner.pendingApproval(executionId);
-  if (pending === null) return undefined;
-
-  terminal.print();
-  terminal.print(heading("Approval required"));
-  terminal.print("DesignFlow wants permission to:");
-  terminal.print();
-  terminal.print("  Generate production files");
-  terminal.print();
-  terminal.print(`Reason: ${pending.reason}`);
-  terminal.print();
-
-  const answer = await terminal.ask("Approve?", ["approve", "reject"]);
-  const approved = answer.trim().toLowerCase().startsWith("a");
-
-  const outcome = approved
-    ? await context.runner.approve(executionId, "approved from the CLI")
-    : await context.runner.reject(executionId, "rejected from the CLI");
-
-  terminal.print();
-  terminal.print(outcome.message);
-
-  return approved;
-}
-
-// ── Result ───────────────────────────────────────────────────────
-
-async function report(
-  context: CliContext,
-  terminal: Terminal,
-  executionId: string,
-): Promise<number> {
-  const result = await context.runner.explain(executionId);
-  const { overview, artifacts } = result;
-
-  terminal.print();
-  terminal.print(
-    heading(overview.state === "ready" ? "Complete" : "Stopped"),
-  );
-  terminal.print(overview.summary);
-
-  if (overview.durationLabel !== undefined) {
-    terminal.print(`Took ${overview.durationLabel}.`);
-  }
-
-  terminal.print();
-  terminal.print(`  Created  ${overview.artifacts.created}`);
-  terminal.print(`  Reused   ${overview.artifacts.reused}`);
-
-  // Each capability also registers a content-addressed payload. Those are
-  // storage detail; counting them keeps the totals reconcilable with the
-  // engine without filling the terminal with hashes.
-  const named = artifacts.filter(
-    (artifact) => artifact.name !== artifact.artifactId,
-  );
-
-  if (named.length > 0) {
-    terminal.print();
-    terminal.print("Artifacts");
-
-    for (const artifact of named) {
-      terminal.print(`  ${artifact.name}  (${artifact.status})`);
-
-      if (artifact.dependencies.length > 0) {
-        terminal.print(`     from ${artifact.dependencies.join(", ")}`);
-      }
-    }
-
-    const blobs = artifacts.length - named.length;
-    if (blobs > 0) {
-      terminal.print();
-      terminal.print(`  ${blobs} stored payloads not listed.`);
-    }
-  }
-
-  terminal.print();
-  terminal.print(`Run id: ${executionId}`);
-  terminal.print();
-
-  return overview.state === "ready" ? 0 : 1;
-}
-
-function renderProgress(progress: {
-  readonly completed: number;
-  readonly total: number;
-  readonly steps: readonly { readonly label: string; readonly status: string }[];
-}): string {
-  const lines = progress.steps.map(
-    (step) => `  ${stepMarker(step.status)} ${step.label}`,
-  );
-
-  lines.push("", `  ${progress.completed} of ${progress.total} steps`);
-
-  return lines.join("\n");
 }

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
+  AgentSession,
   AgentTrace,
   Artifact,
   ArtifactRef,
@@ -60,6 +61,16 @@ export interface StoreDocument {
    * in one rename, so they cannot disagree after a crash.
    */
   traces: Record<string, AgentTrace>;
+  /**
+   * Agent sessions — bounded clarification state, product-level rather than
+   * engine-level.
+   *
+   * A sibling collection, the same reasoning as `traces`: nothing in
+   * `executions`, `events` or `artifacts` gained a field, and a session lives
+   * here to inherit the atomic write — a session and the execution it starts
+   * are written under one rename, so they cannot disagree after a crash.
+   */
+  sessions: Record<string, AgentSession>;
 }
 
 function emptyDocument(): StoreDocument {
@@ -75,6 +86,7 @@ function emptyDocument(): StoreDocument {
     relations: [],
     payloads: {},
     traces: {},
+    sessions: {},
   };
 }
 

@@ -10,6 +10,7 @@ import {
   FileArtifactStore,
   FileExecutionEventStore,
   FileExecutionRepository,
+  FileSessionStore,
   FileTraceStore,
 } from "./adapters";
 
@@ -640,5 +641,163 @@ describe("FileTraceStore", () => {
     const store = new FileStore(path);
 
     expect(store.data.traces).toEqual({});
+  });
+});
+
+// ── Agent sessions ──────────────────────────────────────────────
+
+describe("FileSessionStore", () => {
+  const SESSION = {
+    id: "session-1",
+    workerId: "design-engineer",
+    agentId: "design-engineer-agent",
+    status: "active" as const,
+    createdAt: "2026-08-01T10:00:00.000Z",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+    version: 1,
+    turnCount: 0,
+    originalRequest: "make it nicer",
+    answers: [],
+    traceIds: [],
+  };
+
+  test("persists a session and reads it back", async () => {
+    const path = newPath();
+    const store = new FileStore(path);
+    const sessions = new FileSessionStore(store);
+
+    await sessions.create(SESSION);
+
+    expect((await sessions.get("session-1"))?.workerId).toBe("design-engineer");
+    store.close();
+  });
+
+  test("refuses to create a session under an id already in use", async () => {
+    const sessions = new FileSessionStore(new FileStore(newPath()));
+    await sessions.create(SESSION);
+
+    await expectCode(sessions.create(SESSION), "ERR_SESSION_ALREADY_EXISTS");
+  });
+
+  test("updates under the expected version and bumps it", async () => {
+    const sessions = new FileSessionStore(new FileStore(newPath()));
+    await sessions.create(SESSION);
+
+    const updated = await sessions.update("session-1", 1, {
+      updatedAt: "2026-08-01T10:01:00.000Z",
+      status: "waiting_for_user",
+      currentQuestion: "Which component?",
+    });
+
+    expect(updated.version).toBe(2);
+    expect(updated.status).toBe("waiting_for_user");
+  });
+
+  test("refuses an update against a stale version", async () => {
+    const path = newPath();
+    const sessions = new FileSessionStore(new FileStore(path));
+    await sessions.create(SESSION);
+    await sessions.update("session-1", 1, { updatedAt: "2026-08-01T10:01:00.000Z" });
+
+    await expectCode(
+      sessions.update("session-1", 1, { updatedAt: "2026-08-01T10:02:00.000Z" }),
+      "ERR_SESSION_CONFLICT",
+    );
+  });
+
+  test("refuses an update to an unknown session", async () => {
+    const sessions = new FileSessionStore(new FileStore(newPath()));
+    await expectCode(
+      sessions.update("nope", 1, { updatedAt: "2026-08-01T10:01:00.000Z" }),
+      "ERR_SESSION_NOT_FOUND",
+    );
+  });
+
+  test("a stale-version update leaves the stored document untouched", async () => {
+    const sessions = new FileSessionStore(new FileStore(newPath()));
+    await sessions.create(SESSION);
+
+    await expect(
+      sessions.update("session-1", 999, { updatedAt: "2026-08-01T10:01:00.000Z" }),
+    ).rejects.toThrow();
+
+    expect((await sessions.get("session-1"))?.version).toBe(1);
+  });
+
+  test("reloads after a process restart", async () => {
+    const path = newPath();
+
+    const first = new FileStore(path);
+    const firstSessions = new FileSessionStore(first);
+    await firstSessions.create(SESSION);
+    await firstSessions.update("session-1", 1, {
+      updatedAt: "2026-08-01T10:01:00.000Z",
+      status: "completed",
+      executionId: "exec-1",
+    });
+    first.close();
+
+    const second = new FileSessionStore(new FileStore(path));
+    const reloaded = await second.get("session-1");
+
+    expect(reloaded).toMatchObject({ status: "completed", executionId: "exec-1", version: 2 });
+  });
+
+  test("lists and filters across a restart", async () => {
+    const path = newPath();
+    const first = new FileStore(path);
+    const sessions = new FileSessionStore(first);
+
+    await sessions.create(SESSION);
+    await sessions.create({ ...SESSION, id: "session-2", workerId: "other-worker" });
+    first.close();
+
+    const reloaded = new FileSessionStore(new FileStore(path));
+
+    expect(await reloaded.list()).toHaveLength(2);
+    expect(
+      (await reloaded.list({ workerId: "other-worker" })).map((s) => s.id),
+    ).toEqual(["session-2"]);
+  });
+
+  test("a hand-edited malformed session is dropped, not surfaced", async () => {
+    const path = newPath();
+    const store = new FileStore(path);
+    await new FileSessionStore(store).create(SESSION);
+
+    store.mutate((document) => {
+      document.sessions["session-broken"] = { id: "session-broken" } as never;
+    });
+
+    const sessions = new FileSessionStore(store);
+    expect(await sessions.get("session-broken")).toBeNull();
+    expect((await sessions.list()).map((s) => s.id)).toEqual(["session-1"]);
+  });
+
+  test("adding sessions leaves the engine's own records untouched", async () => {
+    const path = newPath();
+    const store = new FileStore(path);
+
+    await new FileSessionStore(store).create(SESSION);
+    store.close();
+
+    const document: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const record = document as Record<string, unknown>;
+
+    expect(record.sessions).toBeDefined();
+    expect(record.executions).toEqual({});
+    expect(record.traces).toEqual({});
+  });
+
+  test("a document written before sessions existed still loads", () => {
+    const path = newPath();
+    writeFileSync(
+      path,
+      JSON.stringify({ version: 1, executions: {}, events: [], artifacts: {} }),
+    );
+
+    const store = new FileStore(path);
+
+    expect(store.data.sessions).toEqual({});
   });
 });

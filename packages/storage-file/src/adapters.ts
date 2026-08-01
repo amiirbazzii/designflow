@@ -16,10 +16,18 @@ import {
   agentTraceSchema,
   agentTracePatchSchema,
   selectTraces,
+  agentSessionSchema,
+  agentSessionPatchSchema,
+  applySessionPatch,
+  selectSessions,
 } from "@designflow/sdk";
 import type {
+  AgentSession,
+  AgentSessionPatch,
   AgentTrace,
   AgentTracePatch,
+  SessionListFilter,
+  SessionStore,
   TraceFilters,
   TraceStore,
   ApprovalManager,
@@ -787,5 +795,118 @@ export class FileTraceStore implements TraceStore {
     });
 
     return selectTraces(valid, filters);
+  }
+}
+
+// ── Session store ────────────────────────────────────────────────
+
+/** A caller tried to create a session under an id already in use. */
+export class SessionAlreadyExistsError extends DesignFlowError {
+  public constructor(sessionId: string) {
+    super("ERR_SESSION_ALREADY_EXISTS", `A session already exists: ${sessionId}`, {
+      sessionId,
+    });
+    this.name = "SessionAlreadyExistsError";
+    Object.setPrototypeOf(this, SessionAlreadyExistsError.prototype);
+  }
+}
+
+/** An update or read named a session this store does not have. */
+export class SessionNotFoundError extends DesignFlowError {
+  public constructor(sessionId: string) {
+    super("ERR_SESSION_NOT_FOUND", `No such session: ${sessionId}`, { sessionId });
+    this.name = "SessionNotFoundError";
+    Object.setPrototypeOf(this, SessionNotFoundError.prototype);
+  }
+}
+
+/**
+ * An update named a version older than the one on disk.
+ *
+ * Refused rather than merged. Two writers racing to answer the same session
+ * must not both appear to succeed — the second one to arrive has to be told
+ * its view was stale, which is what lets the product layer distinguish "my
+ * answer was accepted" from "someone else's was".
+ */
+export class SessionConflictError extends DesignFlowError {
+  public constructor(sessionId: string, expectedVersion: number, actualVersion: number) {
+    super(
+      "ERR_SESSION_CONFLICT",
+      `Session ${sessionId} is at version ${actualVersion}, not ${expectedVersion}`,
+      { sessionId, expectedVersion, actualVersion },
+    );
+    this.name = "SessionConflictError";
+    Object.setPrototypeOf(this, SessionConflictError.prototype);
+  }
+}
+
+export class FileSessionStore implements SessionStore {
+  private readonly store: FileStore;
+
+  public constructor(store: FileStore) {
+    this.store = store;
+  }
+
+  public async create(session: AgentSession): Promise<void> {
+    const validated = agentSessionSchema.parse(session);
+
+    this.store.mutate((document) => {
+      if (document.sessions[validated.id] !== undefined) {
+        throw new SessionAlreadyExistsError(validated.id);
+      }
+
+      document.sessions[validated.id] = validated;
+    });
+  }
+
+  public async get(sessionId: string): Promise<AgentSession | null> {
+    const found = this.store.data.sessions[sessionId];
+    if (found === undefined) return null;
+
+    const parsed = agentSessionSchema.safeParse(found);
+    return parsed.success ? parsed.data : null;
+  }
+
+  /**
+   * Applies a patch under optimistic concurrency.
+   *
+   * `mutate`'s closure runs synchronously and only calls `write()` after it
+   * returns, so a thrown conflict or not-found here never reaches disk — the
+   * document on disk is untouched by a rejected update, the same guarantee
+   * `FileStore.write`'s atomic rename gives a successful one.
+   */
+  public async update(
+    sessionId: string,
+    expectedVersion: number,
+    patch: AgentSessionPatch,
+  ): Promise<AgentSession> {
+    const validatedPatch = agentSessionPatchSchema.parse(patch);
+
+    return this.store.mutate((document) => {
+      const existing = document.sessions[sessionId];
+      if (existing === undefined) throw new SessionNotFoundError(sessionId);
+
+      if (existing.version !== expectedVersion) {
+        throw new SessionConflictError(sessionId, expectedVersion, existing.version);
+      }
+
+      const updated = applySessionPatch(existing, validatedPatch, existing.version + 1);
+
+      document.sessions[sessionId] = updated;
+      return updated;
+    });
+  }
+
+  public async list(filters?: SessionListFilter): Promise<readonly AgentSession[]> {
+    const stored = Object.values(this.store.data.sessions);
+
+    // Hand-edited or truncated entries are dropped rather than surfaced, the
+    // same discipline `FileTraceStore.list` applies.
+    const valid = stored.flatMap((session) => {
+      const parsed = agentSessionSchema.safeParse(session);
+      return parsed.success ? [parsed.data] : [];
+    });
+
+    return selectSessions(valid, filters);
   }
 }

@@ -140,6 +140,37 @@ function describe(task: AgentTask): string {
 }
 
 /**
+ * The clarification exchange a session-resumed task carries, or none.
+ *
+ * `AgentTask.context` is `Record<string, unknown>` at the SDK boundary — this
+ * agent depends on `@designflow/sdk` alone, never on `@designflow/product`,
+ * so a resumed session's context arrives exactly as untyped as a fresh
+ * task's does and must be narrowed the same defensive way
+ * `readClassification` narrows a tool result: re-checked rather than
+ * trusted, and silently absent rather than thrown on anything unexpected.
+ */
+function readClarifications(
+  task: AgentTask,
+): readonly { question: string; answer: string }[] {
+  const { context } = task;
+  if (typeof context !== "object" || context === null) return [];
+
+  const clarifications = (context as { clarifications?: unknown }).clarifications;
+  if (!Array.isArray(clarifications)) return [];
+
+  return clarifications.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+
+    const question = (entry as { question?: unknown }).question;
+    const answer = (entry as { answer?: unknown }).answer;
+
+    return typeof question === "string" && typeof answer === "string"
+      ? [{ question, answer }]
+      : [];
+  });
+}
+
+/**
  * What the classifier said, or null when it could not be consulted.
  *
  * Null covers every failure mode identically — not installed, not permitted,
@@ -310,12 +341,15 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
     ...(classification !== null ? { classifierVerdict: classification.taskType } : {}),
   };
 
+  const clarifications = readClarifications(task);
+
   const { messages, responseSchema } = buildDecisionPrompt({
     instructions: manifest.instructions,
     request: describe(task),
     inputSummary,
     availableWorkflows: context.availableWorkflows,
     availableTools: context.availableTools,
+    ...(clarifications.length > 0 ? { clarifications } : {}),
   });
 
   const result = await context.model.generate({

@@ -8,6 +8,8 @@ import { historyCommand } from "./commands/history";
 import { tracesCommand } from "./commands/traces";
 import { interactiveCommand } from "./commands/interactive";
 import { settingsCommand } from "./commands/settings";
+import { answerCommand, cancelCommand, sessionsCommand } from "./commands/sessions";
+import { sessionStatusSchema } from "@designflow/sdk";
 import { CLI_VERSION } from "./version";
 
 export { CLI_VERSION };
@@ -78,6 +80,51 @@ export async function dispatch(
         terminal,
         traceId !== undefined ? { traceId } : undefined,
       );
+    }
+
+    case "sessions": {
+      const first = rest[0];
+
+      if (first === "--status") {
+        const parsed = sessionStatusSchema.safeParse(rest[1]);
+
+        if (!parsed.success) {
+          terminal.print(`Unknown status: ${rest[1] ?? ""}`);
+          return 1;
+        }
+
+        return sessionsCommand(context, terminal, { status: parsed.data });
+      }
+
+      return sessionsCommand(context, terminal, first !== undefined ? { sessionId: first } : undefined);
+    }
+
+    case "answer": {
+      const sessionId = rest[0];
+
+      if (sessionId === undefined) {
+        terminal.print("Which session? For example:");
+        terminal.print();
+        terminal.print("  designflow answer <session-id>");
+        terminal.print();
+        terminal.print("Run  designflow sessions  to see who is waiting on you.");
+        return 1;
+      }
+
+      return answerCommand(context, terminal, sessionId);
+    }
+
+    case "cancel": {
+      const sessionId = rest[0];
+
+      if (sessionId === undefined) {
+        terminal.print("Which session? For example:");
+        terminal.print();
+        terminal.print("  designflow cancel <session-id>");
+        return 1;
+      }
+
+      return cancelCommand(context, terminal, sessionId);
     }
 
     case "run": {

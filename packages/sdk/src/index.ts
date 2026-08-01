@@ -165,6 +165,42 @@ export type {
   TraceStore,
 } from "./trace";
 
+// ── Agent Sessions ──────────────────────────────────────────────
+export {
+  sessionStatusSchema,
+  sessionAnswerSchema,
+  sessionDecisionTypeSchema,
+  agentSessionSchema,
+  agentSessionPatchSchema,
+  applySessionPatch,
+  startSessionRequestSchema,
+  answerSessionRequestSchema,
+  cancelSessionRequestSchema,
+  sessionListFilterSchema,
+  sessionResultSchema,
+  sessionEventSchema,
+  NOOP_SESSION_OBSERVER,
+  isValidSessionTransition,
+  isTerminalSessionStatus,
+  selectSessions,
+} from "./session";
+
+export type {
+  SessionStatus,
+  SessionAnswer,
+  SessionDecisionType,
+  AgentSession,
+  AgentSessionPatch,
+  StartSessionRequest,
+  AnswerSessionRequest,
+  CancelSessionRequest,
+  SessionListFilter,
+  SessionResult,
+  SessionStore,
+  SessionEvent,
+  SessionObserver,
+} from "./session";
+
 export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";

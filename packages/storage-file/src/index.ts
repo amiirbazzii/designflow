@@ -8,10 +8,14 @@ export {
   FileExecutionEventStore,
   FileArtifactStore,
   FileTraceStore,
+  FileSessionStore,
   ApprovalNotFoundError,
   ApprovalStateTransitionError,
   ArtifactConflictError,
   ArtifactNotFoundError,
   ArtifactCycleError,
+  SessionAlreadyExistsError,
+  SessionNotFoundError,
+  SessionConflictError,
 } from "./adapters";
 export type { FileArtifactStoreOptions } from "./adapters";

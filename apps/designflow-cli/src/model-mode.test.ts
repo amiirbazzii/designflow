@@ -134,7 +134,8 @@ describe("designflow run design-engineer, in model mode", () => {
     const code = await dispatch(["run", "design-engineer"], created, terminal);
 
     expect(code).toBe(1);
-    expect(terminal.transcript).toContain("More detail needed");
+    expect(terminal.transcript).toContain("needs more information");
+    expect(terminal.transcript).toContain("Session saved.");
     expect(await created.runner.history()).toHaveLength(0);
   });
 
