@@ -17,5 +17,18 @@ export {
   SessionAlreadyExistsError,
   SessionNotFoundError,
   SessionConflictError,
+  FileProjectStore,
+  ProjectAlreadyExistsError,
+  ProjectNotFoundError,
+  FileProjectContextStore,
+  ProjectContextNotFoundError,
+  ProjectContextConflictError,
+  FileAgentMemoryStore,
+  MemoryNotFoundError,
+  MemoryAlreadyExistsError,
+  FileMemoryProposalStore,
+  MemoryProposalNotFoundError,
+  MemoryProposalAlreadyExistsError,
+  MemoryProposalStateInvalidError,
 } from "./adapters";
 export type { FileArtifactStoreOptions } from "./adapters";

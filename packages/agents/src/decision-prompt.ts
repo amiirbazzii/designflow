@@ -168,11 +168,31 @@ export interface DecisionPromptInput {
    * answer, the same discipline `SessionContextBuilder` documents.
    */
   readonly clarifications?: readonly DecisionPromptClarification[] | undefined;
+  /**
+   * Bounded project facts, when the task is scoped to a project — Stage 40's
+   * Project Context, already filtered and truncated by `ContextAssemblyService`
+   * before this ever sees it. Absent for a task with no project, or when no
+   * `AgentKnowledgeService` is configured; the prompt is byte-identical to
+   * every test written before Stage 40 in that case.
+   */
+  readonly projectFacts?: readonly DecisionPromptFact[] | undefined;
+  /**
+   * Bounded, approved agent memory applicable to this exact agent/project —
+   * Stage 40's Agent Memory. Never anything an agent wrote for itself; see
+   * `MemoryProposalService` for why only approved memory ever reaches here.
+   */
+  readonly memoryNotes?: readonly DecisionPromptFact[] | undefined;
+}
+
+export interface DecisionPromptFact {
+  readonly key: string;
+  readonly value: unknown;
 }
 
 const MAX_VALUE_LENGTH = 200;
 const MAX_SUMMARY_FIELDS = 20;
 const MAX_CLARIFICATIONS = 10;
+const MAX_FACTS_IN_PROMPT = 20;
 
 /** One line per field, truncated, so a single oversized answer cannot blow the prompt open. */
 function summarizeInput(input: Readonly<Record<string, unknown>> | undefined): string {
@@ -218,6 +238,33 @@ function summarizeClarifications(
 }
 
 /**
+ * Renders bounded facts as one line each, or nothing at all.
+ *
+ * Shared by `projectFacts` and `memoryNotes` — both are the same shape
+ * (`key`, `value`) for the same reason: a decision does not need to know
+ * *why* it knows something, only what it knows, bounded and named.
+ */
+function summarizeFacts(
+  heading: string,
+  facts: readonly DecisionPromptFact[] | undefined,
+): readonly string[] {
+  if (facts === undefined || facts.length === 0) return [];
+
+  const bounded = facts.slice(0, MAX_FACTS_IN_PROMPT);
+
+  return [
+    "",
+    heading,
+    ...bounded.map(({ key, value }) => {
+      const rendered = Array.isArray(value) ? value.join(", ") : String(value);
+      const truncated =
+        rendered.length > MAX_VALUE_LENGTH ? `${rendered.slice(0, MAX_VALUE_LENGTH)}…` : rendered;
+      return `- ${key}: ${truncated}`;
+    }),
+  ];
+}
+
+/**
  * Builds the messages and response schema for one decision.
  *
  * Two messages: a `system` message carrying the agent's standing instructions
@@ -253,6 +300,8 @@ export function buildDecisionPrompt(input: DecisionPromptInput): {
     "Structured input:",
     summarizeInput(input.inputSummary),
     ...summarizeClarifications(input.clarifications),
+    ...summarizeFacts("Known about this project:", input.projectFacts),
+    ...summarizeFacts("Remembered preferences:", input.memoryNotes),
   ].join("\n");
 
   return {

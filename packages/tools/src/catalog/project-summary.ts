@@ -1,9 +1,10 @@
 // packages/tools/src/catalog/project-summary.ts
-import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { realpathSync } from "node:fs";
+import { isAbsolute, resolve, sep } from "node:path";
 import { toolManifestSchema } from "@designflow/sdk";
 import type { Tool, ToolContext, ToolManifest } from "@designflow/sdk";
 import { z } from "zod";
+import { inspectProjectDirectory } from "./project-inspection";
 
 /**
  * Reports what kind of project a directory holds.
@@ -91,176 +92,13 @@ export const projectSummaryManifest: ToolManifest = toolManifestSchema.parse({
   metadata: { author: "DesignFlow", deterministic: true, readOnly: true },
 });
 
-// ── Bounds ──────────────────────────────────────────────────────
-
-const MAX_DEPTH = 3;
-const MAX_ENTRIES = 400;
-const MAX_REPORTED_FILES = 50;
-/** package.json is the only file opened; a huge one is not a package.json. */
-const MAX_MANIFEST_BYTES = 1_000_000;
-
-/** Directories that are never interesting and are often enormous. */
-const SKIPPED_DIRECTORIES = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  "out",
-  "coverage",
-  "vendor",
-  "target",
-  "tmp",
-  "temp",
-]);
-
-/**
- * Names that may be sensitive even as names.
- *
- * Applied to files and directories alike. Dotfiles are excluded separately,
- * which is what actually catches `.env`, `.git`, `.npmrc` and `.ssh`.
- */
-const SENSITIVE = /secret|credential|password|token|private[-_.]?key|\.pem$|\.key$|\.p12$|\.pfx$/i;
-
-/** Files worth reporting, because they say what kind of project this is. */
-const INTERESTING = /^(package\.json|tsconfig\.json|README\.md|.*\.(tsx?|jsx?|vue|svelte|css|scss|fig|json)|Dockerfile|Makefile)$/;
-
-const FRAMEWORK_MARKERS: readonly (readonly [string, string])[] = [
-  ["next", "next"],
-  ["nuxt", "nuxt"],
-  ["astro", "astro"],
-  ["@angular/core", "angular"],
-  ["react", "react"],
-  ["vue", "vue"],
-  ["svelte", "svelte"],
-  ["solid-js", "solid"],
-  ["tailwindcss", "tailwind"],
-];
-
-const LOCKFILES: readonly (readonly [string, string])[] = [
-  ["bun.lock", "bun"],
-  ["bun.lockb", "bun"],
-  ["pnpm-lock.yaml", "pnpm"],
-  ["yarn.lock", "yarn"],
-  ["package-lock.json", "npm"],
-];
-
-// ── Traversal ───────────────────────────────────────────────────
-
-function skipped(name: string): boolean {
-  return (
-    name.startsWith(".") || SKIPPED_DIRECTORIES.has(name) || SENSITIVE.test(name)
-  );
-}
-
-/**
- * File names under `root`, bounded and sorted.
- *
- * Sorted at each level so the result is stable across filesystems — readdir
- * order is not guaranteed, and an unstable summary would make the agent that
- * reads it non-deterministic for no reason.
- */
-function walk(root: string, signal: AbortSignal): readonly string[] {
-  const found: string[] = [];
-  let visited = 0;
-
-  const descend = (directory: string, depth: number): void => {
-    if (depth > MAX_DEPTH || visited >= MAX_ENTRIES || signal.aborted) return;
-
-    let entries: readonly string[];
-    try {
-      entries = readdirSync(directory).sort();
-    } catch {
-      // An unreadable directory is not a failure of the summary — a project
-      // with one restricted folder still has a name and a framework.
-      return;
-    }
-
-    for (const name of entries) {
-      if (visited >= MAX_ENTRIES || signal.aborted) return;
-      if (skipped(name)) continue;
-
-      visited += 1;
-      const full = join(directory, name);
-
-      let stats;
-      try {
-        // `lstat`, not `stat`: a symlink must be identifiable as one so it can
-        // be skipped rather than followed out of the root.
-        stats = lstatSync(full);
-      } catch {
-        continue;
-      }
-
-      if (stats.isSymbolicLink()) continue;
-
-      if (stats.isDirectory()) {
-        descend(full, depth + 1);
-        continue;
-      }
-
-      if (stats.isFile() && INTERESTING.test(name) && found.length < MAX_REPORTED_FILES) {
-        found.push(relative(root, full).split(sep).join("/"));
-      }
-    }
-  };
-
-  descend(root, 0);
-
-  return found;
-}
-
-function readManifest(root: string): Record<string, unknown> | null {
-  const path = join(root, "package.json");
-
-  try {
-    if (lstatSync(path).size > MAX_MANIFEST_BYTES) return null;
-
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    // No package.json, unreadable, or not JSON. All the same answer: this
-    // project has no manifest worth reporting.
-    return null;
-  }
-}
-
-function dependencyNames(manifest: Record<string, unknown>): readonly string[] {
-  const names: string[] = [];
-
-  for (const key of ["dependencies", "devDependencies", "peerDependencies"]) {
-    const group = manifest[key];
-    if (typeof group === "object" && group !== null && !Array.isArray(group)) {
-      names.push(...Object.keys(group));
-    }
-  }
-
-  return names;
-}
-
-function detectPackageManager(
-  root: string,
-  manifest: Record<string, unknown> | null,
-): string | undefined {
-  const declared = manifest?.["packageManager"];
-  if (typeof declared === "string" && declared.length > 0) {
-    // "bun@1.3.14" → "bun". The version is not what a decision turns on.
-    return declared.split("@")[0];
-  }
-
-  for (const [file, name] of LOCKFILES) {
-    try {
-      if (lstatSync(join(root, file)).isFile()) return name;
-    } catch {
-      continue;
-    }
-  }
-
-  return undefined;
-}
-
 // ── The tool ────────────────────────────────────────────────────
+//
+// Traversal, manifest-reading and detection logic live in
+// `./project-inspection`, shared with the product-facing `ProjectInspector`
+// behind `designflow projects inspect`. This file keeps only what is
+// specific to being a `Tool`: the manifest, the schemas, and the one-approved-
+// root containment check.
 
 export interface ProjectSummaryToolOptions {
   /**
@@ -297,22 +135,15 @@ class ProjectSummaryTool implements Tool<ProjectSummaryInput, ProjectSummaryOutp
     context: ToolContext,
   ): Promise<ProjectSummaryOutput> {
     const root = this.resolveWithin(input.projectPath);
-    const manifest = readManifest(root);
-
-    const name = manifest?.["name"];
-    const dependencies = manifest === null ? [] : dependencyNames(manifest);
-
-    const detectedFrameworks = FRAMEWORK_MARKERS.filter(([dependency]) =>
-      dependencies.includes(dependency),
-    ).map(([, framework]) => framework);
-
-    const packageManager = detectPackageManager(root, manifest);
+    const inspected = inspectProjectDirectory(root, context.signal);
 
     return projectSummaryOutputSchema.parse({
-      ...(typeof name === "string" && name.length > 0 ? { projectName: name } : {}),
-      ...(packageManager !== undefined ? { packageManager } : {}),
-      detectedFrameworks,
-      relevantFiles: walk(root, context.signal),
+      ...(inspected.projectName !== undefined ? { projectName: inspected.projectName } : {}),
+      ...(inspected.packageManager !== undefined
+        ? { packageManager: inspected.packageManager }
+        : {}),
+      detectedFrameworks: inspected.frameworks,
+      relevantFiles: inspected.relevantFiles,
     });
   }
 

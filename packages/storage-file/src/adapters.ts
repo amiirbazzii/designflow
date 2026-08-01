@@ -20,12 +20,34 @@ import {
   agentSessionPatchSchema,
   applySessionPatch,
   selectSessions,
+  projectIdentitySchema,
+  projectPatchSchema,
+  selectProjects,
+  projectContextSchema,
+  applyProjectFactChanges,
+  agentMemorySchema,
+  selectMemory,
+  memoryProposalSchema,
+  selectMemoryProposals,
 } from "@designflow/sdk";
 import type {
+  AgentMemory,
+  AgentMemoryStore,
   AgentSession,
   AgentSessionPatch,
   AgentTrace,
   AgentTracePatch,
+  MemoryListFilter,
+  MemoryProposal,
+  MemoryProposalListFilter,
+  MemoryProposalStore,
+  ProjectContext,
+  ProjectContextStore,
+  ProjectFactChange,
+  ProjectIdentity,
+  ProjectListFilter,
+  ProjectPatch,
+  ProjectStore,
   SessionListFilter,
   SessionStore,
   TraceFilters,
@@ -908,5 +930,360 @@ export class FileSessionStore implements SessionStore {
     });
 
     return selectSessions(valid, filters);
+  }
+}
+
+// ── Project store ────────────────────────────────────────────────
+
+export class ProjectAlreadyExistsError extends DesignFlowError {
+  public constructor(projectId: string) {
+    super("ERR_PROJECT_ALREADY_EXISTS", `A project already exists: ${projectId}`, { projectId });
+    this.name = "ProjectAlreadyExistsError";
+    Object.setPrototypeOf(this, ProjectAlreadyExistsError.prototype);
+  }
+}
+
+export class ProjectNotFoundError extends DesignFlowError {
+  public constructor(projectId: string) {
+    super("ERR_PROJECT_NOT_FOUND", `No such project: ${projectId}`, { projectId });
+    this.name = "ProjectNotFoundError";
+    Object.setPrototypeOf(this, ProjectNotFoundError.prototype);
+  }
+}
+
+export class FileProjectStore implements ProjectStore {
+  private readonly store: FileStore;
+
+  public constructor(store: FileStore) {
+    this.store = store;
+  }
+
+  public async createProject(project: ProjectIdentity): Promise<void> {
+    const validated = projectIdentitySchema.parse(project);
+
+    this.store.mutate((document) => {
+      if (document.projects[validated.id] !== undefined) {
+        throw new ProjectAlreadyExistsError(validated.id);
+      }
+
+      document.projects[validated.id] = validated;
+    });
+  }
+
+  public async getProject(projectId: string): Promise<ProjectIdentity | null> {
+    const found = this.store.data.projects[projectId];
+    if (found === undefined) return null;
+
+    const parsed = projectIdentitySchema.safeParse(found);
+    return parsed.success ? parsed.data : null;
+  }
+
+  public async updateProject(projectId: string, patch: ProjectPatch): Promise<ProjectIdentity> {
+    const validatedPatch = projectPatchSchema.parse(patch);
+
+    return this.store.mutate((document) => {
+      const existing = document.projects[projectId];
+      if (existing === undefined) throw new ProjectNotFoundError(projectId);
+
+      const updated = projectIdentitySchema.parse({ ...existing, ...validatedPatch });
+      document.projects[projectId] = updated;
+      return updated;
+    });
+  }
+
+  public async listProjects(filters?: ProjectListFilter): Promise<readonly ProjectIdentity[]> {
+    const stored = Object.values(this.store.data.projects);
+
+    const valid = stored.flatMap((project) => {
+      const parsed = projectIdentitySchema.safeParse(project);
+      return parsed.success ? [parsed.data] : [];
+    });
+
+    return selectProjects(valid, filters);
+  }
+}
+
+// ── Project context store ──────────────────────────────────────────
+
+export class ProjectContextNotFoundError extends DesignFlowError {
+  public constructor(projectId: string) {
+    super("ERR_PROJECT_CONTEXT_NOT_FOUND", `No context recorded for project: ${projectId}`, {
+      projectId,
+    });
+    this.name = "ProjectContextNotFoundError";
+    Object.setPrototypeOf(this, ProjectContextNotFoundError.prototype);
+  }
+}
+
+export class ProjectContextConflictError extends DesignFlowError {
+  public constructor(projectId: string, expectedVersion: number | null, actualVersion: number) {
+    super(
+      "ERR_PROJECT_CONTEXT_CONFLICT",
+      `Project ${projectId}'s context is at version ${actualVersion}, not ${expectedVersion ?? "(none)"}`,
+      { projectId, expectedVersion, actualVersion },
+    );
+    this.name = "ProjectContextConflictError";
+    Object.setPrototypeOf(this, ProjectContextConflictError.prototype);
+  }
+}
+
+export class FileProjectContextStore implements ProjectContextStore {
+  private readonly store: FileStore;
+
+  public constructor(store: FileStore) {
+    this.store = store;
+  }
+
+  public async getContext(projectId: string): Promise<ProjectContext | null> {
+    const found = this.store.data.projectContexts[projectId];
+    if (found === undefined) return null;
+
+    const parsed = projectContextSchema.safeParse(found);
+    return parsed.success ? parsed.data : null;
+  }
+
+  public async replaceContext(
+    projectId: string,
+    expectedVersion: number | null,
+    context: ProjectContext,
+  ): Promise<ProjectContext> {
+    const validated = projectContextSchema.parse(context);
+
+    return this.store.mutate((document) => {
+      const existing = document.projectContexts[projectId];
+      const actualVersion = existing?.version ?? null;
+
+      if (actualVersion !== expectedVersion) {
+        throw new ProjectContextConflictError(projectId, expectedVersion, actualVersion ?? 0);
+      }
+
+      document.projectContexts[projectId] = validated;
+      return validated;
+    });
+  }
+
+  public async patchFacts(
+    projectId: string,
+    expectedVersion: number,
+    changes: readonly ProjectFactChange[],
+  ): Promise<ProjectContext> {
+    return this.store.mutate((document) => {
+      const existing = document.projectContexts[projectId];
+      if (existing === undefined) throw new ProjectContextNotFoundError(projectId);
+
+      if (existing.version !== expectedVersion) {
+        throw new ProjectContextConflictError(projectId, expectedVersion, existing.version);
+      }
+
+      const now = new Date().toISOString();
+      const updated = projectContextSchema.parse({
+        projectId,
+        version: existing.version + 1,
+        updatedAt: now,
+        facts: applyProjectFactChanges(existing.facts, changes, now),
+        ...(existing.summary !== undefined ? { summary: existing.summary } : {}),
+        ...(existing.sourceMetadata !== undefined ? { sourceMetadata: existing.sourceMetadata } : {}),
+      });
+
+      document.projectContexts[projectId] = updated;
+      return updated;
+    });
+  }
+}
+
+// ── Agent memory store ──────────────────────────────────────────
+
+export class MemoryNotFoundError extends DesignFlowError {
+  public constructor(memoryId: string) {
+    super("ERR_MEMORY_NOT_FOUND", `No such memory: ${memoryId}`, { memoryId });
+    this.name = "MemoryNotFoundError";
+    Object.setPrototypeOf(this, MemoryNotFoundError.prototype);
+  }
+}
+
+export class MemoryAlreadyExistsError extends DesignFlowError {
+  public constructor(memoryId: string) {
+    super("ERR_MEMORY_ALREADY_EXISTS", `A memory already exists: ${memoryId}`, { memoryId });
+    this.name = "MemoryAlreadyExistsError";
+    Object.setPrototypeOf(this, MemoryAlreadyExistsError.prototype);
+  }
+}
+
+export class FileAgentMemoryStore implements AgentMemoryStore {
+  private readonly store: FileStore;
+
+  public constructor(store: FileStore) {
+    this.store = store;
+  }
+
+  public async create(memory: AgentMemory): Promise<void> {
+    const validated = agentMemorySchema.parse(memory);
+
+    this.store.mutate((document) => {
+      if (document.agentMemories[validated.id] !== undefined) {
+        throw new MemoryAlreadyExistsError(validated.id);
+      }
+
+      document.agentMemories[validated.id] = validated;
+    });
+  }
+
+  public async get(id: string): Promise<AgentMemory | null> {
+    const found = this.store.data.agentMemories[id];
+    if (found === undefined) return null;
+
+    const parsed = agentMemorySchema.safeParse(found);
+    return parsed.success ? parsed.data : null;
+  }
+
+  public async list(filters?: MemoryListFilter): Promise<readonly AgentMemory[]> {
+    const stored = Object.values(this.store.data.agentMemories);
+
+    const valid = stored.flatMap((memory) => {
+      const parsed = agentMemorySchema.safeParse(memory);
+      return parsed.success ? [parsed.data] : [];
+    });
+
+    return selectMemory(valid, filters);
+  }
+
+  public async update(
+    id: string,
+    patch: { value?: unknown; expiresAt?: string; updatedAt: string },
+  ): Promise<AgentMemory> {
+    return this.store.mutate((document) => {
+      const existing = document.agentMemories[id];
+      if (existing === undefined) throw new MemoryNotFoundError(id);
+
+      const updated = agentMemorySchema.parse({
+        ...existing,
+        ...(patch.value !== undefined ? { value: patch.value } : {}),
+        ...(patch.expiresAt !== undefined ? { expiresAt: patch.expiresAt } : {}),
+        updatedAt: patch.updatedAt,
+      });
+
+      document.agentMemories[id] = updated;
+      return updated;
+    });
+  }
+
+  public async revoke(id: string, updatedAt: string): Promise<AgentMemory> {
+    return this.store.mutate((document) => {
+      const existing = document.agentMemories[id];
+      if (existing === undefined) throw new MemoryNotFoundError(id);
+
+      const updated = agentMemorySchema.parse({ ...existing, status: "revoked", updatedAt });
+      document.agentMemories[id] = updated;
+      return updated;
+    });
+  }
+}
+
+// ── Memory proposal store ───────────────────────────────────────
+
+export class MemoryProposalNotFoundError extends DesignFlowError {
+  public constructor(proposalId: string) {
+    super("ERR_MEMORY_PROPOSAL_NOT_FOUND", `No such memory proposal: ${proposalId}`, {
+      proposalId,
+    });
+    this.name = "MemoryProposalNotFoundError";
+    Object.setPrototypeOf(this, MemoryProposalNotFoundError.prototype);
+  }
+}
+
+/** A caller (in practice, never a person — proposal ids are generated) reused an id already in use. */
+export class MemoryProposalAlreadyExistsError extends DesignFlowError {
+  public constructor(proposalId: string) {
+    super("ERR_MEMORY_PROPOSAL_INVALID", `A memory proposal already exists: ${proposalId}`, {
+      proposalId,
+    });
+    this.name = "MemoryProposalAlreadyExistsError";
+    Object.setPrototypeOf(this, MemoryProposalAlreadyExistsError.prototype);
+  }
+}
+
+/** A proposal that is not (or no longer) `pending` tried to resolve again. */
+export class MemoryProposalStateInvalidError extends DesignFlowError {
+  public constructor(proposalId: string, status: string) {
+    super(
+      "ERR_MEMORY_PROPOSAL_STATE_INVALID",
+      `Memory proposal ${proposalId} is ${status}, not pending`,
+      { proposalId, status },
+    );
+    this.name = "MemoryProposalStateInvalidError";
+    Object.setPrototypeOf(this, MemoryProposalStateInvalidError.prototype);
+  }
+}
+
+export class FileMemoryProposalStore implements MemoryProposalStore {
+  private readonly store: FileStore;
+
+  public constructor(store: FileStore) {
+    this.store = store;
+  }
+
+  public async create(proposal: MemoryProposal): Promise<void> {
+    const validated = memoryProposalSchema.parse(proposal);
+
+    this.store.mutate((document) => {
+      if (document.memoryProposals[validated.id] !== undefined) {
+        throw new MemoryProposalAlreadyExistsError(validated.id);
+      }
+
+      document.memoryProposals[validated.id] = validated;
+    });
+  }
+
+  public async get(id: string): Promise<MemoryProposal | null> {
+    const found = this.store.data.memoryProposals[id];
+    if (found === undefined) return null;
+
+    const parsed = memoryProposalSchema.safeParse(found);
+    return parsed.success ? parsed.data : null;
+  }
+
+  public async list(filters?: MemoryProposalListFilter): Promise<readonly MemoryProposal[]> {
+    const stored = Object.values(this.store.data.memoryProposals);
+
+    const valid = stored.flatMap((proposal) => {
+      const parsed = memoryProposalSchema.safeParse(proposal);
+      return parsed.success ? [parsed.data] : [];
+    });
+
+    return selectMemoryProposals(valid, filters);
+  }
+
+  public async approve(id: string, resolvedBy: string, resolvedAt: string): Promise<MemoryProposal> {
+    return this.settle(id, "approved", resolvedBy, resolvedAt);
+  }
+
+  public async reject(id: string, resolvedBy: string, resolvedAt: string): Promise<MemoryProposal> {
+    return this.settle(id, "rejected", resolvedBy, resolvedAt);
+  }
+
+  private async settle(
+    id: string,
+    status: "approved" | "rejected",
+    resolvedBy: string,
+    resolvedAt: string,
+  ): Promise<MemoryProposal> {
+    return this.store.mutate((document) => {
+      const existing = document.memoryProposals[id];
+      if (existing === undefined) throw new MemoryProposalNotFoundError(id);
+
+      if (existing.status !== "pending") {
+        throw new MemoryProposalStateInvalidError(id, existing.status);
+      }
+
+      const updated = memoryProposalSchema.parse({
+        ...existing,
+        status,
+        resolvedAt,
+        resolvedBy,
+      });
+
+      document.memoryProposals[id] = updated;
+      return updated;
+    });
   }
 }

@@ -161,6 +161,16 @@ export const agentSessionSchema = z
      */
     modelProfileId: z.string().min(1).optional(),
     expiresAt: z.string().min(1).optional(),
+    /**
+     * The project this conversation is scoped to, if any.
+     *
+     * Snapshotted once at creation, the same reproducibility reasoning
+     * `modelProfileId` already documents — a conversation resumes against the
+     * same project it started with, never a project chosen mid-conversation.
+     * Project *context* and *memory* are still re-resolved fresh on every
+     * turn; only which project is fixed.
+     */
+    projectId: z.string().min(1).optional(),
     /** Host-supplied facts. Nothing in DesignFlow writes it; see `AgentTrace.metadata`. */
     metadata: z.record(z.unknown()).optional(),
   })
@@ -221,6 +231,8 @@ export const startSessionRequestSchema = z
     workerId: z.string().min(1),
     request: z.string().default(""),
     input: z.unknown().optional(),
+    /** The project this conversation should be scoped to, if any. See `AgentSession.projectId`. */
+    projectId: z.string().min(1).optional(),
   })
   .strict();
 

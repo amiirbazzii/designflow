@@ -10,6 +10,7 @@ import type {
   ToolResult,
 } from "@designflow/sdk";
 import { buildDecisionPrompt, modelDecisionSchema } from "../decision-prompt";
+import type { DecisionPromptFact } from "../decision-prompt";
 
 /**
  * The Design Engineer's agent.
@@ -167,6 +168,46 @@ function readClarifications(
     return typeof question === "string" && typeof answer === "string"
       ? [{ question, answer }]
       : [];
+  });
+}
+
+/**
+ * Stage 40's Project Context, when the resumed or fresh task carries one.
+ *
+ * Read the same defensive, re-checked way `readClarifications` reads a
+ * session's clarifications — `task.context` is untrusted `unknown` at this
+ * boundary regardless of which product-layer service populated it, and this
+ * agent depends on `@designflow/sdk` alone, never on `@designflow/product`.
+ */
+function readProjectFacts(task: AgentTask): readonly DecisionPromptFact[] {
+  const { context } = task;
+  if (typeof context !== "object" || context === null) return [];
+
+  const project = (context as { project?: unknown }).project;
+  if (typeof project !== "object" || project === null) return [];
+
+  const facts = (project as { facts?: unknown }).facts;
+  if (!Array.isArray(facts)) return [];
+
+  return facts.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key = (entry as { key?: unknown }).key;
+    return typeof key === "string" ? [{ key, value: (entry as { value?: unknown }).value }] : [];
+  });
+}
+
+/** Stage 40's Agent Memory, read the same defensive way as `readProjectFacts`. */
+function readMemoryNotes(task: AgentTask): readonly DecisionPromptFact[] {
+  const { context } = task;
+  if (typeof context !== "object" || context === null) return [];
+
+  const memory = (context as { memory?: unknown }).memory;
+  if (!Array.isArray(memory)) return [];
+
+  return memory.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const key = (entry as { key?: unknown }).key;
+    return typeof key === "string" ? [{ key, value: (entry as { value?: unknown }).value }] : [];
   });
 }
 
@@ -342,6 +383,8 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
   };
 
   const clarifications = readClarifications(task);
+  const projectFacts = readProjectFacts(task);
+  const memoryNotes = readMemoryNotes(task);
 
   const { messages, responseSchema } = buildDecisionPrompt({
     instructions: manifest.instructions,
@@ -350,6 +393,8 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
     availableWorkflows: context.availableWorkflows,
     availableTools: context.availableTools,
     ...(clarifications.length > 0 ? { clarifications } : {}),
+    ...(projectFacts.length > 0 ? { projectFacts } : {}),
+    ...(memoryNotes.length > 0 ? { memoryNotes } : {}),
   });
 
   const result = await context.model.generate({

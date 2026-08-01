@@ -258,3 +258,35 @@ describe("buildDecisionPrompt with clarifications", () => {
     expect(user).not.toContain("q49");
   });
 });
+
+describe("buildDecisionPrompt with project facts and memory", () => {
+  test("absent projectFacts/memoryNotes is byte-identical to before Stage 40", () => {
+    const withEmpty = buildDecisionPrompt({ ...INPUT, projectFacts: [], memoryNotes: [] });
+    const withUndefined = buildDecisionPrompt(INPUT);
+
+    expect(withEmpty).toEqual(withUndefined);
+  });
+
+  test("project facts and memory notes appear in the user message", () => {
+    const { messages } = buildDecisionPrompt({
+      ...INPUT,
+      projectFacts: [{ key: "project.framework", value: "react" }],
+      memoryNotes: [{ key: "prefer.existingComponents", value: true }],
+    });
+
+    const user = messages[1]?.content ?? "";
+    expect(user).toContain("project.framework");
+    expect(user).toContain("react");
+    expect(user).toContain("prefer.existingComponents");
+  });
+
+  test("bounds the number of facts rendered", () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({ key: `project.fact${i}`, value: i }));
+
+    const { messages } = buildDecisionPrompt({ ...INPUT, projectFacts: many });
+    const user = messages[1]?.content ?? "";
+
+    expect(user).toContain("project.fact0");
+    expect(user).not.toContain("project.fact49");
+  });
+});

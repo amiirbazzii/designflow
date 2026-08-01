@@ -428,6 +428,37 @@ describe("architecture", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("only the composition root constructs the project/memory stores or their services", () => {
+    const offenders: string[] = [];
+
+    for (const path of sources(import.meta.dir)) {
+      if (path.endsWith("services/cli-runner.ts")) continue;
+      const contents = readFileSync(path, "utf8");
+
+      for (const forbidden of [
+        "@designflow/storage-file",
+        "FileProjectStore",
+        "FileProjectContextStore",
+        "FileAgentMemoryStore",
+        "FileMemoryProposalStore",
+        "new ProjectService",
+        "new ProjectContextService",
+        "new AgentMemoryService",
+        "new MemoryProposalService",
+        "new ContextAssemblyService",
+      ]) {
+        if (contents.includes(forbidden)) {
+          offenders.push(`${path.split("/").slice(-2).join("/")} → ${forbidden}`);
+        }
+      }
+    }
+
+    // Every command reaches projects/memory through `context.projects` /
+    // `context.memory` / `context.memoryProposals` — the same instances the
+    // composition root built, never a second one and never a concrete store.
+    expect(offenders).toEqual([]);
+  });
+
   test("only the composition root constructs the tool layer", () => {
     const offenders: string[] = [];
 

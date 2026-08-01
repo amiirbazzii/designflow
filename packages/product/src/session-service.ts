@@ -25,7 +25,9 @@ import type {
   WorkerManifest,
   WorkerRegistry,
 } from "@designflow/sdk";
-import { buildSessionContext } from "./session-context";
+import { buildInitialSessionContext, buildSessionContext } from "./session-context";
+import type { SessionContext } from "./session-context";
+import type { AgentKnowledgeContext, AgentKnowledgeService } from "./context-assembly";
 import { WorkerTaskRouter, UnknownWorkerError } from "./worker-task";
 import type { ExecutionHandle, WorkflowLaunchRequest } from "./schemas";
 import { TraceService } from "./traces";
@@ -108,6 +110,16 @@ export interface AgentSessionServiceOptions {
    * the session's lifetime rather than re-resolved on every resume.
    */
   readonly resolveModelProfileId?: ((agentId: string) => string | undefined) | undefined;
+  /**
+   * Project Context and Agent Memory, assembled fresh for each decision.
+   *
+   * Optional and additive — a session service built without one behaves
+   * exactly as Stage 39 left it. When present, it is consulted on the first
+   * turn and re-consulted on every resumed turn (never cached on the
+   * session), so a fact or a piece of memory that changes mid-conversation is
+   * reflected on the very next decision.
+   */
+  readonly knowledge?: AgentKnowledgeService | undefined;
 }
 
 const DEFAULT_MAX_CLARIFICATION_TURNS = 5;
@@ -125,6 +137,7 @@ export class AgentSessionService {
   private readonly maxClarificationTurns: number;
   private readonly expirationDays: number;
   private readonly resolveModelProfileId: ((agentId: string) => string | undefined) | undefined;
+  private readonly knowledge: AgentKnowledgeService | undefined;
 
   /**
    * Per-process idempotency cache, keyed by session id and the caller's key.
@@ -149,6 +162,7 @@ export class AgentSessionService {
     this.maxClarificationTurns = options.maxClarificationTurns ?? DEFAULT_MAX_CLARIFICATION_TURNS;
     this.expirationDays = options.expirationDays ?? DEFAULT_EXPIRATION_DAYS;
     this.resolveModelProfileId = options.resolveModelProfileId;
+    this.knowledge = options.knowledge;
   }
 
   // ── Start ─────────────────────────────────────────────────────
@@ -180,21 +194,30 @@ export class AgentSessionService {
   ): Promise<SessionResult> {
     const validated = startSessionRequestSchema.parse(request);
 
+    // A worker with no agent has no clarification loop to have — the router
+    // resolves its one possible decision regardless of what is known here.
+    // The worker's own id stands in for `agentId` in that case: there is no
+    // separate decision-maker identity to name, and the field must be a
+    // stable, non-empty string either way.
+    const agentId = worker.agentId ?? worker.id;
+
+    const knowledgeContext = await this.assembleKnowledge(
+      buildInitialSessionContext(validated.request, validated.input),
+      validated.projectId,
+      agentId,
+    );
+
     const routed = await this.router.routeWorker(
       worker,
       {
         workerId: worker.id,
         request: validated.request,
         ...(validated.input !== undefined ? { input: validated.input } : {}),
+        ...(knowledgeContext !== undefined ? { context: knowledgeContextFields(knowledgeContext) } : {}),
       },
       signal,
     );
 
-    // A worker with no agent has no clarification loop to have — the router
-    // already resolved its one possible decision. The worker's own id stands
-    // in for `agentId`: there is no separate decision-maker identity to name,
-    // and the field must be a stable, non-empty string either way.
-    const agentId = routed.worker.agentId ?? routed.worker.id;
     const now = this.clock.now();
     const modelProfileId = this.resolveModelProfileId?.(agentId);
 
@@ -213,6 +236,7 @@ export class AgentSessionService {
       traceIds: [],
       expiresAt: addDays(now, this.expirationDays),
       ...(modelProfileId !== undefined ? { modelProfileId } : {}),
+      ...(validated.projectId !== undefined ? { projectId: validated.projectId } : {}),
     });
 
     await this.persistCreate(session);
@@ -292,6 +316,12 @@ export class AgentSessionService {
 
     const context = buildSessionContext(answered);
 
+    // Re-resolved on every turn, using the project *snapshotted at creation*
+    // — the session's own `projectId` never changes mid-conversation, but the
+    // facts and memory it resolves to might, and a resumed decision should
+    // see whatever is current, not whatever turn one saw.
+    const knowledgeContext = await this.assembleKnowledge(context, answered.projectId, answered.agentId);
+
     await this.emit({
       type: "session.resumed",
       sessionId: answered.id,
@@ -308,6 +338,7 @@ export class AgentSessionService {
         context: {
           clarifications: context.clarifications,
           ...(context.inputSummary !== undefined ? { inputSummary: context.inputSummary } : {}),
+          ...(knowledgeContext !== undefined ? knowledgeContextFields(knowledgeContext) : {}),
         },
       },
       signal,
@@ -523,6 +554,35 @@ export class AgentSessionService {
     return new SessionStoreFailedError(error);
   }
 
+  /**
+   * Resolves Project Context and Agent Memory for one decision, or `undefined`
+   * when no `AgentKnowledgeService` is configured — the fully backward-
+   * compatible case every session before Stage 40 exercises.
+   *
+   * Never throws into the session flow: a knowledge assembly failure should
+   * not be able to break a conversation whose whole point is resiliency, so a
+   * decision simply proceeds with no project/memory context on failure — the
+   * same "observing must never break the thing it observes" discipline this
+   * class already applies to `emit`.
+   */
+  private async assembleKnowledge(
+    sessionContext: SessionContext,
+    projectId: string | undefined,
+    agentId: string,
+  ): Promise<AgentKnowledgeContext | undefined> {
+    if (this.knowledge === undefined) return undefined;
+
+    try {
+      return await this.knowledge.getContext({
+        sessionContext,
+        ...(projectId !== undefined ? { projectId } : {}),
+        agentId,
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
   private async emit(event: SessionEvent): Promise<void> {
     try {
       await this.observer.onEvent(sessionEventSchema.parse(event));
@@ -530,6 +590,19 @@ export class AgentSessionService {
       // Observing must never break the session it observes.
     }
   }
+}
+
+/**
+ * The `project`/`memory` fields a `WorkerTaskRequest.context` carries when
+ * knowledge was assembled — never the `session` field, which the request's
+ * own `request`/`input`/`clarifications` already cover more precisely than a
+ * round-trip through `AgentKnowledgeContext.session` would.
+ */
+function knowledgeContextFields(context: AgentKnowledgeContext): Record<string, unknown> {
+  return {
+    ...(context.project !== undefined ? { project: context.project } : {}),
+    memory: context.memory,
+  };
 }
 
 /** UTC, so a session created near midnight expires the same number of whole days later everywhere. */

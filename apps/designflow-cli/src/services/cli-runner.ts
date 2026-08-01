@@ -17,6 +17,11 @@ import {
   TraceCollector,
   TraceService,
   AgentSessionService,
+  ProjectService,
+  ProjectContextService,
+  AgentMemoryService,
+  MemoryProposalService,
+  ContextAssemblyService,
   buildProgress,
 } from "@designflow/product";
 import type {
@@ -31,7 +36,7 @@ import {
   designEngineerDefaultModelProfile,
   modelDesignEngineerStrategy,
 } from "@designflow/agents";
-import { ToolRuntime, createToolRegistry } from "@designflow/tools";
+import { ToolRuntime, createToolRegistry, createProjectInspector } from "@designflow/tools";
 import {
   InMemoryModelProfileRegistry,
   InMemoryModelProviderRegistry,
@@ -41,10 +46,14 @@ import {
 import { OpenRouterProvider } from "@designflow/model-provider-openrouter";
 import type { ModelProfile } from "@designflow/sdk";
 import {
+  FileAgentMemoryStore,
   FileApprovalManager,
   FileArtifactStore,
   FileExecutionEventStore,
   FileExecutionRepository,
+  FileMemoryProposalStore,
+  FileProjectContextStore,
+  FileProjectStore,
   FileSessionStore,
   FileStore,
   FileTraceStore,
@@ -201,6 +210,23 @@ export interface CliContext {
   readonly sessions: AgentSessionService;
   /** Turn limit and expiration in effect for this installation, for `designflow settings` to display. */
   readonly sessionConfig: SessionConfig;
+  /** Durable, inspectable project registry — `designflow projects`. */
+  readonly projects: ProjectService;
+  /** A project's accumulated facts — `designflow projects show`. */
+  readonly projectContext: ProjectContextService;
+  /** Durable, explicitly approved agent memory — `designflow memory`. */
+  readonly memory: AgentMemoryService;
+  /** Agent-proposed memory awaiting approval — `designflow memory proposals`. */
+  readonly memoryProposals: MemoryProposalService;
+  /**
+   * Agent names a person may address in `designflow memory add --agent`.
+   *
+   * Computed once at wiring time, from the same registered agents a real
+   * session would resolve — the same "cannot drift from what a run would
+   * actually use" discipline `modelAssignments` already follows. Names only:
+   * internal agent ids are never shown.
+   */
+  readonly agentDirectory: readonly { readonly name: string; readonly id: string }[];
   /**
    * What AI each worker is assigned, for `designflow settings` to display.
    *
@@ -437,6 +463,47 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     resolveWorkflowStepCount: (id) => workflows.get(id)?.definition.nodes.length,
   });
 
+  // Projects and Agent Memory (Stage 40) — durable, product-level knowledge,
+  // sharing the same document for the same reason sessions/traces do: a
+  // project, the memory approved for it and the session that consulted both
+  // are all written in one atomic rename.
+  const projectStore = new FileProjectStore(store);
+  const projectContextStore = new FileProjectContextStore(store);
+  const memoryStore = new FileAgentMemoryStore(store);
+  const memoryProposalStore = new FileMemoryProposalStore(store);
+
+  const projectContext = new ProjectContextService({ store: projectContextStore });
+  const projects = new ProjectService({
+    store: projectStore,
+    context: projectContext,
+    // `createProjectInspector` reads only a project's own, previously
+    // registered `rootPath` — never a directory named at call time — so
+    // granting it here is not the same widening `project-summary`'s absence
+    // above is guarding against.
+    inspector: createProjectInspector(),
+  });
+  const memory = new AgentMemoryService({ store: memoryStore });
+  const memoryProposals = new MemoryProposalService({ store: memoryProposalStore, memory });
+
+  const knowledge = new ContextAssemblyService({
+    projectContext: { getProject: (id) => projects.getProject(id), getContext: (id) => projectContext.getContext(id) },
+    memory: { listMemory: (filters) => memory.listMemory(filters) },
+  });
+
+  // Named by *worker*, not by the agent manifest's own `name` — a person
+  // addresses "Design Engineer" (`designflow list`'s vocabulary) and has
+  // never heard of "Design Engineer Agent" (the manifest's internal name).
+  // Deduped by agent id, since more than one worker could in principle
+  // delegate to the same agent.
+  const agentDirectory: { name: string; id: string }[] = [];
+  const seenAgentIds = new Set<string>();
+  for (const worker of workers.listWorkers()) {
+    if (worker.agentId === undefined || seenAgentIds.has(worker.agentId)) continue;
+    if (agentRegistry.get(worker.agentId) === undefined) continue;
+    seenAgentIds.add(worker.agentId);
+    agentDirectory.push({ name: worker.name, id: worker.agentId });
+  }
+
   // Sessions share the same document as executions and traces, so a session,
   // the run it starts and the trace behind it are all written in one atomic
   // rename.
@@ -451,6 +518,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     maxClarificationTurns: sessionConfig.maxClarificationTurns,
     expirationDays: sessionConfig.expirationDays,
     resolveModelProfileId: (agentId) => agentRegistry.get(agentId)?.manifest.modelProfileId,
+    knowledge,
   });
 
   /**
@@ -509,6 +577,11 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     sessions,
     sessionConfig,
     modelAssignments,
+    projects,
+    projectContext,
+    memory,
+    memoryProposals,
+    agentDirectory,
 
     /**
      * Resolves the name the same way `run` does, then hands the manifest to

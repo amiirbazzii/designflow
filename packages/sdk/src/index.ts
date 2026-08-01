@@ -201,6 +201,87 @@ export type {
   SessionObserver,
 } from "./session";
 
+// ── Projects ────────────────────────────────────────────────────
+export {
+  projectIdentitySchema,
+  createProjectRequestSchema,
+  projectPatchSchema,
+  projectListFilterSchema,
+  selectProjects,
+} from "./project";
+
+export type {
+  ProjectIdentity,
+  CreateProjectRequest,
+  ProjectPatch,
+  ProjectListFilter,
+  ProjectStore,
+} from "./project";
+
+// ── Project Context ─────────────────────────────────────────────
+export {
+  projectFactSourceSchema,
+  projectFactSchema,
+  projectFactInputSchema,
+  projectFactChangeSchema,
+  projectContextSchema,
+  projectContextSourceMetadataSchema,
+  applyProjectFactChanges,
+} from "./project-context";
+
+export type {
+  ProjectFactSource,
+  ProjectFact,
+  ProjectFactInput,
+  ProjectFactChange,
+  ProjectContext,
+  ProjectContextStore,
+} from "./project-context";
+
+export {
+  projectEventSchema,
+  NOOP_PROJECT_OBSERVER,
+} from "./project-events";
+
+export type { ProjectEvent, ProjectObserver } from "./project-events";
+
+// ── Agent Memory ────────────────────────────────────────────────
+export {
+  memoryScopeSchema,
+  memorySourceSchema,
+  memoryStatusSchema,
+  agentMemorySchema,
+  memoryListFilterSchema,
+  selectMemory,
+  memoryProposalStatusSchema,
+  memoryProposalSchema,
+  memoryProposalListFilterSchema,
+  selectMemoryProposals,
+} from "./memory";
+
+export type {
+  MemoryScope,
+  MemorySource,
+  MemoryStatus,
+  AgentMemory,
+  MemoryListFilter,
+  AgentMemoryStore,
+  MemoryProposalStatus,
+  MemoryProposal,
+  MemoryProposalListFilter,
+  MemoryProposalStore,
+} from "./memory";
+
+export {
+  memoryEventSchema,
+  NOOP_MEMORY_OBSERVER,
+} from "./memory-events";
+
+export type { MemoryEvent, MemoryObserver } from "./memory-events";
+
+// ── Privacy ─────────────────────────────────────────────────────
+export { looksSecretLike, valueLooksSecretLike } from "./privacy";
+
 export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";

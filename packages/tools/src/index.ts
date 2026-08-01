@@ -43,6 +43,9 @@ export type {
   ProjectSummaryToolOptions,
 } from "./catalog/project-summary";
 
+export { createProjectInspector } from "./catalog/project-inspector";
+export type { ProjectInspector, ProjectInspectionResult, ProjectFactCandidate } from "./catalog/project-inspector";
+
 export interface ToolCatalogOptions {
   /**
    * The directory `project-summary` is allowed to read.

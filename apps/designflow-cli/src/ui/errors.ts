@@ -293,6 +293,101 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That conversation had already moved on by the time this reached it.",
     suggestion: `Nothing was started. ${SEE_SESSIONS}`,
   },
+
+  // Project failures. Vocabulary matches what `designflow projects` already
+  // shows — a project, its path, its facts — never a store name or a version.
+  ERR_PROJECT_NOT_FOUND: {
+    problem: "No project with that id was found.",
+    suggestion: "Run  designflow projects  to see the ones that do exist.",
+  },
+  ERR_PROJECT_ALREADY_EXISTS: {
+    problem: "Two projects were registered under the same id.",
+    suggestion: PACKAGING_PROBLEM,
+  },
+  ERR_PROJECT_INVALID: {
+    problem: "That project request could not be understood.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_PROJECT_CONFLICT: {
+    problem: "That project was changed by something else at the same time.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_PROJECT_PATH_INVALID: {
+    problem: "That project path could not be used.",
+    suggestion: "Check that the path exists and is readable, then try again.",
+  },
+  ERR_PROJECT_CONTEXT_NOT_FOUND: {
+    problem: "That project has no recorded facts yet.",
+    suggestion: "Inspect it with  designflow projects inspect <project-id>",
+  },
+  ERR_PROJECT_CONTEXT_INVALID: {
+    problem: "That project's facts could not be updated.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_PROJECT_CONTEXT_CONFLICT: {
+    problem: "That project's facts were changed by something else at the same time.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_PROJECT_CONTEXT_TOO_LARGE: {
+    problem: "That project has recorded more facts than DesignFlow keeps.",
+    suggestion: "Remove some facts, or report this if the project is not unusually large.",
+  },
+  ERR_PROJECT_FACT_INVALID: {
+    problem: "That fact could not be recorded.",
+    suggestion: TRY_AGAIN,
+  },
+
+  // Memory failures. A person only ever hears about memory in the vocabulary
+  // `designflow memory` already uses — "remembered", "scope", "proposal" —
+  // never a raw scope enum value or an internal agent id.
+  ERR_MEMORY_NOT_FOUND: {
+    problem: "No memory with that id was found.",
+    suggestion: "Run  designflow memory  to see what is remembered.",
+  },
+  ERR_MEMORY_ALREADY_EXISTS: {
+    problem: "Two memories were recorded under the same id.",
+    suggestion: PACKAGING_PROBLEM,
+  },
+  ERR_MEMORY_INVALID: {
+    problem: "That could not be remembered.",
+    suggestion: "Check the value given — DesignFlow will not remember anything that looks like a credential.",
+  },
+  ERR_MEMORY_CONFLICT: {
+    problem: "That memory was changed by something else at the same time.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MEMORY_SCOPE_INVALID: {
+    problem: "That scope needs more detail — which project, or which agent.",
+    suggestion: "See  designflow memory add --help  for what each scope needs.",
+  },
+  ERR_MEMORY_EXPIRED: {
+    problem: "That memory has expired.",
+    suggestion: "Nothing was used from it.",
+  },
+  ERR_MEMORY_REVOKED: {
+    problem: "That memory has been revoked.",
+    suggestion: "Nothing was used from it.",
+  },
+  ERR_MEMORY_APPROVAL_REQUIRED: {
+    problem: "That proposal needs to be approved by someone other than whoever suggested it.",
+    suggestion: "Nothing was remembered.",
+  },
+  ERR_MEMORY_PROPOSAL_NOT_FOUND: {
+    problem: "No proposal with that id was found.",
+    suggestion: "Run  designflow memory proposals  to see what is waiting.",
+  },
+  ERR_MEMORY_PROPOSAL_INVALID: {
+    problem: "That proposal could not be understood.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MEMORY_PROPOSAL_EXPIRED: {
+    problem: "That proposal has expired.",
+    suggestion: "Nothing was remembered.",
+  },
+  ERR_MEMORY_PROPOSAL_STATE_INVALID: {
+    problem: "That proposal was already approved or rejected.",
+    suggestion: "Run  designflow memory proposals  to see what is still waiting.",
+  },
 };
 
 /**

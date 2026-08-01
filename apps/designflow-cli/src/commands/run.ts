@@ -35,6 +35,7 @@ export async function runCommand(
   context: CliContext,
   terminal: Terminal,
   name: string,
+  options?: { readonly projectId?: string },
 ): Promise<number> {
   const resolved = context.resolve(name);
 
@@ -82,6 +83,7 @@ export async function runCommand(
     workerId: resolved.worker.id,
     request: describeRequest(input),
     input,
+    ...(options?.projectId !== undefined ? { projectId: options.projectId } : {}),
   });
 
   const result = await clarify(context, terminal, worker.name, started);

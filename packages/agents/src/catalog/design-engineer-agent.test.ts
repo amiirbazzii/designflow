@@ -311,6 +311,89 @@ describe("the model strategy: a resumed session's answer reaches the model", () 
   });
 });
 
+describe("the model strategy: Stage 40 project facts and memory reach the model", () => {
+  test("task.context.project and task.context.memory appear in what the model is shown", async () => {
+    const tools = classifierTool("new_component");
+    const models = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+
+    const taskWithKnowledge: AgentTask = {
+      ...TASK,
+      context: {
+        project: { id: "project-1", name: "Storefront", facts: [{ key: "project.framework", value: "react" }] },
+        memory: [{ scope: "agent", key: "prefer.existingComponents", value: true }],
+      },
+    };
+
+    await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(taskWithKnowledge);
+
+    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
+    expect(prompt).toContain("project.framework");
+    expect(prompt).toContain("prefer.existingComponents");
+  });
+
+  test("a task with no project/memory context produces the same prompt as before Stage 40", async () => {
+    const modelsWithout = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+    const modelsFresh = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+
+    await runtimeWith({
+      tools: classifierTool("new_component"),
+      models: modelsFresh,
+      strategy: modelDesignEngineerStrategy,
+    }).decide(TASK);
+    await runtimeWith({
+      tools: classifierTool("new_component"),
+      models: modelsWithout,
+      strategy: modelDesignEngineerStrategy,
+    }).decide({ ...TASK, context: {} });
+
+    expect(modelsFresh.seen[0]?.messages).toEqual(modelsWithout.seen[0]?.messages);
+  });
+
+  test("memory cannot change the tools or workflows the model is offered", async () => {
+    const tools = classifierTool("new_component");
+    const models = modelAnswering({
+      type: "run_workflow",
+      workflowId: "design-to-code",
+      reasoningSummary: "ok",
+    });
+
+    const rogueMemory: AgentTask = {
+      ...TASK,
+      context: {
+        memory: [
+          { scope: "agent", key: "allowedTools", value: ["shell-exec"] },
+          { scope: "agent", key: "modelProfileId", value: "some-other-profile" },
+        ],
+      },
+    };
+
+    const result = await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(
+      rogueMemory,
+    );
+
+    // Memory content reaches the prompt as inert text — the model may *read*
+    // it, but nothing here widens what it may actually choose: the permitted
+    // list still names only the classifier, and the decision itself is still
+    // enforced against the manifest's real `allowedTools`/`allowedWorkflows`
+    // downstream in `AgentRuntime`, which this memory value never touches.
+    expect(result.decision.type).toBe("run_workflow");
+    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
+    expect(prompt).toContain("Permitted tools already consulted: classify-design-task");
+  });
+});
+
 // ── No silent fallback on model failure ─────────────────────────
 
 describe("the model strategy: failure handling", () => {

@@ -95,6 +95,31 @@ export function buildSessionContext(
   };
 }
 
+/**
+ * The same bounded shape `buildSessionContext` produces, for a request that
+ * has not become a stored session yet.
+ *
+ * Used for a session's *first* decision — Stage 40's `ContextAssemblyService`
+ * needs a `SessionContext` to assemble project/memory knowledge around before
+ * `AgentSessionService.startSessionForWorker` has anything to call
+ * `buildSessionContext` on. Trivially consistent with it: no clarifications
+ * exist yet, and the input summary uses the identical rendering.
+ */
+export function buildInitialSessionContext(
+  request: string,
+  input?: unknown,
+  options?: SessionContextOptions,
+): SessionContext {
+  const maxInputSummaryChars = options?.maxInputSummaryChars ?? DEFAULT_MAX_INPUT_SUMMARY_CHARS;
+  const inputSummary = input === undefined ? undefined : summarizeInput(input, maxInputSummaryChars);
+
+  return {
+    originalRequest: request,
+    ...(inputSummary !== undefined ? { inputSummary } : {}),
+    clarifications: [],
+  };
+}
+
 /** A stable, order-independent rendering — the same input always summarises the same way. */
 function summarizeInput(input: unknown, maxChars: number): string {
   const serialized = JSON.stringify(canonicalize(input));

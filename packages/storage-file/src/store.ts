@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
+  AgentMemory,
   AgentSession,
   AgentTrace,
   Artifact,
@@ -14,6 +15,9 @@ import type {
   ExecutionEvent,
   ExecutionRecord,
   LifecycleEvent,
+  MemoryProposal,
+  ProjectContext,
+  ProjectIdentity,
 } from "@designflow/sdk";
 
 /**
@@ -71,6 +75,17 @@ export interface StoreDocument {
    * are written under one rename, so they cannot disagree after a crash.
    */
   sessions: Record<string, AgentSession>;
+  /**
+   * Project identities — the scope key Project Context and Agent Memory key
+   * off of. A sibling collection, same reasoning as `traces`/`sessions`.
+   */
+  projects: Record<string, ProjectIdentity>;
+  /** One context document per project, keyed by `projectId`. */
+  projectContexts: Record<string, ProjectContext>;
+  /** Durable, explicitly approved agent memory. */
+  agentMemories: Record<string, AgentMemory>;
+  /** Memory an agent proposed, awaiting a person's approval or rejection. */
+  memoryProposals: Record<string, MemoryProposal>;
 }
 
 function emptyDocument(): StoreDocument {
@@ -87,6 +102,10 @@ function emptyDocument(): StoreDocument {
     payloads: {},
     traces: {},
     sessions: {},
+    projects: {},
+    projectContexts: {},
+    agentMemories: {},
+    memoryProposals: {},
   };
 }
 

@@ -66,6 +66,67 @@ export type { SessionErrorCode } from "./session-errors";
 export { ApprovalService, ApprovalNotPendingError } from "./approvals";
 export type { ApprovalServiceOptions } from "./approvals";
 
+// ── Projects ────────────────────────────────────────────────────
+export { InMemoryProjectStore, InMemoryProjectContextStore } from "./project-store";
+export {
+  PROJECT_ERROR_CODES,
+  ProjectNotFoundError,
+  ProjectAlreadyExistsError,
+  ProjectInvalidError,
+  ProjectConflictError,
+  ProjectPathInvalidError,
+  ProjectContextNotFoundError,
+  ProjectContextInvalidError,
+  ProjectContextConflictError,
+  ProjectContextTooLargeError,
+  ProjectFactInvalidError,
+} from "./project-errors";
+export type { ProjectErrorCode } from "./project-errors";
+export { ProjectService } from "./project-service";
+export type { ProjectServiceOptions, ProjectInspector } from "./project-service";
+export { ProjectContextService } from "./project-context-service";
+export type { ProjectContextServiceOptions } from "./project-context-service";
+
+// ── Agent Memory ────────────────────────────────────────────────
+export { InMemoryAgentMemoryStore } from "./memory-store";
+export { InMemoryMemoryProposalStore } from "./memory-proposal-store";
+export {
+  MEMORY_ERROR_CODES,
+  MemoryNotFoundError,
+  MemoryAlreadyExistsError,
+  MemoryInvalidError,
+  MemoryConflictError,
+  MemoryScopeInvalidError,
+  MemoryExpiredError,
+  MemoryRevokedError,
+  MemoryApprovalRequiredError,
+  MemoryProposalNotFoundError,
+  MemoryProposalInvalidError,
+  MemoryProposalExpiredError,
+  MemoryProposalStateInvalidError,
+} from "./memory-errors";
+export type { MemoryErrorCode } from "./memory-errors";
+export { AgentMemoryService, MemoryProposalService } from "./memory-service";
+export type {
+  AddMemoryInput,
+  AgentMemoryServiceOptions,
+  ProposeMemoryInput,
+  MemoryProposalServiceOptions,
+} from "./memory-service";
+
+// ── Context Assembly ────────────────────────────────────────────
+export { ContextAssemblyService } from "./context-assembly";
+export type {
+  AgentKnowledgeContext,
+  AgentKnowledgeService,
+  ContextAssemblyServiceOptions,
+  GetKnowledgeContextRequest,
+  MemoryReader,
+  ProjectContextReader,
+  SelectedMemory,
+  SelectedProjectFact,
+} from "./context-assembly";
+
 export { buildProgress, humanizeCapabilityId, countSkippedSteps } from "./progress";
 
 // ── Presentation ────────────────────────────────────────────────
