@@ -50,6 +50,22 @@ export interface AgentScopedToolServiceOptions {
   readonly agentId: string;
   readonly workerId: string;
   readonly signal?: AbortSignal | undefined;
+  /**
+   * Reports every completed call to the runtime, for tracing.
+   *
+   * Given the outcome rather than the call: the tool id, how long it took and
+   * whether it worked. Never the input or the output — a tracing hook that
+   * could see payloads would be the easiest place in the system to leak one.
+   */
+  readonly onCall?: ((observed: ObservedToolCall) => void) | undefined;
+}
+
+/** What the runtime learns about a call it did not make itself. */
+export interface ObservedToolCall {
+  readonly toolId: string;
+  readonly durationMs: number;
+  readonly status: "success" | "failure";
+  readonly errorCode?: string | undefined;
 }
 
 export class AgentScopedToolService implements AgentToolService {
@@ -59,6 +75,7 @@ export class AgentScopedToolService implements AgentToolService {
   readonly #agentId: string;
   readonly #workerId: string;
   readonly #signal: AbortSignal | undefined;
+  readonly #onCall: ((observed: ObservedToolCall) => void) | undefined;
 
   #used = 0;
 
@@ -69,6 +86,7 @@ export class AgentScopedToolService implements AgentToolService {
     this.#agentId = options.agentId;
     this.#workerId = options.workerId;
     this.#signal = options.signal;
+    this.#onCall = options.onCall;
 
     // Frozen so `call` cannot be replaced with one that skips the counter.
     Object.freeze(this);
@@ -95,7 +113,7 @@ export class AgentScopedToolService implements AgentToolService {
       // A failure result rather than a throw. An agent that hits its budget
       // should still be able to return a decision — usually a clarification —
       // and an exception mid-`decide` would leave it with no decision at all.
-      return {
+      const refused: ToolResult = {
         type: "failure",
         callId: idOf(call),
         toolId: toolIdOf(call),
@@ -104,9 +122,15 @@ export class AgentScopedToolService implements AgentToolService {
         retryable: false,
         durationMs: 0,
       };
+
+      // Observed like any other outcome. A trace showing eight calls and then
+      // silence would look like an agent that stopped asking, rather than one
+      // that was stopped.
+      this.#observe(refused);
+      return refused;
     }
 
-    return this.#invoker.invoke({
+    const result = await this.#invoker.invoke({
       call,
       // Sent per call rather than configured once, so the enforcing layer is
       // told what is permitted each time and never trusts an earlier scope.
@@ -115,7 +139,25 @@ export class AgentScopedToolService implements AgentToolService {
       workerId: this.#workerId,
       ...(this.#signal !== undefined ? { signal: this.#signal } : {}),
     });
+
+    this.#observe(result);
+    return result;
   };
+
+  /** Reporting must never be able to fail the call it is reporting on. */
+  #observe(result: ToolResult): void {
+    try {
+      this.#onCall?.({
+        toolId: result.toolId,
+        durationMs: result.durationMs,
+        status: result.type === "success" ? "success" : "failure",
+        ...(result.type === "failure" ? { errorCode: result.code } : {}),
+      });
+    } catch {
+      // Deliberately swallowed, for the same reason every other observation
+      // site here swallows: a broken observer must not break a decision.
+    }
+  }
 }
 
 /**

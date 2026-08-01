@@ -11,7 +11,13 @@ import {
   IncrementalExecutionPlannerService,
   RegistryArtifactMaterializer,
 } from "@designflow/core";
-import { WorkflowRunner, WorkerTaskRouter, buildProgress } from "@designflow/product";
+import {
+  WorkflowRunner,
+  WorkerTaskRouter,
+  TraceCollector,
+  TraceService,
+  buildProgress,
+} from "@designflow/product";
 import type {
   ExecutionProgress,
   WorkerTaskRequest,
@@ -29,6 +35,7 @@ import {
   FileExecutionEventStore,
   FileExecutionRepository,
   FileStore,
+  FileTraceStore,
 } from "@designflow/storage-file";
 import { primaryWorkflowOf, readChangedArtifacts } from "@designflow/sdk";
 import type {
@@ -131,6 +138,15 @@ export interface CliContext {
    * command learns which workflow was chosen or that agents exist.
    */
   routeTask(request: WorkerTaskRequest): Promise<WorkerTaskResult>;
+  /**
+   * What happened during past AI decisions.
+   *
+   * The product read API, never the store. A command that could write traces
+   * could make the record say whatever it liked, which is not an audit record —
+   * so the one write exposed here is `correlate`, and only because the CLI is
+   * the only party that learns which execution a decision produced.
+   */
+  readonly traces: TraceService;
   /** Installed workflows. Still needed by `resolve`; no longer user-facing. */
   listWorkflows(): readonly WorkflowInfo[];
   /** Redraws while a run is in flight. */
@@ -250,10 +266,16 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     logger: silentLogger,
   });
 
+  // Traces share the same document as executions, so a run and the decision
+  // that started it are written in one atomic rename.
+  const traceStore = new FileTraceStore(store);
+  const traces = new TraceService(traceStore);
+
   const agentRuntime = new AgentRuntime({
     registry: agentRegistry,
     availableWorkflows: [...workflows.keys()],
     tools: toolRuntime,
+    tracer: new TraceCollector(traceStore),
     logger: silentLogger,
   });
 
@@ -332,6 +354,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     workers,
     home,
     databasePath,
+    traces,
 
     /**
      * Resolves the name the same way `run` does, then hands the manifest to

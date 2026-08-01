@@ -180,6 +180,15 @@ export const agentExecutionResultSchema = z
     agentId: z.string().min(1),
     workerId: z.string().min(1),
     decision: agentDecisionSchema,
+    /**
+     * The trace this decision was recorded under, when tracing is installed.
+     *
+     * Carried out to the caller because the caller is the only one who learns
+     * the execution id — the runtime decides, something else runs. Without this
+     * the trace and the execution it produced could only be matched by
+     * timestamp, which is a guess.
+     */
+    traceId: z.string().min(1).optional(),
   })
   .strict();
 

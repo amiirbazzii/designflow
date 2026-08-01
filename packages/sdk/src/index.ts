@@ -107,6 +107,31 @@ export {
 
 export type { AgentObservation, AgentObserver } from "./agent-observability";
 
+// ── Agent Tracing ───────────────────────────────────────────────
+export {
+  agentTraceSchema,
+  agentTracePatchSchema,
+  traceEventSchema,
+  traceToolCallSchema,
+  traceStatusSchema,
+  traceDecisionTypeSchema,
+  traceFiltersSchema,
+  NOOP_TRACE_OBSERVER,
+  selectTraces,
+} from "./trace";
+
+export type {
+  AgentTrace,
+  AgentTracePatch,
+  TraceEvent,
+  TraceToolCall,
+  TraceStatus,
+  TraceDecisionType,
+  TraceFilters,
+  TraceObserver,
+  TraceStore,
+} from "./trace";
+
 export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";

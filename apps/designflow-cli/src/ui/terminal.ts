@@ -156,6 +156,7 @@ export function usage(): string {
     "  designflow list            Show available AI workers",
     "  designflow run <worker>    Put a worker to work",
     "  designflow history         Show previous runs",
+    "  designflow traces          Show what past AI decisions did",
     "  designflow settings        Show where things are kept",
     "",
     "Options:",

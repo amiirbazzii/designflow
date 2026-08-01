@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
+  AgentTrace,
   Artifact,
   ArtifactRef,
   ArtifactRelation,
@@ -49,6 +50,16 @@ export interface StoreDocument {
   versions: ArtifactVersion[];
   relations: ArtifactRelation[];
   payloads: Record<string, StoredPayload>;
+  /**
+   * Agent decision traces.
+   *
+   * A sibling collection rather than a change to any engine record: nothing in
+   * `executions`, `events` or `artifacts` gained a field, so the engine's view
+   * of this document is byte-identical to what it was. Traces live here to
+   * inherit the atomic write — a run and the trace that started it are written
+   * in one rename, so they cannot disagree after a crash.
+   */
+  traces: Record<string, AgentTrace>;
 }
 
 function emptyDocument(): StoreDocument {
@@ -63,6 +74,7 @@ function emptyDocument(): StoreDocument {
     versions: [],
     relations: [],
     payloads: {},
+    traces: {},
   };
 }
 

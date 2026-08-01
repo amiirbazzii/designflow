@@ -280,7 +280,16 @@ describe("validating the decision", () => {
       }),
     ).decide(TASK);
 
-    expect(Object.keys(result).sort()).toEqual(["agentId", "decision", "workerId"]);
+    // `traceId` joined the result in Stage 37. It is always present, tracer or
+    // not: the id identifies the decision, and whether anyone recorded it is a
+    // separate question from whether it happened.
+    expect(Object.keys(result).sort()).toEqual([
+      "agentId",
+      "decision",
+      "traceId",
+      "workerId",
+    ]);
+    expect(result.traceId).toMatch(/\S/);
     expect(Object.keys(result.decision).sort()).toEqual([
       "reasoningSummary",
       "type",

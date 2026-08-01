@@ -1,6 +1,6 @@
 // packages/storage-file/src/storage.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DesignFlowError } from "@designflow/sdk";
@@ -10,6 +10,7 @@ import {
   FileArtifactStore,
   FileExecutionEventStore,
   FileExecutionRepository,
+  FileTraceStore,
 } from "./adapters";
 
 /**
@@ -503,5 +504,141 @@ describe("FileStore", () => {
 
     expect(store.data.relations).toEqual([]);
     expect(store.data.payloads).toEqual({});
+  });
+});
+
+// ── Agent traces ────────────────────────────────────────────────
+
+describe("FileTraceStore", () => {
+  const TRACE = {
+    id: "trace-1",
+    workerId: "design-engineer",
+    agentId: "design-engineer-agent",
+    startedAt: "2026-08-01T10:00:00.000Z",
+    status: "running" as const,
+    toolCalls: [],
+  };
+
+  test("persists a trace and reads it back", async () => {
+    const path = newPath();
+    const store = new FileStore(path);
+    const traces = new FileTraceStore(store);
+
+    await traces.create(TRACE);
+
+    expect((await traces.get("trace-1"))?.workerId).toBe("design-engineer");
+    store.close();
+  });
+
+  // ── 16. Survives the process that wrote it ────────────────────
+
+  test("reloads after a process restart", async () => {
+    const path = newPath();
+
+    // First "process".
+    const first = new FileStore(path);
+    const firstTraces = new FileTraceStore(first);
+    await firstTraces.create(TRACE);
+    await firstTraces.update("trace-1", {
+      status: "completed",
+      decisionType: "run_workflow",
+      workflowId: "design-to-code",
+      durationMs: 3_200,
+      completedAt: "2026-08-01T10:00:03.200Z",
+      executionId: "exec-1",
+    });
+    first.close();
+
+    // Second "process": a new store sharing nothing but the file.
+    const second = new FileTraceStore(new FileStore(path));
+    const reloaded = await second.get("trace-1");
+
+    expect(reloaded).toMatchObject({
+      status: "completed",
+      decisionType: "run_workflow",
+      workflowId: "design-to-code",
+      executionId: "exec-1",
+    });
+  });
+
+  test("lists and filters across a restart", async () => {
+    const path = newPath();
+    const first = new FileStore(path);
+    const traces = new FileTraceStore(first);
+
+    await traces.create(TRACE);
+    await traces.create({ ...TRACE, id: "trace-2", workerId: "other-worker" });
+    await traces.update("trace-1", { executionId: "exec-1" });
+    first.close();
+
+    const reloaded = new FileTraceStore(new FileStore(path));
+
+    expect(await reloaded.list()).toHaveLength(2);
+    expect((await reloaded.list({ workerId: "other-worker" })).map((t) => t.id)).toEqual([
+      "trace-2",
+    ]);
+    expect((await reloaded.list({ executionId: "exec-1" }))[0]?.id).toBe("trace-1");
+  });
+
+  test("an unknown trace reads as null, and updating one is silent", async () => {
+    const traces = new FileTraceStore(new FileStore(newPath()));
+
+    expect(await traces.get("nope")).toBeNull();
+    await expect(traces.update("nope", { status: "completed" })).resolves.toBeUndefined();
+  });
+
+  test("refuses to store a trace carrying a payload", async () => {
+    const traces = new FileTraceStore(new FileStore(newPath()));
+
+    // The file is the audit record. It rejects rather than throws, so a caller
+    // that wrapped this in `.catch()` actually catches it.
+    await expect(
+      traces.create({ ...TRACE, reasoning: "..." } as never),
+    ).rejects.toThrow();
+  });
+
+  test("a hand-edited malformed trace is dropped, not surfaced", async () => {
+    const path = newPath();
+    const store = new FileStore(path);
+    await new FileTraceStore(store).create(TRACE);
+
+    // Someone opens runs.json in an editor and breaks an entry.
+    store.mutate((document) => {
+      document.traces["trace-broken"] = { id: "trace-broken" } as never;
+    });
+
+    const traces = new FileTraceStore(store);
+    expect(await traces.get("trace-broken")).toBeNull();
+    expect((await traces.list()).map((trace) => trace.id)).toEqual(["trace-1"]);
+  });
+
+  test("adding traces leaves the engine's own records untouched", async () => {
+    const path = newPath();
+    const store = new FileStore(path);
+
+    await new FileTraceStore(store).create(TRACE);
+    store.close();
+
+    const document: unknown = JSON.parse(readFileSync(path, "utf8"));
+    const record = document as Record<string, unknown>;
+
+    // A sibling collection. Nothing in `executions`, `events` or `artifacts`
+    // gained a field, so the engine's view of this file is what it always was.
+    expect(record.traces).toBeDefined();
+    expect(record.executions).toEqual({});
+    expect(record.events).toEqual([]);
+    expect(record.artifacts).toEqual({});
+  });
+
+  test("a document written before traces existed still loads", () => {
+    const path = newPath();
+    writeFileSync(
+      path,
+      JSON.stringify({ version: 1, executions: {}, events: [], artifacts: {} }),
+    );
+
+    const store = new FileStore(path);
+
+    expect(store.data.traces).toEqual({});
   });
 });

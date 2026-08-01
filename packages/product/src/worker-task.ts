@@ -46,6 +46,13 @@ export type WorkerTaskRequest = z.infer<typeof workerTaskRequestSchema>;
 export interface WorkerTaskResult {
   readonly worker: WorkerManifest;
   readonly decision: AgentDecision;
+  /**
+   * The trace this decision was recorded under, when an agent made it.
+   *
+   * Absent for a legacy worker, because no decision was made — the mapping was
+   * a lookup, and there is nothing to explain.
+   */
+  readonly traceId?: string | undefined;
 }
 
 /**
@@ -163,6 +170,10 @@ export class WorkerTaskRouter {
       signal,
     );
 
-    return { worker, decision: result.decision };
+    return {
+      worker,
+      decision: result.decision,
+      ...(result.traceId !== undefined ? { traceId: result.traceId } : {}),
+    };
   }
 }

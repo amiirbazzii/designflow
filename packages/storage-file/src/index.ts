@@ -7,6 +7,7 @@ export {
   FileApprovalManager,
   FileExecutionEventStore,
   FileArtifactStore,
+  FileTraceStore,
   ApprovalNotFoundError,
   ApprovalStateTransitionError,
   ArtifactConflictError,

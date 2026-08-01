@@ -420,6 +420,41 @@ describe("architecture", () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * A source file with its comments removed.
+   *
+   * The prose in these files names the things they must not touch — explaining
+   * that a command holds no `TraceStore` requires writing `TraceStore`.
+   * Scanning code keeps the rule about what a file *does* rather than about
+   * what it is allowed to discuss.
+   */
+  function codeOf(path: string): string {
+    return readFileSync(path, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+  }
+
+  test("no command reaches a trace store", () => {
+    const commandDir = join(import.meta.dir, "commands");
+
+    for (const entry of readdirSync(commandDir)) {
+      const contents = codeOf(join(commandDir, entry));
+
+      // Commands read `context.traces`, the product service. A command holding
+      // a store could write the record it displays, and a record its own
+      // reader can edit is not an audit record.
+      for (const forbidden of [
+        "TraceStore",
+        "FileTraceStore",
+        "InMemoryTraceStore",
+        "TraceCollector",
+        "@designflow/storage-file",
+      ]) {
+        expect(contents).not.toContain(forbidden);
+      }
+    }
+  });
+
   test("no command reaches the tool layer or knows a tool id", () => {
     const commandDir = join(import.meta.dir, "commands");
 
@@ -953,6 +988,181 @@ describe("running through a tool-backed agent", () => {
       type: "run_workflow",
       workflowId: "design-to-code",
     });
+  });
+});
+
+// ── Traces ──────────────────────────────────────────────────────
+
+describe("designflow traces", () => {
+  test("says so when no decision has been made", async () => {
+    const terminal = new ScriptedTerminal();
+
+    const code = await dispatch(["traces"], context(), terminal);
+
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain("No AI decisions have been made yet.");
+  });
+
+  test("shows a completed run's decision in the user's vocabulary", async () => {
+    const created = context({ requireApproval: false });
+    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+
+    const terminal = new ScriptedTerminal();
+    const code = await dispatch(["traces"], created, terminal);
+
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain("AI decisions");
+    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).toContain("started the work");
+    expect(terminal.transcript).toContain("Tools consulted: 1");
+  });
+
+  // ── 9. Correlation with the execution ─────────────────────────
+
+  test("the trace names the run it produced", async () => {
+    const created = context({ requireApproval: false });
+    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+
+    const [trace] = await created.traces.listTraces();
+    const [run] = await created.runner.history();
+
+    expect(trace?.executionId).toBe(run?.executionId);
+    expect(trace?.workflowId).toBe("design-to-code");
+
+    // And the bridge works in the other direction.
+    const found = await created.traces.getExecutionTrace(run?.executionId ?? "");
+    expect(found?.id).toBe(trace?.id);
+  });
+
+  test("a clarification is traced, with no run attached", async () => {
+    const created = context();
+
+    created.workers.registerWorker({
+      id: "vague-worker",
+      name: "Vague Worker",
+      description: "collects a field that describes nothing",
+      category: "testing",
+      workflows: ["design-to-code"],
+      inputs: [{ key: "note", label: "Note", placeholder: "asdf" }],
+      agentId: "design-engineer-agent",
+    });
+
+    await dispatch(["run", "vague-worker"], created, new ScriptedTerminal(["asdf"]));
+
+    const [trace] = await created.traces.listTraces();
+
+    // The case engine history cannot answer: a decision that produced no run.
+    expect(trace?.decisionType).toBe("request_clarification");
+    expect(trace?.executionId).toBeUndefined();
+    expect(await created.runner.history()).toHaveLength(0);
+
+    const terminal = new ScriptedTerminal();
+    await dispatch(["traces"], created, terminal);
+    expect(terminal.transcript).toContain("asked for more detail");
+  });
+
+  test("a single trace can be looked up by id", async () => {
+    const created = context({ requireApproval: false });
+    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+
+    const [trace] = await created.traces.listTraces();
+    const terminal = new ScriptedTerminal();
+
+    expect(await dispatch(["traces", trace?.id ?? ""], created, terminal)).toBe(0);
+    expect(terminal.transcript).toContain("Design Engineer");
+  });
+
+  test("an unknown id is reported without a stack trace", async () => {
+    const terminal = new ScriptedTerminal();
+
+    expect(await dispatch(["traces", "nope"], context(), terminal)).toBe(1);
+    expect(terminal.transcript).toContain("No trace with that id");
+    expect(terminal.transcript).not.toContain("    at ");
+  });
+
+  // ── 11-14. What the display never shows ───────────────────────
+
+  test("shows no reasoning, prompt, tool payload or internal id", async () => {
+    const created = context({ requireApproval: false });
+    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+
+    const terminal = new ScriptedTerminal();
+    await dispatch(["traces"], created, terminal);
+
+    for (const leak of [
+      "design-to-code",
+      "design-engineer-agent",
+      "classify-design-task",
+      "taskType",
+      "confidence",
+      "homepage.fig",
+      "reasoning",
+      "chainOfThought",
+    ]) {
+      expect(terminal.transcript).not.toContain(leak);
+    }
+  });
+
+  test("traces survive the process that produced them", async () => {
+    const home = workspace();
+    process.env.DESIGNFLOW_HOME = home;
+    const databasePath = join(home, "runs.json");
+
+    const first = createCliContext({ databasePath, requireApproval: false });
+    await dispatch(["run", "design-engineer"], first, new ScriptedTerminal(RUN_ANSWERS));
+    first.close();
+
+    // A second "invocation" sharing nothing but the file.
+    const second = createCliContext({ databasePath, requireApproval: false });
+    contexts.push(second);
+
+    const terminal = new ScriptedTerminal();
+    await dispatch(["traces"], second, terminal);
+
+    expect(terminal.transcript).toContain("started the work");
+    expect((await second.traces.listTraces())[0]?.executionId).toBeDefined();
+  });
+
+  test("a failing trace write cannot break a run that already happened", async () => {
+    // By the time correlation is attempted the workflow has started and
+    // artifacts may exist. A full disk must not turn a run that worked into an
+    // error the user cannot act on — this was a real defect, found by breaking
+    // the store and watching a completed run report failure.
+    const created = context({ requireApproval: false });
+
+    (created.traces as { correlate: unknown }).correlate = () =>
+      Promise.reject(new Error("disk full"));
+
+    const terminal = new ScriptedTerminal(RUN_ANSWERS);
+    const code = await dispatch(["run", "design-engineer"], created, terminal);
+
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain("Complete");
+    expect(await created.runner.history()).toHaveLength(1);
+  });
+
+  test("a failing trace store does not break the decision either", async () => {
+    const created = context({ requireApproval: false });
+
+    // The runtime's own trace writes are already guarded; this asserts the
+    // guard end to end rather than only in the agents package.
+    (created.traces as { correlate: unknown }).correlate = () => {
+      throw new Error("disk full");
+    };
+
+    expect(
+      await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS)),
+    ).toBe(0);
+  });
+
+  test("tracing does not change what a run does", async () => {
+    // The same assertions the run tests make, re-checked with tracing wired.
+    const created = context({ requireApproval: false });
+    const terminal = new ScriptedTerminal(RUN_ANSWERS);
+
+    expect(await dispatch(["run", "design-engineer"], created, terminal)).toBe(0);
+    expect(terminal.transcript).toContain("Created  5");
+    expect((await created.runner.history())[0]?.state).toBe("ready");
   });
 });
 

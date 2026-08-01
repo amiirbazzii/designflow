@@ -63,7 +63,7 @@ export async function runCommand(
 
   // The collected answers are the request. What to do with them is not this
   // command's call.
-  const { decision } = await context.routeTask({
+  const { decision, traceId } = await context.routeTask({
     workerId: name,
     request: describeRequest(input),
     input,
@@ -105,6 +105,27 @@ export async function runCommand(
     workflowId: decision.workflowId,
     input: decision.input ?? input,
   });
+
+  // Ties the decision to the run it produced. Recorded here because this is
+  // the only place both ids exist: the agent decided and returned before an
+  // execution existed, and the engine never learns a decision was involved.
+  //
+  // Swallowed on failure, and that is the whole point. By this line the
+  // workflow has already started — artifacts may exist, an approval may be
+  // pending — so letting a full disk propagate would turn a run that worked
+  // into an error the user cannot act on. The agent runtime protects its own
+  // trace writes for the same reason; this is the one that happens out here,
+  // and it was the one left unguarded.
+  //
+  // The cost is an uncorrelated trace: the decision is still recorded, it just
+  // does not name the run. A degraded record beats a broken run.
+  if (traceId !== undefined) {
+    try {
+      await context.traces.correlate(traceId, execution.executionId);
+    } catch {
+      // Tracing must never break the thing it traces.
+    }
+  }
 
   const approved = await resolveApproval(context, terminal, execution.executionId);
 

@@ -5,6 +5,7 @@ import type { CliContext } from "./services/cli-runner";
 import { listCommand } from "./commands/list";
 import { runCommand } from "./commands/run";
 import { historyCommand } from "./commands/history";
+import { tracesCommand } from "./commands/traces";
 import { interactiveCommand } from "./commands/interactive";
 import { settingsCommand } from "./commands/settings";
 import { CLI_VERSION } from "./version";
@@ -67,6 +68,15 @@ export async function dispatch(
         context,
         terminal,
         workflowId !== undefined ? { workflowId } : undefined,
+      );
+    }
+
+    case "traces": {
+      const traceId = rest[0];
+      return tracesCommand(
+        context,
+        terminal,
+        traceId !== undefined ? { traceId } : undefined,
       );
     }
 

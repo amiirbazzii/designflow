@@ -12,7 +12,16 @@ import {
   executionRecordSchema,
   lifecycleEventSchema,
 } from "@designflow/sdk";
+import {
+  agentTraceSchema,
+  agentTracePatchSchema,
+  selectTraces,
+} from "@designflow/sdk";
 import type {
+  AgentTrace,
+  AgentTracePatch,
+  TraceFilters,
+  TraceStore,
   ApprovalManager,
   ApprovalRequest,
   Artifact,
@@ -706,4 +715,77 @@ function traverse(
   }
 
   return order;
+}
+
+// ── Agent traces ────────────────────────────────────────────────
+
+/**
+ * Traces on disk, in the same document as everything else.
+ *
+ * Sharing `FileStore` buys the atomic write for free: a trace and the execution
+ * it correlates to land in one rename, so an interrupted process cannot leave a
+ * trace pointing at a run that was never recorded.
+ *
+ * Nothing about the engine's records changed to accommodate this. `traces` is a
+ * new top-level collection, and `FileStore` fills in missing collections when
+ * it reads, so a document written before this stage loads unchanged and simply
+ * has no traces in it.
+ *
+ * Traces are validated on the way in *and* on the way out. On the way in
+ * because a store is an audit record; on the way out because the file is
+ * user-editable — someone can open `runs.json` in an editor, and a malformed
+ * trace should be dropped rather than handed to a renderer as if it were real.
+ */
+export class FileTraceStore implements TraceStore {
+  private readonly store: FileStore;
+
+  public constructor(store: FileStore) {
+    this.store = store;
+  }
+
+  public async create(trace: AgentTrace): Promise<void> {
+    const validated = agentTraceSchema.parse(trace);
+
+    this.store.mutate((document) => {
+      document.traces[validated.id] = validated;
+    });
+  }
+
+  public async update(traceId: string, patch: AgentTracePatch): Promise<void> {
+    const validated = agentTracePatchSchema.parse(patch);
+
+    this.store.mutate((document) => {
+      const existing = document.traces[traceId];
+
+      // Silent when the trace is unknown. An update whose create was lost
+      // cannot be recovered by failing the update — that would turn a gap in
+      // the record into a broken decision.
+      if (existing === undefined) return;
+
+      document.traces[traceId] = agentTraceSchema.parse({
+        ...existing,
+        ...validated,
+      });
+    });
+  }
+
+  public async get(traceId: string): Promise<AgentTrace | null> {
+    const found = this.store.data.traces[traceId];
+    if (found === undefined) return null;
+
+    const parsed = agentTraceSchema.safeParse(found);
+    return parsed.success ? parsed.data : null;
+  }
+
+  public async list(filters?: TraceFilters): Promise<readonly AgentTrace[]> {
+    const stored = Object.values(this.store.data.traces);
+
+    // Hand-edited or truncated entries are dropped rather than surfaced.
+    const valid = stored.flatMap((trace) => {
+      const parsed = agentTraceSchema.safeParse(trace);
+      return parsed.success ? [parsed.data] : [];
+    });
+
+    return selectTraces(valid, filters);
+  }
 }

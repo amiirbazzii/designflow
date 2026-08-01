@@ -32,6 +32,9 @@ export type {
   WorkerTaskRouterOptions,
 } from "./worker-task";
 
+// ── Agent Tracing ───────────────────────────────────────────────
+export { InMemoryTraceStore, TraceCollector, TraceService } from "./traces";
+
 export { ApprovalService, ApprovalNotPendingError } from "./approvals";
 export type { ApprovalServiceOptions } from "./approvals";
 
