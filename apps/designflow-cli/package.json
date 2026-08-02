@@ -1,6 +1,6 @@
 {
   "name": "designflow-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI workflows that turn ideas into results, from your terminal",
   "type": "module",
   "main": "./dist/index.js",
