@@ -1,12 +1,12 @@
 {
-  "name": "designflow",
+  "name": "designflow-ai",
   "version": "0.1.0",
   "description": "AI workflows that turn ideas into results, from your terminal",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "designflow": "./dist/main.js"
+    "designflow": "dist/main.js"
   },
   "files": [
     "dist"
@@ -40,21 +40,5 @@
   },
   "engines": {
     "node": ">=18"
-  },
-  "devDependencies": {
-    "@designflow/agents": "workspace:*",
-    "@designflow/core": "workspace:*",
-    "@designflow/model-provider-openrouter": "workspace:*",
-    "@designflow/models": "workspace:*",
-    "@designflow/product": "workspace:*",
-    "@designflow/sdk": "workspace:*",
-    "@designflow/storage-file": "workspace:*",
-    "@designflow/tools": "workspace:*",
-    "@designflow/workers": "workspace:*",
-    "@designflow/workflow-design-to-code": "workspace:*",
-    "@designflow/workflow-qa-review": "workspace:*",
-    "@designflow/workflow-research-analysis": "workspace:*",
-    "@designflow/workflow-product-brief": "workspace:*",
-    "zod": "^3.24.0"
   }
 }

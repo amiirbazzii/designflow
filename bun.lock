@@ -51,26 +51,10 @@
       },
     },
     "apps/designflow-cli": {
-      "name": "designflow",
+      "name": "designflow-ai",
       "version": "0.1.0",
       "bin": {
-        "designflow": "./dist/main.js",
-      },
-      "devDependencies": {
-        "@designflow/agents": "workspace:*",
-        "@designflow/core": "workspace:*",
-        "@designflow/model-provider-openrouter": "workspace:*",
-        "@designflow/models": "workspace:*",
-        "@designflow/product": "workspace:*",
-        "@designflow/sdk": "workspace:*",
-        "@designflow/storage-file": "workspace:*",
-        "@designflow/tools": "workspace:*",
-        "@designflow/workers": "workspace:*",
-        "@designflow/workflow-design-to-code": "workspace:*",
-        "@designflow/workflow-product-brief": "workspace:*",
-        "@designflow/workflow-qa-review": "workspace:*",
-        "@designflow/workflow-research-analysis": "workspace:*",
-        "zod": "^3.24.0",
+        "designflow": "dist/main.js",
       },
     },
     "apps/designflow-demo": {
@@ -591,7 +575,7 @@
 
     "deep-is": ["deep-is@0.1.4", "", {}, "sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ=="],
 
-    "designflow": ["designflow@workspace:apps/designflow-cli"],
+    "designflow-ai": ["designflow-ai@workspace:apps/designflow-cli"],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.397", "", {}, "sha512-khGTy9U9x02KEtsKM8vx5A62BsRmcOsIgDpWr1ImE32Ax8GxHGPHZf+Eu9H8zOOyHJnB0jTbseyTHbq2XCT8yw=="],
 
