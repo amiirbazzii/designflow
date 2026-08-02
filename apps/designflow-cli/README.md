@@ -5,7 +5,7 @@ Your AI workforce in the terminal.
 ## Install
 
 ```bash
-npm install -g designflow
+npm install -g designflow-ai
 ```
 
 ## First run
