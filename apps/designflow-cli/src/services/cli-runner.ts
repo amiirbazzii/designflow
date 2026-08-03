@@ -32,8 +32,10 @@ import {
 
 import {
   AgentRuntime,
+  AgentInvocationRuntime,
   assertWorkerAgentAlignment,
   createAgentRegistry,
+  createSpecializedAgentRegistry,
   designEngineerDefaultModelProfile,
   modelDesignEngineerStrategy,
   designEngineerCoordinatorDefaultModelProfile,
@@ -43,7 +45,10 @@ import {
   modelResearchAnalystStrategy,
   productManagerDefaultModelProfile,
   modelProductManagerStrategy,
+  figmaSpecificationDefaultModelProfile,
+  modelFigmaSpecificationStrategy,
 } from "@designflow/agents";
+import { McpRuntime } from "@designflow/mcp";
 import { ToolRuntime, createToolRegistry, createProjectInspector } from "@designflow/tools";
 import {
   InMemoryModelProfileRegistry,
@@ -82,6 +87,7 @@ import {
 import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
+  designToCodeFigmaSpecificationWorkflowPackage,
 } from "@designflow/workflow-design-to-code";
 import {
   qaReviewApprovalPolicy,
@@ -102,6 +108,7 @@ import {
 } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
+import { readExperimentalFigmaMcpEnabled, readFigmaMcpConfig } from "./figma-mcp-config";
 import {
   readSessionConfig,
   type SessionConfig,
@@ -153,6 +160,11 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   qaReviewerDefaultModelProfile,
   researchAnalystDefaultModelProfile,
   productManagerDefaultModelProfile,
+  // Registered unconditionally, exactly like every other worker's profile
+  // above — `designflow settings` can always show what a preview run
+  // *would* use, whether or not the experimental flag that actually wires
+  // a live Figma MCP connection is on.
+  figmaSpecificationDefaultModelProfile,
 ];
 
 export interface WorkflowInfo {
@@ -386,11 +398,61 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const workflows = new Map<string, WorkflowPackage>();
   const workers = options?.workers ?? createWorkerRegistry();
 
+  // `!== undefined` rather than a truthiness check: a credential set to an
+  // empty string is a real, if broken, signal that OpenRouter was expected —
+  // it still reaches `OpenRouterProvider`'s constructor, which refuses an
+  // empty key immediately with `ERR_MODEL_API_KEY_MISSING`, before any
+  // command has run. An unset variable, in contrast, means OpenRouter was
+  // never expected at all, and the CLI stays in deterministic mode with no
+  // error of any kind. Read here, ahead of `service`, rather than closer to
+  // `agentRegistry` below, because Stage 3's experimental wiring (also
+  // below) needs the same decision to toggle the Figma Specification
+  // Agent's strategy.
+  const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
+  const modelModeRequested = openRouterApiKey !== undefined;
+
+  // Stage 3: the experimental Figma MCP path. Off unless a local config
+  // explicitly sets `settings.experimental.designEngineerFigmaMcp` — every
+  // existing worker, workflow and command is unaffected either way. See
+  // `docs/adr/*-figma-mcp-integration.md` for the full rollout rationale.
+  const figmaMcpEnabled = readExperimentalFigmaMcpEnabled(home.config);
+  const figmaMcpConfig = figmaMcpEnabled ? readFigmaMcpConfig(home.config) : undefined;
+
+  const mcpClient = figmaMcpConfig !== undefined
+    ? new McpRuntime({
+        command: figmaMcpConfig.command,
+        args: figmaMcpConfig.args,
+        env: figmaMcpConfig.env,
+        ...(figmaMcpConfig.connectTimeoutMs !== undefined
+          ? { connectTimeoutMs: figmaMcpConfig.connectTimeoutMs }
+          : {}),
+        ...(figmaMcpConfig.requestTimeoutMs !== undefined
+          ? { requestTimeoutMs: figmaMcpConfig.requestTimeoutMs }
+          : {}),
+        ...(figmaMcpConfig.maxResponseBytes !== undefined
+          ? { maxResponseBytes: figmaMcpConfig.maxResponseBytes }
+          : {}),
+        serverIdentity: "figma-mcp",
+      })
+    : undefined;
+
+  // A dedicated `AgentInvocationRuntime`, independent of the coordinator's
+  // `AgentRuntime` below — Stage 2's own boundary between "decides a route"
+  // and "invoked by a workflow node for its output" carries through here.
+  const figmaAgentInvocationRuntime = figmaMcpEnabled
+    ? new AgentInvocationRuntime({
+        registry: createSpecializedAgentRegistry({
+          figmaSpecificationStrategy: modelModeRequested ? modelFigmaSpecificationStrategy : undefined,
+        }),
+      })
+    : undefined;
+
   for (const workflowPackage of [
     designToCodeWorkflowPackage,
     qaReviewWorkflowPackage,
     researchAnalysisWorkflowPackage,
     productBriefWorkflowPackage,
+    ...(figmaMcpEnabled ? [designToCodeFigmaSpecificationWorkflowPackage] : []),
   ]) {
     workflowPackage.load(capabilityRegistry);
     workflows.set(workflowPackage.id, workflowPackage);
@@ -458,6 +520,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       eventPublisher,
     }),
     executionReconciler: new ArtifactSetReconciler({ registry: artifactStore }),
+    ...(mcpClient !== undefined ? { mcpClient } : {}),
+    ...(figmaAgentInvocationRuntime !== undefined ? { agentInvoker: figmaAgentInvocationRuntime } : {}),
   });
 
   // Tools inform a decision; they never perform work. The runtime is handed a
@@ -483,16 +547,6 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const modelProfiles = new InMemoryModelProfileRegistry(
     mergeModelProfileOverrides(BUILT_IN_MODEL_PROFILES, readModelProfileOverrides(home.config)),
   );
-
-  // `!== undefined` rather than a truthiness check: a credential set to an
-  // empty string is a real, if broken, signal that OpenRouter was expected —
-  // it still reaches `OpenRouterProvider`'s constructor, which refuses an
-  // empty key immediately with `ERR_MODEL_API_KEY_MISSING`, before any
-  // command has run. An unset variable, in contrast, means OpenRouter was
-  // never expected at all, and the CLI stays in deterministic mode with no
-  // error of any kind.
-  const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
-  const modelModeRequested = openRouterApiKey !== undefined;
 
   const modelRuntime = modelModeRequested
     ? new ModelRuntime({

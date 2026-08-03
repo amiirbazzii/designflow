@@ -105,6 +105,17 @@
         "@designflow/sdk": "workspace:*",
       },
     },
+    "packages/capabilities/figma-mcp": {
+      "name": "@designflow/capability-figma-mcp",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
+        "zod": "^3.24.0",
+      },
+      "devDependencies": {
+        "@designflow/mcp": "workspace:*",
+      },
+    },
     "packages/capabilities/test-artifact": {
       "name": "@designflow/capability-test-artifact",
       "version": "0.1.0",
@@ -120,6 +131,14 @@
         "@designflow/artifacts": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "@designflow/state": "workspace:*",
+        "zod": "^3.24.0",
+      },
+    },
+    "packages/mcp": {
+      "name": "@designflow/mcp",
+      "version": "0.1.0",
+      "dependencies": {
+        "@designflow/sdk": "workspace:*",
         "zod": "^3.24.0",
       },
     },
@@ -206,12 +225,14 @@
       "name": "@designflow/workflow-design-to-code",
       "version": "0.1.0",
       "dependencies": {
+        "@designflow/capability-figma-mcp": "workspace:*",
         "@designflow/sdk": "workspace:*",
         "zod": "^3.24.0",
       },
       "devDependencies": {
         "@designflow/agents": "workspace:*",
         "@designflow/core": "workspace:*",
+        "@designflow/mcp": "workspace:*",
         "@designflow/product": "workspace:*",
       },
     },
@@ -310,6 +331,8 @@
 
     "@designflow/artifacts": ["@designflow/artifacts@workspace:packages/artifacts"],
 
+    "@designflow/capability-figma-mcp": ["@designflow/capability-figma-mcp@workspace:packages/capabilities/figma-mcp"],
+
     "@designflow/capability-test-artifact": ["@designflow/capability-test-artifact@workspace:packages/capabilities/test-artifact"],
 
     "@designflow/cli-legacy": ["@designflow/cli-legacy@workspace:apps/cli"],
@@ -317,6 +340,8 @@
     "@designflow/core": ["@designflow/core@workspace:packages/core"],
 
     "@designflow/demo": ["@designflow/demo@workspace:apps/designflow-demo"],
+
+    "@designflow/mcp": ["@designflow/mcp@workspace:packages/mcp"],
 
     "@designflow/model-provider-openrouter": ["@designflow/model-provider-openrouter@workspace:packages/model-provider-openrouter"],
 

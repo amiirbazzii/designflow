@@ -15,6 +15,8 @@ import { DesignFlowError } from "@designflow/sdk";
 import { AGENT_ERROR_CODES } from "@designflow/agents";
 import { TOOL_ERROR_CODES } from "@designflow/tools";
 import { MODEL_ERROR_CODES } from "@designflow/models";
+import { MCP_ERROR_CODES } from "@designflow/mcp";
+import { FIGMA_MCP_ERROR_CODES } from "@designflow/capability-figma-mcp";
 import {
   configSchema,
   loadConfig,
@@ -1352,7 +1354,7 @@ describe("explaining an agent failure", () => {
     // here, so a code added upstream fails this test instead of reaching a
     // person as raw internal text. That is not hypothetical — it is exactly
     // what happened when the agent layer was introduced in Stage 35.
-    const published = [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES];
+    const published = [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES, ...MCP_ERROR_CODES, ...FIGMA_MCP_ERROR_CODES];
 
     expect(published.length).toBeGreaterThan(10);
 
@@ -1367,7 +1369,7 @@ describe("explaining an agent failure", () => {
   test("every published code says whether anything started", () => {
     // The first question a person has after a failure. Six codes described the
     // problem without ever answering it, which this now prevents.
-    const silent = [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES].filter((code) => {
+    const silent = [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES, ...MCP_ERROR_CODES, ...FIGMA_MCP_ERROR_CODES].filter((code) => {
       const { problem, suggestion } = explainError(
         new DesignFlowError(code, "raw internal text"),
       );
@@ -1378,7 +1380,7 @@ describe("explaining an agent failure", () => {
   });
 
   test("every published code offers a next step", () => {
-    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES]) {
+    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES, ...MCP_ERROR_CODES, ...FIGMA_MCP_ERROR_CODES]) {
       const { suggestion } = explainError(new DesignFlowError(code, "raw"));
 
       expect(suggestion).toMatch(
@@ -1391,7 +1393,7 @@ describe("explaining an agent failure", () => {
     const raw =
       "Agent x failed\n    at /Users/someone/secret/path.ts:1:1\n    at run (/opt/app/index.js:9:9)";
 
-    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES]) {
+    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES, ...MCP_ERROR_CODES, ...FIGMA_MCP_ERROR_CODES]) {
       const { problem, suggestion } = explainError(new DesignFlowError(code, raw));
       const shown = `${problem} ${suggestion}`;
 
@@ -1402,7 +1404,7 @@ describe("explaining an agent failure", () => {
   });
 
   test("no published code leaks internal vocabulary to a person", () => {
-    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES]) {
+    for (const code of [...AGENT_ERROR_CODES, ...TOOL_ERROR_CODES, ...MODEL_ERROR_CODES, ...MCP_ERROR_CODES, ...FIGMA_MCP_ERROR_CODES]) {
       const { problem, suggestion } = explainError(
         new DesignFlowError(code, "Agent x may not call tool classify-design-task"),
       );

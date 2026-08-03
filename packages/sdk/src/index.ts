@@ -335,10 +335,35 @@ export type {
   AgentInvocationService,
 } from "./agent-invocation";
 
+// ── Model Context Protocol (generic port) ───────────────────────
+export {
+  mcpToolDescriptorSchema,
+  mcpToolCallRequestSchema,
+  mcpToolCallResultSchema,
+} from "./mcp";
+
+export type {
+  McpToolDescriptor,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpClient,
+} from "./mcp";
+
 // ── Design Engineer Contracts ───────────────────────────────────
 export {
   DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION,
+  FIGMA_SOURCE_SNAPSHOT_SCHEMA_VERSION,
+  DESIGN_SPECIFICATION_SCHEMA_VERSION,
+  figmaNodeSnapshotSchema,
+  figmaVariableSnapshotSchema,
+  figmaStyleSnapshotSchema,
+  figmaComponentSnapshotSchema,
+  figmaAssetSnapshotSchema,
+  figmaScreenshotSnapshotSchema,
+  figmaSnapshotWarningSchema,
   figmaSourceSnapshotSchema,
+  designSpecificationAmbiguitySchema,
+  designSpecificationComponentSchema,
   designSpecificationSchema,
   projectImplementationContextSchema,
   implementationPlanSchema,
@@ -349,7 +374,16 @@ export {
 } from "./design-engineer-contracts";
 
 export type {
+  FigmaNodeSnapshot,
+  FigmaVariableSnapshot,
+  FigmaStyleSnapshot,
+  FigmaComponentSnapshot,
+  FigmaAssetSnapshot,
+  FigmaScreenshotSnapshot,
+  FigmaSnapshotWarning,
   FigmaSourceSnapshot,
+  DesignSpecificationAmbiguity,
+  DesignSpecificationComponent,
   DesignSpecification,
   ProjectImplementationContext,
   ImplementationPlan,

@@ -7,6 +7,9 @@ import {
   type AgentInvocationRequest,
   type AgentManifest,
   type DesignSpecification,
+  type DesignSpecificationAmbiguity,
+  type DesignSpecificationComponent,
+  type FigmaNodeSnapshot,
   type FigmaSourceSnapshot,
   type ModelProfile,
   type SpecializedAgent,
@@ -18,20 +21,27 @@ import { SpecializedAgentOutputInvalidError } from "../errors";
 /**
  * The Figma Specification Agent.
  *
- * Turns a Figma source snapshot into a Design Specification — the first of
- * the Design Engineer's three specialized agents. In this stage the
- * "snapshot" is always a fixture `prepare-figma-source-fixture` constructed
- * from workflow input, never a real Figma MCP response: this agent has no
- * network access and no MCP tool, by construction — its `allowedTools` is
- * empty and nothing in either strategy reaches outside its own input.
+ * Turns a `FigmaSourceSnapshot` into a `DesignSpecification` — the first of
+ * the Design Engineer's three specialized agents. Stage 2 shipped this
+ * agent against a pure fixture snapshot; Stage 3 replaces the snapshot's
+ * *content* with a real, MCP-retrieved one (`@designflow/capability-figma-mcp`
+ * builds it — this agent never calls Figma, never calls an MCP client, and
+ * has no tool access at all: `allowedTools` stays empty). The agent's own
+ * job is unchanged in kind: interpret whatever snapshot it is handed,
+ * faithfully, and say explicitly what it could not determine.
  *
- * Two strategies, the same split `design-engineer-agent.ts` documents:
+ * Two strategies, the same split every other specialized agent uses:
  * deterministic (offline, derives the specification purely from the
- * snapshot's own structure) and model-backed (consults the same snapshot
- * through a structured prompt). Neither ever produces output that skips
- * `designSpecificationSchema` — an invalid model answer becomes a thrown
- * `SpecializedAgentOutputInvalidError`, which `AgentInvocationRuntime` turns
- * into a `failure` outcome rather than a decision made on unchecked data.
+ * snapshot's own structure — the strategy every test in this package
+ * exercises by default) and model-backed (consults the same snapshot through
+ * a structured prompt that states the snapshot is authoritative and forbids
+ * fabrication). Both strategies' output passes through the same
+ * `validate()` — including, now, a check that every node id a produced
+ * component or hierarchy entry references actually exists in the source
+ * snapshot. A model (or a bug in the deterministic strategy) naming a node
+ * id the snapshot never had is exactly the "fabricated node id" failure
+ * mode `SpecializedAgentOutputInvalidError` exists to catch before it
+ * reaches a stored artifact.
  */
 
 const MODEL_PROFILE_ID = "figma-specification-default";
@@ -40,14 +50,17 @@ export const figmaSpecificationAgentManifest: AgentManifest = agentManifestSchem
   id: "figma-specification-agent",
   name: "Figma Specification Agent",
   description: "Turns a Figma source snapshot into a design specification",
-  version: "0.1.0",
+  version: "0.2.0",
   instructions:
-    "Read the supplied Figma source snapshot and produce a comprehensive design " +
-    "specification: hierarchy, tokens, components, layout behaviour, responsive " +
-    "assumptions, assets, interactions, accessibility notes, and any ambiguity " +
-    "the snapshot leaves unresolved. Never fetch anything — only the snapshot " +
-    "you were given exists.",
-  allowedWorkflows: ["design-to-code-agent-foundation"],
+    "The supplied Figma source snapshot is authoritative — it is everything you " +
+    "know about this design. Never invent a property, a node, a token or an " +
+    "asset the snapshot does not contain. Every component and hierarchy entry " +
+    "you name must reference a real node id from the snapshot. Distinguish " +
+    "observed facts (already present in the snapshot) from your own inferred " +
+    "implementation guidance. Every unresolved question must appear as a " +
+    "structured ambiguity, never silently guessed at. Respond with structured " +
+    "output only.",
+  allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-figma-specification"],
   allowedTools: [],
   modelProfileId: MODEL_PROFILE_ID,
   metadata: { author: "DesignFlow" },
@@ -71,18 +84,27 @@ function readSnapshot(request: AgentInvocationRequest): FigmaSourceSnapshot {
   );
 
   if (!parsed.success) {
-    throw new SpecializedAgentOutputInvalidError(
-      "figma-specification-agent",
-      ["input.figmaSnapshot: missing or does not match FigmaSourceSnapshot"],
-    );
+    throw new SpecializedAgentOutputInvalidError("figma-specification-agent", [
+      "input.figmaSnapshot: missing or does not match FigmaSourceSnapshot",
+    ]);
   }
 
   return parsed.data;
 }
 
-function validate(agentVersion: string, raw: unknown): DesignSpecification {
-  const withVersion =
-    typeof raw === "object" && raw !== null ? { ...raw, agentVersion } : raw;
+/**
+ * Validates the produced specification against its own schema, *and* that
+ * every node id it references (hierarchy entries, component
+ * `sourceNodeIds`, ambiguity `affectedNodeIds`) exists in the snapshot it
+ * was derived from — the check that catches a fabricated node id, whichever
+ * strategy produced it.
+ */
+function validate(
+  agentVersion: string,
+  raw: unknown,
+  snapshot: FigmaSourceSnapshot,
+): DesignSpecification {
+  const withVersion = typeof raw === "object" && raw !== null ? { ...raw, agentVersion } : raw;
   const parsed = designSpecificationSchema.safeParse(withVersion);
 
   if (!parsed.success) {
@@ -92,14 +114,142 @@ function validate(agentVersion: string, raw: unknown): DesignSpecification {
     );
   }
 
-  return parsed.data;
+  const spec = parsed.data;
+  const knownIds = new Set(snapshot.nodes.map((node) => node.id));
+
+  const referenced = [
+    ...spec.hierarchy.map((entry) => entry.id),
+    ...spec.components.flatMap((component) => component.sourceNodeIds),
+    ...spec.ambiguities.flatMap((ambiguity) => ambiguity.affectedNodeIds),
+  ];
+
+  const fabricated = referenced.filter((id) => !knownIds.has(id));
+  if (fabricated.length > 0) {
+    throw new SpecializedAgentOutputInvalidError("figma-specification-agent", [
+      `referenced node id(s) not present in the source snapshot: ${[...new Set(fabricated)].join(", ")}`,
+    ]);
+  }
+
+  return spec;
 }
 
-/** Groups nodes by their `parentId`-less top level, treated as "frames" already named on the source. */
-function componentsFrom(snapshot: FigmaSourceSnapshot): DesignSpecification["components"] {
-  return snapshot.nodes
-    .filter((node) => node.parentId !== undefined)
-    .map((node) => ({ name: node.name, role: node.type }));
+// ── Deterministic derivation helpers ─────────────────────────────
+
+function hierarchyFrom(nodes: readonly FigmaNodeSnapshot[]): DesignSpecification["hierarchy"] {
+  return nodes.map((node) => ({
+    id: node.id,
+    name: node.name,
+    ...(node.parentId !== undefined ? { parentId: node.parentId } : {}),
+  }));
+}
+
+const COMPONENT_LIKE_TYPES = new Set(["COMPONENT", "COMPONENT_SET", "INSTANCE", "FRAME"]);
+
+/** Semantic components: real component/instance nodes first, top-level frames otherwise. */
+function componentsFrom(
+  nodes: readonly FigmaNodeSnapshot[],
+  resolvedFrameIds: ReadonlySet<string>,
+): DesignSpecificationComponent[] {
+  const candidates = nodes.filter(
+    (node) => resolvedFrameIds.has(node.id) || node.componentId !== undefined || node.type === "COMPONENT",
+  );
+
+  const source = candidates.length > 0 ? candidates : nodes.filter((node) => COMPONENT_LIKE_TYPES.has(node.type));
+
+  return source.map((node) => ({
+    name: node.name,
+    role: node.type,
+    sourceNodeIds: [node.id],
+    variants: node.variantProperties !== undefined ? Object.values(node.variantProperties) : [],
+    reusableAssessment: node.componentId !== undefined ? ("reusable" as const) : ("uncertain" as const),
+    requiredAssets: [],
+    implementationNotes: [],
+  }));
+}
+
+function designTokensFrom(snapshot: FigmaSourceSnapshot): DesignSpecification["designTokens"] {
+  const colorVariables = snapshot.variables
+    .filter((variable) => variable.name.toLowerCase().includes("color"))
+    .map((variable) => variable.name);
+
+  const spacingValues = [
+    ...new Set(
+      snapshot.nodes.flatMap((node) => (node.itemSpacing !== undefined ? [node.itemSpacing] : [])),
+    ),
+  ].sort((a, b) => a - b);
+
+  const typographyNodes = snapshot.nodes.filter((node) => node.characters !== undefined);
+
+  return {
+    colors: colorVariables,
+    spacing: spacingValues.map((value) => `space.${value}`),
+    typography: typographyNodes.length > 0 ? ["type.body"] : [],
+    radii: [
+      ...new Set(
+        snapshot.nodes.flatMap((node) => (node.cornerRadius !== undefined ? [`radius.${node.cornerRadius}`] : [])),
+      ),
+    ],
+    borders: [],
+    shadows: [],
+    referencedVariableNames: snapshot.variables.map((variable) => variable.name),
+  };
+}
+
+function ambiguitiesFrom(
+  snapshot: FigmaSourceSnapshot,
+  resolvedFrameIds: readonly string[],
+): DesignSpecificationAmbiguity[] {
+  const ambiguities: DesignSpecificationAmbiguity[] = [];
+
+  if (snapshot.nodes.length === 0) {
+    ambiguities.push({
+      code: "NO_NODES_RETRIEVED",
+      description: "The source snapshot carries no nodes; structure could not be inferred.",
+      affectedNodeIds: [],
+      requiresUserInput: true,
+      suggestedQuestion: "Which frame or node should be inspected?",
+    });
+  }
+
+  if (!snapshot.capabilities.screenshotsAvailable || snapshot.screenshots.length === 0) {
+    ambiguities.push({
+      code: "NO_REFERENCE_SCREENSHOT",
+      description: "No reference screenshot was available for visual comparison.",
+      affectedNodeIds: [...resolvedFrameIds],
+      requiresUserInput: false,
+    });
+  }
+
+  const hasAutoLayout = snapshot.nodes.some((node) => node.layoutMode !== undefined && node.layoutMode !== "NONE");
+  if (!hasAutoLayout) {
+    ambiguities.push({
+      code: "RESPONSIVE_BREAKPOINT_NOT_SPECIFIED",
+      description: "No auto-layout data was present to infer responsive behaviour from.",
+      affectedNodeIds: [],
+      requiresUserInput: true,
+      suggestedQuestion: "What breakpoints or responsive behaviour should this implementation support?",
+    });
+  }
+
+  if (!snapshot.capabilities.variablesAvailable && !snapshot.capabilities.stylesAvailable) {
+    ambiguities.push({
+      code: "NO_DESIGN_TOKEN_SOURCE",
+      description: "The connected server exposed neither variables nor styles; tokens could not be sourced from Figma directly.",
+      affectedNodeIds: [],
+      requiresUserInput: false,
+    });
+  }
+
+  for (const warning of snapshot.warnings) {
+    ambiguities.push({
+      code: warning.code,
+      description: warning.message,
+      affectedNodeIds: warning.nodeId !== undefined ? [warning.nodeId] : [],
+      requiresUserInput: false,
+    });
+  }
+
+  return ambiguities;
 }
 
 export const deterministicFigmaSpecificationStrategy: FigmaSpecificationStrategy = async (
@@ -108,40 +258,37 @@ export const deterministicFigmaSpecificationStrategy: FigmaSpecificationStrategy
   manifest,
 ) => {
   const snapshot = readSnapshot(request);
-
-  const colorVariables = snapshot.variables
-    .filter((variable) => variable.name.toLowerCase().includes("color"))
-    .map((variable) => variable.name);
+  const resolvedFrameIds = new Set(snapshot.source.resolvedFrames.map((frame) => frame.id));
 
   const spec = {
     sourceIdentity: {
       designFile: snapshot.source.designFile,
       ...(snapshot.source.fileKey !== undefined ? { fileKey: snapshot.source.fileKey } : {}),
+      ...(snapshot.source.documentVersion !== undefined
+        ? { documentVersion: snapshot.source.documentVersion }
+        : {}),
     },
-    frames: snapshot.source.frames,
-    hierarchy: snapshot.nodes.map((node) => ({
-      id: node.id,
-      name: node.name,
-      ...(node.parentId !== undefined ? { parentId: node.parentId } : {}),
-    })),
-    designTokens: {
-      colors: colorVariables.length > 0 ? colorVariables : ["color.default"],
-      spacing: ["space.sm", "space.md", "space.lg"],
-      typography: ["type.body", "type.heading"],
-    },
-    components: componentsFrom(snapshot),
-    layoutBehavior: ["stacked vertically on narrow viewports"],
-    responsiveAssumptions: ["single breakpoint at 768px"],
-    assets: snapshot.assets.map((asset) => ({ id: asset.id, name: asset.name })),
-    interactions: [],
-    accessibilityNotes: ["ensure interactive elements carry an accessible name"],
-    ambiguities:
-      snapshot.nodes.length === 0
-        ? ["snapshot carries no nodes; component structure could not be inferred"]
+    screenshotArtifactIds: snapshot.screenshots.map((screenshot) => screenshot.artifactId),
+    frames: snapshot.source.frames.length > 0 ? snapshot.source.frames : snapshot.source.resolvedFrames.map((frame) => frame.name),
+    hierarchy: hierarchyFrom(snapshot.nodes),
+    designTokens: designTokensFrom(snapshot),
+    components: componentsFrom(snapshot.nodes, resolvedFrameIds),
+    layoutBehavior: snapshot.nodes.some((node) => node.layoutMode === "HORIZONTAL")
+      ? ["at least one frame lays its children out horizontally"]
+      : snapshot.nodes.some((node) => node.layoutMode === "VERTICAL")
+        ? ["at least one frame lays its children out vertically"]
         : [],
+    responsiveAssumptions: [],
+    assets: snapshot.assets.map((asset) => ({ id: asset.id, name: asset.name })),
+    content: snapshot.nodes.flatMap((node) => (node.characters !== undefined ? [node.characters] : [])),
+    interactions: [],
+    states: [],
+    accessibilityNotes:
+      snapshot.nodes.length > 0 ? ["ensure interactive elements carry an accessible name"] : [],
+    ambiguities: ambiguitiesFrom(snapshot, [...resolvedFrameIds]),
   };
 
-  return validate(manifest.version, spec);
+  return validate(manifest.version, spec, snapshot);
 };
 
 export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async (
@@ -158,11 +305,11 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
         role: "user",
         content:
           `Objective: ${request.objective}\n\n` +
-          `Figma source snapshot:\n${JSON.stringify(snapshot)}`,
+          `Figma source snapshot (authoritative — do not invent anything beyond it):\n${JSON.stringify(snapshot)}`,
       },
     ],
     responseSchema: { type: "object" },
-    maxOutputTokens: 1200,
+    maxOutputTokens: 2000,
   });
 
   if (result.type === "failure") {
@@ -171,7 +318,7 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
     ]);
   }
 
-  return validate(manifest.version, result.output);
+  return validate(manifest.version, result.output, snapshot);
 };
 
 class FigmaSpecificationAgent implements SpecializedAgent {

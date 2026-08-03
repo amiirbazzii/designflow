@@ -134,7 +134,7 @@ export const deterministicImplementationStrategy: ImplementationStrategy = async
         ? [`Reused existing project components: ${reused.map((component) => component.name).join(", ")}`]
         : []),
     ],
-    unresolvedItems: designSpecification.ambiguities,
+    unresolvedItems: designSpecification.ambiguities.map((ambiguity) => ambiguity.description),
   });
 };
 

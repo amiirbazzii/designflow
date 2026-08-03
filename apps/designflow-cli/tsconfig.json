@@ -49,6 +49,9 @@
     },
     {
       "path": "../../packages/model-provider-openrouter"
+    },
+    {
+      "path": "../../packages/mcp"
     }
   ]
 }

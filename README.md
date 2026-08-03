@@ -162,6 +162,23 @@ the same output described above. See
 [`docs/adr/20260803-design-engineer-specialized-agent-foundation.md`](docs/adr/20260803-design-engineer-specialized-agent-foundation.md)
 for what exists today and what remains unimplemented.
 
+**Experimental: real Figma retrieval (opt-in, off by default).** A separate,
+internal path can connect to a real, configured Figma MCP server, retrieve
+and normalize an actual design (structure, tokens, variables, styles,
+components, a reference screenshot), and produce a design specification from
+it — nothing beyond that: no code generation, no project file writes, and it
+is not the workflow the Design Engineer worker uses by default. It requires
+setting `settings.experimental.designEngineerFigmaMcp: true` and a
+`settings.figmaMcp` block (server command, arguments, and which environment
+variables to forward for credentials — never the credential value itself) in
+`config.json`. See
+[`docs/adr/20260810-figma-mcp-integration.md`](docs/adr/20260810-figma-mcp-integration.md)
+for the exact configuration shape, supported Figma URL forms, and — because no
+real Figma MCP server was available to verify this against during
+development — a transparent account of what was verified against a
+protocol-faithful fake server versus what still needs manual verification
+against a real one.
+
 ## For developers
 
 This README intentionally avoids internal vocabulary. If you're working on

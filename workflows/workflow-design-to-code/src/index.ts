@@ -71,3 +71,21 @@ export type {
   VisualValidationInvocationInput,
   Stage2Summary,
 } from "./agent-foundation-types";
+
+// ── Stage 3: Figma Specification (internal/experimental) ─────────
+export { designToCodeFigmaSpecificationWorkflowPackage } from "./figma-specification-manifest";
+export { designToCodeFigmaSpecificationWorkflow } from "./figma-specification-workflow";
+export {
+  figmaSpecificationCapabilities,
+  storeStage3SummaryCapability,
+} from "./figma-specification-capabilities";
+export {
+  FIGMA_SPECIFICATION_ARTIFACT_IDS,
+  FIGMA_SPECIFICATION_ARTIFACT_TYPES,
+  figmaSpecificationInputSchema,
+  stage3SummarySchema,
+} from "./figma-specification-types";
+export type {
+  FigmaSpecificationInput,
+  Stage3Summary,
+} from "./figma-specification-types";

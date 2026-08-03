@@ -22,57 +22,247 @@ import { z } from "zod";
  */
 export const DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION = "1";
 
+/**
+ * Bumped independently of `DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION` above —
+ * the Figma source snapshot and the design specification are the two
+ * contracts Stage 3 actually evolved; the project-context, implementation,
+ * validation and revision contracts are untouched, and forcing every
+ * contract's stamped version to move together would invalidate reuse for
+ * artifacts that never changed shape.
+ */
+export const FIGMA_SOURCE_SNAPSHOT_SCHEMA_VERSION = "2";
+export const DESIGN_SPECIFICATION_SCHEMA_VERSION = "2";
+
 // ── A. Figma source snapshot ────────────────────────────────────
 
 /**
- * A Stage 2 *fixture-level* stand-in for a real Figma MCP response.
+ * A geometric bounding box, in the units the source reports them.
+ */
+const boundingBoxSchema = z
+  .object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  })
+  .strict();
+
+/**
+ * One node's normalized, implementation-relevant facts.
  *
- * Nothing here is fetched from Figma — `prepare-figma-source-fixture`
- * constructs one deterministically from workflow input. The shape is
- * intentionally close to what a real MCP response is expected to carry, so a
- * later stage can replace the fixture with a real fetch without touching the
- * Figma Specification Agent's input contract.
+ * Every field beyond `id`/`name`/`type` is optional: a real MCP server may
+ * not expose a given fact for a given node (a text-only node has no
+ * `layoutMode`; a locked/hidden node may report no fills at all), and this
+ * schema must represent "not reported" as absence, never as a fabricated
+ * zero or empty value. `properties` remains as an escape hatch for
+ * anything a server returns that this schema does not yet model by
+ * name — forward-compatible without becoming encyclopedic, and the same
+ * field Stage 2's fixture nodes already populated, so it stays back-compatible
+ * with every node object Stage 2 ever produced.
+ */
+export const figmaNodeSnapshotSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    type: z.string().min(1),
+    parentId: z.string().min(1).optional(),
+    childIds: z.array(z.string().min(1)).default([]),
+    visible: z.boolean().optional(),
+    absoluteBoundingBox: boundingBoxSchema.optional(),
+    relativeBoundingBox: boundingBoxSchema.optional(),
+    layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional(),
+    itemSpacing: z.number().optional(),
+    padding: z
+      .object({
+        top: z.number(),
+        right: z.number(),
+        bottom: z.number(),
+        left: z.number(),
+      })
+      .strict()
+      .optional(),
+    primaryAxisAlignItems: z.string().optional(),
+    counterAxisAlignItems: z.string().optional(),
+    sizingHorizontal: z.string().optional(),
+    sizingVertical: z.string().optional(),
+    constraints: z
+      .object({ horizontal: z.string(), vertical: z.string() })
+      .strict()
+      .optional(),
+    cornerRadius: z.number().optional(),
+    opacity: z.number().min(0).max(1).optional(),
+    fills: z.array(z.record(z.unknown())).default([]),
+    strokes: z.array(z.record(z.unknown())).default([]),
+    effects: z.array(z.record(z.unknown())).default([]),
+    characters: z.string().optional(),
+    textAlignHorizontal: z.string().optional(),
+    /** Set when this node is a component instance. */
+    componentId: z.string().min(1).optional(),
+    variantProperties: z.record(z.string()).optional(),
+    /** Figma variable ids bound to specific properties of this node, by property name. */
+    boundVariables: z.record(z.unknown()).optional(),
+    exportSettings: z.array(z.record(z.unknown())).default([]),
+    /** Prototype/interaction data, carried opaquely — see `warnings` for what could not be interpreted. */
+    interactions: z.array(z.record(z.unknown())).default([]),
+    /** Anything this schema does not yet model by name. Never fabricated, only ever forwarded. */
+    properties: z.record(z.unknown()).default({}),
+  })
+  .strict();
+
+export type FigmaNodeSnapshot = z.infer<typeof figmaNodeSnapshotSchema>;
+
+export const figmaVariableSnapshotSchema = z
+  .object({
+    name: z.string().min(1),
+    value: z.unknown(),
+    type: z.string().optional(),
+    collection: z.string().optional(),
+  })
+  .strict();
+
+export type FigmaVariableSnapshot = z.infer<typeof figmaVariableSnapshotSchema>;
+
+export const figmaStyleSnapshotSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    /** e.g. `FILL`, `TEXT`, `EFFECT`, `GRID` — carried as the server reports it, not re-enumerated here. */
+    styleType: z.string().min(1),
+    value: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+export type FigmaStyleSnapshot = z.infer<typeof figmaStyleSnapshotSchema>;
+
+export const figmaComponentSnapshotSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    key: z.string().min(1).optional(),
+    description: z.string().optional(),
+    variantProperties: z.record(z.string()).optional(),
+  })
+  .strict();
+
+export type FigmaComponentSnapshot = z.infer<typeof figmaComponentSnapshotSchema>;
+
+export const figmaAssetSnapshotSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    type: z.string().min(1),
+    reference: z.string().min(1).optional(),
+    format: z.enum(["png", "jpeg", "webp", "svg"]).optional(),
+  })
+  .strict();
+
+export type FigmaAssetSnapshot = z.infer<typeof figmaAssetSnapshotSchema>;
+
+/**
+ * One captured reference screenshot, stored as its own artifact.
+ *
+ * `artifactId` is the *only* place the actual image bytes live — this
+ * record never carries pixel data itself, which is what keeps it safe to
+ * show in a terminal, a trace, or a saved run record. See
+ * `screenshot-artifact.ts` in `@designflow/capability-figma-mcp` for how the
+ * artifact itself is validated and stored.
+ */
+export const figmaScreenshotSnapshotSchema = z
+  .object({
+    nodeId: z.string().min(1),
+    artifactId: z.string().min(1),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    format: z.enum(["png", "jpeg", "webp"]),
+  })
+  .strict();
+
+export type FigmaScreenshotSnapshot = z.infer<typeof figmaScreenshotSnapshotSchema>;
+
+/** A safe, honest record of something the snapshot builder could not do — never silently skipped. */
+export const figmaSnapshotWarningSchema = z
+  .object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+    nodeId: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type FigmaSnapshotWarning = z.infer<typeof figmaSnapshotWarningSchema>;
+
+/**
+ * Normalized, implementation-relevant Figma source data.
+ *
+ * Stage 2 shipped this as a pure fixture (`prepare-figma-source-fixture`
+ * built one deterministically from workflow input, nothing was fetched).
+ * Stage 3 keeps the same logical id and the same `source.designFile` /
+ * `source.frames` / `nodes[].properties` fields Stage 2 already populated —
+ * a Stage 2 fixture snapshot still parses against this schema — and adds
+ * the fields a real MCP-backed retrieval needs: normalized source identity,
+ * per-node geometry and style facts, variables/styles/components/assets,
+ * screenshot references, a `capabilities` block recording what the
+ * connected server could actually provide, and `warnings` for whatever it
+ * could not. See `@designflow/capability-figma-mcp` for the deterministic
+ * retrieval path that builds one from a real server; nothing in this file
+ * fetches anything itself.
  */
 export const figmaSourceSnapshotSchema = z
   .object({
-    schemaVersion: z.string().min(1).default(DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION),
+    schemaVersion: z.string().min(1).default(FIGMA_SOURCE_SNAPSHOT_SCHEMA_VERSION),
     source: z
       .object({
+        /** Retained from Stage 2 for back-compatibility; the worker-facing free-text field. */
         designFile: z.string().min(1),
+        originalInput: z.string().min(1).optional(),
+        normalizedUrl: z.string().min(1).optional(),
         fileKey: z.string().min(1).optional(),
         nodeIds: z.array(z.string().min(1)).default([]),
+        /** Retained from Stage 2 for back-compatibility; frame names/paths as requested. */
         frames: z.array(z.string().min(1)).default([]),
+        resolvedFrames: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                name: z.string().min(1),
+                path: z.array(z.string().min(1)).default([]),
+              })
+              .strict(),
+          )
+          .default([]),
+        documentName: z.string().optional(),
+        /** Figma's own document version identity, when the server reports one — preferred over a timestamp for reuse. */
+        documentVersion: z.string().optional(),
+        lastModified: z.string().optional(),
       })
       .strict(),
-    nodes: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            name: z.string().min(1),
-            type: z.string().min(1),
-            parentId: z.string().min(1).optional(),
-            properties: z.record(z.unknown()).default({}),
-          })
-          .strict(),
-      )
-      .default([]),
-    variables: z
-      .array(z.object({ name: z.string().min(1), value: z.unknown() }).strict())
-      .default([]),
-    assets: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1),
-            name: z.string().min(1),
-            type: z.string().min(1),
-            reference: z.string().min(1).optional(),
-          })
-          .strict(),
-      )
-      .default([]),
-    /** A screenshot artifact this snapshot's caller already stored, if any. */
+    capabilities: z
+      .object({
+        variablesAvailable: z.boolean().default(false),
+        stylesAvailable: z.boolean().default(false),
+        componentsAvailable: z.boolean().default(false),
+        assetsAvailable: z.boolean().default(false),
+        screenshotsAvailable: z.boolean().default(false),
+      })
+      .strict()
+      .default({}),
+    nodes: z.array(figmaNodeSnapshotSchema).default([]),
+    variables: z.array(figmaVariableSnapshotSchema).default([]),
+    styles: z.array(figmaStyleSnapshotSchema).default([]),
+    components: z.array(figmaComponentSnapshotSchema).default([]),
+    assets: z.array(figmaAssetSnapshotSchema).default([]),
+    screenshots: z.array(figmaScreenshotSnapshotSchema).default([]),
+    warnings: z.array(figmaSnapshotWarningSchema).default([]),
+    provenance: z
+      .object({
+        /** e.g. a server name/version string. Never a credential, a header, or an endpoint URL. */
+        mcpServerIdentity: z.string().optional(),
+        retrievedAt: z.string().optional(),
+        toolVersions: z.record(z.string()).optional(),
+      })
+      .strict()
+      .default({}),
+    /** Retained from Stage 2; superseded by `screenshots` above but harmless to keep reading. */
     screenshotArtifactId: z.string().min(1).optional(),
   })
   .strict();
@@ -81,16 +271,64 @@ export type FigmaSourceSnapshot = z.infer<typeof figmaSourceSnapshotSchema>;
 
 // ── B. Design specification ─────────────────────────────────────
 
+/**
+ * One thing the Figma Specification Agent could not resolve from the
+ * source snapshot alone.
+ *
+ * Structured rather than a plain string (Stage 2's shape) so a caller can
+ * act on it — filter to what actually needs a person's answer
+ * (`requiresUserInput`), show which nodes it concerns, and, when the agent
+ * has one, ask the exact question rather than a generic "please clarify."
+ */
+export const designSpecificationAmbiguitySchema = z
+  .object({
+    code: z.string().min(1),
+    description: z.string().min(1),
+    affectedNodeIds: z.array(z.string().min(1)).default([]),
+    requiresUserInput: z.boolean().default(false),
+    suggestedQuestion: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type DesignSpecificationAmbiguity = z.infer<
+  typeof designSpecificationAmbiguitySchema
+>;
+
+/** One proposed, semantic component the agent identified from the source structure. */
+export const designSpecificationComponentSchema = z
+  .object({
+    name: z.string().min(1),
+    role: z.string().min(1),
+    /** The source snapshot's node ids this component was derived from — must exist in that snapshot. */
+    sourceNodeIds: z.array(z.string().min(1)).default([]),
+    variants: z.array(z.string().min(1)).default([]),
+    properties: z.record(z.unknown()).optional(),
+    reusableAssessment: z.enum(["reusable", "one-off", "uncertain"]).optional(),
+    requiredAssets: z.array(z.string().min(1)).default([]),
+    accessibilityRole: z.string().optional(),
+    implementationNotes: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type DesignSpecificationComponent = z.infer<
+  typeof designSpecificationComponentSchema
+>;
+
 /** The Figma Specification Agent's output. */
 export const designSpecificationSchema = z
   .object({
-    schemaVersion: z.string().min(1).default(DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION),
+    schemaVersion: z.string().min(1).default(DESIGN_SPECIFICATION_SCHEMA_VERSION),
     sourceIdentity: z
       .object({
         designFile: z.string().min(1),
         fileKey: z.string().min(1).optional(),
+        documentVersion: z.string().optional(),
       })
       .strict(),
+    /** The source snapshot artifact this specification was derived from — for lineage and inspection. */
+    sourceSnapshotArtifactId: z.string().min(1).optional(),
+    /** Screenshot artifact ids the source snapshot carried, copied forward for easy inspection. */
+    screenshotArtifactIds: z.array(z.string().min(1)).default([]),
     frames: z.array(z.string().min(1)),
     hierarchy: z.array(
       z
@@ -106,18 +344,25 @@ export const designSpecificationSchema = z
         colors: z.array(z.string().min(1)),
         spacing: z.array(z.string().min(1)),
         typography: z.array(z.string().min(1)),
+        radii: z.array(z.string().min(1)).default([]),
+        borders: z.array(z.string().min(1)).default([]),
+        shadows: z.array(z.string().min(1)).default([]),
+        /** Token names bound to a real Figma variable/style, vs. only a locally observed value. */
+        referencedVariableNames: z.array(z.string().min(1)).default([]),
       })
       .strict(),
-    components: z.array(
-      z.object({ name: z.string().min(1), role: z.string().min(1) }).strict(),
-    ),
+    components: z.array(designSpecificationComponentSchema),
     layoutBehavior: z.array(z.string().min(1)),
     responsiveAssumptions: z.array(z.string().min(1)),
     assets: z.array(z.object({ id: z.string().min(1), name: z.string().min(1) }).strict()),
+    /** Visible text, labels, and dynamic/placeholder-content assumptions, as plain descriptive lines. */
+    content: z.array(z.string().min(1)).default([]),
     interactions: z.array(z.string().min(1)),
+    /** Interaction/prototype states represented in the source (hover, pressed, focus, disabled, ...). */
+    states: z.array(z.string().min(1)).default([]),
     accessibilityNotes: z.array(z.string().min(1)),
     /** Things the agent could not resolve from the source alone. */
-    ambiguities: z.array(z.string().min(1)),
+    ambiguities: z.array(designSpecificationAmbiguitySchema),
     /** The Figma Specification Agent's own manifest version, at time of production. */
     agentVersion: z.string().min(1),
   })

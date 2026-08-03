@@ -78,7 +78,7 @@ describe("typed artifact handoff", () => {
     const spec = await host.artifactStore.getArtifact(
       AGENT_FOUNDATION_ARTIFACT_IDS.designSpecification,
     );
-    expect(spec?.metadata.producedByAgentVersion).toBe("0.1.0");
+    expect(spec?.metadata.producedByAgentVersion).toBe("0.2.0");
 
     const implementation = await host.artifactStore.getArtifact(
       AGENT_FOUNDATION_ARTIFACT_IDS.generatedImplementation,

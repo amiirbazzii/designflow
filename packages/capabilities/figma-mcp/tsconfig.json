@@ -1,13 +1,10 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist"
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test-support.ts"],
-  "references": [
-    { "path": "../../packages/sdk" },
-    { "path": "../../packages/capabilities/figma-mcp" }
-  ]
+  "references": [{ "path": "../../sdk" }]
 }

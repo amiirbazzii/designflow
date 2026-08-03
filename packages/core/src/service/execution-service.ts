@@ -31,6 +31,7 @@ import {
   type ArtifactMaterializer,
   type ExecutionReconciler,
   type AgentInvocationService,
+  type McpClient,
   DesignFlowError,
 } from "@designflow/sdk";
 
@@ -103,6 +104,8 @@ export interface ExecutionServiceConfig {
   readonly executionReconciler?: ExecutionReconciler;
   /** Lets a capability invoke a registered specialized agent. Omitted by default. */
   readonly agentInvoker?: AgentInvocationService;
+  /** Lets a capability reach a connected MCP server. Omitted by default. */
+  readonly mcpClient?: McpClient;
 }
 
 interface StartExecutionParams {
@@ -131,6 +134,7 @@ export class ExecutionService
   private readonly artifactMaterializer: ArtifactMaterializer | undefined;
   private readonly executionReconciler: ExecutionReconciler | undefined;
   private readonly agentInvoker: AgentInvocationService | undefined;
+  private readonly mcpClient: McpClient | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -152,6 +156,7 @@ export class ExecutionService
     this.artifactMaterializer = config.artifactMaterializer;
     this.executionReconciler = config.executionReconciler;
     this.agentInvoker = config.agentInvoker;
+    this.mcpClient = config.mcpClient;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -598,6 +603,7 @@ export class ExecutionService
       artifactMaterializer: this.artifactMaterializer,
       executionReconciler: this.executionReconciler,
       agentInvoker: this.agentInvoker,
+      mcpClient: this.mcpClient,
     });
   }
 

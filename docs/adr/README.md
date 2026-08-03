@@ -29,3 +29,4 @@ This directory contains Architecture Decision Records for DesignFlow.
 - [20260802-release-candidate-validation.md](20260802-release-candidate-validation.md)
 - [20260803-design-engineer-reuse-safety.md](20260803-design-engineer-reuse-safety.md)
 - [20260803-design-engineer-specialized-agent-foundation.md](20260803-design-engineer-specialized-agent-foundation.md)
+- [20260810-figma-mcp-integration.md](20260810-figma-mcp-integration.md)

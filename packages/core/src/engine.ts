@@ -35,6 +35,7 @@ import {
   type PendingChildExecution,
   type WorkflowExecutionResolver,
   type AgentInvocationService,
+  type McpClient,
   DesignFlowError,
 } from "@designflow/sdk";
 
@@ -142,6 +143,12 @@ export interface ExecutionEngineConfig {
    * unaffected.
    */
   readonly agentInvoker?: AgentInvocationService | undefined;
+  /**
+   * Lets a capability reach a connected MCP server. Without it, a
+   * capability's `context.mcp` is `undefined` — every capability prior to
+   * this stage, and every capability that never reads it, is unaffected.
+   */
+  readonly mcpClient?: McpClient | undefined;
 }
 
 export class ExecutionEngine {
@@ -159,6 +166,7 @@ export class ExecutionEngine {
   private readonly artifactMaterializer: ArtifactMaterializer | undefined;
   private readonly executionReconciler: ExecutionReconciler | undefined;
   private readonly agentInvoker: AgentInvocationService | undefined;
+  private readonly mcpClient: McpClient | undefined;
 
   public constructor(config: ExecutionEngineConfig) {
     this.registry = config.registry;
@@ -184,6 +192,7 @@ export class ExecutionEngine {
     this.artifactMaterializer = config.artifactMaterializer;
     this.executionReconciler = config.executionReconciler;
     this.agentInvoker = config.agentInvoker;
+    this.mcpClient = config.mcpClient;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -947,6 +956,7 @@ export class ExecutionEngine {
       config: context.metadata,
       signal: context.signal,
       ...(this.agentInvoker !== undefined ? { agents: this.agentInvoker } : {}),
+      ...(this.mcpClient !== undefined ? { mcp: this.mcpClient } : {}),
     };
 
     const output = await this.runner.run(

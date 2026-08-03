@@ -2,6 +2,7 @@
 import type { ArtifactRef } from "./schemas";
 import type { ArtifactStore } from "./state";
 import type { AgentInvocationService } from "./agent-invocation";
+import type { McpClient } from "./mcp";
 
 export interface Logger {
   info(msg: string, ...args: unknown[]): void;
@@ -31,4 +32,14 @@ export interface CapabilityContext {
    * expecting one to be configured.
    */
   readonly agents?: AgentInvocationService;
+  /**
+   * The port a capability uses to reach a connected MCP server.
+   *
+   * Optional and absent by default, for the identical reason `agents` is:
+   * every capability written before this field existed — every Stage 1 and
+   * Stage 2 capability — reads exactly the context it always did. Owning
+   * *which* MCP server is connected, and *whether* one is connected at all,
+   * is the composition root's decision, never a capability's.
+   */
+  readonly mcp?: McpClient;
 }

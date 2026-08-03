@@ -401,6 +401,85 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     suggestion: "Run  designflow memory proposals  to see what is still waiting.",
   },
 
+  // Figma connection failures (Stage 3, experimental). "MCP" is an internal
+  // protocol name a person never needs to learn — these speak in terms of
+  // "the Figma connection" instead, the same way model failures speak in
+  // terms of "that worker's AI" rather than "the provider" or "the model
+  // profile."
+  ERR_MCP_NOT_CONFIGURED: {
+    problem: "The Figma connection is not configured for this installation.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_MCP_SERVER_LAUNCH_FAILED: {
+    problem: "The Figma connection could not be started.",
+    suggestion:
+      "Nothing was started. Check your local Figma configuration, or report this.",
+  },
+  ERR_MCP_CONNECTION_FAILED: {
+    problem: "The Figma connection could not be reached.",
+    suggestion: "Nothing was started. Try again shortly.",
+  },
+  ERR_MCP_AUTHENTICATION_FAILED: {
+    problem: "The Figma connection rejected the configured credential.",
+    suggestion: "Nothing was started. Check your Figma credentials, or report this if they look correct.",
+  },
+  ERR_MCP_ACCESS_DENIED: {
+    problem: "That Figma file or node is not accessible with the configured credential.",
+    suggestion: "Nothing was started. Check that the credential has access to this file.",
+  },
+  ERR_MCP_TOOL_NOT_FOUND: {
+    problem: "The Figma connection does not support something this request needed.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_MCP_REQUEST_INVALID: {
+    problem: "DesignFlow could not put together a valid request to the Figma connection.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_MCP_RESPONSE_INVALID: {
+    problem: "The Figma connection sent back something unusable.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MCP_RESPONSE_TOO_LARGE: {
+    problem: "The Figma connection sent back more than DesignFlow allows.",
+    suggestion: "Nothing was started. Try again with a smaller selection.",
+  },
+  ERR_MCP_TIMEOUT: {
+    problem: "The Figma connection took too long to respond.",
+    suggestion: "Nothing was started. Try again — it may just have been slow.",
+  },
+  ERR_MCP_ABORTED: {
+    problem: "That was cancelled before anything started.",
+    suggestion: "Nothing was written. Start it again when you are ready.",
+  },
+  ERR_FIGMA_SOURCE_INVALID: {
+    problem: "That does not look like a Figma design URL or file key.",
+    suggestion: "Nothing was started. Check the link and try again.",
+  },
+  ERR_FIGMA_MCP_UNSUPPORTED_OPERATION: {
+    problem: "The Figma connection does not support something this request needed.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_FIGMA_FILE_NOT_FOUND: {
+    problem: "That Figma file could not be found.",
+    suggestion: "Nothing was started. Check the link and try again.",
+  },
+  ERR_FIGMA_NODE_NOT_FOUND: {
+    problem: "That Figma node could not be found.",
+    suggestion: "Nothing was started. Check the link and try again.",
+  },
+  ERR_FIGMA_FRAME_AMBIGUOUS: {
+    problem: "More than one frame matches what you named.",
+    suggestion: "Nothing was started. Check the frame's full path and try again to tell them apart.",
+  },
+  ERR_FIGMA_FRAME_NOT_FOUND: {
+    problem: "That frame could not be found in the Figma file.",
+    suggestion: "Nothing was started. Check the frame name and try again.",
+  },
+  ERR_FIGMA_SCREENSHOT_INVALID: {
+    problem: "The reference screenshot the Figma connection sent back was unusable.",
+    suggestion: TRY_AGAIN,
+  },
+
   // Store failures. The store is `~/.designflow`'s single JSON document — a
   // person never chose it and should not have to learn its name, but these
   // are the two failures where the raw message is the most useful thing
