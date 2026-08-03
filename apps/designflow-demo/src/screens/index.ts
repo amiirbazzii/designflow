@@ -102,7 +102,7 @@ export function renderApproval(approval: PendingApproval): string {
     ...heading("Approval Required"),
     "DesignFlow wants to:",
     "",
-    "  Generate production code files",
+    "  Store the generated result as a DesignFlow artifact",
     "",
     "Reason:",
     "",

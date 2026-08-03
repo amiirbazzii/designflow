@@ -7,6 +7,8 @@ import {
 
 import type { CliContext } from "../services/cli-runner";
 import type { SessionResult } from "@designflow/sdk";
+import type { ArtifactSummary } from "@designflow/product";
+import { renderDetail, renderList } from "./artifacts";
 
 /**
  * What `designflow run` and `designflow answer` share once a session exists.
@@ -87,11 +89,21 @@ function saveAndStop(terminal: Terminal, sessionId: string): null {
 
 // ── Outcome ─────────────────────────────────────────────────────
 
-/** Renders whatever a session settled on: declined, completed, or otherwise closed. */
+/**
+ * Renders whatever a session settled on: declined, completed, or otherwise
+ * closed.
+ *
+ * `offerArtifactView` — the interactive "view artifacts now?" follow-up —
+ * only runs when `interactive` is true. `designflow run <worker>` is a single
+ * command whose scripted answers are exactly its declared input fields; the
+ * interactive shell, which loops back to its own menu afterwards, is the only
+ * caller that opts in.
+ */
 export async function finishSession(
   context: CliContext,
   terminal: Terminal,
   result: SessionResult,
+  interactive = false,
 ): Promise<number> {
   if (result.session.status === "declined") {
     terminal.print();
@@ -118,7 +130,7 @@ export async function finishSession(
     return 1;
   }
 
-  return report(context, terminal, executionId);
+  return report(context, terminal, executionId, interactive);
 }
 
 /** Returns undefined when no approval was required. */
@@ -134,7 +146,8 @@ async function resolveApproval(
   terminal.print(heading("Approval required"));
   terminal.print("DesignFlow wants permission to:");
   terminal.print();
-  terminal.print("  Generate production files");
+  terminal.print("  Store the generated result as a DesignFlow artifact");
+  terminal.print("  (this does not change any file in your project)");
   terminal.print();
   terminal.print(`Reason: ${pending.reason}`);
   terminal.print();
@@ -156,6 +169,7 @@ async function report(
   context: CliContext,
   terminal: Terminal,
   executionId: string,
+  interactive: boolean,
 ): Promise<number> {
   const result = await context.runner.explain(executionId);
   const { overview, artifacts } = result;
@@ -166,6 +180,15 @@ async function report(
 
   if (overview.durationLabel !== undefined) {
     terminal.print(`Took ${overview.durationLabel}.`);
+  }
+
+  // Every workflow DesignFlow ships today only stores its output as an
+  // artifact — nothing here writes into the project this command was run
+  // from. Said plainly, every time, rather than left to be inferred from the
+  // absence of a file-write message: the two read the same either way, but
+  // only one of them cannot be mistaken for "and it also touched my repo".
+  if (overview.state === "ready") {
+    terminal.print("No files were written to your project.");
   }
 
   terminal.print();
@@ -196,11 +219,77 @@ async function report(
     }
   }
 
+  if (overview.state === "ready" && named.length > 0) {
+    terminal.print();
+    terminal.print(`Inspect the result: designflow artifacts ${executionId}`);
+
+    if (interactive) {
+      await offerArtifactView(context, terminal, executionId, artifacts);
+    }
+  }
+
   terminal.print();
   terminal.print(`Run id: ${executionId}`);
   terminal.print();
 
   return overview.state === "ready" ? 0 : 1;
+}
+
+/**
+ * Lets someone at an interactive terminal look at what they just got, without
+ * leaving the flow they are already in.
+ *
+ * Declining, or running with no interactive terminal behind it (an empty
+ * answer, the same signal `clarify` above treats as "not answering"), moves
+ * on exactly as if this were not offered at all — the printed
+ * `designflow artifacts <id>` hint above remains the way to look later.
+ */
+async function offerArtifactView(
+  context: CliContext,
+  terminal: Terminal,
+  executionId: string,
+  artifacts: readonly ArtifactSummary[],
+): Promise<void> {
+  terminal.print();
+  terminal.print("View artifacts now?");
+
+  let viewMore: string;
+  try {
+    viewMore = await terminal.ask("View artifacts now?", ["yes", "no"]);
+  } catch {
+    return;
+  }
+
+  if (!viewMore.trim().toLowerCase().startsWith("y")) return;
+
+  terminal.print();
+  renderList(terminal, executionId, artifacts);
+
+  terminal.print();
+  terminal.print("Show which artifact? (id, or blank to finish)");
+
+  let artifactId: string;
+  try {
+    artifactId = (
+      await terminal.ask("Show which artifact? (id, or blank to finish)")
+    ).trim();
+  } catch {
+    return;
+  }
+
+  if (artifactId.length === 0) return;
+
+  const summary = artifacts.find((artifact) => artifact.artifactId === artifactId);
+
+  if (summary === undefined) {
+    terminal.print();
+    terminal.print(`No artifact "${artifactId}" on this run.`);
+    return;
+  }
+
+  const detail = await context.artifactInspection.getPayload(summary);
+  terminal.print();
+  renderDetail(terminal, detail.summary, detail.payload);
 }
 
 // ── Progress ────────────────────────────────────────────────────

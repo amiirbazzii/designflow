@@ -208,6 +208,7 @@ export function usage(): string {
     "  designflow workers <id>    Show one worker's detail",
     "  designflow run <worker>    Put a worker to work",
     "  designflow history         Show previous runs",
+    "  designflow artifacts <id>  Inspect what a run produced or reused",
     "  designflow traces          Show what past AI decisions did",
     "  designflow sessions        Show conversations waiting on you",
     "  designflow answer <id>     Answer a worker's question",

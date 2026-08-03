@@ -45,6 +45,7 @@ export const analyzeDesignCapability: Capability<unknown, CapabilityOutput> = {
   name: "Analyze design",
   description: "Reads a design file and identifies its components and token usage",
   type: "pure",
+  version: "1",
   inputSchema: designToCodeInputSchema,
   outputSchema: capabilityOutputSchema,
 
@@ -88,6 +89,7 @@ export const extractDesignTokensCapability: Capability<unknown, CapabilityOutput
   name: "Extract design tokens",
   description: "Derives colour, spacing and typography tokens from a design analysis",
   type: "pure",
+  version: "1",
   inputSchema: z.unknown(),
   outputSchema: capabilityOutputSchema,
 
@@ -129,6 +131,7 @@ export const createComponentStructureCapability: Capability<unknown, CapabilityO
   name: "Create component structure",
   description: "Builds a component tree from the analysis and the design tokens",
   type: "pure",
+  version: "1",
   inputSchema: z.unknown(),
   outputSchema: capabilityOutputSchema,
 
@@ -177,6 +180,7 @@ export const generateCodeCapability: Capability<unknown, CapabilityOutput> = {
   description: "Emits source files for every component in the tree",
   // The step that would write into a project. Policies gate on this id.
   type: "write_fs",
+  version: "1",
   inputSchema: z.unknown(),
   outputSchema: capabilityOutputSchema,
 
@@ -218,6 +222,7 @@ export const validateOutputCapability: Capability<unknown, CapabilityOutput> = {
   name: "Validate output",
   description: "Checks the generated source for structural problems",
   type: "pure",
+  version: "1",
   inputSchema: z.unknown(),
   outputSchema: capabilityOutputSchema,
 

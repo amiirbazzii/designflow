@@ -3,6 +3,7 @@ import {
   agentSessionSchema,
   answerSessionRequestSchema,
   cancelSessionRequestSchema,
+  hashContent,
   isSessionExpired,
   isTerminalSessionStatus,
   selectSessions,
@@ -10,6 +11,7 @@ import {
   sessionResultSchema,
   startSessionRequestSchema,
   withEffectiveSessionStatus,
+  withReuseIdentity,
   DesignFlowError,
   NOOP_SESSION_OBSERVER,
   type AgentDecision,
@@ -17,6 +19,7 @@ import {
   type AgentSessionPatch,
   type AnswerSessionRequest,
   type CancelSessionRequest,
+  type ReuseIdentity,
   type SessionEvent,
   type SessionListFilter,
   type SessionObserver,
@@ -117,6 +120,13 @@ export interface AgentSessionServiceOptions {
    */
   readonly resolveModelProfileId?: ((agentId: string) => string | undefined) | undefined;
   /**
+   * The deciding agent's manifest version, snapshotted the same way
+   * `resolveModelProfileId` is. Threaded into the workflow's reuse identity so
+   * a node whose output could depend on an agent's own behaviour invalidates
+   * when the agent's version changes, not only when its raw input does.
+   */
+  readonly resolveAgentVersion?: ((agentId: string) => string | undefined) | undefined;
+  /**
    * Project Context and Agent Memory, assembled fresh for each decision.
    *
    * Optional and additive — a session service built without one behaves
@@ -143,6 +153,7 @@ export class AgentSessionService {
   private readonly maxClarificationTurns: number;
   private readonly expirationDays: number;
   private readonly resolveModelProfileId: ((agentId: string) => string | undefined) | undefined;
+  private readonly resolveAgentVersion: ((agentId: string) => string | undefined) | undefined;
   private readonly knowledge: AgentKnowledgeService | undefined;
 
   /**
@@ -182,6 +193,7 @@ export class AgentSessionService {
     this.maxClarificationTurns = options.maxClarificationTurns ?? DEFAULT_MAX_CLARIFICATION_TURNS;
     this.expirationDays = options.expirationDays ?? DEFAULT_EXPIRATION_DAYS;
     this.resolveModelProfileId = options.resolveModelProfileId;
+    this.resolveAgentVersion = options.resolveAgentVersion;
     this.knowledge = options.knowledge;
   }
 
@@ -290,7 +302,7 @@ export class AgentSessionService {
       timestamp: now,
     });
 
-    return this.applyDecision(session, routed.decision, routed.traceId);
+    return this.applyDecision(session, routed.decision, routed.traceId, knowledgeContext);
   }
 
   // ── Resume ────────────────────────────────────────────────────
@@ -385,7 +397,7 @@ export class AgentSessionService {
       signal,
     );
 
-    return this.applyDecision(answered, routed.decision, routed.traceId);
+    return this.applyDecision(answered, routed.decision, routed.traceId, knowledgeContext);
   }
 
   // ── Read ──────────────────────────────────────────────────────
@@ -500,14 +512,20 @@ export class AgentSessionService {
     session: AgentSession,
     decision: AgentDecision,
     traceId: string | undefined,
+    knowledgeContext?: AgentKnowledgeContext,
   ): Promise<SessionResult> {
     const traceIds = traceId !== undefined ? [...session.traceIds, traceId] : session.traceIds;
     const now = this.clock.now();
 
     if (decision.type === "run_workflow") {
+      const reuseIdentity = await this.buildReuseIdentity(session, knowledgeContext);
+
       const execution = await this.runner.start({
         workflowId: decision.workflowId,
         input: decision.input ?? session.originalInput,
+        ...(reuseIdentity !== undefined
+          ? { metadata: withReuseIdentity({}, reuseIdentity) }
+          : {}),
       });
 
       if (traceId !== undefined && this.traces !== undefined) {
@@ -690,6 +708,44 @@ export class AgentSessionService {
     } catch {
       // Observing must never break the session it observes.
     }
+  }
+
+  /**
+   * The reuse identity a workflow started from this decision should carry.
+   *
+   * `undefined` when nothing about this decision is identity-bearing — no
+   * project, no resolvable model profile or agent version — so a worker with
+   * none of that (most of them, today) attaches no reuse identity at all and
+   * a workflow's fingerprint depends only on its own input and dependencies,
+   * exactly as before this existed.
+   *
+   * The project *content* fingerprint, not just its id, is what lets a change
+   * to the project (framework, source root, ...) invalidate artifacts derived
+   * from it — computed from the same facts and memory already assembled for
+   * the agent's decision prompt, so this never re-reads the project itself.
+   */
+  private async buildReuseIdentity(
+    session: AgentSession,
+    knowledgeContext: AgentKnowledgeContext | undefined,
+  ): Promise<ReuseIdentity | undefined> {
+    const agentVersion = this.resolveAgentVersion?.(session.agentId);
+
+    const projectContextFingerprint =
+      knowledgeContext !== undefined
+        ? await hashContent({
+            facts: knowledgeContext.project?.facts ?? [],
+            memory: knowledgeContext.memory,
+          })
+        : undefined;
+
+    const identity: ReuseIdentity = {
+      ...(session.projectId !== undefined ? { projectId: session.projectId } : {}),
+      ...(projectContextFingerprint !== undefined ? { projectContextFingerprint } : {}),
+      ...(session.modelProfileId !== undefined ? { modelProfileId: session.modelProfileId } : {}),
+      ...(agentVersion !== undefined ? { agentVersion } : {}),
+    };
+
+    return Object.keys(identity).length > 0 ? identity : undefined;
   }
 }
 

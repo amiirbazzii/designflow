@@ -370,7 +370,7 @@ describe("main menu", () => {
 describe("the menu reads the worker registry", () => {
   test("lists the installed workers", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["1", "", ...RUN_ANSWERS, "4"]);
+    const terminal = new ScriptedTerminal(["1", "", ...RUN_ANSWERS, "no", "4"]);
 
     await dispatch([], context(home), terminal);
 

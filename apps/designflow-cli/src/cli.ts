@@ -11,6 +11,7 @@ import type { CliContext } from "./services/cli-runner";
 import { workerDetailCommand, workersCommand } from "./commands/workers";
 import { runCommand } from "./commands/run";
 import { historyCommand } from "./commands/history";
+import { artifactsCommand } from "./commands/artifacts";
 import { tracesCommand } from "./commands/traces";
 import { interactiveCommand } from "./commands/interactive";
 import { settingsCommand } from "./commands/settings";
@@ -96,6 +97,13 @@ export async function dispatch(
         terminal,
         workflowId !== undefined ? { workflowId } : undefined,
       );
+    }
+
+    case "artifacts": {
+      const executionId = rest[0];
+      const artifactId = rest[1];
+
+      return artifactsCommand(context, terminal, executionId, artifactId);
     }
 
     case "traces": {

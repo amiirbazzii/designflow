@@ -3,15 +3,19 @@
 DesignFlow is an AI workflow platform where you run specialized AI workers from
 the terminal to get real work done — design implementation, QA review,
 research, and product planning. You describe what you need, a worker does it,
-and you get back files, reports, or summaries you can use right away.
+and you get back a DesignFlow artifact — a report, a brief, or a generated
+code sample — that you can inspect and use right away.
 
 ## Workers
 
 DesignFlow currently ships four workers:
 
-- **Design Engineer** (development) — Transforms designs into
-  production-ready applications. Give it a design file and a framework, and
-  it produces working, structured code.
+- **Design Engineer** (development) — Turns a design description (a file
+  name, a framework, and a list of frames) into a generated component
+  structure and source-code artifact. This does not yet read a real design
+  file or connect to Figma, and it does not write into your project — see
+  [Artifacts, reuse and current limitations](#artifacts-reuse-and-current-limitations)
+  below before relying on its output as-is.
 - **QA Reviewer** (quality) — Reviews implementation artifacts for
   correctness, accessibility and consistency. Point it at a file and it comes
   back with a severity-rated list of findings.
@@ -25,7 +29,7 @@ DesignFlow currently ships four workers:
 ## Installation
 
 ```bash
-npm install -g designflow
+npm install -g designflow-ai
 ```
 
 ## Quick start
@@ -102,14 +106,53 @@ proposals, and revoke anything at any time.
 
 ## Results
 
-When a worker finishes, it hands back whatever the job called for — generated
-files, a written report, or a structured summary you can act on immediately.
-Past runs are kept so you can revisit them later:
+When a worker finishes, it hands back whatever the job called for — a written
+report, a structured summary, or (for the Design Engineer) a generated code
+sample — stored internally as a DesignFlow artifact. **No worker writes to
+files in your project today** — see the section below. Past runs are kept so
+you can revisit them later:
 
 ```bash
 designflow history             # see previous runs
 designflow history <worker>    # previous runs for one worker
 ```
+
+## Artifacts, reuse and current limitations
+
+Every run's output — analysis, tokens, generated code, reports — is stored as
+a DesignFlow artifact, not written into your project. `designflow run` says so
+explicitly when a run completes, and you can inspect exactly what was
+produced:
+
+```bash
+designflow artifacts <run-id>                # list what a run produced or reused
+designflow artifacts <run-id> <artifact-id>  # inspect one artifact's content
+```
+
+The interactive menu (`designflow` with no arguments) offers the same view
+right after a run finishes: answer "yes" to "View artifacts now?".
+
+**Reuse is based on the true identity of a run, not just an artifact's name.**
+Re-running with the exact same design, frames, framework and project safely
+reuses prior artifacts (you'll see `Reused` counts and no recomputation). Any
+of the following invalidates that reuse and forces regeneration: a different
+design file, different frames, a different framework, a different (or no)
+registered project, an upstream artifact that changed, or DesignFlow's own
+reuse rules changing between versions. Artifacts produced by a DesignFlow
+version before this reuse-identity system existed are never treated as
+reusable — they are safely regenerated the first time you run against them
+again, rather than silently reused under new rules they were never checked
+against. Your existing run history remains fully readable either way.
+
+**Current limitations, ahead of real Figma integration.** The Design Engineer
+does not yet connect to the Figma API: `designFile` and `frames` are plain
+text you supply, not something fetched or verified against a real design
+file, and the generated "source code" is a structural placeholder rather than
+a rendering of real design layout or styling. Treat its output today as a
+scaffold of the pipeline (analysis → tokens → component tree → code →
+validation) rather than production-ready code. Real Figma connectivity and
+real project file writes are planned for a later stage, behind the same
+approval gate and artifact lineage this stage already enforces.
 
 ## For developers
 

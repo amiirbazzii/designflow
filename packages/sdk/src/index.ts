@@ -411,6 +411,20 @@ export type {
   IncrementalExecutionPlanner,
 } from "./execution-plan";
 
+// ── Reuse Identity ───────────────────────────────────────────────
+export {
+  reuseIdentitySchema,
+  readReuseIdentity,
+  withReuseIdentity,
+  REUSE_SCHEMA_VERSION,
+  REUSE_IDENTITY_METADATA_KEY,
+} from "./reuse-identity";
+
+export type { ReuseIdentity } from "./reuse-identity";
+
+// ── Content Hashing ──────────────────────────────────────────────
+export { hashContent } from "./content-hash";
+
 // ── Artifact Intelligence ───────────────────────────────────────
 export {
   artifactDependencySchema,

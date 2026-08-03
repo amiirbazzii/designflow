@@ -554,6 +554,7 @@ export class FileArtifactStore implements RegistryArtifactStore {
   public async createVersion(
     artifactId: string,
     metadata?: Record<string, unknown>,
+    eventProvenance?: ArtifactProvenance,
   ): Promise<ArtifactVersion> {
     const current = await this.getArtifact(artifactId);
     if (current === null) {
@@ -573,7 +574,7 @@ export class FileArtifactStore implements RegistryArtifactStore {
       }
     });
 
-    await this.publish(current.provenance, "artifact.version_created", {
+    await this.publish(eventProvenance ?? current.provenance, "artifact.version_created", {
       artifactId,
       version: next,
     });

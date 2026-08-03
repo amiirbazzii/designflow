@@ -145,6 +145,16 @@ export { buildProgress, humanizeCapabilityId, countSkippedSteps } from "./progre
 export { narrateEvents } from "./narration";
 export { buildTimeline } from "./timeline";
 export { summarizeArtifacts, classifyArtifacts } from "./artifacts";
+export {
+  ArtifactInspectionService,
+  redactSensitive,
+  truncateForDisplay,
+} from "./artifact-inspection";
+export type {
+  ArtifactDetail,
+  ArtifactInspectionServiceOptions,
+  TruncatedText,
+} from "./artifact-inspection";
 
 // ── Schemas ─────────────────────────────────────────────────────
 export {

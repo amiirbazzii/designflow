@@ -36,6 +36,10 @@ export type {
   ArtifactIntelligenceServiceOptions,
 } from "./artifacts";
 
+// ── Reuse Resolver ───────────────────────────────────────────────
+export { createArtifactFingerprintReuseResolver } from "./reuse-resolver";
+export type { ArtifactFingerprintReuseResolverOptions } from "./reuse-resolver";
+
 // ── Reconciliation ─────────────────────────────────────────────────
 export { ArtifactSetReconciler } from "./reconciliation";
 export type {

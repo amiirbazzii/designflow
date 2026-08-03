@@ -12,4 +12,4 @@
  * in `package.json`. That is the check that would catch a release publishing one
  * number and reporting another.
  */
-export const CLI_VERSION = "0.1.0";
+export const CLI_VERSION = "0.1.1";

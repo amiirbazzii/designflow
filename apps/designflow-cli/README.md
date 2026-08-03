@@ -39,10 +39,16 @@ designflow                        # interactive
 designflow list                   # available AI workers
 designflow run design-engineer    # put a worker to work
 designflow history                # previous runs
+designflow artifacts <run-id>     # what a run produced or reused
 designflow settings               # where things are kept
 designflow --version
 designflow --help
 ```
+
+Every run's output is stored as a DesignFlow artifact — nothing is written
+into your project. `designflow artifacts <run-id>` lists what a run produced
+or reused; add an artifact id to see its content (generated files print with
+their path and contents; everything else prints as formatted JSON).
 
 Interactive mode is the main menu:
 

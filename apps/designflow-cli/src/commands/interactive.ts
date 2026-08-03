@@ -45,7 +45,7 @@ export async function interactiveCommand(
     if (choice === "1" || choice === "use" || choice === "run") {
       const workerId = await chooseWorker(context, terminal);
       if (workerId !== null) {
-        await runCommand(context, terminal, workerId);
+        await runCommand(context, terminal, workerId, { interactive: true });
       }
       continue;
     }

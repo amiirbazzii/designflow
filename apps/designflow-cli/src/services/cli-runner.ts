@@ -2,9 +2,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-  ArtifactIntelligenceService,
   ArtifactSetReconciler,
   CapabilityRegistry,
+  createArtifactFingerprintReuseResolver,
   ExecutionService,
   InMemoryEventPublisher,
   InMemoryPolicyEvaluator,
@@ -17,6 +17,7 @@ import {
   TraceCollector,
   TraceService,
   AgentSessionService,
+  ArtifactInspectionService,
   ProjectService,
   ProjectContextService,
   AgentMemoryService,
@@ -53,8 +54,6 @@ import { OpenRouterProvider } from "@designflow/model-provider-openrouter";
 import {
   type ModelProfile,
   primaryWorkflowOf,
-  readChangedArtifacts,
-  type CapabilityReuseResolver,
   type ExecutionEvent,
   type Logger,
   type WorkerManifest,
@@ -248,6 +247,14 @@ export interface CliContext {
    */
   readonly traces: TraceService;
   /**
+   * Reads back an artifact's stored payload for `designflow artifacts`.
+   *
+   * A read boundary over the same registry and payload store the engine
+   * writes through — redacting anything credential-shaped before it ever
+   * reaches a terminal, a trace, or a saved transcript.
+   */
+  readonly artifactInspection: ArtifactInspectionService;
+  /**
    * Agent Sessions — resumable clarification state.
    *
    * The only way a command starts or resumes work that might need a
@@ -439,7 +446,11 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       resolveWorkflow: (id) => workflows.get(id)?.definition,
       executionRepository: repository,
     }),
-    reuseResolver: createReuseResolver(workflows, artifactStore, repository),
+    reuseResolver: createArtifactFingerprintReuseResolver({
+      workflows,
+      artifactStore,
+      repository,
+    }),
     artifactMaterializer: new RegistryArtifactMaterializer({
       registry: artifactStore,
       eventPublisher,
@@ -511,6 +522,14 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // that started it are written in one atomic rename.
   const traceStore = new FileTraceStore(store);
   const traces = new TraceService(traceStore);
+
+  // The same file-backed store serves as both the payload store and the
+  // artifact registry, so this reads exactly what the engine wrote — nothing
+  // reconstructed, nothing a second store could disagree with.
+  const artifactInspection = new ArtifactInspectionService({
+    artifactRegistry: artifactStore,
+    artifactStore,
+  });
 
   const agentRuntime = new AgentRuntime({
     registry: agentRegistry,
@@ -619,6 +638,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     maxClarificationTurns: sessionConfig.maxClarificationTurns,
     expirationDays: sessionConfig.expirationDays,
     resolveModelProfileId: (agentId) => agentRegistry.get(agentId)?.manifest.modelProfileId,
+    resolveAgentVersion: (agentId) => agentRegistry.get(agentId)?.manifest.version,
     knowledge,
     ...(options?.sessionClockOverride !== undefined ? { clock: options.sessionClockOverride } : {}),
   });
@@ -677,6 +697,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     home,
     databasePath,
     traces,
+    artifactInspection,
     sessions,
     sessionConfig,
     modelAssignments,
@@ -740,56 +761,3 @@ function workflowIdOf(events: readonly ExecutionEvent[]): string {
   return "";
 }
 
-/** Reuse a node's prior output when the change set does not reach it. */
-function createReuseResolver(
-  workflows: ReadonlyMap<string, WorkflowPackage>,
-  artifactStore: FileArtifactStore,
-  repository: FileExecutionRepository,
-): CapabilityReuseResolver {
-  const intelligence = new ArtifactIntelligenceService({
-    registry: artifactStore,
-  });
-
-  const declined = { reuse: false as const, artifacts: [] };
-
-  return {
-    async resolve(request) {
-      const definition = workflows.get(request.workflowId)?.definition;
-      const node = definition?.nodes.find(
-        (candidate) =>
-          "capabilityId" in candidate &&
-          candidate.capabilityId === request.capabilityId,
-      );
-
-      const produces = node?.produces ?? [];
-      if (produces.length === 0) return declined;
-
-      const record = await repository.get(request.executionId);
-      const changed = readChangedArtifacts(record?.metadata);
-
-      const affected = new Set<string>(changed);
-      for (const artifactId of changed) {
-        if ((await artifactStore.getArtifact(artifactId)) === null) continue;
-
-        const impact = await intelligence.analyzeImpact(artifactId);
-        for (const id of impact.affectedArtifacts) affected.add(id);
-      }
-
-      if (produces.some((id) => affected.has(id))) return declined;
-
-      const artifacts = [];
-      for (const artifactId of produces) {
-        const artifact = await artifactStore.getArtifact(artifactId);
-        if (artifact === null) return declined;
-
-        artifacts.push({
-          id: artifact.id,
-          type: artifact.type,
-          metadata: artifact.metadata,
-        });
-      }
-
-      return { reuse: true, artifacts, reason: "unaffected by the change set" };
-    },
-  };
-}

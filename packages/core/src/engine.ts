@@ -11,6 +11,8 @@ import {
   readCompositionCheckpoint,
   readExecutionInput,
   readExecutionLineage,
+  readReuseIdentity,
+  REUSE_SCHEMA_VERSION,
   type ExecutionContext,
   type WorkflowDefinition,
   type ArtifactRef,
@@ -681,6 +683,7 @@ export class ExecutionEngine {
     ).compositionPath;
 
     const workflowInput = readExecutionInput(context.metadata);
+    const workflowVersion = workflow.metadata.version ?? "0";
 
     const nodeMap = new Map<string, CompiledNode>();
     for (const node of workflow.nodes) {
@@ -712,11 +715,19 @@ export class ExecutionEngine {
           let adopted: LayerNodeResult | null;
 
           try {
+            const compiledForSkip = nodeMap.get(nodeId);
+            const capabilityVersionForSkip =
+              compiledForSkip?.kind === "capability"
+                ? compiledForSkip.capability.version ?? "1"
+                : "1";
+
             adopted = await this.adoptPlannedSkip(
               step,
               context,
               workflowInput,
               allParentArtifacts,
+              capabilityVersionForSkip,
+              workflowVersion,
             );
           } catch (error) {
             // Recovery ran outside the per-node task loop, so its failures
@@ -806,6 +817,7 @@ export class ExecutionEngine {
                 nodeInput,
                 context,
                 allParentArtifacts,
+                workflowVersion,
               );
 
           layerResultMap.set(nodeId, result);
@@ -879,14 +891,18 @@ export class ExecutionEngine {
     input: unknown,
     context: ExecutionContext,
     parentArtifacts: readonly ArtifactRef[],
+    workflowVersion: string,
   ): Promise<LayerNodeResult> {
     const capabilityId = compiled.node.capabilityId;
+    const capabilityVersion = compiled.capability.version ?? "1";
     const snapshot = [...parentArtifacts];
     const parentArtifactIds = snapshot.map((a) => a.id);
 
     const reused = await this.resolveReuse(
       compiled.node.id,
       capabilityId,
+      capabilityVersion,
+      workflowVersion,
       input,
       context,
       parentArtifactIds,
@@ -934,7 +950,38 @@ export class ExecutionEngine {
 
     const produced = extractProducedArtifacts(output);
 
-    for (const artifact of produced) {
+    // Only stamped when a reuse resolver is actually configured — a host that
+    // never asks the reuse question gets exactly the metadata it always did.
+    // Recomputed rather than threaded through from `resolveReuse` (which ran
+    // this same computation moments ago, to decide whether to skip this node
+    // at all): it is a pure function of the same node identity, and
+    // recomputing it after the capability actually ran is what lets a later
+    // run compare "what would this node's fingerprint be right now" against
+    // "what it was when this artifact was made" without a separate cache.
+    const stamped = this.reuseResolver === undefined
+      ? produced
+      : await Promise.all(
+          produced.map(async (artifact) => {
+            const { inputFingerprint } = await this.buildReuseFingerprint(
+              capabilityId,
+              capabilityVersion,
+              workflowVersion,
+              input,
+              context,
+              parentArtifactIds,
+            );
+
+            return {
+              ...artifact,
+              metadata: {
+                ...artifact.metadata,
+                reuseFingerprint: inputFingerprint,
+              },
+            };
+          }),
+        );
+
+    for (const artifact of stamped) {
       await this.registerProducedArtifact(
         artifact,
         context,
@@ -944,7 +991,7 @@ export class ExecutionEngine {
     }
 
     return {
-      artifacts: produced,
+      artifacts: stamped,
       executed: true,
       pending: undefined,
     };
@@ -972,6 +1019,8 @@ export class ExecutionEngine {
     context: ExecutionContext,
     workflowInput: unknown,
     parentArtifacts: readonly ArtifactRef[],
+    capabilityVersion: string,
+    workflowVersion: string,
   ): Promise<LayerNodeResult | null> {
     if (this.reuseResolver === undefined || step.kind !== "capability") {
       return { artifacts: [], executed: false, pending: undefined };
@@ -980,10 +1029,68 @@ export class ExecutionEngine {
     return this.resolveReuse(
       step.nodeId,
       step.capabilityId,
+      capabilityVersion,
+      workflowVersion,
       resolveNodeInput(step.inputMap, workflowInput),
       context,
       parentArtifacts.map((artifact) => artifact.id),
     );
+  }
+
+  /**
+   * The reuse identity of one node's would-be computation, right now.
+   *
+   * Folds together everything that can change what this node would produce:
+   * its resolved input, the versions of the artifacts it would read, the
+   * capability's own identity and version, the enclosing workflow's identity
+   * and version, a fixed schema version bumped only when this scheme itself
+   * changes, and whatever reuse identity the host attached to the execution
+   * (project, model profile, ...). Two calls agree on the fingerprint if and
+   * only if none of that has changed — which is exactly "would this node
+   * compute the same thing again".
+   *
+   * Called twice per node that actually executes — once to ask whether it may
+   * be skipped, once more to stamp the value onto what it produced — rather
+   * than threaded through as a return value, because it is a pure function of
+   * its arguments and recomputing it is cheaper than the alternative of
+   * carrying it across a capability's possibly-failing execution.
+   */
+  private async buildReuseFingerprint(
+    capabilityId: string,
+    capabilityVersion: string,
+    workflowVersion: string,
+    input: unknown,
+    context: ExecutionContext,
+    parentArtifactIds: readonly string[],
+  ): Promise<{
+    inputFingerprint: string;
+    dependencies: ArtifactVersionRef[];
+  }> {
+    const dependencies: ArtifactVersionRef[] = [];
+
+    for (const artifactId of parentArtifactIds) {
+      const artifact = await this.artifactRegistry?.getArtifact(artifactId);
+
+      dependencies.push({
+        artifactId,
+        ...(artifact !== null && artifact !== undefined
+          ? { version: artifact.version }
+          : {}),
+      });
+    }
+
+    const inputFingerprint = await hashContent({
+      reuseSchemaVersion: REUSE_SCHEMA_VERSION,
+      input,
+      capabilityId,
+      capabilityVersion,
+      workflowId: context.workflowId,
+      workflowVersion,
+      dependencies,
+      identity: readReuseIdentity(context.metadata) ?? null,
+    });
+
+    return { inputFingerprint, dependencies };
   }
 
   /**
@@ -998,6 +1105,8 @@ export class ExecutionEngine {
   private async resolveReuse(
     nodeId: string,
     capabilityId: string,
+    capabilityVersion: string,
+    workflowVersion: string,
     input: unknown,
     context: ExecutionContext,
     parentArtifactIds: readonly string[],
@@ -1005,18 +1114,14 @@ export class ExecutionEngine {
     const resolver = this.reuseResolver;
     if (resolver === undefined) return null;
 
-    const dependencies: ArtifactVersionRef[] = [];
-
-    for (const artifactId of parentArtifactIds) {
-      const artifact = await this.artifactRegistry?.getArtifact(artifactId);
-
-      dependencies.push({
-        artifactId,
-        ...(artifact !== null && artifact !== undefined
-          ? { version: artifact.version }
-          : {}),
-      });
-    }
+    const { inputFingerprint, dependencies } = await this.buildReuseFingerprint(
+      capabilityId,
+      capabilityVersion,
+      workflowVersion,
+      input,
+      context,
+      parentArtifactIds,
+    );
 
     const decision = capabilityReuseDecisionSchema.parse(
       await resolver.resolve({
@@ -1024,7 +1129,7 @@ export class ExecutionEngine {
         workflowId: context.workflowId,
         nodeId,
         capabilityId,
-        inputFingerprint: await hashContent(input),
+        inputFingerprint,
         dependencies,
       }),
     );
@@ -1177,7 +1282,14 @@ export class ExecutionEngine {
       const latest = await registry.getVersion(artifact.id, existing.version);
 
       if (!contentEquals(latest?.metadata, metadata)) {
-        await registry.createVersion(artifact.id, metadata);
+        // Attributed to *this* execution, not the artifact's original
+        // creator: a version bump is this run's work, and a report built by
+        // scanning this execution's own events must be able to see it.
+        await registry.createVersion(artifact.id, metadata, {
+          executionId: context.runId,
+          workflowId: context.workflowId,
+          capabilityId,
+        });
       }
     }
 

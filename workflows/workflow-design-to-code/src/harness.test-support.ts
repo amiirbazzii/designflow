@@ -1,8 +1,8 @@
 // workflows/workflow-design-to-code/src/harness.test-support.ts
 import {
-  ArtifactIntelligenceService,
   ArtifactSetReconciler,
   CapabilityRegistry,
+  createArtifactFingerprintReuseResolver,
   ExecutionService,
   InMemoryApprovalManager,
   InMemoryArtifactStore,
@@ -17,9 +17,7 @@ import {
   WorkflowRunner,
 } from "@designflow/product";
 import {
-  readChangedArtifacts,
   withChangedArtifacts,
-  type CapabilityReuseResolver,
   type ExecutionEvent,
   type ExecutionPolicy,
   type Logger,
@@ -99,7 +97,11 @@ export function createHost(options?: {
             resolveWorkflow: (id) => workflows.get(id)?.definition,
             executionRepository: repository,
           }),
-          reuseResolver: createReuseResolver(workflows, artifactStore, repository),
+          reuseResolver: createArtifactFingerprintReuseResolver({
+            workflows,
+            artifactStore,
+            repository,
+          }),
           artifactMaterializer: new RegistryArtifactMaterializer({
             registry: artifactStore,
             eventPublisher,
@@ -130,75 +132,6 @@ export function createHost(options?: {
     approvals,
     collector,
     events,
-  };
-}
-
-/**
- * The host's caching policy: reuse a node's prior output when the change set
- * does not reach it.
- *
- * This is the piece that makes incremental execution complete. The planner
- * decides a node needs no computation; without a resolver to supply that
- * node's artifacts, its dependents would run without them. Deliberately a
- * *host* concern — the engine poses the question and honours the answer, and
- * what counts as a cache hit is a product decision.
- *
- * Impact is answered by `ArtifactIntelligenceService`, so the reuse decision
- * and the planner's skip decision are derived from the same lineage graph and
- * cannot disagree.
- */
-function createReuseResolver(
-  workflows: ReadonlyMap<string, WorkflowPackage>,
-  artifactStore: InMemoryArtifactStore,
-  repository: InMemoryExecutionRepository,
-): CapabilityReuseResolver {
-  const intelligence = new ArtifactIntelligenceService({
-    registry: artifactStore,
-  });
-
-  const declined = { reuse: false as const, artifacts: [] };
-
-  return {
-    async resolve(request) {
-      const definition = workflows.get(request.workflowId)?.definition;
-      const node = definition?.nodes.find(
-        (candidate) =>
-          "capabilityId" in candidate &&
-          candidate.capabilityId === request.capabilityId,
-      );
-
-      const produces = node?.produces ?? [];
-      if (produces.length === 0) return declined;
-
-      const record = await repository.get(request.executionId);
-      const changed = readChangedArtifacts(record?.metadata);
-
-      // Everything the change set invalidates, directly or downstream.
-      const affected = new Set<string>(changed);
-      for (const artifactId of changed) {
-        if ((await artifactStore.getArtifact(artifactId)) === null) continue;
-
-        const impact = await intelligence.analyzeImpact(artifactId);
-        for (const id of impact.affectedArtifacts) affected.add(id);
-      }
-
-      if (produces.some((id) => affected.has(id))) return declined;
-
-      const artifacts = [];
-      for (const artifactId of produces) {
-        const artifact = await artifactStore.getArtifact(artifactId);
-        // Nothing to reuse on a first run; the node runs normally.
-        if (artifact === null) return declined;
-
-        artifacts.push({
-          id: artifact.id,
-          type: artifact.type,
-          metadata: artifact.metadata,
-        });
-      }
-
-      return { reuse: true, artifacts, reason: "unaffected by the change set" };
-    },
   };
 }
 

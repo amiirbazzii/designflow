@@ -106,9 +106,19 @@ export type ArtifactLineageGraph = z.infer<typeof artifactLineageGraphSchema>;
 export interface ArtifactRegistry {
   createArtifact(artifact: ArtifactInput): Promise<Artifact>;
 
+  /**
+   * `eventProvenance` attributes the `artifact.version_created` event this
+   * emits to the execution actually doing the work, when it differs from the
+   * artifact's own (immutable, first-creation) `provenance`. Without it, a
+   * version bump is announced under the execution that first created the
+   * artifact, which is wrong for every later run that revises it — and is
+   * exactly what made a re-executed (not reused) node vanish from a report
+   * built by scanning that execution's own events.
+   */
   createVersion(
     artifactId: string,
     metadata?: Record<string, unknown>,
+    eventProvenance?: ArtifactProvenance,
   ): Promise<ArtifactVersion>;
 
   getArtifact(id: string): Promise<Artifact | null>;

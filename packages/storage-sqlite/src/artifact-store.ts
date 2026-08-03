@@ -245,6 +245,7 @@ export class SqliteArtifactStore implements RegistryArtifactStore {
   public async createVersion(
     artifactId: string,
     metadata?: Record<string, unknown>,
+    eventProvenance?: ArtifactProvenance,
   ): Promise<ArtifactVersion> {
     const current = await this.getArtifact(artifactId);
 
@@ -267,7 +268,7 @@ export class SqliteArtifactStore implements RegistryArtifactStore {
       .query("UPDATE artifacts SET version = ? WHERE artifact_id = ?")
       .run(next, artifactId);
 
-    await this.publish(current.provenance, "artifact.version_created", {
+    await this.publish(eventProvenance ?? current.provenance, "artifact.version_created", {
       artifactId,
       version: next,
     });

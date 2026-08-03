@@ -214,6 +214,8 @@ describe("designflow run", () => {
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Complete");
     expect(terminal.transcript).toContain("Created  5");
+    expect(terminal.transcript).toContain("No files were written to your project.");
+    expect(terminal.transcript).toContain("Inspect the result: designflow artifacts");
   });
 
   test("asks for each declared input field", async () => {
@@ -266,7 +268,8 @@ describe("designflow run", () => {
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Approval required");
-    expect(terminal.transcript).toContain("Generate production files");
+    expect(terminal.transcript).toContain("Store the generated result as a DesignFlow artifact");
+    expect(terminal.transcript).toContain("No files were written to your project.");
   });
 
   test("rejecting stops the run and reports a failure exit code", async () => {

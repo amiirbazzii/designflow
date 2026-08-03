@@ -170,6 +170,7 @@ export class InMemoryArtifactStore implements RegistryArtifactStore {
   public async createVersion(
     artifactId: string,
     metadata?: Record<string, unknown>,
+    eventProvenance?: ArtifactProvenance,
   ): Promise<ArtifactVersion> {
     const current = this.artifacts.get(artifactId);
 
@@ -206,7 +207,7 @@ export class InMemoryArtifactStore implements RegistryArtifactStore {
     });
     this.artifacts.set(artifactId, deepFreeze(advanced));
 
-    await this.publish(advanced.provenance, "artifact.version_created", {
+    await this.publish(eventProvenance ?? advanced.provenance, "artifact.version_created", {
       artifactId,
       version: nextNumber,
     });

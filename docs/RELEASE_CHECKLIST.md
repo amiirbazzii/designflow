@@ -51,7 +51,7 @@ bash scripts/cli-smoke-test.sh
 This builds the CLI, runs `npm pack`, installs the resulting tarball into a
 throwaway global npm prefix, and exercises the CLI end-to-end under plain
 `node` (not `bun`) against an empty `DESIGNFLOW_HOME`. It is the closest
-local proxy to what a real `npm install -g designflow` user experiences.
+local proxy to what a real `npm install -g designflow-ai` user experiences.
 
 - [ ] Script prints `SMOKE TEST PASSED` at the end.
 - [ ] If it fails, do not proceed — fix the underlying issue and re-run the
@@ -126,7 +126,7 @@ npm publish
       fresh `dist/main.js` before the tarball is created.
 - [ ] Confirm the published version on the npm registry:
       ```bash
-      npm view designflow version
+      npm view designflow-ai version
       ```
 
 ## 7. Smoke-test the ACTUALLY PUBLISHED package
@@ -135,10 +135,10 @@ This is distinct from step 3 — step 3 tests a local tarball; this step tests
 what a real user gets from the real registry, after publish has propagated.
 
 ```bash
-npm install -g designflow@latest
+npm install -g designflow-ai@latest
 designflow --version
 designflow list
-npm uninstall -g designflow
+npm uninstall -g designflow-ai
 ```
 
 - [ ] `designflow@latest` installs cleanly with plain `npm`/`node` (no `bun`

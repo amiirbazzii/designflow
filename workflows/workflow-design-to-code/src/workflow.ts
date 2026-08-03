@@ -25,15 +25,27 @@ export const designToCodeWorkflow: WorkflowDefinition = {
     {
       id: "analyze-design",
       capabilityId: "analyze-design",
-      // The only node fed from the run's input; everything after it reads
-      // artifacts.
-      inputMap: { $workflowInput: true },
+      // Named explicitly rather than `{ $workflowInput: true }`: the
+      // capability only ever reads `designFile` and `frames` (see
+      // `analyzeDesignCapability` in `capabilities/index.ts`), so mapping the
+      // whole input would make a `framework`- or `preferences`-only change
+      // invalidate this node too, even though its output never depends on
+      // either.
+      inputMap: {
+        designFile: { $workflowInput: "designFile" },
+        frames: { $workflowInput: "frames" },
+      },
       produces: [ARTIFACT_IDS.designAnalysis],
       next: ["extract-design-tokens"],
     },
     {
       id: "extract-design-tokens",
       capabilityId: "extract-design-tokens",
+      // No node-level input of its own — everything it derives comes from
+      // the `design-analysis` artifact, and a change there already changes
+      // this node's dependency version. An empty map is correct here, not an
+      // oversight: unlike the three nodes below, this capability reads no
+      // part of the workflow input directly (see `capabilities/index.ts`).
       inputMap: {},
       produces: [ARTIFACT_IDS.designTokens],
       execution: { dependsOn: ["analyze-design"] },
@@ -42,7 +54,11 @@ export const designToCodeWorkflow: WorkflowDefinition = {
     {
       id: "create-component-structure",
       capabilityId: "create-component-structure",
-      inputMap: {},
+      // Reads `framework` directly from the workflow input (`readFramework`
+      // in `capabilities/index.ts`) rather than from an upstream artifact, so
+      // it must be named here — an empty map would let a framework change go
+      // undetected by reuse, even though it changes this node's output.
+      inputMap: { framework: { $workflowInput: "framework" } },
       produces: [ARTIFACT_IDS.componentTree],
       execution: { dependsOn: ["extract-design-tokens"] },
       next: ["generate-code"],
@@ -50,6 +66,9 @@ export const designToCodeWorkflow: WorkflowDefinition = {
     {
       id: "generate-code",
       capabilityId: "generate-code",
+      // No input of its own — everything it emits comes from the
+      // `component-tree` artifact, whose dependency version already carries
+      // the framework (and, transitively, the design) forward.
       inputMap: {},
       produces: [ARTIFACT_IDS.sourceCode],
       execution: { dependsOn: ["create-component-structure"] },
@@ -58,6 +77,8 @@ export const designToCodeWorkflow: WorkflowDefinition = {
     {
       id: "validate-output",
       capabilityId: "validate-output",
+      // No input of its own — depends only on the `source-code` artifact it
+      // validates.
       inputMap: {},
       produces: [ARTIFACT_IDS.validationReport],
       execution: { dependsOn: ["generate-code"] },
@@ -74,11 +95,16 @@ export const designToCodeWorkflow: WorkflowDefinition = {
 /**
  * The approval gate this workflow recommends.
  *
- * `generate-code` is the only `write_fs` capability in the pipeline — the step
- * that would put files into a project — so it is the one worth a person's
- * attention. The policy is shipped as data rather than wired into the
- * workflow: whether a given deployment gates on it is a host decision, and
- * `ExecutionService` already knows how to evaluate and enforce it.
+ * `generate-code` is the only `write_fs` capability in the pipeline, so it is
+ * the one worth a person's attention. That capability type name describes
+ * what a *future* stage of this workflow will do, not what it does today:
+ * right now `generate-code` only stores its output as a DesignFlow artifact
+ * (see `capabilities/index.ts`) — nothing is written into the project. The
+ * gate's own wording must stay honest about that distinction, since it is the
+ * text a person actually reads before approving. The policy is shipped as
+ * data rather than wired into the workflow: whether a given deployment gates
+ * on it is a host decision, and `ExecutionService` already knows how to
+ * evaluate and enforce it.
  */
 export const designToCodeApprovalPolicy: ExecutionPolicy = {
   id: "design-to-code-approval",
@@ -89,8 +115,8 @@ export const designToCodeApprovalPolicy: ExecutionPolicy = {
       type: "require_approval",
       target: "generate-code",
       metadata: {
-        prompt: "Approve generated code changes?",
-        reason: "Writing changes to production files",
+        prompt: "Generate and store code as a DesignFlow artifact?",
+        reason: "Storing generated code as a DesignFlow artifact — no project files are changed",
       },
     },
   ],

@@ -395,9 +395,16 @@ describe("artifact versioning across executions", () => {
       version: 2,
     });
 
-    // Provenance owns event attribution, so the event lands on the execution
-    // that first registered the artifact, not the one that versioned it.
-    expect(versionEvents[0]?.executionId).not.toBe(secondExecution);
+    // Attributed to the execution that actually did the versioning, not the
+    // artifact's own (immutable) `provenance`, which still names whichever
+    // execution first registered the logical id — see "keeps the origin
+    // provenance while versioning" above. A report built by scanning *this*
+    // execution's own events (`designflow artifacts <run-id>`, the CLI
+    // completion screen) needs the event here to see what this run did;
+    // attributing it to the artifact's original creator instead made a
+    // re-executed-but-not-reused node silently vanish from that run's own
+    // artifact list.
+    expect(versionEvents[0]?.executionId).toBe(secondExecution);
   });
 
   test("content-addressed payloads yield a new artifact, not a new version", async () => {

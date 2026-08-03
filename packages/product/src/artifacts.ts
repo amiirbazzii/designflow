@@ -31,7 +31,21 @@ export function classifyArtifacts(
       continue;
     }
 
-    if (event.type === "artifact.created" && !statuses.has(artifactId)) {
+    // A logical artifact only ever gets `artifact.created` the first time its
+    // id is ever registered (`FileArtifactStore.createArtifact`); every later
+    // run that recomputes it — because reuse was correctly declined — instead
+    // emits only `artifact.version_created` (`createVersion`). Both mean the
+    // same thing from this execution's point of view: it computed fresh
+    // content, whether or not that id happened to exist before this run.
+    // Missing the second form would make every re-executed-but-not-reused
+    // node vanish from `designflow artifacts` and the completion report's
+    // artifact list — exactly the runs Stage 1's reuse-identity fix makes
+    // more common, since a node now only reuses when its identity genuinely
+    // matches.
+    if (
+      (event.type === "artifact.created" || event.type === "artifact.version_created") &&
+      !statuses.has(artifactId)
+    ) {
       statuses.set(artifactId, "created");
     }
   }

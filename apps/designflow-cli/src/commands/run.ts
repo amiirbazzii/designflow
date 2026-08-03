@@ -38,7 +38,7 @@ export async function runCommand(
   context: CliContext,
   terminal: Terminal,
   name: string,
-  options?: { readonly projectId?: string },
+  options?: { readonly projectId?: string; readonly interactive?: boolean },
 ): Promise<number> {
   const resolved = context.resolve(name);
 
@@ -92,7 +92,7 @@ export async function runCommand(
   const result = await clarify(context, terminal, worker.name, started);
   if (result === null) return 1;
 
-  return finishSession(context, terminal, result);
+  return finishSession(context, terminal, result, options?.interactive ?? false);
 }
 
 // ── Input ────────────────────────────────────────────────────────

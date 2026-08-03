@@ -364,7 +364,7 @@ describe("approval", () => {
     expect(pick(status.body, ["status", "state"])).toBe("needs_approval");
     expect(
       String(pick(status.body, ["status", "approval", "reason"])),
-    ).toContain("Writing changes to production files");
+    ).toContain("Storing generated code as a DesignFlow artifact");
   });
 
   test("approving completes the run", async () => {

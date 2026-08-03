@@ -421,7 +421,8 @@ describe("approval gate", () => {
     expect(execution.state).toBe("needs_approval");
 
     const pending = await host.runner.pendingApproval(execution.executionId);
-    expect(pending?.reason).toContain("Writing changes to production files");
+    expect(pending?.reason).toContain("Storing generated code as a DesignFlow artifact");
+    expect(pending?.reason).toContain("no project files are changed");
 
     // Nothing ran: the gate is evaluated before the workflow starts.
     expect(capabilitiesRun(host)).toEqual([]);

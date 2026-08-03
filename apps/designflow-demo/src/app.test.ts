@@ -192,14 +192,14 @@ describe("progress", () => {
 // ── 4. Approval action works ────────────────────────────────────
 
 describe("approval", () => {
-  test("asks before generating production code", async () => {
+  test("asks before storing the generated code artifact", async () => {
     const { host, io } = approvingRun();
 
     await runDemo(host, io);
 
     expect(io.transcript).toContain("Approval Required");
-    expect(io.transcript).toContain("Generate production code files");
-    expect(io.transcript).toContain("Writing changes to production files");
+    expect(io.transcript).toContain("Store the generated result as a DesignFlow artifact");
+    expect(io.transcript).toContain("Storing generated code as a DesignFlow artifact");
   });
 
   test("approving completes the workflow", async () => {
