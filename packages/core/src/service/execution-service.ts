@@ -30,6 +30,7 @@ import {
   type IncrementalExecutionPlanner,
   type ArtifactMaterializer,
   type ExecutionReconciler,
+  type AgentInvocationService,
   DesignFlowError,
 } from "@designflow/sdk";
 
@@ -100,6 +101,8 @@ export interface ExecutionServiceConfig {
    * incremental planner is also configured.
    */
   readonly executionReconciler?: ExecutionReconciler;
+  /** Lets a capability invoke a registered specialized agent. Omitted by default. */
+  readonly agentInvoker?: AgentInvocationService;
 }
 
 interface StartExecutionParams {
@@ -127,6 +130,7 @@ export class ExecutionService
   private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
   private readonly artifactMaterializer: ArtifactMaterializer | undefined;
   private readonly executionReconciler: ExecutionReconciler | undefined;
+  private readonly agentInvoker: AgentInvocationService | undefined;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -147,6 +151,7 @@ export class ExecutionService
     this.incrementalPlanner = config.incrementalPlanner;
     this.artifactMaterializer = config.artifactMaterializer;
     this.executionReconciler = config.executionReconciler;
+    this.agentInvoker = config.agentInvoker;
   }
 
   public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
@@ -592,6 +597,7 @@ export class ExecutionService
       incrementalPlanner: this.incrementalPlanner,
       artifactMaterializer: this.artifactMaterializer,
       executionReconciler: this.executionReconciler,
+      agentInvoker: this.agentInvoker,
     });
   }
 

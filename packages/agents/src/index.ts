@@ -24,7 +24,34 @@ import {
   type ProductManagerStrategy,
 } from "./catalog/product-manager-agent";
 
+import {
+  createDesignEngineerCoordinator,
+  designEngineerCoordinator,
+} from "./catalog/design-engineer-coordinator";
+
+import {
+  createFigmaSpecificationAgent,
+  figmaSpecificationAgent,
+  type FigmaSpecificationStrategy,
+} from "./catalog/figma-specification-agent";
+import {
+  createImplementationAgent,
+  implementationAgent,
+  type ImplementationStrategy,
+} from "./catalog/implementation-agent";
+import {
+  createVisualValidationAgent,
+  visualValidationAgent,
+  type VisualValidationStrategy,
+} from "./catalog/visual-validation-agent";
+
+import { InMemorySpecializedAgentRegistry } from "./specialized-registry";
+
 export { InMemoryAgentRegistry, assertWorkerAgentAlignment } from "./registry";
+export { InMemorySpecializedAgentRegistry } from "./specialized-registry";
+
+export { AgentInvocationRuntime } from "./invocation-runtime";
+export type { AgentInvocationRuntimeOptions } from "./invocation-runtime";
 
 export { AgentRuntime } from "./runtime";
 export type { AgentRuntimeOptions } from "./runtime";
@@ -56,6 +83,8 @@ export {
   AgentDecisionInvalidError,
   AgentWorkflowNotAllowedError,
   AgentWorkflowUnavailableError,
+  AgentInvocationRequestInvalidError,
+  SpecializedAgentOutputInvalidError,
 } from "./errors";
 
 export {
@@ -105,12 +134,57 @@ export {
 } from "./decision-prompt";
 export type { DecisionPromptInput, ModelDecision } from "./decision-prompt";
 
+export {
+  designEngineerCoordinator,
+  designEngineerCoordinatorManifest,
+  designEngineerCoordinatorDefaultModelProfile,
+  createDesignEngineerCoordinator,
+} from "./catalog/design-engineer-coordinator";
+
+export {
+  figmaSpecificationAgent,
+  figmaSpecificationAgentManifest,
+  figmaSpecificationDefaultModelProfile,
+  createFigmaSpecificationAgent,
+  deterministicFigmaSpecificationStrategy,
+  modelFigmaSpecificationStrategy,
+} from "./catalog/figma-specification-agent";
+export type { FigmaSpecificationStrategy } from "./catalog/figma-specification-agent";
+
+export {
+  implementationAgent,
+  implementationAgentManifest,
+  implementationDefaultModelProfile,
+  createImplementationAgent,
+  deterministicImplementationStrategy,
+  modelImplementationStrategy,
+} from "./catalog/implementation-agent";
+export type { ImplementationStrategy } from "./catalog/implementation-agent";
+
+export {
+  visualValidationAgent,
+  visualValidationAgentManifest,
+  visualValidationDefaultModelProfile,
+  createVisualValidationAgent,
+  deterministicVisualValidationStrategy,
+  modelVisualValidationStrategy,
+} from "./catalog/visual-validation-agent";
+export type { VisualValidationStrategy } from "./catalog/visual-validation-agent";
+
 /** Every agent that ships with DesignFlow, in its default (deterministic) form. */
 export const BUILT_IN_AGENTS = [
   designEngineerAgent,
+  designEngineerCoordinator,
   qaReviewerAgent,
   researchAnalystAgent,
   productManagerAgent,
+] as const;
+
+/** Every specialized agent that ships with DesignFlow, in its default (deterministic) form. */
+export const BUILT_IN_SPECIALIZED_AGENTS = [
+  figmaSpecificationAgent,
+  implementationAgent,
+  visualValidationAgent,
 ] as const;
 
 export interface AgentCatalogOptions {
@@ -126,9 +200,27 @@ export interface AgentCatalogOptions {
    * decides another's.
    */
   readonly designEngineerStrategy?: DesignEngineerStrategy | undefined;
+  /**
+   * The coordinator's own strategy option, distinct from
+   * `designEngineerStrategy` above.
+   *
+   * Both default to the identical deterministic logic, but they are two
+   * separate agents with two separate ids and two separate model profiles —
+   * a host opting a custom coordinator strategy in must not silently also
+   * change what the retained `design-engineer-agent` alias does, and a test
+   * exercising the alias must not accidentally be exercising the coordinator.
+   */
+  readonly designEngineerCoordinatorStrategy?: DesignEngineerStrategy | undefined;
   readonly qaReviewerStrategy?: QaReviewerStrategy | undefined;
   readonly researchAnalystStrategy?: ResearchAnalystStrategy | undefined;
   readonly productManagerStrategy?: ProductManagerStrategy | undefined;
+}
+
+/** Which strategy each built-in specialized agent decides with. Same defaulting rule as `AgentCatalogOptions`. */
+export interface SpecializedAgentCatalogOptions {
+  readonly figmaSpecificationStrategy?: FigmaSpecificationStrategy | undefined;
+  readonly implementationStrategy?: ImplementationStrategy | undefined;
+  readonly visualValidationStrategy?: VisualValidationStrategy | undefined;
 }
 
 /**
@@ -164,5 +256,51 @@ export function createAgentRegistry(options?: AgentCatalogOptions): InMemoryAgen
       ? productManagerAgent
       : createProductManagerAgent(options.productManagerStrategy);
 
-  return new InMemoryAgentRegistry([designEngineer, qaReviewer, researchAnalyst, productManager]);
+  // The coordinator is a distinct agent, registered alongside the retained
+  // `design-engineer-agent` alias rather than replacing it — see
+  // `design-engineer-coordinator.ts`'s module doc.
+  const coordinator =
+    options?.designEngineerCoordinatorStrategy === undefined
+      ? designEngineerCoordinator
+      : createDesignEngineerCoordinator(options.designEngineerCoordinatorStrategy);
+
+  return new InMemoryAgentRegistry([
+    designEngineer,
+    coordinator,
+    qaReviewer,
+    researchAnalyst,
+    productManager,
+  ]);
+}
+
+/**
+ * A registry containing the built-in specialized agents.
+ *
+ * Fresh per call, for the same isolation reason `createAgentRegistry` is: a
+ * host that registers its own specialized agents must not leak them into
+ * another caller's registry.
+ */
+export function createSpecializedAgentRegistry(
+  options?: SpecializedAgentCatalogOptions,
+): InMemorySpecializedAgentRegistry {
+  const figmaSpecification =
+    options?.figmaSpecificationStrategy === undefined
+      ? figmaSpecificationAgent
+      : createFigmaSpecificationAgent(options.figmaSpecificationStrategy);
+
+  const implementation =
+    options?.implementationStrategy === undefined
+      ? implementationAgent
+      : createImplementationAgent(options.implementationStrategy);
+
+  const visualValidation =
+    options?.visualValidationStrategy === undefined
+      ? visualValidationAgent
+      : createVisualValidationAgent(options.visualValidationStrategy);
+
+  return new InMemorySpecializedAgentRegistry([
+    figmaSpecification,
+    implementation,
+    visualValidation,
+  ]);
 }

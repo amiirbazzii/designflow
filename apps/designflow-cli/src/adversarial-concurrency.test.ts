@@ -128,7 +128,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
 
     // ── Plant agent-scoped memory, one per agent ─────────────────
     const agentMarkers: Record<string, string> = {
-      "design-engineer-agent": "MARKER-DESIGN-ENGINEER-ONLY-1a2b",
+      "design-engineer-coordinator": "MARKER-DESIGN-ENGINEER-ONLY-1a2b",
       "qa-reviewer-agent": "MARKER-QA-ONLY-7f3a",
       "research-analyst-agent": "MARKER-RESEARCH-ONLY-9c1b",
       "product-manager-agent": "MARKER-PRODUCT-MANAGER-ONLY-5e6f",
@@ -194,7 +194,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
 
       for (const [agentId, marker] of Object.entries(agentMarkers)) {
         const modelForAgent =
-          agentId === "design-engineer-agent"
+          agentId === "design-engineer-coordinator"
             ? "openai/gpt-4o-mini"
             : agentId === "qa-reviewer-agent"
               ? "anthropic/claude-3.5-haiku"
@@ -214,7 +214,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
     // Confirm each agent's OWN marker DID reach its own request(s) — proves
     // the plumbing is live, not merely silent.
     const designReq = mock.requests.find((r) => r.body.model === "openai/gpt-4o-mini");
-    expect(JSON.stringify(designReq?.body.messages)).toContain(agentMarkers["design-engineer-agent"]);
+    expect(JSON.stringify(designReq?.body.messages)).toContain(agentMarkers["design-engineer-coordinator"]);
     const qaReqs = mock.requests.filter((r) => r.body.model === "anthropic/claude-3.5-haiku");
     for (const r of qaReqs) {
       expect(JSON.stringify(r.body.messages)).toContain(agentMarkers["qa-reviewer-agent"]);
@@ -284,7 +284,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
     // agent's manifest and that available tool ids named in the prompt
     // ("Tools you may consult") only ever list that agent's own tools. ──
     const toolsByAgent: Record<string, readonly string[]> = {
-      "design-engineer-agent": ["classify-design-task"],
+      "design-engineer-coordinator": ["classify-design-task"],
       "qa-reviewer-agent": ["classify-review-target", "summarize-artifact-set", "accessibility-checklist"],
       "research-analyst-agent": ["classify-research-request", "validate-source-metadata", "extract-structured-claims"],
       "product-manager-agent": ["classify-product-request", "identify-requirement-gaps", "structure-acceptance-criteria"],
@@ -292,7 +292,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
     const allTools = Object.values(toolsByAgent).flat();
     for (const [agentId, ownTools] of Object.entries(toolsByAgent)) {
       const model =
-        agentId === "design-engineer-agent"
+        agentId === "design-engineer-coordinator"
           ? "openai/gpt-4o-mini"
           : agentId === "qa-reviewer-agent"
             ? "anthropic/claude-3.5-haiku"
@@ -416,7 +416,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
         settings: {
           models: {
             profiles: {
-              "design-engineer-default": { model: "openai/gpt-4o" },
+              "design-engineer-coordinator-default": { model: "openai/gpt-4o" },
             },
           },
         },

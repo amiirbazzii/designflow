@@ -27,3 +27,5 @@ This directory contains Architecture Decision Records for DesignFlow.
 - [20260801-provider-neutral-model-runtime.md](20260801-provider-neutral-model-runtime.md)
 - [20260801-v1-release-hardening.md](20260801-v1-release-hardening.md)
 - [20260802-release-candidate-validation.md](20260802-release-candidate-validation.md)
+- [20260803-design-engineer-reuse-safety.md](20260803-design-engineer-reuse-safety.md)
+- [20260803-design-engineer-specialized-agent-foundation.md](20260803-design-engineer-specialized-agent-foundation.md)

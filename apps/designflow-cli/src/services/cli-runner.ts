@@ -36,6 +36,7 @@ import {
   createAgentRegistry,
   designEngineerDefaultModelProfile,
   modelDesignEngineerStrategy,
+  designEngineerCoordinatorDefaultModelProfile,
   qaReviewerDefaultModelProfile,
   modelQaReviewerStrategy,
   researchAnalystDefaultModelProfile,
@@ -148,6 +149,7 @@ const silentLogger: Logger = {
  */
 const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   designEngineerDefaultModelProfile,
+  designEngineerCoordinatorDefaultModelProfile,
   qaReviewerDefaultModelProfile,
   researchAnalystDefaultModelProfile,
   productManagerDefaultModelProfile,
@@ -513,6 +515,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // with the name itself.
   const agentRegistry = createAgentRegistry({
     designEngineerStrategy: modelModeRequested ? modelDesignEngineerStrategy : undefined,
+    // The coordinator shares the design-engineer-agent alias's decision
+    // logic (see `design-engineer-coordinator.ts`), so it toggles model mode
+    // the same way, from the same single wiring-time decision.
+    designEngineerCoordinatorStrategy: modelModeRequested ? modelDesignEngineerStrategy : undefined,
     qaReviewerStrategy: modelModeRequested ? modelQaReviewerStrategy : undefined,
     researchAnalystStrategy: modelModeRequested ? modelResearchAnalystStrategy : undefined,
     productManagerStrategy: modelModeRequested ? modelProductManagerStrategy : undefined,

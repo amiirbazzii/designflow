@@ -52,7 +52,7 @@
     },
     "apps/designflow-cli": {
       "name": "designflow-ai",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "designflow": "dist/main.js",
       },
@@ -210,6 +210,7 @@
         "zod": "^3.24.0",
       },
       "devDependencies": {
+        "@designflow/agents": "workspace:*",
         "@designflow/core": "workspace:*",
         "@designflow/product": "workspace:*",
       },

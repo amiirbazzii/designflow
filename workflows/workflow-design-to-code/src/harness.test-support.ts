@@ -23,7 +23,13 @@ import {
   type Logger,
   type WorkflowPackage,
 } from "@designflow/sdk";
+import {
+  AgentInvocationRuntime,
+  createSpecializedAgentRegistry,
+  type SpecializedAgentCatalogOptions,
+} from "@designflow/agents";
 import { designToCodeWorkflowPackage } from "./manifest";
+import { designToCodeAgentFoundationWorkflowPackage } from "./agent-foundation-manifest";
 
 /**
  * A fully wired DesignFlow host, for the workflow's integration tests.
@@ -134,6 +140,129 @@ export function createHost(options?: {
     events,
   };
 }
+
+// ── Stage 2: Agent Foundation host ───────────────────────────────
+
+export interface AgentFoundationHost extends DesignToCodeHost {
+  readonly agents: AgentInvocationRuntime;
+}
+
+/**
+ * A host for `design-to-code-agent-foundation`, wiring a real
+ * `AgentInvocationRuntime` in as the engine's `agentInvoker`.
+ *
+ * Deterministic by default (no `models`/`tools` passed to the specialized
+ * agent registry), so these tests run offline exactly like every other test
+ * in this package. `strategies` lets a test opt one specific agent into a
+ * fake model-backed strategy without touching the others, for tests that
+ * need to exercise the model-invalid-output path.
+ */
+export function createAgentFoundationHost(options?: {
+  readonly strategies?: SpecializedAgentCatalogOptions;
+  readonly incremental?: boolean;
+}): AgentFoundationHost {
+  const events: ExecutionEvent[] = [];
+  const eventPublisher = new InMemoryEventPublisher(silentLogger);
+  eventPublisher.subscribe((event) => {
+    events.push(event);
+  });
+
+  const collector = new InMemoryExecutionEventCollector();
+  collector.subscribeTo(eventPublisher);
+
+  const artifactStore = new InMemoryArtifactStore({ eventPublisher });
+  const repository = new InMemoryExecutionRepository();
+  const approvals = new InMemoryApprovalManager();
+
+  const capabilityRegistry = new CapabilityRegistry();
+  designToCodeAgentFoundationWorkflowPackage.load(capabilityRegistry);
+
+  const workflows = new Map<string, WorkflowPackage>([
+    [
+      designToCodeAgentFoundationWorkflowPackage.id,
+      designToCodeAgentFoundationWorkflowPackage,
+    ],
+  ]);
+
+  const specializedAgents = createSpecializedAgentRegistry(options?.strategies);
+  const agents = new AgentInvocationRuntime({ registry: specializedAgents });
+
+  const incremental = options?.incremental === true;
+
+  const service = new ExecutionService({
+    workflowResolver: (workflowId) => workflows.get(workflowId),
+    capabilityRegistry,
+    logger: silentLogger,
+    artifactStore,
+    executionRepository: repository,
+    eventPublisher,
+    approvalManager: approvals,
+    agentInvoker: agents,
+    ...(incremental
+      ? {
+          incrementalPlanner: new IncrementalExecutionPlannerService({
+            resolveWorkflow: (id) => workflows.get(id)?.definition,
+            executionRepository: repository,
+          }),
+          reuseResolver: createArtifactFingerprintReuseResolver({
+            workflows,
+            artifactStore,
+            repository,
+          }),
+          artifactMaterializer: new RegistryArtifactMaterializer({
+            registry: artifactStore,
+            eventPublisher,
+          }),
+          executionReconciler: new ArtifactSetReconciler({
+            registry: artifactStore,
+          }),
+        }
+      : {}),
+  });
+
+  const runner = new WorkflowRunner({
+    executionContract: service,
+    executionRepository: repository,
+    eventSource: collector,
+    artifactRegistry: artifactStore,
+    approvalManager: approvals,
+    resolveWorkflowName: (id) => workflows.get(id)?.name,
+    resolveWorkflowStepCount: (id) =>
+      workflows.get(id)?.definition.nodes.length,
+  });
+
+  return {
+    runner,
+    service,
+    artifactStore,
+    repository,
+    approvals,
+    collector,
+    events,
+    agents,
+  };
+}
+
+/** A representative Agent Foundation workflow input, ready to run as-is. */
+export const SAMPLE_AGENT_FOUNDATION_INPUT = {
+  figmaSnapshotSeed: {
+    designFile: "homepage.fig",
+    frames: ["brand/Header", "brand/Footer", "layout/Sidebar"],
+  },
+  projectContext: {
+    projectRootIdentity: "project-fixture",
+    framework: "react",
+    sourceRoot: "src/components",
+    stylingStrategy: "css-modules",
+    existingComponentReferences: [],
+    designSystemReferences: [],
+    contextFingerprint: "fixture-context-v1",
+  },
+  validationThreshold: 0.8,
+  figmaAgentVersion: "0.1.0",
+  implementationAgentVersion: "0.1.0",
+  visualValidationAgentVersion: "0.1.0",
+};
 
 /** A design with three frames across two token groups. */
 export const SAMPLE_DESIGN = {

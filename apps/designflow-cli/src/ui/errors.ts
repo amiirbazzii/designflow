@@ -118,6 +118,18 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That worker needs a workflow this installation does not have.",
     suggestion: `Nothing was started. ${LIST_WORKERS}`,
   },
+  ERR_AGENT_INVOCATION_REQUEST_INVALID: {
+    problem: "That worker could not put together what it needed internally.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_AGENT_INVOCATION_OUTPUT_INVALID: {
+    problem: "That worker's AI sent back something unusable.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_AGENT_INVOCATION_FAILED: {
+    problem: "That worker could not finish an internal step.",
+    suggestion: TRY_AGAIN,
+  },
 
   // Tool failures. A tool is something a worker consults while working out
   // what to do; a person never asked for one and should not have to learn the

@@ -34,6 +34,7 @@ import {
   type IncrementalExecutionPlanner,
   type PendingChildExecution,
   type WorkflowExecutionResolver,
+  type AgentInvocationService,
   DesignFlowError,
 } from "@designflow/sdk";
 
@@ -134,6 +135,13 @@ export interface ExecutionEngineConfig {
    * only alongside `incrementalPlanner`; a full execution is never reconciled.
    */
   readonly executionReconciler?: ExecutionReconciler | undefined;
+  /**
+   * Lets a capability invoke a registered specialized agent. Without it, a
+   * capability's `context.agents` is `undefined` and every capability the SDK
+   * ships prior to this stage — none of which read that field — is
+   * unaffected.
+   */
+  readonly agentInvoker?: AgentInvocationService | undefined;
 }
 
 export class ExecutionEngine {
@@ -150,6 +158,7 @@ export class ExecutionEngine {
   private readonly incrementalPlanner: IncrementalExecutionPlanner | undefined;
   private readonly artifactMaterializer: ArtifactMaterializer | undefined;
   private readonly executionReconciler: ExecutionReconciler | undefined;
+  private readonly agentInvoker: AgentInvocationService | undefined;
 
   public constructor(config: ExecutionEngineConfig) {
     this.registry = config.registry;
@@ -174,6 +183,7 @@ export class ExecutionEngine {
     this.incrementalPlanner = config.incrementalPlanner;
     this.artifactMaterializer = config.artifactMaterializer;
     this.executionReconciler = config.executionReconciler;
+    this.agentInvoker = config.agentInvoker;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -936,6 +946,7 @@ export class ExecutionEngine {
       artifactStore: lineageStore,
       config: context.metadata,
       signal: context.signal,
+      ...(this.agentInvoker !== undefined ? { agents: this.agentInvoker } : {}),
     };
 
     const output = await this.runner.run(

@@ -862,7 +862,7 @@ describe("running through an agent", () => {
   test("the shipped Design Engineer delegates to an agent", () => {
     const worker = context().workers.getWorker("design-engineer");
 
-    expect(worker?.agentId).toBe("design-engineer-agent");
+    expect(worker?.agentId).toBe("design-engineer-coordinator");
   });
 
   test("the agent resolves the request to design-to-code", async () => {

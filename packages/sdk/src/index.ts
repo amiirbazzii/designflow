@@ -321,6 +321,44 @@ export { DesignFlowError } from "./errors";
 
 export type { CapabilityContext, Logger } from "./context";
 
+// ── Specialized Agent Invocation ────────────────────────────────
+export {
+  agentInvocationRequestSchema,
+  agentInvocationOutcomeSchema,
+} from "./agent-invocation";
+
+export type {
+  AgentInvocationRequest,
+  AgentInvocationOutcome,
+  SpecializedAgentContext,
+  SpecializedAgent,
+  AgentInvocationService,
+} from "./agent-invocation";
+
+// ── Design Engineer Contracts ───────────────────────────────────
+export {
+  DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION,
+  figmaSourceSnapshotSchema,
+  designSpecificationSchema,
+  projectImplementationContextSchema,
+  implementationPlanSchema,
+  generatedImplementationSchema,
+  visualValidationDiscrepancySchema,
+  visualValidationReportSchema,
+  revisionRequestSchema,
+} from "./design-engineer-contracts";
+
+export type {
+  FigmaSourceSnapshot,
+  DesignSpecification,
+  ProjectImplementationContext,
+  ImplementationPlan,
+  GeneratedImplementation,
+  VisualValidationDiscrepancy,
+  VisualValidationReport,
+  RevisionRequest,
+} from "./design-engineer-contracts";
+
 export type { Capability, CapabilityPackage, CapabilityProvider } from "./capability";
 export { capabilityPackageSchema, parseCapabilityPackage } from "./capability-manifest";
 

@@ -17,13 +17,20 @@ export const designEngineer: WorkerManifest = workerManifestSchema.parse({
   category: "development",
   workflows: ["design-to-code"],
   /**
-   * Delegates its decision to an agent.
+   * Delegates its decision to the coordinating agent.
    *
    * `workflows` stays: it is what the catalogue advertises, what a host checks
    * against the agent's allow-list, and what this worker falls back to for any
    * consumer that has not wired an agent runtime.
+   *
+   * Points at `design-engineer-coordinator` (Stage 2) rather than the
+   * original `design-engineer-agent` — the coordinator is the new, public
+   * routing agent, and `design-engineer-agent` is retained only as a
+   * compatibility alias for state (a stored session, a saved trace) that
+   * already recorded the old id. See
+   * `packages/agents/src/catalog/design-engineer-coordinator.ts`.
    */
-  agentId: "design-engineer-agent",
+  agentId: "design-engineer-coordinator",
   inputs: [
     {
       key: "designFile",

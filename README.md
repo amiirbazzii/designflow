@@ -154,6 +154,14 @@ validation) rather than production-ready code. Real Figma connectivity and
 real project file writes are planned for a later stage, behind the same
 approval gate and artifact lineage this stage already enforces.
 
+Internally, the Design Engineer worker now has the infrastructure for
+multiple specialized agents (a Figma Specification agent, an Implementation
+agent, and a Visual Validation agent) behind its single coordinator — but
+none of that is user-facing yet: you still see one worker, one workflow, and
+the same output described above. See
+[`docs/adr/20260803-design-engineer-specialized-agent-foundation.md`](docs/adr/20260803-design-engineer-specialized-agent-foundation.md)
+for what exists today and what remains unimplemented.
+
 ## For developers
 
 This README intentionally avoids internal vocabulary. If you're working on

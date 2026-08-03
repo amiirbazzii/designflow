@@ -31,6 +31,9 @@ export const AGENT_ERROR_CODES = [
   "ERR_AGENT_WORKFLOW_UNAVAILABLE",
   "ERR_AGENT_TOOL_BUDGET_EXCEEDED",
   "ERR_AGENT_MODEL_BUDGET_EXCEEDED",
+  "ERR_AGENT_INVOCATION_REQUEST_INVALID",
+  "ERR_AGENT_INVOCATION_OUTPUT_INVALID",
+  "ERR_AGENT_INVOCATION_FAILED",
 ] as const;
 
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
@@ -125,5 +128,39 @@ export class AgentWorkflowUnavailableError extends DesignFlowError {
     );
     this.name = "AgentWorkflowUnavailableError";
     Object.setPrototypeOf(this, AgentWorkflowUnavailableError.prototype);
+  }
+}
+
+/** The request handed to `AgentInvocationRuntime.invoke` was not a request. */
+export class AgentInvocationRequestInvalidError extends DesignFlowError {
+  public constructor(issues: readonly string[]) {
+    super(
+      "ERR_AGENT_INVOCATION_REQUEST_INVALID",
+      `Invalid agent invocation request: ${issues.join("; ")}`,
+      { issues: [...issues] },
+    );
+    this.name = "AgentInvocationRequestInvalidError";
+    Object.setPrototypeOf(this, AgentInvocationRequestInvalidError.prototype);
+  }
+}
+
+/**
+ * A specialized agent's `perform` returned something that failed the
+ * agent's own output schema.
+ *
+ * Raised by the specialized agent itself, not by `AgentInvocationRuntime` —
+ * only the agent knows its own output contract. The runtime's job is to turn
+ * this (or any other thrown error) into a `failure` outcome rather than let
+ * it propagate as an unhandled rejection.
+ */
+export class SpecializedAgentOutputInvalidError extends DesignFlowError {
+  public constructor(agentId: string, issues: readonly string[]) {
+    super(
+      "ERR_AGENT_INVOCATION_OUTPUT_INVALID",
+      `Agent ${agentId} produced output that failed its own schema: ${issues.join("; ")}`,
+      { agentId, issues: [...issues] },
+    );
+    this.name = "SpecializedAgentOutputInvalidError";
+    Object.setPrototypeOf(this, SpecializedAgentOutputInvalidError.prototype);
   }
 }
