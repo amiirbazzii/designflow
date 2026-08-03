@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-08-03T10:37:12.740Z",
+  "projectRoot": "/Users/wallex/Documents/Workflow platform/designflow",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1785753432740
+}
