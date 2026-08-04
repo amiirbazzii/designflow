@@ -131,4 +131,19 @@ export class ArtifactInspectionService {
 
     return { summary, payload: redactSensitive(stored.data) };
   }
+
+  /**
+   * Loads a payload by its stable logical artifact id for an internal workflow
+   * handoff. The caller must already possess the artifact id; this method does
+   * not discover or broaden artifact scope.
+   */
+  public async getPayloadByArtifactId(artifactId: string): Promise<unknown> {
+    const artifact = await this.artifactRegistry.getArtifact(artifactId);
+    if (artifact === null) return undefined;
+    const version = await this.artifactRegistry.getVersion(artifact.id, artifact.version);
+    const payloadId = (version?.metadata ?? artifact.metadata)[PAYLOAD_ID_KEY];
+    if (typeof payloadId !== "string" || payloadId.length === 0) return undefined;
+    const stored = await this.artifactStore.get(payloadId);
+    return stored === null ? undefined : redactSensitive(stored.data);
+  }
 }

@@ -391,6 +391,58 @@ export {
   visualValidationAgentOutputV1Schema,
 } from "./visual-validation-contracts";
 
+export {
+  VISUAL_CORRECTION_SCHEMA_VERSION,
+  VISUAL_CORRECTION_AGENT_ID,
+  VISUAL_CORRECTION_AGENT_VERSION,
+  FEEDBACK_LOOP_HARD_LIMITS,
+  feedbackLoopStopReasonSchema,
+  feedbackLoopInputV1Schema,
+  correctionContextV1Schema,
+  correctionPlanV1Schema,
+  proposedCorrectionChangeV1Schema,
+  correctionAgentOutputV1Schema,
+  correctionApprovalBindingV1Schema,
+  feedbackLoopIterationV1Schema,
+  feedbackLoopReportV1Schema,
+} from "./visual-correction-contracts";
+
+export {
+  feedbackLoopParentStateSchema,
+  feedbackLoopParentChildStatusSchema,
+  feedbackLoopParentSideEffectSchema,
+  feedbackLoopParentIterationSchema,
+  feedbackLoopParentRecordV1Schema,
+  feedbackLoopParentReportV1Schema,
+} from "./feedback-loop-parent-contracts";
+export {
+  STAGE6_FAILPOINT_EXIT_CODE,
+  stage6FailpointSchema,
+  stage6FailpointEnabled,
+  terminateAtStage6Failpoint,
+  stage6FailpointForNode,
+} from "./stage6-failpoint";
+export type { Stage6Failpoint } from "./stage6-failpoint";
+
+export type {
+  FeedbackLoopParentState,
+  FeedbackLoopParentRecordV1,
+  FeedbackLoopParentReportV1,
+} from "./feedback-loop-parent-contracts";
+
+export type {
+  FeedbackLoopStopReason,
+  FeedbackLoopIterationPolicy,
+  FeedbackLoopInputV1,
+  CorrectionContextV1,
+  CorrectionPlanV1,
+  ProposedCorrectionChangeV1,
+  CorrectionAgentOutputV1,
+  CorrectionApprovalBindingV1,
+  FeedbackLoopIterationV1,
+  FeedbackLoopReportV1,
+} from "./visual-correction-contracts";
+
 export type {
   VisualViewportV1,
   SafePreviewCommandV1,

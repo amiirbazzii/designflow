@@ -44,6 +44,11 @@ import {
   visualValidationAgent,
   type VisualValidationStrategy,
 } from "./catalog/visual-validation-agent";
+import {
+  createVisualCorrectionAgent,
+  visualCorrectionAgent,
+  type VisualCorrectionStrategy,
+} from "./catalog/visual-correction-agent";
 
 import { InMemorySpecializedAgentRegistry } from "./specialized-registry";
 
@@ -171,6 +176,16 @@ export {
 } from "./catalog/visual-validation-agent";
 export type { VisualValidationStrategy } from "./catalog/visual-validation-agent";
 
+export {
+  visualCorrectionAgent,
+  visualCorrectionAgentManifest,
+  visualCorrectionDefaultModelProfile,
+  createVisualCorrectionAgent,
+  deterministicVisualCorrectionStrategy,
+  modelVisualCorrectionStrategy,
+} from "./catalog/visual-correction-agent";
+export type { VisualCorrectionStrategy } from "./catalog/visual-correction-agent";
+
 /** Every agent that ships with DesignFlow, in its default (deterministic) form. */
 export const BUILT_IN_AGENTS = [
   designEngineerAgent,
@@ -185,6 +200,7 @@ export const BUILT_IN_SPECIALIZED_AGENTS = [
   figmaSpecificationAgent,
   implementationAgent,
   visualValidationAgent,
+  visualCorrectionAgent,
 ] as const;
 
 export interface AgentCatalogOptions {
@@ -221,6 +237,7 @@ export interface SpecializedAgentCatalogOptions {
   readonly figmaSpecificationStrategy?: FigmaSpecificationStrategy | undefined;
   readonly implementationStrategy?: ImplementationStrategy | undefined;
   readonly visualValidationStrategy?: VisualValidationStrategy | undefined;
+  readonly visualCorrectionStrategy?: VisualCorrectionStrategy | undefined;
 }
 
 /**
@@ -298,9 +315,15 @@ export function createSpecializedAgentRegistry(
       ? visualValidationAgent
       : createVisualValidationAgent(options.visualValidationStrategy);
 
+  const visualCorrection =
+    options?.visualCorrectionStrategy === undefined
+      ? visualCorrectionAgent
+      : createVisualCorrectionAgent(options.visualCorrectionStrategy);
+
   return new InMemorySpecializedAgentRegistry([
     figmaSpecification,
     implementation,
     visualValidation,
+    visualCorrection,
   ]);
 }

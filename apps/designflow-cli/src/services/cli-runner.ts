@@ -51,9 +51,15 @@ import {
   modelImplementationStrategy,
   visualValidationDefaultModelProfile,
   modelVisualValidationStrategy,
+  visualCorrectionDefaultModelProfile,
+  modelVisualCorrectionStrategy,
 } from "@designflow/agents";
 import { McpRuntime } from "@designflow/mcp";
-import { ToolRuntime, createToolRegistry, createProjectInspector } from "@designflow/tools";
+import {
+  ToolRuntime,
+  createToolRegistry,
+  createProjectInspector,
+} from "@designflow/tools";
 import {
   InMemoryModelProfileRegistry,
   InMemoryModelProviderRegistry,
@@ -68,6 +74,7 @@ import {
   type Logger,
   type WorkerManifest,
   type WorkflowPackage,
+  type RegistryArtifactStore,
 } from "@designflow/sdk";
 import {
   FileAgentMemoryStore,
@@ -76,6 +83,7 @@ import {
   FileExecutionEventStore,
   FileExecutionRepository,
   FileMemoryProposalStore,
+  FileFeedbackLoopParentStore,
   FileProjectContextStore,
   FileProjectStore,
   FileSessionStore,
@@ -99,6 +107,10 @@ import {
   implementationSideEffectCapabilities,
   visualValidationCapabilities,
   designToCodeImplementationApprovalPolicy,
+  designToCodeFeedbackLoopWorkflowPackage,
+  designToCodeFeedbackLoopApprovalPolicy,
+  feedbackLoopWorkflowInputSchema,
+  inspectRegisteredProject,
 } from "@designflow/workflow-design-to-code";
 import {
   qaReviewApprovalPolicy,
@@ -113,15 +125,30 @@ import {
   productBriefWorkflowPackage,
 } from "@designflow/workflow-product-brief";
 import { resolveDatabasePath } from "./config";
-import {
-  initializeHome,
-  type HomeState,
-} from "./home";
+import { initializeHome, type HomeState } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
-import { readExperimentalFigmaMcpEnabled, readExperimentalImplementationEnabled, readFigmaMcpConfig } from "./figma-mcp-config";
 
-export const EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID = ["design", "to", "code", "implementation"].join("-");
+/** Internal Stage 6 routing stays in the composition root, not in CLI copy. */
+export const FEEDBACK_LOOP_WORKFLOW_ID = "design-to-code-feedback-loop";
+
+export function parseFeedbackLoopInput(input: unknown) {
+  return feedbackLoopWorkflowInputSchema.parse(input);
+}
+
+export { inspectRegisteredProject };
+import {
+  readExperimentalFigmaMcpEnabled,
+  readExperimentalImplementationEnabled,
+  readFigmaMcpConfig,
+} from "./figma-mcp-config";
+
+export const EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID = [
+  "design",
+  "to",
+  "code",
+  "implementation",
+].join("-");
 
 export function registerExperimentalDesignToCodeWorkflows(options: {
   readonly registry: CapabilityRegistry;
@@ -137,19 +164,31 @@ export function registerExperimentalDesignToCodeWorkflows(options: {
 
   if (options.figmaMcpEnabled) {
     options.registry.register(storeStage3SummaryCapability);
-    options.workflows.set(designToCodeFigmaSpecificationWorkflowPackage.id, designToCodeFigmaSpecificationWorkflowPackage);
+    options.workflows.set(
+      designToCodeFigmaSpecificationWorkflowPackage.id,
+      designToCodeFigmaSpecificationWorkflowPackage,
+    );
   }
   if (options.implementationEnabled) {
-    for (const capability of [...implementationCapabilities, ...implementationSideEffectCapabilities, ...visualValidationCapabilities]) {
+    for (const capability of [
+      ...implementationCapabilities,
+      ...implementationSideEffectCapabilities,
+      ...visualValidationCapabilities,
+    ]) {
       options.registry.register(capability);
     }
-    options.workflows.set(designToCodeImplementationWorkflowPackage.id, designToCodeImplementationWorkflowPackage);
+    options.workflows.set(
+      designToCodeImplementationWorkflowPackage.id,
+      designToCodeImplementationWorkflowPackage,
+    );
+    designToCodeFeedbackLoopWorkflowPackage.load(options.registry);
+    options.workflows.set(
+      designToCodeFeedbackLoopWorkflowPackage.id,
+      designToCodeFeedbackLoopWorkflowPackage,
+    );
   }
 }
-import {
-  readSessionConfig,
-  type SessionConfig,
-} from "./session-config";
+import { readSessionConfig, type SessionConfig } from "./session-config";
 
 /**
  * The CLI's composition root — the one allowed exception to the import rule.
@@ -204,6 +243,7 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   figmaSpecificationDefaultModelProfile,
   implementationDefaultModelProfile,
   visualValidationDefaultModelProfile,
+  visualCorrectionDefaultModelProfile,
 ];
 
 export interface WorkflowInfo {
@@ -309,6 +349,7 @@ export interface CliContext {
    * reaches a terminal, a trace, or a saved transcript.
    */
   readonly artifactInspection: ArtifactInspectionService;
+  readonly artifactStore: RegistryArtifactStore;
   /**
    * Agent Sessions — resumable clarification state.
    *
@@ -329,6 +370,7 @@ export interface CliContext {
   readonly memory: AgentMemoryService;
   /** Agent-proposed memory awaiting approval — `designflow memory proposals`. */
   readonly memoryProposals: MemoryProposalService;
+  readonly feedbackLoopParents: FileFeedbackLoopParentStore;
   /**
    * Agent names a person may address in `designflow memory add --agent`.
    *
@@ -337,7 +379,10 @@ export interface CliContext {
    * actually use" discipline `modelAssignments` already follows. Names only:
    * internal agent ids are never shown.
    */
-  readonly agentDirectory: readonly { readonly name: string; readonly id: string }[];
+  readonly agentDirectory: readonly {
+    readonly name: string;
+    readonly id: string;
+  }[];
   /**
    * What AI each worker is assigned, for `designflow settings` to display.
    *
@@ -409,7 +454,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // First: lay out `~/.designflow`. Everything below needs somewhere to write,
   // and a fresh install has nowhere until this runs.
   const home = initializeHome();
-  const databasePath = options?.databasePath ?? resolveDatabasePath(home.config);
+  const databasePath =
+    options?.databasePath ?? resolveDatabasePath(home.config);
 
   mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -456,27 +502,33 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // explicitly sets `settings.experimental.designEngineerFigmaMcp` — every
   // existing worker, workflow and command is unaffected either way. See
   // `docs/adr/*-figma-mcp-integration.md` for the full rollout rationale.
-  const implementationEnabled = readExperimentalImplementationEnabled(home.config);
-  const figmaMcpEnabled = readExperimentalFigmaMcpEnabled(home.config) || implementationEnabled;
-  const figmaMcpConfig = figmaMcpEnabled ? readFigmaMcpConfig(home.config) : undefined;
-
-  const mcpClient = figmaMcpConfig !== undefined
-    ? new McpRuntime({
-        command: figmaMcpConfig.command,
-        args: figmaMcpConfig.args,
-        env: figmaMcpConfig.env,
-        ...(figmaMcpConfig.connectTimeoutMs !== undefined
-          ? { connectTimeoutMs: figmaMcpConfig.connectTimeoutMs }
-          : {}),
-        ...(figmaMcpConfig.requestTimeoutMs !== undefined
-          ? { requestTimeoutMs: figmaMcpConfig.requestTimeoutMs }
-          : {}),
-        ...(figmaMcpConfig.maxResponseBytes !== undefined
-          ? { maxResponseBytes: figmaMcpConfig.maxResponseBytes }
-          : {}),
-        serverIdentity: "figma-mcp",
-      })
+  const implementationEnabled = readExperimentalImplementationEnabled(
+    home.config,
+  );
+  const figmaMcpEnabled =
+    readExperimentalFigmaMcpEnabled(home.config) || implementationEnabled;
+  const figmaMcpConfig = figmaMcpEnabled
+    ? readFigmaMcpConfig(home.config)
     : undefined;
+
+  const mcpClient =
+    figmaMcpConfig !== undefined
+      ? new McpRuntime({
+          command: figmaMcpConfig.command,
+          args: figmaMcpConfig.args,
+          env: figmaMcpConfig.env,
+          ...(figmaMcpConfig.connectTimeoutMs !== undefined
+            ? { connectTimeoutMs: figmaMcpConfig.connectTimeoutMs }
+            : {}),
+          ...(figmaMcpConfig.requestTimeoutMs !== undefined
+            ? { requestTimeoutMs: figmaMcpConfig.requestTimeoutMs }
+            : {}),
+          ...(figmaMcpConfig.maxResponseBytes !== undefined
+            ? { maxResponseBytes: figmaMcpConfig.maxResponseBytes }
+            : {}),
+          serverIdentity: "figma-mcp",
+        })
+      : undefined;
 
   // A dedicated `AgentInvocationRuntime`, independent of the coordinator's
   // `AgentRuntime` below — Stage 2's own boundary between "decides a route"
@@ -484,9 +536,19 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const figmaAgentInvocationRuntime = figmaMcpEnabled
     ? new AgentInvocationRuntime({
         registry: createSpecializedAgentRegistry({
-          figmaSpecificationStrategy: modelModeRequested ? modelFigmaSpecificationStrategy : undefined,
-          implementationStrategy: implementationEnabled && modelModeRequested ? modelImplementationStrategy : undefined,
-          visualValidationStrategy: modelModeRequested ? modelVisualValidationStrategy : undefined,
+          figmaSpecificationStrategy: modelModeRequested
+            ? modelFigmaSpecificationStrategy
+            : undefined,
+          implementationStrategy:
+            implementationEnabled && modelModeRequested
+              ? modelImplementationStrategy
+              : undefined,
+          visualValidationStrategy: modelModeRequested
+            ? modelVisualValidationStrategy
+            : undefined,
+          visualCorrectionStrategy: modelModeRequested
+            ? modelVisualCorrectionStrategy
+            : undefined,
         }),
       })
     : undefined;
@@ -551,6 +613,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
               ...researchAnalysisApprovalPolicy.rules,
               ...productBriefApprovalPolicy.rules,
               ...designToCodeImplementationApprovalPolicy.rules,
+              ...designToCodeFeedbackLoopApprovalPolicy.rules,
             ],
           },
           policyEvaluator: new InMemoryPolicyEvaluator(),
@@ -571,7 +634,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     }),
     executionReconciler: new ArtifactSetReconciler({ registry: artifactStore }),
     ...(mcpClient !== undefined ? { mcpClient } : {}),
-    ...(figmaAgentInvocationRuntime !== undefined ? { agentInvoker: figmaAgentInvocationRuntime } : {}),
+    ...(figmaAgentInvocationRuntime !== undefined
+      ? { agentInvoker: figmaAgentInvocationRuntime }
+      : {}),
   });
 
   // Tools inform a decision; they never perform work. The runtime is handed a
@@ -595,7 +660,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // decided once, at wiring time, never per-request and never by falling back
   // silently after a failed attempt.
   const modelProfiles = new InMemoryModelProfileRegistry(
-    mergeModelProfileOverrides(BUILT_IN_MODEL_PROFILES, readModelProfileOverrides(home.config)),
+    mergeModelProfileOverrides(
+      BUILT_IN_MODEL_PROFILES,
+      readModelProfileOverrides(home.config),
+    ),
   );
 
   const modelRuntime = modelModeRequested
@@ -618,14 +686,24 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // execution service — so an agent can name a workflow and can do nothing
   // with the name itself.
   const agentRegistry = createAgentRegistry({
-    designEngineerStrategy: modelModeRequested ? modelDesignEngineerStrategy : undefined,
+    designEngineerStrategy: modelModeRequested
+      ? modelDesignEngineerStrategy
+      : undefined,
     // The coordinator shares the design-engineer-agent alias's decision
     // logic (see `design-engineer-coordinator.ts`), so it toggles model mode
     // the same way, from the same single wiring-time decision.
-    designEngineerCoordinatorStrategy: modelModeRequested ? modelDesignEngineerStrategy : undefined,
-    qaReviewerStrategy: modelModeRequested ? modelQaReviewerStrategy : undefined,
-    researchAnalystStrategy: modelModeRequested ? modelResearchAnalystStrategy : undefined,
-    productManagerStrategy: modelModeRequested ? modelProductManagerStrategy : undefined,
+    designEngineerCoordinatorStrategy: modelModeRequested
+      ? modelDesignEngineerStrategy
+      : undefined,
+    qaReviewerStrategy: modelModeRequested
+      ? modelQaReviewerStrategy
+      : undefined,
+    researchAnalystStrategy: modelModeRequested
+      ? modelResearchAnalystStrategy
+      : undefined,
+    productManagerStrategy: modelModeRequested
+      ? modelProductManagerStrategy
+      : undefined,
   });
 
   // Traces share the same document as executions, so a run and the decision
@@ -667,7 +745,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       workerName: worker.name,
       providerId: profile.providerId,
       model: profile.model,
-      credentialConfigured: modelModeRequested && openRouterApiKey.trim().length > 0,
+      credentialConfigured:
+        modelModeRequested && openRouterApiKey.trim().length > 0,
     });
   }
 
@@ -676,7 +755,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // first run that happens to hit the offending workflow.
   for (const worker of workers.listWorkers()) {
     if (worker.agentId === undefined) continue;
-    assertWorkerAgentAlignment(worker, agentRegistry.require(worker.agentId).manifest);
+    assertWorkerAgentAlignment(
+      worker,
+      agentRegistry.require(worker.agentId).manifest,
+    );
   }
 
   const taskRouter = new WorkerTaskRouter({
@@ -691,7 +773,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     artifactRegistry: artifactStore,
     approvalManager: approvals,
     resolveWorkflowName: (id) => workflows.get(id)?.name,
-    resolveWorkflowStepCount: (id) => workflows.get(id)?.definition.nodes.length,
+    resolveWorkflowStepCount: (id) =>
+      workflows.get(id)?.definition.nodes.length,
   });
 
   // Projects and Agent Memory (Stage 40) — durable, product-level knowledge,
@@ -702,8 +785,11 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const projectContextStore = new FileProjectContextStore(store);
   const memoryStore = new FileAgentMemoryStore(store);
   const memoryProposalStore = new FileMemoryProposalStore(store);
+  const feedbackLoopParents = new FileFeedbackLoopParentStore(store);
 
-  const projectContext = new ProjectContextService({ store: projectContextStore });
+  const projectContext = new ProjectContextService({
+    store: projectContextStore,
+  });
   const projects = new ProjectService({
     store: projectStore,
     context: projectContext,
@@ -714,10 +800,16 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     inspector: createProjectInspector(),
   });
   const memory = new AgentMemoryService({ store: memoryStore });
-  const memoryProposals = new MemoryProposalService({ store: memoryProposalStore, memory });
+  const memoryProposals = new MemoryProposalService({
+    store: memoryProposalStore,
+    memory,
+  });
 
   const knowledge = new ContextAssemblyService({
-    projectContext: { getProject: (id) => projects.getProject(id), getContext: (id) => projectContext.getContext(id) },
+    projectContext: {
+      getProject: (id) => projects.getProject(id),
+      getContext: (id) => projectContext.getContext(id),
+    },
     memory: { listMemory: (filters) => memory.listMemory(filters) },
   });
 
@@ -729,7 +821,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const agentDirectory: { name: string; id: string }[] = [];
   const seenAgentIds = new Set<string>();
   for (const worker of workers.listWorkers()) {
-    if (worker.agentId === undefined || seenAgentIds.has(worker.agentId)) continue;
+    if (worker.agentId === undefined || seenAgentIds.has(worker.agentId))
+      continue;
     if (agentRegistry.get(worker.agentId) === undefined) continue;
     seenAgentIds.add(worker.agentId);
     agentDirectory.push({ name: worker.name, id: worker.agentId });
@@ -747,10 +840,14 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     traces,
     maxClarificationTurns: sessionConfig.maxClarificationTurns,
     expirationDays: sessionConfig.expirationDays,
-    resolveModelProfileId: (agentId) => agentRegistry.get(agentId)?.manifest.modelProfileId,
-    resolveAgentVersion: (agentId) => agentRegistry.get(agentId)?.manifest.version,
+    resolveModelProfileId: (agentId) =>
+      agentRegistry.get(agentId)?.manifest.modelProfileId,
+    resolveAgentVersion: (agentId) =>
+      agentRegistry.get(agentId)?.manifest.version,
     knowledge,
-    ...(options?.sessionClockOverride !== undefined ? { clock: options.sessionClockOverride } : {}),
+    ...(options?.sessionClockOverride !== undefined
+      ? { clock: options.sessionClockOverride }
+      : {}),
   });
 
   /**
@@ -790,9 +887,22 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           category: "workflow",
           workflows: [workflow.id],
           inputs: [
-            { key: "designFile", label: "Figma design URL", placeholder: "https://www.figma.com/design/..." },
-            { key: "frames", label: "Frames", placeholder: "432-2906", list: true },
-            { key: "projectId", label: "Registered project ID", placeholder: "project-id" },
+            {
+              key: "designFile",
+              label: "Figma design URL",
+              placeholder: "https://www.figma.com/design/...",
+            },
+            {
+              key: "frames",
+              label: "Frames",
+              placeholder: "432-2906",
+              list: true,
+            },
+            {
+              key: "projectId",
+              label: "Registered project ID",
+              placeholder: "project-id",
+            },
           ],
           evaluationCriteria: [],
         },
@@ -806,16 +916,15 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       // Synthesised so the caller has one shape to render either way. The
       // real worker is used when one owns this workflow, so its name and
       // input fields still apply.
-      worker:
-        owner ?? {
-          id: workflow.id,
-          name: workflow.name,
-          description: workflow.description ?? "",
-          category: "workflow",
-          workflows: [workflow.id],
-          inputs: [],
-          evaluationCriteria: [],
-        },
+      worker: owner ?? {
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description ?? "",
+        category: "workflow",
+        workflows: [workflow.id],
+        inputs: [],
+        evaluationCriteria: [],
+      },
       workflowId: workflow.id,
       workflowInstalled: true,
       steps: workflow.definition.nodes.length,
@@ -830,6 +939,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     experimentalImplementationEnabled: implementationEnabled,
     traces,
     artifactInspection,
+    artifactStore,
     sessions,
     sessionConfig,
     modelAssignments,
@@ -837,6 +947,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     projectContext,
     memory,
     memoryProposals,
+    feedbackLoopParents,
     agentDirectory,
 
     /**

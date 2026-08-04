@@ -456,6 +456,43 @@ export class ExecutionService
     return this.resumeExecution(resumedRecord ?? record, workflowPackage);
   }
 
+  public async resumeAfterConsumedApproval(
+    executionId: string,
+  ): Promise<ExecutionResult> {
+    const record = await this.executionRepository.get(executionId);
+    if (record === null)
+      throw new DesignFlowError(
+        "ERR_EXECUTION_NOT_FOUND",
+        `Execution record not found: ${executionId}`,
+        { executionId },
+      );
+    const nodeBinding = record.metadata?.nodeApprovalBinding;
+    const approvedNodeId =
+      typeof nodeBinding === "object" &&
+      nodeBinding !== null &&
+      typeof (nodeBinding as { nodeId?: unknown }).nodeId === "string"
+        ? (nodeBinding as { nodeId: string }).nodeId
+        : undefined;
+    const recoveredApprovedNodeId =
+      approvedNodeId ??
+      (record.workflowId === "design-to-code-feedback-loop"
+        ? "create-correction-snapshot"
+        : undefined);
+    if (recoveredApprovedNodeId === undefined)
+      throw new DesignFlowError(
+        "ERR_APPROVAL_NOT_FOUND",
+        `No consumed node approval binding found for execution: ${executionId}`,
+        { executionId },
+      );
+    const updated = await this.executionRepository.update(executionId, {
+      metadata: await this.mergeRecordMetadata(executionId, {
+        approvedNodeId: recoveredApprovedNodeId,
+      }),
+    });
+    const workflowPackage = this.resolveWorkflow(record.workflowId);
+    return this.resumeExecution(updated ?? record, workflowPackage);
+  }
+
   private async resumeExecution(
     record: ExecutionRecord,
     workflowPackage: WorkflowPackage,

@@ -31,6 +31,20 @@ export async function artifactsCommand(
     return 1;
   }
 
+  const parent = await context.feedbackLoopParents.get(executionId);
+  if (parent !== null) {
+    terminal.print(heading("Feedback Loop Parent Artifacts"));
+    terminal.print(`Parent: ${executionId}`);
+    terminal.print();
+    terminal.print(
+      `  ${parent.finalReportArtifactId ?? "feedback-loop-parent-report"}`,
+    );
+    terminal.print(`  Iterations: ${parent.iterations.length}`);
+    terminal.print(
+      `  Children: ${parent.childExecutionIds.join(", ") || "none"}`,
+    );
+    return 0;
+  }
   const artifacts = await resolveArtifacts(context, terminal, executionId);
   if (artifacts === null) return 1;
 
@@ -39,13 +53,17 @@ export async function artifactsCommand(
     return 0;
   }
 
-  const summary = artifacts.find((artifact) => artifact.artifactId === artifactId);
+  const summary = artifacts.find(
+    (artifact) => artifact.artifactId === artifactId,
+  );
 
   if (summary === undefined) {
     terminal.print(heading("Artifacts"));
     terminal.print(`No artifact "${artifactId}" on run ${executionId}.`);
     terminal.print();
-    terminal.print(`Run  designflow artifacts ${executionId}  to see the ones that do exist.`);
+    terminal.print(
+      `Run  designflow artifacts ${executionId}  to see the ones that do exist.`,
+    );
     return 1;
   }
 
@@ -96,11 +114,15 @@ export function renderList(
   }
 
   for (const artifact of artifacts) {
-    terminal.print(`  ${artifact.artifactId}  ${artifact.name}  (${artifact.status})`);
+    terminal.print(
+      `  ${artifact.artifactId}  ${artifact.name}  (${artifact.status})`,
+    );
   }
 
   terminal.print();
-  terminal.print(`Inspect one:  designflow artifacts ${executionId} <artifact-id>`);
+  terminal.print(
+    `Inspect one:  designflow artifacts ${executionId} <artifact-id>`,
+  );
 }
 
 export function renderDetail(
@@ -130,7 +152,10 @@ export function renderDetail(
 /** A generated-source-code artifact, distinguished so its files print readably. */
 interface SourceCodePayload {
   readonly framework: string;
-  readonly files: readonly { readonly path: string; readonly contents: string }[];
+  readonly files: readonly {
+    readonly path: string;
+    readonly contents: string;
+  }[];
 }
 
 function isSourceCodePayload(value: unknown): value is SourceCodePayload {
@@ -158,13 +183,18 @@ function renderPayload(terminal: Terminal, payload: unknown): void {
   if (isSourceCodePayload(payload)) {
     terminal.print(`Framework: ${payload.framework}`);
     terminal.print();
-    terminal.print(payload.files.length > 0 ? "Files:" : "(no files generated)");
+    terminal.print(
+      payload.files.length > 0 ? "Files:" : "(no files generated)",
+    );
 
     for (const file of payload.files) {
       terminal.print();
       terminal.print(file.path);
       terminal.print("-".repeat(Math.max(1, Math.min(file.path.length, 60))));
-      printBounded(terminal, file.contents.length > 0 ? file.contents : "(empty file)");
+      printBounded(
+        terminal,
+        file.contents.length > 0 ? file.contents : "(empty file)",
+      );
     }
 
     return;
@@ -178,6 +208,8 @@ function printBounded(terminal: Terminal, text: string): void {
   terminal.print(bounded.text);
 
   if (bounded.truncated) {
-    terminal.print(`… truncated (${bounded.totalLength - bounded.text.length} more characters)`);
+    terminal.print(
+      `… truncated (${bounded.totalLength - bounded.text.length} more characters)`,
+    );
   }
 }

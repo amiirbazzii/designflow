@@ -125,7 +125,10 @@ export function settings(
     readonly historyFile: string;
     readonly workerCount: number;
     readonly modelAssignments?: readonly SettingsModelAssignment[];
-    readonly sessionConfig?: { readonly maxClarificationTurns: number; readonly expirationDays: number };
+    readonly sessionConfig?: {
+      readonly maxClarificationTurns: number;
+      readonly expirationDays: number;
+    };
   },
 ): string {
   const lines = [
@@ -207,6 +210,10 @@ export function usage(): string {
     "  designflow workers         Show available AI workers (alias: list)",
     "  designflow workers <id>    Show one worker's detail",
     "  designflow run <worker>    Put a worker to work",
+    "  designflow feedback-loop --input <path>  Run an approved Stage 6 correction iteration",
+    "  designflow feedback-loop show <parent-id>  Inspect durable loop state",
+    "  designflow feedback-loop resume <parent-id>  Resume a durable loop",
+    "  designflow feedback-loop stop <parent-id>  Stop without new writes",
     "  designflow history         Show previous runs",
     "  designflow artifacts <id>  Inspect what a run produced or reused",
     "  designflow traces          Show what past AI decisions did",

@@ -33,3 +33,7 @@ export {
   MemoryProposalStateInvalidError,
 } from "./adapters";
 export type { FileArtifactStoreOptions, FileApprovalManagerOptions } from "./adapters";
+export {
+  FileFeedbackLoopParentStore,
+  FeedbackLoopParentAlreadyExistsError,
+} from "./feedback-loop-parent-store";

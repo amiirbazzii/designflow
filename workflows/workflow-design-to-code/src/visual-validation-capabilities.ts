@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import {
   DesignFlowError,
@@ -15,13 +17,71 @@ import {
   type Stage4ProjectImplementationContext,
   type ScreenshotEvidenceV1,
   type VisualFindingV1,
+  type VisualViewportV1,
+  stage6FailpointEnabled,
+  terminateAtStage6Failpoint,
 } from "@designflow/sdk";
 import { readArtifact, writeArtifact } from "./artifact-io";
-import { captureWithPreview, comparePngImages, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, storeImplementationEvidence, type PreviewRuntimeRecord, type BrowserRenderer, type SpatialComparison } from "./visual-validation-runtime";
+import { captureWithPreview, comparePngImages, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, storeImplementationEvidence, type PreviewRuntimeRecord, type BrowserRenderer, type SpatialComparison, type BrowserCapture } from "./visual-validation-runtime";
 import { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, domEvidenceCollectionSchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema, visualValidationSummarySchema, visualValidationWorkflowInputSchema, type VisualValidationReport } from "./visual-validation-types";
 
 const outputSchema = z.object({ artifactRef: z.object({ id: z.string(), type: z.string(), metadata: z.record(z.unknown()) }).strict() }).strict();
 type CapabilityOutput = z.infer<typeof outputSchema>;
+
+type PersistedCapture = {
+  viewport: VisualViewportV1;
+  capture: Omit<BrowserCapture, "bytes"> & { bytes: string };
+  payloadId?: string;
+};
+
+function captureProgressPath(stateDirectory: string, executionId: string): string {
+  const safeId = executionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 160);
+  const directory = join(stateDirectory, "stage6-capture-progress");
+  mkdirSync(directory, { recursive: true });
+  return join(directory, `${safeId}.json`);
+}
+
+function readCaptureProgress(path: string, executionId: string): PersistedCapture[] {
+  if (!existsSync(path)) return [];
+  try {
+    const raw = readFileSync(path, "utf8");
+    if (raw.length > 20_000_000) return [];
+    const value = JSON.parse(raw) as { executionId?: unknown; captures?: unknown };
+    if (value.executionId !== executionId || !Array.isArray(value.captures)) return [];
+    return value.captures.filter((item): item is PersistedCapture => {
+      if (typeof item !== "object" || item === null) return false;
+      const candidate = item as Record<string, unknown>;
+      const viewport = candidate.viewport;
+      const capture = candidate.capture;
+      return typeof candidate.payloadId === "string" &&
+        typeof viewport === "object" && viewport !== null &&
+        typeof capture === "object" && capture !== null &&
+        typeof (capture as Record<string, unknown>).bytes === "string";
+    });
+  } catch {
+    return [];
+  }
+}
+
+function writeCaptureProgress(path: string, executionId: string, captures: readonly PersistedCapture[]): void {
+  const temporary = `${path}.tmp`;
+  writeFileSync(temporary, JSON.stringify({ schemaVersion: "1", executionId, captures }), "utf8");
+  renameSync(temporary, path);
+}
+
+function restoreCaptures(captures: readonly PersistedCapture[]): { viewport: PersistedCapture["viewport"]; capture: BrowserCapture }[] {
+  return captures.map((item) => ({
+    viewport: item.viewport,
+    capture: { ...item.capture, bytes: new Uint8Array(Buffer.from(item.capture.bytes, "base64")) },
+  }));
+}
+
+function captureFailpoint(viewportId: string): "after_desktop_capture" | "after_tablet_capture" | "after_mobile_capture" | undefined {
+  if (viewportId === "desktop") return "after_desktop_capture";
+  if (viewportId === "tablet") return "after_tablet_capture";
+  if (viewportId === "mobile") return "after_mobile_capture";
+  return undefined;
+}
 
 function requiredAgentInvoker(context: CapabilityContext) {
   if (context.agents === undefined) throw new DesignFlowError("ERR_AGENT_INVOCATION_UNAVAILABLE", "Visual Validation Agent invocation is unavailable.", { capabilityId: context.capabilityId });
@@ -99,18 +159,63 @@ export const captureImplementationScreenshotsCapability: Capability<unknown, Cap
     const project = await readArtifact(context, "project-implementation-context", projectImplementationContextV1Schema);
     const prepared = await safePreviewTarget(project as Stage4ProjectImplementationContext, requested.readinessPath, input.preview.startupTimeoutMs);
     const target = prepared.target;
+    const progressPath = captureProgressPath(requested.stateDirectory, input.executionId);
+    const persisted = readCaptureProgress(progressPath, input.executionId);
+    const recovered = restoreCaptures(persisted);
+    const recoveredViewportIds = new Set(recovered.map((item) => item.viewport.id));
+    const recoveredAll = input.viewports.every((viewport) => recoveredViewportIds.has(viewport.id));
     let renderer = configuredRenderer(context);
-    if (renderer === undefined) renderer = await loadOptionalPlaywrightRenderer();
+    if (!recoveredAll && renderer === undefined) renderer = await loadOptionalPlaywrightRenderer();
     let runtime: PreviewRuntimeRecord;
-    let captures: readonly { viewport: (typeof input.viewports)[number]; capture: Awaited<ReturnType<BrowserRenderer["capture"]>> }[] = [];
+    let captures: readonly { viewport: (typeof input.viewports)[number]; capture: Awaited<ReturnType<BrowserRenderer["capture"]>> }[] = recovered;
+    let persistedCaptures = [...persisted];
     const warnings: string[] = [];
-    if (target === undefined) {
+    let previewFailpointRequested = false;
+    let failpointRequested: "after_desktop_capture" | "after_tablet_capture" | "after_mobile_capture" | undefined;
+    if (recoveredAll) {
+      const now = new Date().toISOString();
+      runtime = { status: "ready", startedAt: now, endedAt: now, stdout: "", stderr: "", warnings: ["Reused completed screenshot captures from the durable Stage 6 progress marker."] };
+    } else if (target === undefined) {
       const now = new Date().toISOString(); runtime = { status: "unavailable", startedAt: now, endedAt: now, stdout: "", stderr: "", warnings: [...prepared.warnings, "No safe project-declared preview script was found."] };
     } else if (renderer === undefined) {
       const now = new Date().toISOString(); runtime = { status: "unavailable", target, startedAt: now, endedAt: now, stdout: "", stderr: "", warnings: [...prepared.warnings, "renderer_unavailable: Playwright package or Chromium executable is missing."] }; warnings.push("renderer_unavailable: renderer missing");
     } else {
       try {
-        const result = await captureWithPreview(requested.project.rootPath, target, renderer, input.viewports ?? [], { fullPage: input.capture.fullPage ?? false, waitForFontsMs: input.capture.waitForFontsMs ?? 5_000, timeoutMs: input.capture.screenshotTimeoutMs ?? 15_000, maxImageBytes: input.capture.maxImageBytes ?? 10_000_000, maxImagePixels: input.capture.maxImagePixels ?? 8_000_000 }, context.signal);
+        const result = await captureWithPreview(requested.project.rootPath, target, renderer, input.viewports ?? [], {
+          fullPage: input.capture.fullPage ?? false,
+          waitForFontsMs: input.capture.waitForFontsMs ?? 5_000,
+          timeoutMs: input.capture.screenshotTimeoutMs ?? 15_000,
+          maxImageBytes: input.capture.maxImageBytes ?? 10_000_000,
+          maxImagePixels: input.capture.maxImagePixels ?? 8_000_000,
+          initialCaptures: recovered,
+          onPreviewReady: async () => {
+            if (!stage6FailpointEnabled("after_preview_ready")) return false;
+            previewFailpointRequested = true;
+            return true;
+          },
+          onCapture: async (viewport, capture) => {
+            const payload = Buffer.from(capture.bytes).toString("base64");
+            const stored = await context.artifactStore.save(payload, {
+              type: "visual-validation.screenshot",
+              sourceType: "implementation",
+              viewport: viewport.id,
+              progress: true,
+            });
+            const progressCapture: PersistedCapture = {
+              viewport,
+              capture: { ...capture, bytes: payload },
+              payloadId: stored.id,
+            };
+            persistedCaptures = [...persistedCaptures.filter((item) => item.viewport.id !== viewport.id), progressCapture];
+            writeCaptureProgress(progressPath, input.executionId, persistedCaptures);
+            const failpoint = captureFailpoint(viewport.id);
+            if (failpoint !== undefined && stage6FailpointEnabled(failpoint)) {
+              failpointRequested = failpoint;
+              return true;
+            }
+            return false;
+          },
+        }, context.signal);
         runtime = result.runtime;
         captures = result.captures as typeof captures;
         warnings.push(...runtime.warnings);
@@ -118,11 +223,15 @@ export const captureImplementationScreenshotsCapability: Capability<unknown, Cap
         runtime = { status: "failed", target, startedAt: new Date().toISOString(), endedAt: new Date().toISOString(), stdout: "", stderr: error instanceof Error ? error.message.slice(0, 2_000) : "capture failed", warnings: ["Browser capture failed."] };
       }
     }
-    const evidence = renderer !== undefined && captures.length > 0 ? await storeImplementationEvidence(context.artifactStore, captures.map((item) => ({ viewport: item.viewport, capture: item.capture }))) : [];
+    if (previewFailpointRequested)
+      terminateAtStage6Failpoint("after_preview_ready");
+    if (failpointRequested !== undefined) terminateAtStage6Failpoint(failpointRequested);
+    const evidence = captures.length > 0 ? await storeImplementationEvidence(context.artifactStore, captures.map((item) => ({ viewport: item.viewport, capture: item.capture }))) : [];
     const domEvidence = captures.map((item) => ({ viewport: item.viewport, evidence: item.capture.dom ?? { elements: [], overflow: [] } }));
     const collection = screenshotEvidenceCollectionSchema.parse({ schemaVersion: "1", evidence, domEvidence, warnings: [...warnings, ...evidence.flatMap((item) => item.warnings)] });
     const runtimeRef = await writeArtifact(context, { artifactId: VISUAL_VALIDATION_ARTIFACT_IDS.preview, artifactType: VISUAL_VALIDATION_ARTIFACT_TYPES.preview, name: "Preview Runtime Record", payload: runtimePayload(runtime), summary: { status: runtime.status, ...(target !== undefined ? { port: target.assignedPort } : {}), projectFilesChanged: false } });
     const evidenceRef = await writeArtifact(context, { artifactId: VISUAL_VALIDATION_ARTIFACT_IDS.implementationEvidence, artifactType: VISUAL_VALIDATION_ARTIFACT_TYPES.implementationEvidence, name: "Implementation Screenshot Evidence", payload: collection, summary: { count: evidence.length, viewportCount: input.viewports.length, runtimeStatus: runtime.status, projectFilesChanged: false } });
+    if (existsSync(progressPath)) unlinkSync(progressPath);
     void runtimeRef;
     return evidenceRef;
   },

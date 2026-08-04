@@ -27,6 +27,7 @@ import {
   type ExecutionRecord,
   type LifecycleEvent,
   type MemoryProposal,
+  type FeedbackLoopParentRecordV1,
   type ProjectContext,
   type ProjectIdentity,
 } from "@designflow/sdk";
@@ -97,6 +98,8 @@ export interface StoreDocument {
   agentMemories: Record<string, AgentMemory>;
   /** Memory an agent proposed, awaiting a person's approval or rejection. */
   memoryProposals: Record<string, MemoryProposal>;
+  /** Durable parent state for the controlled visual-correction loop. */
+  feedbackLoopParents: Record<string, FeedbackLoopParentRecordV1>;
 }
 
 function emptyDocument(): StoreDocument {
@@ -117,6 +120,7 @@ function emptyDocument(): StoreDocument {
     projectContexts: {},
     agentMemories: {},
     memoryProposals: {},
+    feedbackLoopParents: {},
   };
 }
 
@@ -140,6 +144,12 @@ export class FileStore {
   public mutate<T>(change: (document: StoreDocument) => T): T {
     this.acquireLock();
     try {
+      // Multiple durable repositories may share one FileStore path in the
+      // same CLI process (for example the workflow engine and the feedback
+      // loop parent coordinator). Reload while the lock is held so a writer
+      // never replaces a newer sibling mutation with its stale in-memory
+      // document.
+      this.document = this.read();
       const result = change(this.document);
       this.write();
       return result;

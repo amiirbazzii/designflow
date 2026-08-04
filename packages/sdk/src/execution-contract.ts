@@ -45,4 +45,6 @@ export interface ExecutionContract {
   execute(request: ExecutionRequest): Promise<ExecutionResult>;
   resume(workflowId: string): Promise<ExecutionResult>;
   resumeAfterApproval(approvalId: string): Promise<ExecutionResult>;
+  /** Resumes using the durable approval bound to an existing execution. */
+  resumeAfterConsumedApproval(executionId: string): Promise<ExecutionResult>;
 }

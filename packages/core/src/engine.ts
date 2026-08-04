@@ -39,6 +39,8 @@ import {
   type ExecutionPolicy,
   type PolicyEvaluator,
   DesignFlowError,
+  stage6FailpointForNode,
+  terminateAtStage6Failpoint,
 } from "@designflow/sdk";
 
 import type {
@@ -167,8 +169,21 @@ interface NodeApprovalCheckpoint {
 
 type ResumeState = CompositionCheckpoint | NodeApprovalCheckpoint;
 
+interface ProgressCheckpoint {
+  readonly kind: "progress";
+  readonly completedNodeIds: readonly string[];
+  readonly completedArtifacts: readonly ArtifactRef[];
+}
+
+type ResumableState = ResumeState | ProgressCheckpoint;
+
 function isNodeApprovalCheckpoint(value: unknown): value is NodeApprovalCheckpoint {
   return typeof value === "object" && value !== null && (value as { kind?: unknown }).kind === "node-approval";
+}
+
+function isProgressCheckpoint(value: unknown): value is ProgressCheckpoint {
+  return typeof value === "object" && value !== null &&
+    (value as { kind?: unknown }).kind === "progress";
 }
 
 export class ExecutionEngine {
@@ -226,7 +241,7 @@ export class ExecutionEngine {
   public async run(
     definition: WorkflowDefinition,
     context: ExecutionContext,
-    resumeState?: ResumeState,
+    resumeState?: ResumableState,
   ): Promise<ExecutionResult> {
     const executionId = context.runId;
 
@@ -543,10 +558,10 @@ export class ExecutionEngine {
     const checkpoint = await this.executionRepository.getLatestCheckpoint(
       targetRecord.executionId,
     );
-    const resumeState = readCompositionCheckpoint(checkpoint?.metadata) ??
+    const resumeState: ResumableState | undefined = readCompositionCheckpoint(checkpoint?.metadata) ??
       (isNodeApprovalCheckpoint(checkpoint?.metadata?.nodeApprovalCheckpoint)
         ? checkpoint?.metadata?.nodeApprovalCheckpoint
-        : undefined);
+        : readProgressCheckpoint(checkpoint?.metadata) ?? undefined);
 
     const abortController = new AbortController();
 
@@ -716,7 +731,7 @@ export class ExecutionEngine {
     context: ExecutionContext,
     executionId: string,
     workflowId: string,
-    resumeState?: ResumeState,
+    resumeState?: ResumableState,
     plannedSkips: ReadonlySet<string> = new Set(),
   ): Promise<ExecuteResult> {
     // Resuming replays the plan but re-executes nothing that already
@@ -724,7 +739,11 @@ export class ExecutionEngine {
     const alreadyCompleted = new Set(resumeState?.completedNodeIds ?? []);
     const restoredArtifacts = resumeState?.completedArtifacts ?? [];
 
-    const compositionState = resumeState !== undefined && !isNodeApprovalCheckpoint(resumeState) ? resumeState : undefined;
+    const compositionState = resumeState !== undefined &&
+      !isNodeApprovalCheckpoint(resumeState) &&
+      !isProgressCheckpoint(resumeState)
+      ? resumeState
+      : undefined;
     const resumedChildren = new Map<string, PendingChildExecution>(
       (compositionState?.pendingNodes ?? []).map((pending) => [
         pending.nodeId,
@@ -945,6 +964,21 @@ export class ExecutionEngine {
           }
         }
       }
+
+      // Persist completed capability nodes after their outputs have been
+      // registered. A process exit after this checkpoint resumes from the
+      // next node instead of replaying a completed side effect.
+      await this.recordCheckpoint(workflowId, executionId, "executing", {
+        currentLayer: layerIndex + 1,
+        totalLayers: plan.layers.length,
+        completedNodeIds: executedSteps,
+        completedArtifacts: candidateArtifacts,
+      });
+      const completedFailpoint = [...activeNodes]
+        .map((nodeId) => stage6FailpointForNode(workflowId, nodeId))
+        .find((value): value is NonNullable<typeof value> => value !== undefined);
+      if (completedFailpoint !== undefined)
+        terminateAtStage6Failpoint(completedFailpoint);
     }
 
     return {
@@ -1601,4 +1635,22 @@ export class ExecutionEngine {
       committed: true,
     };
   }
+}
+
+function readProgressCheckpoint(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): ProgressCheckpoint | null {
+  if (metadata === undefined) return null;
+  const completedNodeIds = z.array(z.string().min(1)).safeParse(
+    metadata.completedNodeIds,
+  );
+  const completedArtifacts = z.array(artifactRefSchema).safeParse(
+    metadata.completedArtifacts,
+  );
+  if (!completedNodeIds.success || !completedArtifacts.success) return null;
+  return {
+    kind: "progress",
+    completedNodeIds: completedNodeIds.data,
+    completedArtifacts: completedArtifacts.data,
+  };
 }

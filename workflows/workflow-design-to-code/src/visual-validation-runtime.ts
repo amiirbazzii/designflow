@@ -75,6 +75,11 @@ export interface BrowserRenderer {
   close(): Promise<void>;
 }
 
+export type CaptureProgressCallback = (
+  viewport: VisualViewportV1,
+  capture: BrowserCapture,
+) => Promise<boolean>;
+
 export interface SpatialComparison {
   readonly algorithmVersion: "png-rgba-pixel-diff-v1";
   readonly threshold: number;
@@ -475,7 +480,7 @@ export async function captureWithPreview(
   target: PreviewTargetV1,
   renderer: BrowserRenderer,
   viewports: readonly VisualViewportV1[],
-  options: { fullPage: boolean; waitForFontsMs: number; timeoutMs: number; maxImageBytes: number; maxImagePixels: number },
+  options: { fullPage: boolean; waitForFontsMs: number; timeoutMs: number; maxImageBytes: number; maxImagePixels: number; initialCaptures?: readonly { viewport: VisualViewportV1; capture: BrowserCapture }[]; onPreviewReady?: () => Promise<boolean>; onCapture?: CaptureProgressCallback },
   signal: AbortSignal,
 ): Promise<{ runtime: PreviewRuntimeRecord; captures: readonly { viewport: VisualViewportV1; capture: BrowserCapture }[] }> {
   const runtime = new PreviewRuntime();
@@ -485,8 +490,17 @@ export async function captureWithPreview(
     return { runtime: record, captures: [] };
   }
   try {
-    const captures: { viewport: VisualViewportV1; capture: BrowserCapture }[] = [];
-    for (const viewport of viewports) captures.push({ viewport, capture: await renderer.capture(target.readinessUrl, viewport, options, signal) });
+    const captures: { viewport: VisualViewportV1; capture: BrowserCapture }[] = [...(options.initialCaptures ?? [])];
+    if (await options.onPreviewReady?.())
+      return { runtime: { ...record, endedAt: new Date().toISOString() }, captures };
+    const completed = new Set(captures.map((item) => item.viewport.id));
+    for (const viewport of viewports) {
+      if (completed.has(viewport.id)) continue;
+      const capture = await renderer.capture(target.readinessUrl, viewport, options, signal);
+      captures.push({ viewport, capture });
+      completed.add(viewport.id);
+      if (await options.onCapture?.(viewport, capture)) break;
+    }
     return { runtime: { ...record, endedAt: new Date().toISOString() }, captures };
   } finally {
     await renderer.close();

@@ -90,6 +90,12 @@ class StubExecutionContract implements ExecutionContract {
     this.resumedApprovals.push(approvalId);
     return this.afterApproval;
   }
+
+  public async resumeAfterConsumedApproval(
+    _executionId: string,
+  ): Promise<ExecutionResult> {
+    return this.afterApproval;
+  }
 }
 
 class StubApprovalManager implements ApprovalManager {

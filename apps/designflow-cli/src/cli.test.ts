@@ -1482,6 +1482,9 @@ describe("execution boundary", () => {
     // Public WorkflowRunner methods only.
     const allowed = new Set([
       "start",
+      "resumeLatest",
+      "resumeApproved",
+      "resumeConsumedApproval",
       "status",
       "progress",
       "explain",

@@ -77,7 +77,7 @@ async function main(): Promise<number> {
 
   // Reading stdin for a non-interactive command would block on a pipe that
   // never closes, so only the prompting paths drain it.
-  const needsInput = argv.length === 0 || argv[0] === "run" || argv[0] === "answer";
+  const needsInput = argv.length === 0 || argv[0] === "run" || argv[0] === "answer" || argv[0] === "feedback-loop";
 
   const { terminal, close } =
     needsInput && process.stdin.isTTY !== true

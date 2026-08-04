@@ -132,6 +132,50 @@ export class WorkflowRunner {
     });
   }
 
+  /**
+   * Resumes the latest persisted checkpoint for a workflow.
+   *
+   * This is intentionally separate from approval resume: a parent
+   * coordinator uses it only after it has loaded a durable child execution
+   * that was interrupted while running. The caller must compare the returned
+   * execution id with its persisted child binding before accepting the result.
+   */
+  public async resumeLatest(workflowId: string): Promise<ExecutionHandle> {
+    const result = await this.executionContract.resume(workflowId);
+    return executionHandleSchema.parse({
+      executionId: result.executionId,
+      workflowId: result.workflowId,
+      workflowName: await this.nameOf(result.workflowId),
+      state: toState(result.status),
+    });
+  }
+
+  /** Resumes a previously approved node without creating a new approval. */
+  public async resumeApproved(approvalId: string): Promise<ExecutionHandle> {
+    const result = await this.executionContract.resumeAfterApproval(approvalId);
+    return executionHandleSchema.parse({
+      executionId: result.executionId,
+      workflowId: result.workflowId,
+      workflowName: await this.nameOf(result.workflowId),
+      state: toState(result.status),
+    });
+  }
+
+  /** Resumes an interrupted child using its persisted approval binding. */
+  public async resumeConsumedApproval(
+    executionId: string,
+  ): Promise<ExecutionHandle> {
+    const result = await this.executionContract.resumeAfterConsumedApproval(
+      executionId,
+    );
+    return executionHandleSchema.parse({
+      executionId: result.executionId,
+      workflowId: result.workflowId,
+      workflowName: await this.nameOf(result.workflowId),
+      state: toState(result.status),
+    });
+  }
+
   // ── Watch ─────────────────────────────────────────────────────
 
   /** Answers "what is happening right now?". */

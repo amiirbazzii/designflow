@@ -15,9 +15,19 @@ import { artifactsCommand } from "./commands/artifacts";
 import { tracesCommand } from "./commands/traces";
 import { interactiveCommand } from "./commands/interactive";
 import { settingsCommand } from "./commands/settings";
-import { answerCommand, cancelCommand, sessionsCommand } from "./commands/sessions";
+import {
+  answerCommand,
+  cancelCommand,
+  sessionsCommand,
+} from "./commands/sessions";
 import { cleanupCommand } from "./commands/cleanup";
-import { projectsAddCommand, projectsCommand, projectsInspectCommand, projectsShowCommand } from "./commands/projects";
+import { feedbackLoopCommand } from "./commands/feedback-loop";
+import {
+  projectsAddCommand,
+  projectsCommand,
+  projectsInspectCommand,
+  projectsShowCommand,
+} from "./commands/projects";
 import {
   memoryAddCommand,
   memoryApproveCommand,
@@ -26,7 +36,10 @@ import {
   memoryRejectCommand,
   memoryRevokeCommand,
 } from "./commands/memory";
-import { memoryProposalStatusSchema, sessionStatusSchema } from "@designflow/sdk";
+import {
+  memoryProposalStatusSchema,
+  sessionStatusSchema,
+} from "@designflow/sdk";
 import { CLI_VERSION } from "./version";
 
 export { CLI_VERSION };
@@ -75,6 +88,23 @@ export async function dispatch(
   }
 
   switch (command) {
+    case "feedback-loop": {
+      const parentCommand =
+        rest[0] === "show" || rest[0] === "resume" || rest[0] === "stop"
+          ? rest[0]
+          : undefined;
+      if (parentCommand !== undefined)
+        return feedbackLoopCommand(
+          context,
+          terminal,
+          undefined,
+          parentCommand,
+          rest[1],
+        );
+      const inputFlag = rest.indexOf("--input");
+      const inputPath = inputFlag >= 0 ? rest[inputFlag + 1] : undefined;
+      return feedbackLoopCommand(context, terminal, inputPath);
+    }
     // `list` is the original name, kept as an alias.
     case "list":
     case "workers": {
@@ -129,7 +159,11 @@ export async function dispatch(
         return sessionsCommand(context, terminal, { status: parsed.data });
       }
 
-      return sessionsCommand(context, terminal, first !== undefined ? { sessionId: first } : undefined);
+      return sessionsCommand(
+        context,
+        terminal,
+        first !== undefined ? { sessionId: first } : undefined,
+      );
     }
 
     case "answer": {
@@ -140,7 +174,9 @@ export async function dispatch(
         terminal.print();
         terminal.print("  designflow answer <session-id>");
         terminal.print();
-        terminal.print("Run  designflow sessions  to see who is waiting on you.");
+        terminal.print(
+          "Run  designflow sessions  to see who is waiting on you.",
+        );
         return 1;
       }
 
@@ -166,16 +202,15 @@ export async function dispatch(
       if (name === undefined) {
         terminal.print("Which worker? For example:");
         terminal.print();
-        terminal.print(
-          `  ${runExample(context.workers.listWorkers()[0]?.id)}`,
-        );
+        terminal.print(`  ${runExample(context.workers.listWorkers()[0]?.id)}`);
         terminal.print();
         terminal.print("Run  designflow list  to see who is available.");
         return 1;
       }
 
       const projectFlagIndex = rest.indexOf("--project");
-      const projectId = projectFlagIndex >= 0 ? rest[projectFlagIndex + 1] : undefined;
+      const projectId =
+        projectFlagIndex >= 0 ? rest[projectFlagIndex + 1] : undefined;
 
       return runCommand(
         context,
@@ -207,7 +242,9 @@ export async function dispatch(
           terminal.print();
           terminal.print(`  designflow projects ${sub} <project-id>`);
           terminal.print();
-          terminal.print("Run  designflow projects  to see the ones that do exist.");
+          terminal.print(
+            "Run  designflow projects  to see the ones that do exist.",
+          );
           return 1;
         }
 
@@ -239,7 +276,11 @@ export async function dispatch(
         const key = readFlag(rest, "--key");
         const value = readFlag(rest, "--value");
         return memoryAddCommand(context, terminal, {
-          ...(scope === "project" || scope === "project-agent" || scope === "agent" ? { scope } : {}),
+          ...(scope === "project" ||
+          scope === "project-agent" ||
+          scope === "agent"
+            ? { scope }
+            : {}),
           ...(projectId !== undefined ? { projectId } : {}),
           ...(agentName !== undefined ? { agentName } : {}),
           ...(key !== undefined ? { key } : {}),
@@ -260,9 +301,15 @@ export async function dispatch(
 
       if (sub === "proposals") {
         const statusFlag = readFlag(rest, "--status");
-        const parsed = statusFlag !== undefined ? memoryProposalStatusSchema.safeParse(statusFlag) : undefined;
+        const parsed =
+          statusFlag !== undefined
+            ? memoryProposalStatusSchema.safeParse(statusFlag)
+            : undefined;
 
-        if (statusFlag !== undefined && (parsed === undefined || !parsed.success)) {
+        if (
+          statusFlag !== undefined &&
+          (parsed === undefined || !parsed.success)
+        ) {
           terminal.print(`Unknown status: ${statusFlag}`);
           return 1;
         }
@@ -281,7 +328,9 @@ export async function dispatch(
           terminal.print();
           terminal.print(`  designflow memory ${sub} <proposal-id>`);
           terminal.print();
-          terminal.print("Run  designflow memory proposals  to see what is waiting.");
+          terminal.print(
+            "Run  designflow memory proposals  to see what is waiting.",
+          );
           return 1;
         }
 

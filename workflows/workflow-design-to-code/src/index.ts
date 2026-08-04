@@ -93,6 +93,16 @@ export { implementationCapabilities } from "./implementation-capabilities";
 export { implementationSideEffectCapabilities } from "./implementation-side-effect-capabilities";
 export { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema } from "./implementation-types";
 export type { ImplementationWorkflowInput } from "./implementation-types";
+
+// ── Stage 6: controlled visual correction feedback loop (internal) ──
+export { designToCodeFeedbackLoopWorkflowPackage, designToCodeFeedbackLoopApprovalPolicy } from "./feedback-loop-manifest";
+export { designToCodeFeedbackLoopWorkflow } from "./feedback-loop-workflow";
+export { feedbackLoopCapabilities, directStage5RevalidationCapability } from "./feedback-loop-capabilities";
+export { selectActionableFindings, selectedFindingRecords } from "./feedback-loop-selection";
+export { validateCorrectionAgentOutput, correctionToImplementationProposal } from "./feedback-loop-utils";
+export { FEEDBACK_LOOP_ARTIFACT_IDS, FEEDBACK_LOOP_ARTIFACT_TYPES, feedbackLoopWorkflowInputSchema, actionableFindingSelectionSchema, proposedCorrectionChangesSchema } from "./feedback-loop-types";
+export type { FeedbackLoopWorkflowInput, FeedbackLoopInput, ActionableFindingSelection, ProposedCorrectionChanges } from "./feedback-loop-types";
+export { inspectRegisteredProject, projectRootIdentity } from "@designflow/capability-implementation";
 export { visualValidationCapabilities } from "./visual-validation-capabilities";
 export { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, visualValidationWorkflowInputSchema, visualValidationSummarySchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema } from "./visual-validation-types";
 export type { VisualValidationWorkflowInput, VisualValidationSummaryV1, PreviewRuntimeRecordV1, VisualValidationInput, VisualValidationReport, VisualComparisonMetricsV1 } from "./visual-validation-types";
