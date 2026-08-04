@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-08-04T13:24:04.430Z",
+  "target": ".",
+  "depth": "deep",
+  "type": "all",
+  "summary": {
+    "critical": 0,
+    "high": 1,
+    "medium": 0,
+    "low": 0,
+    "total": 1
+  },
+  "findings": [
+    {
+      "severity": "HIGH",
+      "type": "Hardcoded Secret",
+      "location": "packages/product/src/artifact-inspection.test.ts:24",
+      "description": "Hardcoded Password"
+    }
+  ]
+}

@@ -4,6 +4,9 @@ import {
   generatedImplementationSchema,
   modelProfileSchema,
   visualValidationReportSchema,
+  visualValidationAgentOutputV1Schema,
+  visualValidationInputV1Schema,
+  visualFindingV1Schema,
   type AgentInvocationRequest,
   type AgentManifest,
   type GeneratedImplementation,
@@ -19,12 +22,9 @@ import { SpecializedAgentOutputInvalidError } from "../errors";
  * The Visual Validation Agent.
  *
  * Compares a Figma source and a generated implementation and produces a
- * Visual Validation Report. In this stage there is no screenshot capture and
- * no image comparison — both strategies work from the same structural
- * signals already produced upstream (which files were proposed, whether any
- * are empty), not from pixels. Wiring in real screenshots and real image
- * comparison is explicitly the next stage's work; this stage only
- * establishes the validated contract and the invocation path.
+ * Visual Validation Report. The original structural-only invocation remains
+ * compatible with the Stage 2 foundation workflow. Stage 5 adds a versioned
+ * input boundary whose findings are evidence-bound before this agent sees them.
  */
 
 const MODEL_PROFILE_ID = "visual-validation-default";
@@ -35,12 +35,10 @@ export const visualValidationAgentManifest: AgentManifest = agentManifestSchema.
   description: "Evaluates a generated implementation against its design specification",
   version: "0.1.0",
   instructions:
-    "Evaluate the supplied generated implementation for structural completeness " +
-    "against the design it was generated from. Report an overall score, whether " +
-    "it passes the configured threshold, and any discrepancy found, each with a " +
-    "concrete recommendation. Never claim a screenshot was captured or compared " +
-    "— none exists in this stage.",
-  allowedWorkflows: ["design-to-code-agent-foundation"],
+    "Interpret only supplied deterministic visual evidence. Every finding must " +
+    "reference supplied evidence ids. Never invent screenshots, measurements, " +
+    "URLs, or project changes.",
+  allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-implementation"],
   allowedTools: [],
   modelProfileId: MODEL_PROFILE_ID,
   metadata: { author: "DesignFlow" },
@@ -63,6 +61,22 @@ export type VisualValidationStrategy = (
   context: SpecializedAgentContext,
   manifest: AgentManifest,
 ) => Promise<VisualValidationReport>;
+
+function readStage5Input(request: AgentInvocationRequest): { input: ReturnType<typeof visualValidationInputV1Schema.parse>; findings: ReturnType<typeof visualFindingV1Schema.parse>[]; evidenceIds: Set<string> } | undefined {
+  const raw = request.input as Record<string, unknown> | undefined;
+  if (raw?.visualValidationInput === undefined) return undefined;
+  const input = visualValidationInputV1Schema.safeParse(raw.visualValidationInput);
+  if (!input.success) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", input.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
+  const rawFindings = Array.isArray(raw.deterministicFindings) ? raw.deterministicFindings : [];
+  const findings = rawFindings.map((finding, index) => {
+    const parsed = visualFindingV1Schema.safeParse(finding);
+    if (!parsed.success) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`deterministicFindings[${index}] is invalid`]);
+    return parsed.data;
+  });
+  const evidenceIds = new Set(Array.isArray(raw.evidenceIds) ? raw.evidenceIds.filter((id): id is string => typeof id === "string") : []);
+  for (const finding of findings) for (const evidenceId of finding.evidenceReferences) if (!evidenceIds.has(evidenceId) && !evidenceId.startsWith("specification:")) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`finding ${finding.findingId} references unknown evidence ${evidenceId}`]);
+  return { input: input.data, findings, evidenceIds };
+}
 
 function readInput(request: AgentInvocationRequest): VisualValidationInput {
   const raw = request.input as Partial<VisualValidationInput> | undefined;
@@ -100,6 +114,13 @@ export const deterministicVisualValidationStrategy: VisualValidationStrategy = a
   _context,
   manifest,
 ) => {
+  const stage5 = readStage5Input(request);
+  if (stage5 !== undefined) {
+    return visualValidationAgentOutputV1Schema.parse({
+      findings: stage5.findings,
+      interpretation: stage5.findings.length === 0 ? "Deterministic checks found no material differences." : `Deterministic checks found ${stage5.findings.length} finding(s).`,
+    }) as unknown as VisualValidationReport;
+  }
   const { generatedImplementation, threshold, attempt } = readInput(request);
 
   const emptyFiles = generatedImplementation.files.filter(
@@ -132,6 +153,19 @@ export const modelVisualValidationStrategy: VisualValidationStrategy = async (
   context,
   manifest,
 ) => {
+  const stage5 = readStage5Input(request);
+  if (stage5 !== undefined) {
+    const result = await context.model.generate({
+      messages: [{ role: "system", content: manifest.instructions }, { role: "user", content: JSON.stringify({ input: stage5.input, deterministicFindings: stage5.findings }) }],
+      responseSchema: { type: "object" },
+      maxOutputTokens: 1_000,
+    });
+    if (result.type === "failure") throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`model call failed: ${result.code}`]);
+    const parsed = visualValidationAgentOutputV1Schema.safeParse(result.output);
+    if (!parsed.success) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
+    for (const finding of parsed.data.findings) for (const evidenceId of finding.evidenceReferences) if (!stage5.evidenceIds.has(evidenceId) && !evidenceId.startsWith("specification:")) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`model finding ${finding.findingId} references unknown evidence ${evidenceId}`]);
+    return visualValidationAgentOutputV1Schema.parse({ findings: [...stage5.findings, ...parsed.data.findings], interpretation: parsed.data.interpretation }) as unknown as VisualValidationReport;
+  }
   const { generatedImplementation, threshold, attempt } = readInput(request);
 
   const result = await context.model.generate({

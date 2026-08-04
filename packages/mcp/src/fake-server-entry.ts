@@ -53,6 +53,7 @@ rl.on("line", (line) => {
 
   if (method === "tools/call") {
     const toolName = (params as { name?: string } | undefined)?.name ?? "";
+    const toolArguments = (params as { arguments?: unknown } | undefined)?.arguments;
 
     if (fixtures.unknownTools.includes(toolName)) {
       replyError(id, -32601, `Method not found: ${toolName}`);
@@ -71,7 +72,11 @@ rl.on("line", (line) => {
         return;
       }
 
-      reply(id, { content: fixtures.toolResults[toolName] ?? null });
+      const configured = fixtures.toolResults[toolName] as unknown;
+      const byNodeId = configured && typeof configured === "object" && !Array.isArray(configured) ? (configured as { byNodeId?: unknown }).byNodeId : undefined;
+      const nodeId = toolArguments && typeof toolArguments === "object" ? (toolArguments as { nodeId?: unknown }).nodeId : undefined;
+      const selected = byNodeId && typeof nodeId === "string" && typeof byNodeId === "object" && !Array.isArray(byNodeId) ? (byNodeId as Record<string, unknown>)[nodeId] : undefined;
+      reply(id, { content: selected ?? configured ?? null });
     };
 
     if (delay !== undefined && delay > 0) {

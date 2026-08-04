@@ -5,7 +5,7 @@ export const implementationWorkflowInputSchema = z.object({
   project: z.object({ id: z.string().min(1), name: z.string().min(1), rootPath: z.string().min(1) }).strict(),
   stateDirectory: z.string().min(1),
   captureScreenshots: z.boolean().default(true), refreshFigmaSource: z.boolean().default(false), allowFixtureNames: z.boolean().default(false),
-  figmaAgentVersion: z.string().min(1), figmaAgentModelProfileId: z.string().min(1).optional(), implementationAgentVersion: z.string().min(1), implementationAgentModelProfileId: z.string().min(1).default("implementation-default"),
+  figmaAgentVersion: z.string().min(1), figmaAgentModelProfileId: z.string().min(1).optional(), implementationAgentVersion: z.string().min(1), implementationAgentModelProfileId: z.string().min(1).default("implementation-default"), visualValidationAgentVersion: z.string().min(1).default("0.1.0"), visualValidationAgentModelProfileId: z.string().min(1).optional(),
 }).strict();
 export type ImplementationWorkflowInput = z.infer<typeof implementationWorkflowInputSchema>;
 export const IMPLEMENTATION_ARTIFACT_IDS = { projectContext: "project-implementation-context", mapping: "design-system-mapping", agentOutput: "implementation-agent-output", plan: "implementation-plan", proposal: "proposed-file-changes", approval: "implementation-approval", snapshot: "project-snapshot", application: "file-application-result", validation: "implementation-validation", generated: "generated-implementation", summary: "stage-4-summary" } as const;

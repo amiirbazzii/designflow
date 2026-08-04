@@ -93,6 +93,10 @@ export { implementationCapabilities } from "./implementation-capabilities";
 export { implementationSideEffectCapabilities } from "./implementation-side-effect-capabilities";
 export { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema } from "./implementation-types";
 export type { ImplementationWorkflowInput } from "./implementation-types";
+export { visualValidationCapabilities } from "./visual-validation-capabilities";
+export { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, visualValidationWorkflowInputSchema, visualValidationSummarySchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema } from "./visual-validation-types";
+export type { VisualValidationWorkflowInput, VisualValidationSummaryV1, PreviewRuntimeRecordV1, VisualValidationInput, VisualValidationReport, VisualComparisonMetricsV1 } from "./visual-validation-types";
+export { DEFAULT_VISUAL_VIEWPORTS, PreviewRuntime, captureWithPreview, compareScreenshotBytes, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, RendererUnavailableError } from "./visual-validation-runtime";
 export type {
   FigmaSpecificationInput,
   Stage3Summary,

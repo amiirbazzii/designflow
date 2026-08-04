@@ -4,6 +4,7 @@ import {
   designToCodeFigmaSpecificationWorkflowPackage,
   designToCodeImplementationWorkflowPackage,
   sharedFigmaSpecificationCapabilities,
+  visualValidationCapabilities,
 } from "@designflow/workflow-design-to-code";
 import { registerExperimentalDesignToCodeWorkflows } from "./services/cli-runner";
 
@@ -28,7 +29,7 @@ describe("experimental workflow composition", () => {
   test("Stage 4 alone enables the shared Figma path", () => {
     const { registry, workflows } = compose({ figmaMcpEnabled: true, implementationEnabled: true });
     expect(workflows.has(designToCodeImplementationWorkflowPackage.id)).toBe(true);
-    expect(registry.list()).toHaveLength(15);
+    expect(registry.list()).toHaveLength(15 + visualValidationCapabilities.length);
   });
 
   test("both stages start and shared Figma capabilities register exactly once", () => {

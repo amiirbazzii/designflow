@@ -62,7 +62,7 @@ export async function validateProject(rawContext: unknown, root: string, options
   const commands = [context.commands.format, context.commands.typecheck, context.commands.lint, context.commands.build, context.commands.test];
 
   for (const [index, command] of commands.entries()) {
-    const name = CHECK_NAMES[index]!;
+    const name = CHECK_NAMES[index]! as "format" | "typecheck" | "lint" | "build" | "test";
     if (!command) {
       checks.push({ name, status: "unavailable", required: false, summary: "No safe project-declared command was found." });
       continue;
@@ -76,7 +76,7 @@ export async function validateProject(rawContext: unknown, root: string, options
           ? "Command completed successfully."
           : output || "Command failed.";
       checks.push({
-        name: command.name,
+        name,
         status: result.code === 0 ? "passed" : "failed",
         required: command.required,
         command: [command.executable, ...command.args],
@@ -90,7 +90,7 @@ export async function validateProject(rawContext: unknown, root: string, options
       });
     } catch (error) {
       if (error instanceof ImplementationError) throw error;
-      checks.push({ name: command.name, status: "failed", required: command.required, command: [command.executable, ...command.args], commandReference: [command.executable, ...command.args].join(" "), summary: "Command could not be started." });
+      checks.push({ name, status: "failed", required: command.required, command: [command.executable, ...command.args], commandReference: [command.executable, ...command.args].join(" "), summary: "Command could not be started." });
     }
   }
   return checks;

@@ -374,6 +374,38 @@ export {
 } from "./design-engineer-contracts";
 
 export {
+  VISUAL_VALIDATION_SCHEMA_VERSION,
+  visualViewportV1Schema,
+  safePreviewCommandV1Schema,
+  previewConfigurationV1Schema,
+  captureConfigurationV1Schema,
+  visualValidationInputV1Schema,
+  previewTargetV1Schema,
+  screenshotEvidenceV1Schema,
+  visualFindingCategoryV1Schema,
+  visualFindingSeverityV1Schema,
+  visualFindingStatusV1Schema,
+  visualFindingV1Schema,
+  viewportValidationResultV1Schema,
+  visualValidationReportV1Schema,
+  visualValidationAgentOutputV1Schema,
+} from "./visual-validation-contracts";
+
+export type {
+  VisualViewportV1,
+  SafePreviewCommandV1,
+  PreviewConfigurationV1,
+  CaptureConfigurationV1,
+  VisualValidationInputV1,
+  PreviewTargetV1,
+  ScreenshotEvidenceV1,
+  VisualFindingV1,
+  ViewportValidationResultV1,
+  VisualValidationReportV1,
+  VisualValidationAgentOutputV1,
+} from "./visual-validation-contracts";
+
+export {
   STAGE4_SCHEMA_VERSION,
   projectInspectionWarningSchema,
   tokenSourceReferenceSchema,

@@ -49,6 +49,8 @@ import {
   modelFigmaSpecificationStrategy,
   implementationDefaultModelProfile,
   modelImplementationStrategy,
+  visualValidationDefaultModelProfile,
+  modelVisualValidationStrategy,
 } from "@designflow/agents";
 import { McpRuntime } from "@designflow/mcp";
 import { ToolRuntime, createToolRegistry, createProjectInspector } from "@designflow/tools";
@@ -95,6 +97,7 @@ import {
   storeStage3SummaryCapability,
   implementationCapabilities,
   implementationSideEffectCapabilities,
+  visualValidationCapabilities,
   designToCodeImplementationApprovalPolicy,
 } from "@designflow/workflow-design-to-code";
 import {
@@ -137,7 +140,7 @@ export function registerExperimentalDesignToCodeWorkflows(options: {
     options.workflows.set(designToCodeFigmaSpecificationWorkflowPackage.id, designToCodeFigmaSpecificationWorkflowPackage);
   }
   if (options.implementationEnabled) {
-    for (const capability of [...implementationCapabilities, ...implementationSideEffectCapabilities]) {
+    for (const capability of [...implementationCapabilities, ...implementationSideEffectCapabilities, ...visualValidationCapabilities]) {
       options.registry.register(capability);
     }
     options.workflows.set(designToCodeImplementationWorkflowPackage.id, designToCodeImplementationWorkflowPackage);
@@ -200,6 +203,7 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   // a live Figma MCP connection is on.
   figmaSpecificationDefaultModelProfile,
   implementationDefaultModelProfile,
+  visualValidationDefaultModelProfile,
 ];
 
 export interface WorkflowInfo {
@@ -482,6 +486,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
         registry: createSpecializedAgentRegistry({
           figmaSpecificationStrategy: modelModeRequested ? modelFigmaSpecificationStrategy : undefined,
           implementationStrategy: implementationEnabled && modelModeRequested ? modelImplementationStrategy : undefined,
+          visualValidationStrategy: modelModeRequested ? modelVisualValidationStrategy : undefined,
         }),
       })
     : undefined;

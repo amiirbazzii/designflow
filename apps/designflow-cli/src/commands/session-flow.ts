@@ -208,7 +208,23 @@ async function report(
   if (overview.state === "ready") {
     const implementation = artifacts.some((artifact) => artifact.artifactId === "file-application-result");
     terminal.print(implementation ? "Project files were updated after your approval." : "No files were written to your project.");
-    if (implementation) terminal.print("Visual comparison has not been performed yet.");
+    const visual = artifacts.find((artifact) => artifact.artifactId === "stage-5-summary");
+    if (visual !== undefined) {
+      const detail = await context.artifactInspection.getPayload(visual);
+      const payload = detail.payload as { overallStatus?: string; viewportCount?: number; critical?: number; major?: number; minor?: number; referenceMode?: string };
+      terminal.print();
+      terminal.print("Visual validation finished.");
+      terminal.print(`Status: ${payload.overallStatus ?? "unknown"}`);
+      terminal.print(`Viewports: ${payload.viewportCount ?? 0}`);
+      terminal.print(`Critical: ${payload.critical ?? 0}`);
+      terminal.print(`Major: ${payload.major ?? 0}`);
+      terminal.print(`Minor: ${payload.minor ?? 0}`);
+      terminal.print(`Reference mode: ${payload.referenceMode ?? "unknown"}`);
+      terminal.print("No project files were changed during visual validation.");
+      terminal.print("Automatic corrections have not been applied.");
+    } else if (implementation) {
+      terminal.print("Visual comparison has not been performed yet.");
+    }
     if (implementation) terminal.print("A rollback snapshot is available.");
   }
 

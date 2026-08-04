@@ -32,7 +32,7 @@ export const existingComponentReferenceSchema = z.object({
 export type ExistingComponentReference = z.infer<typeof existingComponentReferenceSchema>;
 
 export const safeProjectCommandSchema = z.object({
-  name: z.enum(["format", "typecheck", "lint", "build", "test"]), executable: z.string().min(1), args: z.array(z.string()).default([]),
+  name: z.enum(["format", "typecheck", "lint", "build", "test", "preview"]), scriptName: z.string().min(1).optional(), executable: z.string().min(1), args: z.array(z.string()).default([]),
   source: z.enum(["package-script", "project-config", "designflow-settings"]), required: z.boolean(),
 }).strict();
 export type SafeProjectCommand = z.infer<typeof safeProjectCommandSchema>;
@@ -45,7 +45,7 @@ export const projectImplementationContextV1Schema = z.object({
   styling: z.object({ strategies: z.array(z.string().min(1)), primaryStrategy: z.string().optional(), evidence: z.array(z.string().min(1)) }).strict(),
   designSystem: z.object({ tokenSources: z.array(tokenSourceReferenceSchema), tokens: z.array(normalizedProjectTokenSchema), componentSources: z.array(componentSourceReferenceSchema), components: z.array(existingComponentReferenceSchema) }).strict(),
   conventions: z.object({ naming: z.array(z.string()), fileLayout: z.array(z.string()), exports: z.array(z.string()), props: z.array(z.string()), testing: z.array(z.string()), accessibility: z.array(z.string()) }).strict(),
-  commands: z.object({ format: safeProjectCommandSchema.optional(), typecheck: safeProjectCommandSchema.optional(), lint: safeProjectCommandSchema.optional(), build: safeProjectCommandSchema.optional(), test: safeProjectCommandSchema.optional() }).strict(),
+  commands: z.object({ format: safeProjectCommandSchema.optional(), typecheck: safeProjectCommandSchema.optional(), lint: safeProjectCommandSchema.optional(), build: safeProjectCommandSchema.optional(), test: safeProjectCommandSchema.optional(), preview: safeProjectCommandSchema.optional() }).strict(),
   warnings: z.array(projectInspectionWarningSchema),
 }).strict();
 export type ProjectImplementationContext = z.infer<typeof projectImplementationContextV1Schema>;
@@ -65,7 +65,7 @@ export const implementationPlanV1Schema = z.object({
 }).strict();
 export type ImplementationPlanV1 = z.infer<typeof implementationPlanV1Schema>;
 
-export const safeProjectCommandReferenceSchema = z.object({ name: z.enum(["format", "typecheck", "lint", "build", "test"]), required: z.boolean() }).strict();
+export const safeProjectCommandReferenceSchema = z.object({ name: z.enum(["format", "typecheck", "lint", "build", "test", "preview"]), required: z.boolean() }).strict();
 export const proposedFileChangesSchema = z.object({
   schemaVersion: z.literal("1"), projectId: z.string().min(1), baseProjectFingerprint: z.string().min(1), files: z.array(z.object({ path: z.string().min(1), action: z.enum(["create", "modify", "delete"]), content: z.string().optional(), patch: z.string().optional(), expectedBaseHash: z.string().min(1).optional(), reason: z.string().min(1), relatedDesignNodeIds: z.array(z.string().min(1)) }).strict()), packageChanges: z.array(z.object({ packageName: z.string().min(1), action: z.enum(["add", "remove", "update"]), requestedVersion: z.string().min(1).optional(), reason: z.string().min(1) }).strict()), commandsRequested: z.array(safeProjectCommandReferenceSchema), assumptions: z.array(z.string()), unresolvedItems: z.array(z.string()),
 }).strict();

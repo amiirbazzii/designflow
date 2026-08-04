@@ -1,0 +1,33 @@
+{
+  "agents": {
+    "stage5-research-installed-cli": {
+      "agentId": "stage5-research-installed-cli",
+      "agentType": "researcher",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "inherit"
+      },
+      "createdAt": "2026-08-04T12:49:52.605Z",
+      "domain": "stage5",
+      "model": "inherit",
+      "modelRoutedBy": "explicit"
+    },
+    "stage5-research-suite": {
+      "agentId": "stage5-research-suite",
+      "agentType": "tester",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "inherit"
+      },
+      "createdAt": "2026-08-04T12:49:54.954Z",
+      "domain": "stage5",
+      "model": "inherit",
+      "modelRoutedBy": "explicit"
+    }
+  },
+  "version": "3.0.0"
+}

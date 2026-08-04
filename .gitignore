@@ -27,3 +27,8 @@ dist/
 .claude-flow/data/
 .claude-flow/logs/
 .claude-flow/sessions/
+
+# Codex local configuration
+.codex/
+# Claude Flow runtime data
+# Environment variables

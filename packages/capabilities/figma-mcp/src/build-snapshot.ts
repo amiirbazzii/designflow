@@ -145,7 +145,10 @@ export async function buildFigmaSourceSnapshot(
 
       screenshots.push({
         nodeId: frame.id,
-        artifactId: stored.artifactId,
+        // The snapshot carries the payload address consumed by Stage 5.
+        // `stored.artifactId` is the caller's logical label; `payloadId` is
+        // the content-addressed id understood by ArtifactStore.get().
+        artifactId: stored.payloadId,
         format: stored.format,
         ...(stored.width !== undefined ? { width: stored.width } : {}),
         ...(stored.height !== undefined ? { height: stored.height } : {}),
