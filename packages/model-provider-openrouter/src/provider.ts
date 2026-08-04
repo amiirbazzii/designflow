@@ -3,6 +3,7 @@ import {
   DesignFlowError,
   type ModelProvider,
   type ModelProviderContext,
+  type ModelProviderCapabilities,
   type ModelRequest,
   type ModelResponse,
 } from "@designflow/sdk";
@@ -56,6 +57,10 @@ export interface OpenRouterProviderOptions {
 
 export class OpenRouterProvider implements ModelProvider {
   public readonly id = "openrouter";
+
+  public capabilities(_model: string): ModelProviderCapabilities {
+    return { jsonMode: true, strictJsonSchema: true, toolCalling: false, maxOutputTokens: 32_000 };
+  }
 
   private readonly apiKey: string;
   private readonly endpoint: string;

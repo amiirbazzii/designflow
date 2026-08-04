@@ -22,6 +22,7 @@ import {
 } from "./commands/sessions";
 import { cleanupCommand } from "./commands/cleanup";
 import { feedbackLoopCommand } from "./commands/feedback-loop";
+import { doctorCommand } from "./commands/doctor";
 import {
   projectsAddCommand,
   projectsCommand,
@@ -88,6 +89,8 @@ export async function dispatch(
   }
 
   switch (command) {
+    case "doctor":
+      return doctorCommand(context, terminal, { json: rest.includes("--json") });
     case "feedback-loop": {
       const parentCommand =
         rest[0] === "show" || rest[0] === "resume" || rest[0] === "stop"

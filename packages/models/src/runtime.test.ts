@@ -109,6 +109,20 @@ describe("an authorised call", () => {
   });
 });
 
+describe("structured-output capability preflight", () => {
+  test("refuses an incompatible provider before making a network call", async () => {
+    let called = false;
+    const runtime = runtimeFor({
+      id: "openrouter",
+      capabilities: () => ({ jsonMode: true, strictJsonSchema: false, toolCalling: false, maxOutputTokens: 32_000 }),
+      generate: async () => { called = true; return {} as ModelResult; },
+    });
+    const failure = expectFailure(await runtime.generate(CALL));
+    expect(failure.code).toBe("ERR_MODEL_OUTPUT_UNSUPPORTED");
+    expect(called).toBe(false);
+  });
+});
+
 // ── Profile and provider resolution fail safely ─────────────────
 
 describe("resolution", () => {

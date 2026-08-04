@@ -115,6 +115,7 @@ you can revisit them later:
 ```bash
 designflow history             # see previous runs
 designflow history <worker>    # previous runs for one worker
+designflow doctor              # check local runtime and state health
 ```
 
 ## Artifacts, reuse and current limitations
@@ -161,6 +162,10 @@ none of that is user-facing yet: you still see one worker, one workflow, and
 the same output described above. See
 [`docs/adr/20260803-design-engineer-specialized-agent-foundation.md`](docs/adr/20260803-design-engineer-specialized-agent-foundation.md)
 for what exists today and what remains unimplemented.
+
+For production-readiness status, local diagnostics, Git-aware write safety,
+state compatibility, and the remaining real-integration release gates, see
+[`docs/STAGE_7_PRODUCTION_READINESS.md`](docs/STAGE_7_PRODUCTION_READINESS.md).
 
 **Experimental: real Figma retrieval (opt-in, off by default).** A separate,
 internal path can connect to a real, configured Figma MCP server, retrieve

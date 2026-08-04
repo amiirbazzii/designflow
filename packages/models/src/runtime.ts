@@ -137,6 +137,17 @@ export class ModelRuntime implements ModelInvoker {
         : {}),
     };
 
+    const capabilities = provider.capabilities?.(profile.model);
+    if (capabilities !== undefined) {
+      const requestedTokens = wireRequest.maxOutputTokens ?? 0;
+      if (!capabilities.jsonMode || !capabilities.strictJsonSchema || capabilities.maxOutputTokens < requestedTokens) {
+        return fail(
+          "ERR_MODEL_OUTPUT_UNSUPPORTED",
+          "The configured model cannot satisfy DesignFlow's required strict structured output contract.",
+        );
+      }
+    }
+
     return this.execute(provider, wireRequest, validated, profile.timeoutMs, startedAt, fail);
   }
 

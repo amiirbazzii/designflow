@@ -1,6 +1,8 @@
 // packages/storage-file/src/index.ts
 export { FileStore, hashContent, canonicalize } from "./store";
 export type { StoreDocument, StoredPayload } from "./store";
+export { CURRENT_STORE_SCHEMA_VERSION, inspectStateFile } from "./state-health";
+export type { StateHealthReport, StateHealthStatus } from "./state-health";
 
 export {
   FileExecutionRepository,

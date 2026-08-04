@@ -40,6 +40,7 @@ export const MODEL_ERROR_CODES = [
   "ERR_MODEL_PROVIDER_FAILED",
   "ERR_MODEL_CONFIGURATION_INVALID",
   "ERR_MODEL_API_KEY_MISSING",
+  "ERR_MODEL_OUTPUT_UNSUPPORTED",
 ] as const;
 
 export type ModelErrorCode = (typeof MODEL_ERROR_CODES)[number];

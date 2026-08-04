@@ -5,9 +5,11 @@ import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { proposedFileChangesSchema, stage6FailpointEnabled, terminateAtStage6Failpoint, type ProposedFileChanges } from "@designflow/sdk";
 import { ImplementationError } from "./errors";
 import { projectFileHash, validateProposedFileChanges } from "./proposal";
+import { assertGitSafeForWrite, inspectGitSafety, type GitSafetyReport } from "./git-safety";
+import { acquireProjectWriteLock } from "./project-write-lock";
 
 export interface SnapshotEntry { path: string; existed: boolean; content?: string; hash?: string; postWriteHash?: string; mode?: number; }
-export interface ProjectSnapshot { runId: string; projectId: string; proposalHash: string; rootIdentity: string; createdAt: string; entries: SnapshotEntry[]; }
+export interface ProjectSnapshot { runId: string; projectId: string; proposalHash: string; rootIdentity: string; createdAt: string; entries: SnapshotEntry[]; gitSafety?: GitSafetyReport; }
 export interface ApplicationResult { runId: string; projectId: string; proposalHash: string; changedFiles: string[]; createdFiles: string[]; modifiedFiles: string[]; snapshot: ProjectSnapshot; }
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const rootIdentityHash = (root: string) => createHash("sha256").update(realpathSync(root)).digest("hex");
@@ -33,23 +35,27 @@ export async function createProjectSnapshot(projectId: string, root: string, pro
   assertStateDirectory(root, stateDirectory);
   const entries: SnapshotEntry[] = [];
   for (const file of proposal.files) { const path = target(root, file.path); if (await exists(path)) { const data = await readFile(path); const mode = (await stat(path)).mode; entries.push({ path: file.path, existed: true, content: data.toString("base64"), hash: createHash("sha256").update(data.toString("base64")).digest("hex"), mode }); } else entries.push({ path: file.path, existed: false }); }
-  const snapshot = { runId: randomUUID(), projectId, proposalHash: hash(proposal), rootIdentity, createdAt: new Date().toISOString(), entries };
+  const gitSafety = inspectGitSafety(root, proposal.files.map((file) => file.path));
+  assertGitSafeForWrite(gitSafety);
+  const snapshot = { runId: randomUUID(), projectId, proposalHash: hash(proposal), rootIdentity, createdAt: new Date().toISOString(), entries, ...(gitSafety.isRepository ? { gitSafety } : {}) };
   await mkdir(stateDirectory, { recursive: true }); await persistSnapshot(stateDirectory, snapshot);
   return snapshot;
 }
 
 export async function applyProjectFileChanges(projectId: string, root: string, proposal: ProposedFileChanges, rootIdentity: string, stateDirectory: string, existingSnapshot?: ProjectSnapshot): Promise<ApplicationResult> {
-  const validated = validateProposedFileChanges(proposedFileChangesSchema.parse(proposal), root); const proposalHash = hash(validated); const persistedSnapshot = await findResumableSnapshot(projectId, rootIdentity, proposalHash, stateDirectory); const snapshot = persistedSnapshot ?? existingSnapshot ?? await createProjectSnapshot(projectId, root, validated, rootIdentity, stateDirectory); if (snapshot.projectId !== projectId || snapshot.rootIdentity !== rootIdentity || snapshot.proposalHash !== proposalHash) throw new ImplementationError("ERR_SNAPSHOT_PROJECT_MISMATCH", "The snapshot does not belong to this project and proposal."); const changedFiles = validated.files.map((file) => file.path);
+  const validated = validateProposedFileChanges(proposedFileChangesSchema.parse(proposal), root); const proposalHash = hash(validated); const lock = await acquireProjectWriteLock(projectId, rootIdentity, stateDirectory); let snapshot: ProjectSnapshot | undefined;
   try {
-    for (const [index, file] of validated.files.entries()) {
-      if (file.action === "delete") throw new ImplementationError("ERR_PROPOSAL_INVALID", "Deletion is disabled by default in Stage 4.");
-      const path = target(root, file.path); const current = projectFileHash(path); const entry = snapshot.entries.find((candidate) => candidate.path === file.path); if (entry?.postWriteHash !== undefined && current === entry.postWriteHash) continue; if (file.action === "modify" && current !== file.expectedBaseHash) throw new ImplementationError("ERR_TARGET_FILE_CHANGED", `Target changed since proposal creation: ${file.path}`); if (file.action === "create" && current !== undefined) throw new ImplementationError("ERR_TARGET_FILE_CHANGED", `Target already exists: ${file.path}`);
-      const temp = `${path}.designflow-${snapshot.runId}.tmp`; await mkdir(dirname(path), { recursive: true }); await writeFile(temp, file.content ?? "", "utf8"); await rename(temp, path); const writtenHash = projectFileHash(path); if (entry && writtenHash !== undefined) { entry.postWriteHash = writtenHash; await persistSnapshot(stateDirectory, snapshot); }
-      if (index === 0 && stage6FailpointEnabled("after_first_correction_write"))
-        terminateAtStage6Failpoint("after_first_correction_write");
-    }
-  } catch (error) { await rollbackProjectSnapshot(root, snapshot); throw error; }
-  return { runId: snapshot.runId, projectId, proposalHash: snapshot.proposalHash, changedFiles, createdFiles: validated.files.filter((f) => f.action === "create").map((f) => f.path), modifiedFiles: validated.files.filter((f) => f.action === "modify").map((f) => f.path), snapshot };
+    const persistedSnapshot = await findResumableSnapshot(projectId, rootIdentity, proposalHash, stateDirectory); snapshot = persistedSnapshot ?? existingSnapshot ?? await createProjectSnapshot(projectId, root, validated, rootIdentity, stateDirectory); if (snapshot.projectId !== projectId || snapshot.rootIdentity !== rootIdentity || snapshot.proposalHash !== proposalHash) throw new ImplementationError("ERR_SNAPSHOT_PROJECT_MISMATCH", "The snapshot does not belong to this project and proposal.");
+    try {
+      for (const [index, file] of validated.files.entries()) {
+        if (file.action === "delete") throw new ImplementationError("ERR_PROPOSAL_INVALID", "Deletion is disabled by default in Stage 4.");
+        const path = target(root, file.path); const current = projectFileHash(path); const entry = snapshot.entries.find((candidate) => candidate.path === file.path); if (entry?.postWriteHash !== undefined && current === entry.postWriteHash) continue; if (file.action === "modify" && current !== file.expectedBaseHash) throw new ImplementationError("ERR_TARGET_FILE_CHANGED", `Target changed since proposal creation: ${file.path}`); if (file.action === "create" && current !== undefined) throw new ImplementationError("ERR_TARGET_FILE_CHANGED", `Target already exists: ${file.path}`);
+        const temp = `${path}.designflow-${snapshot.runId}.tmp`; await mkdir(dirname(path), { recursive: true }); await writeFile(temp, file.content ?? "", "utf8"); await rename(temp, path); const writtenHash = projectFileHash(path); if (entry && writtenHash !== undefined) { entry.postWriteHash = writtenHash; await persistSnapshot(stateDirectory, snapshot); }
+        if (index === 0 && stage6FailpointEnabled("after_first_correction_write")) terminateAtStage6Failpoint("after_first_correction_write");
+      }
+    } catch (error) { await rollbackProjectSnapshot(root, snapshot); throw error; }
+    return { runId: snapshot.runId, projectId, proposalHash: snapshot.proposalHash, changedFiles: validated.files.map((file) => file.path), createdFiles: validated.files.filter((f) => f.action === "create").map((f) => f.path), modifiedFiles: validated.files.filter((f) => f.action === "modify").map((f) => f.path), snapshot };
+  } finally { await lock.release(); }
 }
 
 export async function rollbackProjectSnapshot(root: string, snapshot: ProjectSnapshot, options: { force?: boolean } = {}): Promise<void> {

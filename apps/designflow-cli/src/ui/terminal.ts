@@ -214,6 +214,7 @@ export function usage(): string {
     "  designflow feedback-loop show <parent-id>  Inspect durable loop state",
     "  designflow feedback-loop resume <parent-id>  Resume a durable loop",
     "  designflow feedback-loop stop <parent-id>  Stop without new writes",
+    "  designflow doctor [--json]  Check local runtime and state health",
     "  designflow history         Show previous runs",
     "  designflow artifacts <id>  Inspect what a run produced or reused",
     "  designflow traces          Show what past AI decisions did",

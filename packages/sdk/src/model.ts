@@ -297,6 +297,13 @@ export interface ModelProviderContext {
   readonly metadata: Readonly<Record<string, unknown>>;
 }
 
+export interface ModelProviderCapabilities {
+  readonly jsonMode: boolean;
+  readonly strictJsonSchema: boolean;
+  readonly toolCalling: boolean;
+  readonly maxOutputTokens: number;
+}
+
 /**
  * A concrete LLM gateway or vendor — OpenRouter, and later a direct
  * Anthropic, OpenAI, Google or local provider.
@@ -308,6 +315,9 @@ export interface ModelProviderContext {
  */
 export interface ModelProvider {
   readonly id: string;
+
+  /** Optional preflight facts for providers with model-specific capabilities. */
+  capabilities?(model: string): ModelProviderCapabilities;
 
   generate(request: ModelRequest, context: ModelProviderContext): Promise<ModelResponse>;
 }

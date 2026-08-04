@@ -5,6 +5,8 @@ export { mapDesignSystem } from "./mapping";
 export { validateProposedFileChanges, projectFileHash } from "./proposal";
 export { createApprovalBinding, verifyApproval, proposalHash } from "./approval";
 export { applyProjectFileChanges, createProjectSnapshot, rollbackProjectSnapshot, projectRootIdentity } from "./application";
+export { assertGitSafeForWrite, inspectGitSafety, type GitSafetyReport } from "./git-safety";
+export { acquireProjectWriteLock, type ProjectWriteLock, type ProjectWriteLockRecord } from "./project-write-lock";
 export type { SnapshotEntry, ProjectSnapshot, ApplicationResult } from "./application";
 export { validateProject, makeValidationReport } from "./validation";
 export type { ValidationOptions } from "./validation";

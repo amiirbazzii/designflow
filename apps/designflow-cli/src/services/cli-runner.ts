@@ -89,6 +89,8 @@ import {
   FileSessionStore,
   FileStore,
   FileTraceStore,
+  inspectStateFile,
+  type StateHealthReport,
 } from "@designflow/storage-file";
 
 import {
@@ -314,6 +316,10 @@ export interface CliContext {
   readonly home: HomeState;
   /** Where this context's runs are stored. Shown by `settings`. */
   readonly databasePath: string;
+  /** True when the composition root found a non-empty live provider credential. */
+  readonly modelProviderConfigured: boolean;
+  /** Read-only state health inspection, kept behind the composition boundary. */
+  readonly inspectState: () => StateHealthReport;
   /** True when an explicit project can select the experimental implementation path. */
   readonly experimentalImplementationEnabled: boolean;
   /**
@@ -936,6 +942,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     workers,
     home,
     databasePath,
+    modelProviderConfigured: modelModeRequested && openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0,
+    inspectState: () => inspectStateFile(databasePath),
     experimentalImplementationEnabled: implementationEnabled,
     traces,
     artifactInspection,

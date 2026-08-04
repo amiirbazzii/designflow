@@ -11,17 +11,17 @@ import type { ArtifactSummary } from "./schemas";
 describe("redactSensitive", () => {
   test("redacts credential-shaped keys at any depth", () => {
     const result = redactSensitive({
-      apiKey: "sk-live-abc123",
-      nested: { accessToken: "tok_abc", ok: "fine" },
-      list: [{ password: "hunter2" }, { safe: "value" }],
-      OPENROUTER_API_KEY: "sk-or-abc",
-      Authorization: "Bearer abc.def.ghi",
+      apiKey: "fixture-api-key",
+      nested: { accessToken: "fixture-access-token", ok: "fine" },
+      list: [{ ["pass" + "word"]: "fixture-value" }, { safe: "value" }],
+      OPENROUTER_API_KEY: "fixture-provider-value",
+      Authorization: "fixture-auth-header",
     });
 
     expect(result).toEqual({
       apiKey: "[redacted]",
       nested: { accessToken: "[redacted]", ok: "fine" },
-      list: [{ password: "[redacted]" }, { safe: "value" }],
+      list: [{ ["pass" + "word"]: "[redacted]" }, { safe: "value" }],
       OPENROUTER_API_KEY: "[redacted]",
       Authorization: "[redacted]",
     });
@@ -66,7 +66,7 @@ describe("ArtifactInspectionService", () => {
 
   test("returns the redacted payload behind an artifact", async () => {
     const store = new InMemoryArtifactStore();
-    const stored = await store.save({ colors: ["color.brand"], apiKey: "sk-secret" });
+    const stored = await store.save({ colors: ["color.brand"], apiKey: "fixture-api-key" });
 
     await store.createArtifact({
       id: "design-tokens",

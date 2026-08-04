@@ -251,6 +251,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "OpenRouter is not configured for that worker's AI.",
     suggestion: "Nothing was started. Set OPENROUTER_API_KEY and try again.",
   },
+  ERR_MODEL_OUTPUT_UNSUPPORTED: {
+    problem: "That worker's configured AI cannot return the structured output DesignFlow requires.",
+    suggestion: "Nothing was started. Check the model configuration and try again with strict JSON Schema support.",
+  },
   ERR_AGENT_MODEL_BUDGET_EXCEEDED: {
     problem: "That worker asked its AI for too much at once and was stopped.",
     suggestion: NOTHING_STARTED_REPORT,
@@ -323,6 +327,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
   ERR_PROJECT_CONFLICT: {
     problem: "That project was changed by something else at the same time.",
     suggestion: TRY_AGAIN,
+  },
+  ERR_PROJECT_WRITE_LOCKED: {
+    problem: "Another DesignFlow process is applying changes to that project.",
+    suggestion: "Wait for the other run to finish, then resume this run.",
   },
   ERR_PROJECT_PATH_INVALID: {
     problem: "That project path could not be used.",

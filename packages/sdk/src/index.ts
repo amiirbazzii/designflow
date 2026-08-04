@@ -131,6 +131,7 @@ export type {
   ModelResponse,
   ModelResult,
   ModelProviderContext,
+  ModelProviderCapabilities,
   ModelProvider,
   ModelInvocationRequest,
   ModelInvoker,

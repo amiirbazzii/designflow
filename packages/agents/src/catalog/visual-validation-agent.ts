@@ -17,6 +17,8 @@ import {
 } from "@designflow/sdk";
 
 import { SpecializedAgentOutputInvalidError } from "../errors";
+import { visualValidationReportResponseSchema, visualValidationResponseSchema } from "../model-response-schemas";
+import { generateValidatedModelOutput } from "../model-structured-output";
 
 /**
  * The Visual Validation Agent.
@@ -155,20 +157,24 @@ export const modelVisualValidationStrategy: VisualValidationStrategy = async (
 ) => {
   const stage5 = readStage5Input(request);
   if (stage5 !== undefined) {
-    const result = await context.model.generate({
+    return generateValidatedModelOutput({
+      agentId: "visual-validation-agent",
+      context,
       messages: [{ role: "system", content: manifest.instructions }, { role: "user", content: JSON.stringify({ input: stage5.input, deterministicFindings: stage5.findings }) }],
-      responseSchema: { type: "object" },
+      responseSchema: visualValidationResponseSchema,
       maxOutputTokens: 1_000,
+      validate: (output) => {
+        const parsed = visualValidationAgentOutputV1Schema.parse(output);
+        for (const finding of parsed.findings) for (const evidenceId of finding.evidenceReferences) if (!stage5.evidenceIds.has(evidenceId) && !evidenceId.startsWith("specification:")) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`model finding ${finding.findingId} references unknown evidence ${evidenceId}`]);
+        return visualValidationAgentOutputV1Schema.parse({ findings: [...stage5.findings, ...parsed.findings], interpretation: parsed.interpretation }) as unknown as VisualValidationReport;
+      },
     });
-    if (result.type === "failure") throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`model call failed: ${result.code}`]);
-    const parsed = visualValidationAgentOutputV1Schema.safeParse(result.output);
-    if (!parsed.success) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
-    for (const finding of parsed.data.findings) for (const evidenceId of finding.evidenceReferences) if (!stage5.evidenceIds.has(evidenceId) && !evidenceId.startsWith("specification:")) throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [`model finding ${finding.findingId} references unknown evidence ${evidenceId}`]);
-    return visualValidationAgentOutputV1Schema.parse({ findings: [...stage5.findings, ...parsed.data.findings], interpretation: parsed.data.interpretation }) as unknown as VisualValidationReport;
   }
   const { generatedImplementation, threshold, attempt } = readInput(request);
 
-  const result = await context.model.generate({
+  return generateValidatedModelOutput({
+    agentId: "visual-validation-agent",
+    context,
     messages: [
       { role: "system", content: manifest.instructions },
       {
@@ -179,19 +185,9 @@ export const modelVisualValidationStrategy: VisualValidationStrategy = async (
           `Generated implementation:\n${JSON.stringify(generatedImplementation)}`,
       },
     ],
-    responseSchema: { type: "object" },
+    responseSchema: visualValidationReportResponseSchema,
     maxOutputTokens: 1000,
-  });
-
-  if (result.type === "failure") {
-    throw new SpecializedAgentOutputInvalidError("visual-validation-agent", [
-      `model call failed: ${result.code}`,
-    ]);
-  }
-
-  return validate(manifest.version, {
-    ...(typeof result.output === "object" && result.output !== null ? result.output : {}),
-    validationAttempt: attempt,
+    validate: (output) => validate(manifest.version, { ...(typeof output === "object" && output !== null ? output : {}), validationAttempt: attempt }),
   });
 };
 

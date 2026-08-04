@@ -8,7 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -54,6 +54,7 @@ function projectHash(root: string): string {
 const contexts: CliContext[] = [];
 const homes: string[] = [];
 const roots: string[] = [];
+const repoRoot = resolve(import.meta.dir, "..", "..", "..");
 
 function installedCli(): string {
   const packdir = mkdtempSync(join(tmpdir(), "designflow-stage6-pack-"));
@@ -67,7 +68,7 @@ function installedCli(): string {
       packdir,
       "--silent",
     ],
-    { cwd: process.cwd(), encoding: "utf8" },
+    { cwd: repoRoot, encoding: "utf8" },
   );
   if (packed.status !== 0) throw new Error(packed.stderr);
   const tarball = packed.stdout.trim().split("\n").at(-1);
@@ -82,7 +83,7 @@ function installedCli(): string {
       "--no-audit",
       "--no-fund",
     ],
-    { cwd: process.cwd(), encoding: "utf8", stdio: "pipe" },
+    { cwd: repoRoot, encoding: "utf8", stdio: "pipe" },
   );
   if (installed.status !== 0) throw new Error(installed.stderr);
   return join(prefix, "node_modules", ".bin", "designflow");
@@ -95,7 +96,7 @@ function runInstalled(
   answers: readonly string[],
 ): { status: number | null; output: string } {
   const result = spawnSync(binary, ["feedback-loop", "--input", inputPath], {
-    cwd: process.cwd(),
+    cwd: repoRoot,
     env: { ...process.env, DESIGNFLOW_HOME: home },
     input: `${answers.join("\n")}\n`,
     encoding: "utf8",
@@ -115,7 +116,7 @@ function runInstalledCommand(
   failpoint?: string,
 ): { status: number | null; output: string } {
   const result = spawnSync(binary, [...args], {
-    cwd: process.cwd(),
+    cwd: repoRoot,
     env: {
       ...process.env,
       DESIGNFLOW_HOME: home,
@@ -957,13 +958,13 @@ describe("installed CLI Stage 6 boundary", () => {
     { timeout: 600_000 },
     async () => {
       const rebuilt = spawnSync("bun", ["run", "build", "--force"], {
-        cwd: process.cwd(),
+        cwd: repoRoot,
         encoding: "utf8",
         stdio: "pipe",
       });
       if (rebuilt.status !== 0) throw new Error(rebuilt.stderr);
       const cliRebuilt = spawnSync("bun", ["run", "build"], {
-        cwd: join(process.cwd(), "apps", "designflow-cli"),
+        cwd: join(repoRoot, "apps", "designflow-cli"),
         encoding: "utf8",
         stdio: "pipe",
       });
@@ -980,14 +981,14 @@ describe("installed CLI Stage 6 boundary", () => {
           "--no-audit",
           "--no-fund",
         ],
-        { cwd: process.cwd(), encoding: "utf8", stdio: "pipe" },
+        { cwd: repoRoot, encoding: "utf8", stdio: "pipe" },
       );
       if (playwrightInstall.status !== 0)
         throw new Error(playwrightInstall.stderr);
       const browserInstall = spawnSync(
         join(prefix, "node_modules", ".bin", "playwright"),
         ["install", "chromium"],
-        { cwd: process.cwd(), encoding: "utf8", stdio: "pipe" },
+        { cwd: repoRoot, encoding: "utf8", stdio: "pipe" },
       );
       if (browserInstall.status !== 0) throw new Error(browserInstall.stderr);
 
@@ -1211,13 +1212,13 @@ describe("installed CLI Stage 6 boundary", () => {
     { timeout: 180_000 },
     async () => {
       const rebuilt = spawnSync("bun", ["run", "build", "--force"], {
-        cwd: process.cwd(),
+        cwd: repoRoot,
         encoding: "utf8",
         stdio: "pipe",
       });
       if (rebuilt.status !== 0) throw new Error(rebuilt.stderr);
       const cliRebuilt = spawnSync("bun", ["run", "build"], {
-        cwd: join(process.cwd(), "apps", "designflow-cli"),
+        cwd: join(repoRoot, "apps", "designflow-cli"),
         encoding: "utf8",
         stdio: "pipe",
       });

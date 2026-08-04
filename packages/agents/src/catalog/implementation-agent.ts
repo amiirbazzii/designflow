@@ -17,6 +17,8 @@ import {
 } from "@designflow/sdk";
 
 import { SpecializedAgentOutputInvalidError } from "../errors";
+import { implementationResponseSchema } from "../model-response-schemas";
+import { generateValidatedModelOutput } from "../model-structured-output";
 
 /**
  * The Implementation Agent.
@@ -168,7 +170,9 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
 ) => {
   const { designSpecification, projectContext, designSystemMapping } = readInput(request);
 
-  const result = await context.model.generate({
+  return generateValidatedModelOutput({
+    agentId: "implementation-agent",
+    context,
     messages: [
       { role: "system", content: manifest.instructions },
       {
@@ -180,17 +184,10 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
           `\n\nDesign-system mapping:\n${JSON.stringify(designSystemMapping ?? null)}`,
       },
     ],
-    responseSchema: { type: "object" },
+    responseSchema: implementationResponseSchema,
     maxOutputTokens: 1600,
+    validate: (output) => validate(manifest.version, output),
   });
-
-  if (result.type === "failure") {
-    throw new SpecializedAgentOutputInvalidError("implementation-agent", [
-      `model call failed: ${result.code}`,
-    ]);
-  }
-
-  return validate(manifest.version, result.output);
 };
 
 class ImplementationAgent implements SpecializedAgent {

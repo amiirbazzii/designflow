@@ -15,6 +15,8 @@ import {
   type CorrectionContextV1,
 } from "@designflow/sdk";
 import { SpecializedAgentOutputInvalidError } from "../errors";
+import { visualCorrectionResponseSchema } from "../model-response-schemas";
+import { generateValidatedModelOutput } from "../model-structured-output";
 
 const MODEL_PROFILE_ID = "visual-correction-default";
 
@@ -80,11 +82,21 @@ export const deterministicVisualCorrectionStrategy: VisualCorrectionStrategy = a
 
 export const modelVisualCorrectionStrategy: VisualCorrectionStrategy = async (request, context, manifest) => {
   const input = readContext(request);
-  const result = await context.model.generate({ messages: [{ role: "system", content: manifest.instructions }, { role: "user", content: JSON.stringify({ objective: request.objective, correctionContext: input }) }], responseSchema: { type: "object" }, maxOutputTokens: 2_000 });
-  if (result.type === "failure") throw new SpecializedAgentOutputInvalidError(VISUAL_CORRECTION_AGENT_ID, [`model call failed: ${result.code}`]);
-  const parsed = correctionAgentOutputV1Schema.safeParse(result.output);
-  if (!parsed.success) throw new SpecializedAgentOutputInvalidError(VISUAL_CORRECTION_AGENT_ID, parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
-  return correctionAgentOutputV1Schema.parse({ ...parsed.data, plan: { ...parsed.data.plan, agent: { ...parsed.data.plan.agent, id: VISUAL_CORRECTION_AGENT_ID, version: manifest.version, modelProfileId: manifest.modelProfileId ?? MODEL_PROFILE_ID } } });
+  return generateValidatedModelOutput({
+    agentId: VISUAL_CORRECTION_AGENT_ID,
+    context,
+    messages: [{ role: "system", content: manifest.instructions }, { role: "user", content: JSON.stringify({ objective: request.objective, correctionContext: input }) }],
+    responseSchema: visualCorrectionResponseSchema,
+    maxOutputTokens: 2_000,
+    validate: (output) => {
+      const parsed = correctionAgentOutputV1Schema.parse(output);
+      for (const change of parsed.changes) {
+        for (const findingId of change.findingIds) if (!input.selectedFindings.some((finding) => finding.findingId === findingId)) throw new SpecializedAgentOutputInvalidError(VISUAL_CORRECTION_AGENT_ID, [`unknown finding ${findingId}`]);
+        for (const evidenceId of change.evidenceIds) if (!input.evidenceReferences.some((evidence) => evidence.artifactId === evidenceId)) throw new SpecializedAgentOutputInvalidError(VISUAL_CORRECTION_AGENT_ID, [`unknown evidence ${evidenceId}`]);
+      }
+      return correctionAgentOutputV1Schema.parse({ ...parsed, plan: { ...parsed.plan, agent: { ...parsed.plan.agent, id: VISUAL_CORRECTION_AGENT_ID, version: manifest.version, modelProfileId: manifest.modelProfileId ?? MODEL_PROFILE_ID } } });
+    },
+  });
 };
 
 class VisualCorrectionAgent implements SpecializedAgent {

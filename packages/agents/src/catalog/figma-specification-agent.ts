@@ -17,6 +17,8 @@ import {
 } from "@designflow/sdk";
 
 import { SpecializedAgentOutputInvalidError } from "../errors";
+import { figmaSpecificationResponseSchema } from "../model-response-schemas";
+import { generateValidatedModelOutput } from "../model-structured-output";
 
 /**
  * The Figma Specification Agent.
@@ -298,7 +300,9 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
 ) => {
   const snapshot = readSnapshot(request);
 
-  const result = await context.model.generate({
+  return generateValidatedModelOutput({
+    agentId: "figma-specification-agent",
+    context,
     messages: [
       { role: "system", content: manifest.instructions },
       {
@@ -308,17 +312,10 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
           `Figma source snapshot (authoritative — do not invent anything beyond it):\n${JSON.stringify(snapshot)}`,
       },
     ],
-    responseSchema: { type: "object" },
+    responseSchema: figmaSpecificationResponseSchema,
     maxOutputTokens: 2000,
+    validate: (output) => validate(manifest.version, output, snapshot),
   });
-
-  if (result.type === "failure") {
-    throw new SpecializedAgentOutputInvalidError("figma-specification-agent", [
-      `model call failed: ${result.code}`,
-    ]);
-  }
-
-  return validate(manifest.version, result.output, snapshot);
 };
 
 class FigmaSpecificationAgent implements SpecializedAgent {
