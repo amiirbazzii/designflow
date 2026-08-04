@@ -70,12 +70,24 @@ export interface ExecutionPlan {
  * human approval decision. The parent execution is resumable, not failed.
  */
 export interface PendingChildApproval {
+  readonly kind?: "child";
   readonly nodeId: string;
   readonly childWorkflowId: string;
   readonly childExecutionId: string;
   readonly childArtifacts: readonly ArtifactRef[];
   readonly message: string;
 }
+
+export interface PendingNodeApproval {
+  readonly kind: "node";
+  readonly nodeId: string;
+  readonly capabilityId: string;
+  readonly message: string;
+  readonly metadata: Readonly<Record<string, unknown>>;
+  readonly artifacts: readonly ArtifactRef[];
+}
+
+export type PendingApproval = PendingChildApproval | PendingNodeApproval;
 
 export interface ExecutionResult {
   readonly workflowId: string;
@@ -84,7 +96,7 @@ export interface ExecutionResult {
   readonly completedSteps: readonly string[];
   readonly failedStep: string | undefined;
   readonly error: unknown;
-  readonly pendingApproval: PendingChildApproval | undefined;
+  readonly pendingApproval: PendingApproval | undefined;
 }
 
 export interface ValidationResult {

@@ -85,6 +85,14 @@ export {
   figmaSpecificationInputSchema,
   stage3SummarySchema,
 } from "./figma-specification-types";
+
+// ── Stage 4: experimental real implementation path ─────────────
+export { designToCodeImplementationWorkflowPackage, designToCodeImplementationApprovalPolicy } from "./implementation-manifest";
+export { designToCodeImplementationWorkflow } from "./implementation-workflow";
+export { implementationCapabilities } from "./implementation-capabilities";
+export { implementationSideEffectCapabilities } from "./implementation-side-effect-capabilities";
+export { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema } from "./implementation-types";
+export type { ImplementationWorkflowInput } from "./implementation-types";
 export type {
   FigmaSpecificationInput,
   Stage3Summary,

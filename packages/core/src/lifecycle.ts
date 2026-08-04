@@ -1,6 +1,6 @@
 // packages/core/src/lifecycle.ts
 import type { ArtifactRef, ExecutionContext } from "@designflow/sdk";
-import type { CompiledWorkflow, PendingChildApproval } from "./types";
+import type { CompiledWorkflow, PendingChildApproval, PendingNodeApproval } from "./types";
 
 export type LifecycleStage = "plan" | "execute" | "validate" | "apply";
 
@@ -26,6 +26,7 @@ export interface ExecuteResult {
   readonly failedErrors: Readonly<Record<string, unknown>>;
   /** Nodes whose child execution is awaiting an approval decision. */
   readonly pendingApprovals: readonly PendingChildApproval[];
+  readonly pendingNodeApprovals: readonly PendingNodeApproval[];
   /** Nodes not run because an upstream node is pending approval. */
   readonly blockedSteps: readonly string[];
 }

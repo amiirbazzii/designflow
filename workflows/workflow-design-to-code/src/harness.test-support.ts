@@ -33,6 +33,7 @@ import {
 import { designToCodeWorkflowPackage } from "./manifest";
 import { designToCodeAgentFoundationWorkflowPackage } from "./agent-foundation-manifest";
 import { designToCodeFigmaSpecificationWorkflowPackage } from "./figma-specification-manifest";
+import { designToCodeImplementationWorkflowPackage } from "./implementation-manifest";
 
 /**
  * A fully wired DesignFlow host, for the workflow's integration tests.
@@ -301,6 +302,8 @@ export async function createFigmaSpecificationHost(options?: {
   readonly fixtures?: Record<string, unknown>;
   readonly strategies?: SpecializedAgentCatalogOptions;
   readonly incremental?: boolean;
+  readonly policy?: ExecutionPolicy;
+  readonly implementation?: boolean;
 }): Promise<FigmaSpecificationHost> {
   const { McpRuntime } = await import("@designflow/mcp");
 
@@ -318,13 +321,13 @@ export async function createFigmaSpecificationHost(options?: {
   const approvals = new InMemoryApprovalManager();
 
   const capabilityRegistry = new CapabilityRegistry();
-  designToCodeFigmaSpecificationWorkflowPackage.load(capabilityRegistry);
+  if (options?.implementation === true) designToCodeImplementationWorkflowPackage.load(capabilityRegistry);
+  else designToCodeFigmaSpecificationWorkflowPackage.load(capabilityRegistry);
 
   const workflows = new Map<string, WorkflowPackage>([
-    [
-      designToCodeFigmaSpecificationWorkflowPackage.id,
-      designToCodeFigmaSpecificationWorkflowPackage,
-    ],
+    ...(options?.implementation === true
+      ? [[designToCodeImplementationWorkflowPackage.id, designToCodeImplementationWorkflowPackage] as const]
+      : [[designToCodeFigmaSpecificationWorkflowPackage.id, designToCodeFigmaSpecificationWorkflowPackage] as const]),
   ]);
 
   const specializedAgents = createSpecializedAgentRegistry(options?.strategies);
@@ -349,6 +352,7 @@ export async function createFigmaSpecificationHost(options?: {
     approvalManager: approvals,
     agentInvoker: agents,
     mcpClient,
+    ...(options?.policy !== undefined ? { policy: options.policy, policyEvaluator: new InMemoryPolicyEvaluator() } : {}),
     ...(incremental
       ? {
           incrementalPlanner: new IncrementalExecutionPlannerService({

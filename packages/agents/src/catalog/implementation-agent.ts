@@ -11,6 +11,7 @@ import {
   type GeneratedImplementation,
   type ModelProfile,
   type ProjectImplementationContext,
+  projectImplementationContextV1Schema,
   type SpecializedAgent,
   type SpecializedAgentContext,
 } from "@designflow/sdk";
@@ -36,11 +37,12 @@ export const implementationAgentManifest: AgentManifest = agentManifestSchema.pa
   description: "Turns a design specification and project context into a proposed implementation",
   version: "0.1.0",
   instructions:
-    "Read the supplied design specification and project implementation context. " +
-    "Propose the files needed to build the specified components, reusing " +
-    "existing project components where the context lists one that matches. " +
-    "Never claim a file was written — you only propose content.",
-  allowedWorkflows: ["design-to-code-agent-foundation"],
+    "Read the supplied design specification, bounded project implementation context, and optional design-system mapping. " +
+    "Follow observed framework and conventions; prefer existing components and tokens only when confidence is sufficient. " +
+    "Output only schema-valid structured proposals with reasons, assumptions, and unresolved questions. " +
+    "Never invent packages, emit absolute or traversal paths, request shell execution, claim validation passed, or claim files were written. " +
+    "Preserve accessibility and public APIs, and distinguish observed facts, inferred conventions, design facts, mapping decisions, and assumptions.",
+  allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-implementation"],
   allowedTools: [],
   modelProfileId: MODEL_PROFILE_ID,
   metadata: { author: "DesignFlow" },
@@ -55,6 +57,7 @@ export const implementationDefaultModelProfile: ModelProfile = modelProfileSchem
 interface ImplementationInput {
   readonly designSpecification: DesignSpecification;
   readonly projectContext: ProjectImplementationContext;
+  readonly designSystemMapping?: unknown;
 }
 
 export type ImplementationStrategy = (
@@ -68,14 +71,34 @@ function readInput(request: AgentInvocationRequest): ImplementationInput {
 
   const spec = designSpecificationSchema.safeParse(raw?.designSpecification);
   const project = projectImplementationContextSchema.safeParse(raw?.projectContext);
+  const stage4Project = projectImplementationContextV1Schema.safeParse(raw?.projectContext);
 
-  if (!spec.success || !project.success) {
+  if (!spec.success || (!project.success && !stage4Project.success)) {
     throw new SpecializedAgentOutputInvalidError("implementation-agent", [
       "input must carry a valid designSpecification and projectContext",
     ]);
   }
 
-  return { designSpecification: spec.data, projectContext: project.data };
+  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping };
+  if (!stage4Project.success) throw new SpecializedAgentOutputInvalidError("implementation-agent", ["project context could not be normalized"]);
+  const context = stage4Project.data;
+  return {
+    designSpecification: spec.data,
+    designSystemMapping: raw?.designSystemMapping,
+    projectContext: {
+      schemaVersion: context.schemaVersion,
+      projectId: context.project.id,
+      projectRootIdentity: context.project.rootIdentity,
+      framework: context.runtime.framework,
+      sourceRoot: context.structure.sourceRoots[0] ?? "src",
+      stylingStrategy: context.styling.primaryStrategy ?? context.styling.strategies[0] ?? "unknown",
+      existingComponentReferences: context.designSystem.components.map((component) => component.name),
+      designSystemReferences: context.designSystem.tokens.map((token) => token.reference),
+      ...(context.commands.test !== undefined ? { testCommand: `${context.commands.test.executable} ${context.commands.test.args.join(" ")}` } : {}),
+      ...(context.commands.build !== undefined ? { buildCommand: `${context.commands.build.executable} ${context.commands.build.args.join(" ")}` } : {}),
+      contextFingerprint: context.project.contextFingerprint,
+    },
+  };
 }
 
 function validate(implementationVersion: string, raw: unknown): GeneratedImplementation {
@@ -143,7 +166,7 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
   context,
   manifest,
 ) => {
-  const { designSpecification, projectContext } = readInput(request);
+  const { designSpecification, projectContext, designSystemMapping } = readInput(request);
 
   const result = await context.model.generate({
     messages: [
@@ -153,7 +176,8 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
         content:
           `Objective: ${request.objective}\n\n` +
           `Design specification:\n${JSON.stringify(designSpecification)}\n\n` +
-          `Project context:\n${JSON.stringify(projectContext)}`,
+          `Project context:\n${JSON.stringify(projectContext)}` +
+          `\n\nDesign-system mapping:\n${JSON.stringify(designSystemMapping ?? null)}`,
       },
     ],
     responseSchema: { type: "object" },

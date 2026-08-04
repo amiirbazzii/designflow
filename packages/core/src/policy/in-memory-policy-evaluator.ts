@@ -55,10 +55,10 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
   ): void {
     if (rule.target === undefined) return;
 
-    const deniedCapability = rule.target;
+    const target = rule.target;
 
     for (const capabilityId of context.capabilityIds) {
-      if (capabilityId === deniedCapability) {
+      if (this.targetMatches(target, context, capabilityId)) {
         violations.push({
           ruleId: rule.id,
           type: "capability_denied",
@@ -75,11 +75,8 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
   ): void {
     const allowedCapabilities = new Set(
       allowRules
-        .filter(
-          (r): r is PolicyRule & { target: string } =>
-            r.target !== undefined,
-        )
-        .map((r) => r.target),
+      .filter((r) => typeof r.target === "string")
+        .map((r) => r.target as string),
     );
 
     for (const capabilityId of context.capabilityIds) {
@@ -100,14 +97,14 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
   ): void {
     if (rule.target === undefined) return;
 
-    const requiredCapability = rule.target;
+    const target = rule.target;
     const humanReason = typeof rule.metadata?.["reason"] === "string" ? rule.metadata["reason"] : undefined;
     const message = humanReason !== undefined
       ? `Approval required: ${humanReason}`
       : "Approval required before this step can continue";
 
     for (const capabilityId of context.capabilityIds) {
-      if (capabilityId === requiredCapability) {
+      if (this.targetMatches(target, context, capabilityId)) {
         violations.push({
           ruleId: rule.id,
           type: "approval_required",
@@ -115,6 +112,20 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
         });
       }
     }
+  }
+
+  private targetMatches(
+    target: PolicyRule["target"],
+    context: PolicyContext,
+    capabilityId: string,
+  ): boolean {
+    if (typeof target === "string") return target === capabilityId;
+    if (target === undefined) return false;
+    if (target.workflowId !== undefined && target.workflowId !== context.workflowId) return false;
+    if (target.capabilityId !== undefined && target.capabilityId !== capabilityId) return false;
+    const nodeId = typeof context.metadata?.nodeId === "string" ? context.metadata.nodeId : undefined;
+    if (target.nodeId !== undefined && target.nodeId !== nodeId) return false;
+    return nodeId !== undefined || target.capabilityId !== undefined;
   }
 
   private evaluateResourceRule(

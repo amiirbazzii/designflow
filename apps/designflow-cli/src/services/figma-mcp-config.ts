@@ -69,6 +69,13 @@ export function readExperimentalFigmaMcpEnabled(config: Config): boolean {
   return experimental["designEngineerFigmaMcp"] === true;
 }
 
+/** Stage 4 stays separately opt-in even when Stage 3 Figma MCP is enabled. */
+export function readExperimentalImplementationEnabled(config: Config): boolean {
+  const experimental = config.settings["experimental"];
+  if (!isRecord(experimental)) return false;
+  return experimental["designEngineerImplementation"] === true;
+}
+
 /**
  * The configured Figma MCP server, or `undefined` when none is configured —
  * distinct from "configured but unreachable," which only surfaces once a

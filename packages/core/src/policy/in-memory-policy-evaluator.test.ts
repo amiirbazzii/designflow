@@ -143,6 +143,15 @@ describe("InMemoryPolicyEvaluator", () => {
       expect(result.allowed).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
+
+    test("node-bound approval fires only at the targeted workflow node", async () => {
+      const policy: ExecutionPolicy = { id: "policy-node", name: "Node approval", rules: [{ id: "approval-node", type: "require_approval", target: { workflowId: "wf-1", nodeId: "write-node" } }] };
+      const before = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["write-cap"] });
+      const atTarget = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["write-cap"], metadata: { nodeId: "write-node" } });
+      expect(before.allowed).toBe(true);
+      expect(atTarget.allowed).toBe(false);
+      expect(atTarget.violations[0]?.ruleId).toBe("approval-node");
+    });
   });
 
   describe("resource_limit policy", () => {

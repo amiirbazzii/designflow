@@ -373,6 +373,40 @@ export {
   revisionRequestSchema,
 } from "./design-engineer-contracts";
 
+export {
+  STAGE4_SCHEMA_VERSION,
+  projectInspectionWarningSchema,
+  tokenSourceReferenceSchema,
+  normalizedProjectTokenSchema,
+  componentSourceReferenceSchema,
+  existingComponentReferenceSchema,
+  safeProjectCommandSchema,
+  projectImplementationContextV1Schema,
+  designSystemMappingSchema,
+  implementationPlanV1Schema,
+  safeProjectCommandReferenceSchema,
+  proposedFileChangesSchema,
+  implementationApprovalBindingSchema,
+  implementationValidationReportSchema,
+  generatedImplementationV1Schema,
+} from "./stage4-contracts";
+
+export type {
+  ProjectInspectionWarning,
+  TokenSourceReference,
+  NormalizedProjectToken,
+  ComponentSourceReference,
+  ExistingComponentReference,
+  SafeProjectCommand,
+  ProjectImplementationContext as Stage4ProjectImplementationContext,
+  DesignSystemMapping,
+  ImplementationPlanV1,
+  ProposedFileChanges,
+  ImplementationApprovalBinding,
+  ImplementationValidationReport,
+  GeneratedImplementationV1,
+} from "./stage4-contracts";
+
 export type {
   FigmaNodeSnapshot,
   FigmaVariableSnapshot,
@@ -575,6 +609,7 @@ export type {
 
 // ── Execution Policy ────────────────────────────────────────────
 export {
+  policyRuleTargetSchema,
   policyRuleSchema,
   policyRuleTypeSchema,
   policyViolationTypeSchema,
@@ -585,6 +620,7 @@ export {
 } from "./execution-policy";
 
 export type {
+  PolicyRuleTarget,
   PolicyRule,
   PolicyRuleType,
   PolicyViolationType,

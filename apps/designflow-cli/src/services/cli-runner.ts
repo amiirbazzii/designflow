@@ -47,6 +47,8 @@ import {
   modelProductManagerStrategy,
   figmaSpecificationDefaultModelProfile,
   modelFigmaSpecificationStrategy,
+  implementationDefaultModelProfile,
+  modelImplementationStrategy,
 } from "@designflow/agents";
 import { McpRuntime } from "@designflow/mcp";
 import { ToolRuntime, createToolRegistry, createProjectInspector } from "@designflow/tools";
@@ -88,6 +90,8 @@ import {
   designToCodeApprovalPolicy,
   designToCodeWorkflowPackage,
   designToCodeFigmaSpecificationWorkflowPackage,
+  designToCodeImplementationWorkflowPackage,
+  designToCodeImplementationApprovalPolicy,
 } from "@designflow/workflow-design-to-code";
 import {
   qaReviewApprovalPolicy,
@@ -108,7 +112,9 @@ import {
 } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
-import { readExperimentalFigmaMcpEnabled, readFigmaMcpConfig } from "./figma-mcp-config";
+import { readExperimentalFigmaMcpEnabled, readExperimentalImplementationEnabled, readFigmaMcpConfig } from "./figma-mcp-config";
+
+export const EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID = ["design", "to", "code", "implementation"].join("-");
 import {
   readSessionConfig,
   type SessionConfig,
@@ -165,6 +171,7 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   // *would* use, whether or not the experimental flag that actually wires
   // a live Figma MCP connection is on.
   figmaSpecificationDefaultModelProfile,
+  implementationDefaultModelProfile,
 ];
 
 export interface WorkflowInfo {
@@ -416,6 +423,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // existing worker, workflow and command is unaffected either way. See
   // `docs/adr/*-figma-mcp-integration.md` for the full rollout rationale.
   const figmaMcpEnabled = readExperimentalFigmaMcpEnabled(home.config);
+  const implementationEnabled = figmaMcpEnabled && readExperimentalImplementationEnabled(home.config);
   const figmaMcpConfig = figmaMcpEnabled ? readFigmaMcpConfig(home.config) : undefined;
 
   const mcpClient = figmaMcpConfig !== undefined
@@ -443,6 +451,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     ? new AgentInvocationRuntime({
         registry: createSpecializedAgentRegistry({
           figmaSpecificationStrategy: modelModeRequested ? modelFigmaSpecificationStrategy : undefined,
+          implementationStrategy: implementationEnabled && modelModeRequested ? modelImplementationStrategy : undefined,
         }),
       })
     : undefined;
@@ -453,6 +462,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     researchAnalysisWorkflowPackage,
     productBriefWorkflowPackage,
     ...(figmaMcpEnabled ? [designToCodeFigmaSpecificationWorkflowPackage] : []),
+    ...(implementationEnabled ? [designToCodeImplementationWorkflowPackage] : []),
   ]) {
     workflowPackage.load(capabilityRegistry);
     workflows.set(workflowPackage.id, workflowPackage);
@@ -501,6 +511,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
               ...qaReviewApprovalPolicy.rules,
               ...researchAnalysisApprovalPolicy.rules,
               ...productBriefApprovalPolicy.rules,
+              ...designToCodeImplementationApprovalPolicy.rules,
             ],
           },
           policyEvaluator: new InMemoryPolicyEvaluator(),
@@ -731,6 +742,27 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
     const owner = workers.findByWorkflow(name);
 
+    if (name === "design-to-code-implementation") {
+      return {
+        worker: {
+          id: workflow.id,
+          name: workflow.name,
+          description: workflow.description ?? "",
+          category: "workflow",
+          workflows: [workflow.id],
+          inputs: [
+            { key: "designFile", label: "Figma design URL", placeholder: "https://www.figma.com/design/..." },
+            { key: "frames", label: "Frames", placeholder: "432-2906", list: true },
+            { key: "projectId", label: "Registered project ID", placeholder: "project-id" },
+          ],
+          evaluationCriteria: [],
+        },
+        workflowId: workflow.id,
+        workflowInstalled: true,
+        steps: workflow.definition.nodes.length,
+      };
+    }
+
     return {
       // Synthesised so the caller has one shape to render either way. The
       // real worker is used when one owns this workflow, so its name and
@@ -820,4 +852,3 @@ function workflowIdOf(events: readonly ExecutionEvent[]): string {
 
   return "";
 }
-

@@ -1,4 +1,5 @@
 // packages/core/src/service/execution-service.ts
+import { createHash } from "node:crypto";
 import {
   executionRequestSchema,
   executionResultSchema,
@@ -39,7 +40,7 @@ import { CapabilityRegistry } from "../registry";
 import { ExecutionEngine } from "../engine";
 import { ExecutionServiceWorkflowResolver } from "../composition";
 import { PolicyViolationError, ApprovalError } from "../errors";
-import type { PendingChildApproval } from "../types";
+import type { PendingChildApproval, PendingNodeApproval } from "../types";
 
 // ── Errors ──────────────────────────────────────────────────────
 
@@ -334,6 +335,14 @@ export class ExecutionService
       );
     }
 
+    if (latestRecord.status === "waiting_approval" && this.approvalManager !== undefined) {
+      const approvalId = typeof latestRecord.metadata?.approvalId === "string" ? latestRecord.metadata.approvalId : undefined;
+      if (approvalId !== undefined) {
+        const approval = await this.approvalManager.get(approvalId);
+        if (approval?.status === "pending") return executionResultSchema.parse({ executionId: latestRecord.executionId, workflowId, status: "pending_approval", artifacts: [], error: { code: "ERR_APPROVAL_PENDING", message: approval.reason } });
+      }
+    }
+
     return this.resumeExecution(latestRecord, workflowPackage);
   }
 
@@ -432,9 +441,19 @@ export class ExecutionService
       );
     }
 
+    await this.validateNodeApprovalBinding(record, approval);
+    const nodeBinding = record.metadata?.nodeApprovalBinding;
+    const approvedNodeId = typeof nodeBinding === "object" && nodeBinding !== null && typeof (nodeBinding as { nodeId?: unknown }).nodeId === "string" ? (nodeBinding as { nodeId: string }).nodeId : undefined;
+    if (approvedNodeId !== undefined) {
+      await this.executionRepository.update(record.executionId, { metadata: await this.mergeRecordMetadata(record.executionId, { approvedNodeId, consumedApprovalId: approval.id }) });
+    }
+
     const workflowPackage = this.resolveWorkflow(approval.workflowId);
 
-    return this.resumeExecution(record, workflowPackage);
+    const resumedRecord = approvedNodeId !== undefined
+      ? await this.executionRepository.get(record.executionId)
+      : record;
+    return this.resumeExecution(resumedRecord ?? record, workflowPackage);
   }
 
   private async resumeExecution(
@@ -604,6 +623,8 @@ export class ExecutionService
       executionReconciler: this.executionReconciler,
       agentInvoker: this.agentInvoker,
       mcpClient: this.mcpClient,
+      policyEvaluator: this.policyEvaluator,
+      policy: this.policy,
     });
   }
 
@@ -650,7 +671,7 @@ export class ExecutionService
       success: boolean;
       artifacts: readonly ArtifactRef[];
       error: unknown;
-      pendingApproval: PendingChildApproval | undefined;
+      pendingApproval: PendingChildApproval | PendingNodeApproval | undefined;
     },
   ): Promise<ExecutionResult> {
     const artifacts = engineResult.artifacts.map((a) => ({
@@ -659,9 +680,29 @@ export class ExecutionService
       metadata: a.metadata ?? {},
     }));
 
+    // A node-level approval is created only after all preceding planning nodes
+    // have produced their artifacts. This keeps the approval record bound to
+    // the exact proposal state that the user can inspect.
+    if (!engineResult.success && engineResult.pendingApproval?.kind === "node") {
+      const pending = engineResult.pendingApproval as PendingNodeApproval;
+      const binding = await this.createNodeApprovalBinding(executionId, workflowId, pending, artifacts);
+      const approvalRequest = await this.approvalManager!.createRequest(executionId, workflowId, pending.message);
+      const finalBinding = { ...binding, approvalId: approvalRequest.id, expiresAt: approvalRequest.expiresAt };
+      await this.executionRepository.update(executionId, {
+        status: "waiting_approval",
+        metadata: await this.mergeRecordMetadata(executionId, {
+          approvalId: approvalRequest.id,
+          nodeApprovalBinding: finalBinding,
+        }),
+      });
+      await this.appendEvent(executionId, "waiting_approval");
+      const pendingResult: ExecutionResult = { executionId, workflowId, status: "pending_approval", artifacts, error: { code: "ERR_APPROVAL_REQUIRED", message: pending.message } };
+      return executionResultSchema.parse(pendingResult);
+    }
+
     // A blocked-on-approval execution stays resumable — it is not a failure.
     if (!engineResult.success && engineResult.pendingApproval !== undefined) {
-      const pending = engineResult.pendingApproval;
+      const pending = engineResult.pendingApproval as PendingChildApproval;
 
       await this.executionRepository.update(executionId, {
         status: "waiting_approval",
@@ -733,6 +774,62 @@ export class ExecutionService
     return { ...record?.metadata, ...patch };
   }
 
+  private async createNodeApprovalBinding(
+    executionId: string,
+    workflowId: string,
+    pending: PendingNodeApproval,
+    artifacts: readonly { id: string; type: string; metadata: Record<string, unknown>; version?: number }[],
+  ): Promise<Record<string, unknown>> {
+    const proposalArtifactId = typeof pending.metadata.proposalArtifactId === "string" ? pending.metadata.proposalArtifactId : undefined;
+    const contextArtifactId = typeof pending.metadata.projectContextArtifactId === "string" ? pending.metadata.projectContextArtifactId : undefined;
+    // Generic node-level approvals remain supported for existing workflows. Stage 4
+    // supplies the artifact metadata below and therefore receives strict proposal
+    // binding; older node policies retain the same approval semantics as before.
+    if (proposalArtifactId === undefined || contextArtifactId === undefined) {
+      return { workflowId, executionId, nodeId: pending.nodeId, genericNodeApproval: true };
+    }
+    const proposalRef = artifacts.find((artifact) => artifact.id === proposalArtifactId);
+    const contextRef = artifacts.find((artifact) => artifact.id === contextArtifactId);
+    const proposalPayloadId = typeof proposalRef?.metadata.payloadId === "string" ? proposalRef.metadata.payloadId : undefined;
+    const contextPayloadId = typeof contextRef?.metadata.payloadId === "string" ? contextRef.metadata.payloadId : undefined;
+    const proposal = proposalPayloadId === undefined ? null : await this.artifactStore.get(proposalPayloadId);
+    const projectContext = contextPayloadId === undefined ? null : await this.artifactStore.get(contextPayloadId);
+    if (proposal === null || projectContext === null || proposalRef === undefined) throw new ApprovalError("The proposal or project context artifact is missing.");
+    const proposalData = proposal.data as { projectId?: unknown; baseProjectFingerprint?: unknown; files?: unknown[]; packageChanges?: unknown[]; commandsRequested?: unknown[] };
+    const contextData = projectContext.data as { project?: { id?: unknown; rootIdentity?: unknown } };
+    const projectId = typeof proposalData.projectId === "string" ? proposalData.projectId : undefined;
+    const baseProjectFingerprint = typeof proposalData.baseProjectFingerprint === "string" ? proposalData.baseProjectFingerprint : undefined;
+    const rootIdentity = typeof contextData.project?.rootIdentity === "string" ? contextData.project.rootIdentity : undefined;
+    const contextProjectId = typeof contextData.project?.id === "string" ? contextData.project.id : undefined;
+    if (projectId === undefined || baseProjectFingerprint === undefined || rootIdentity === undefined || contextProjectId !== projectId) throw new ApprovalError("The proposal is missing a valid registered project identity.");
+    const proposalHash = await hashApprovalPayload(proposalData);
+    return { workflowId, executionId, nodeId: pending.nodeId, proposalArtifactId, proposalVersion: proposalRef.version ?? 1, proposalHash, projectId, rootIdentity, baseProjectFingerprint, createCount: proposalData.files?.filter((file) => typeof file === "object" && file !== null && (file as { action?: unknown }).action === "create").length ?? 0, modifyCount: proposalData.files?.filter((file) => typeof file === "object" && file !== null && (file as { action?: unknown }).action === "modify").length ?? 0, dependencyChangeCount: proposalData.packageChanges?.length ?? 0, validationCommands: proposalData.commandsRequested ?? [] };
+  }
+
+  private async validateNodeApprovalBinding(record: ExecutionRecord, approval: { id: string; executionId: string; workflowId: string; status: string }): Promise<void> {
+    const raw = record.metadata?.nodeApprovalBinding;
+    if (raw === undefined) return;
+    if (approval.status !== "approved" || approval.executionId !== record.executionId || approval.workflowId !== record.workflowId) throw new ApprovalError("Approval does not match this execution.");
+    if (typeof raw !== "object" || raw === null) throw new ApprovalError("Approval binding is invalid.");
+    const binding = raw as { approvalId?: unknown; proposalArtifactId?: unknown; proposalVersion?: unknown; proposalHash?: unknown; projectId?: unknown; rootIdentity?: unknown; baseProjectFingerprint?: unknown; nodeId?: unknown };
+    if (binding.approvalId !== approval.id || typeof binding.nodeId !== "string") throw new ApprovalError("Approval binding is incomplete.");
+    if ((raw as { genericNodeApproval?: unknown }).genericNodeApproval === true) return;
+    if (typeof binding.proposalArtifactId !== "string" || typeof binding.proposalHash !== "string" || typeof binding.proposalVersion !== "number" || typeof binding.projectId !== "string" || typeof binding.rootIdentity !== "string" || typeof binding.baseProjectFingerprint !== "string") throw new ApprovalError("Approval binding is incomplete.");
+    const recordArtifacts = await this.executionRepository.getLatestCheckpoint(record.executionId);
+    const checkpointMetadata = recordArtifacts?.metadata;
+    const refs = Array.isArray(checkpointMetadata?.appliedArtifacts)
+      ? checkpointMetadata.appliedArtifacts as { id: string; metadata?: Record<string, unknown>; version?: number }[]
+      : typeof checkpointMetadata?.nodeApprovalCheckpoint === "object" && checkpointMetadata.nodeApprovalCheckpoint !== null && Array.isArray((checkpointMetadata.nodeApprovalCheckpoint as { completedArtifacts?: unknown }).completedArtifacts)
+        ? (checkpointMetadata.nodeApprovalCheckpoint as { completedArtifacts: { id: string; metadata?: Record<string, unknown>; version?: number }[] }).completedArtifacts
+        : [];
+    const proposalRef = refs.find((ref) => ref.id === binding.proposalArtifactId);
+    const payloadId = typeof proposalRef?.metadata?.payloadId === "string" ? proposalRef.metadata.payloadId : undefined;
+    const proposal = payloadId === undefined ? null : await this.artifactStore.get(payloadId);
+    if (proposal === null || (proposalRef?.version ?? 1) !== binding.proposalVersion || await hashApprovalPayload(proposal.data) !== binding.proposalHash) throw new ApprovalError("The approved proposal changed or is unavailable.");
+    const proposalData = proposal.data as { projectId?: unknown; baseProjectFingerprint?: unknown };
+    if (proposalData.projectId !== binding.projectId || proposalData.baseProjectFingerprint !== binding.baseProjectFingerprint) throw new ApprovalError("The approved project state no longer matches the proposal.");
+  }
+
   private async appendEvent(
     executionId: string,
     phase: LifecycleEvent["phase"],
@@ -788,4 +885,8 @@ export class ExecutionService
 
     return workflowPackage;
   }
+}
+
+async function hashApprovalPayload(value: unknown): Promise<string> {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-03T10:37:12.740Z",
+  "timestamp": "2026-08-03T17:46:45.753Z",
   "projectRoot": "/Users/wallex/Documents/Workflow platform/designflow",
   "structure": {
     "hasPackageJson": true,
@@ -7,5 +7,5 @@
     "hasClaudeConfig": true,
     "hasClaudeFlow": true
   },
-  "scannedAt": 1785753432740
+  "scannedAt": 1785779205753
 }

@@ -1,0 +1,11 @@
+export { ImplementationError } from "./errors";
+export { inspectRegisteredProject } from "./inspection";
+export type { InspectionLimits } from "./inspection";
+export { mapDesignSystem } from "./mapping";
+export { validateProposedFileChanges, projectFileHash } from "./proposal";
+export { createApprovalBinding, verifyApproval, proposalHash } from "./approval";
+export { applyProjectFileChanges, createProjectSnapshot, rollbackProjectSnapshot, projectRootIdentity } from "./application";
+export type { SnapshotEntry, ProjectSnapshot, ApplicationResult } from "./application";
+export { validateProject, makeValidationReport } from "./validation";
+export type { ValidationOptions } from "./validation";
+export { applyAndValidateProject } from "./run";

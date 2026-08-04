@@ -36,6 +36,8 @@ import {
   type WorkflowExecutionResolver,
   type AgentInvocationService,
   type McpClient,
+  type ExecutionPolicy,
+  type PolicyEvaluator,
   DesignFlowError,
 } from "@designflow/sdk";
 
@@ -46,6 +48,8 @@ import type {
   ExecutionResult,
   ExecutionStep,
   PendingChildApproval,
+  PendingNodeApproval,
+  PendingApproval,
   ValidationIssue,
   ValidationResult,
 } from "./types";
@@ -65,7 +69,7 @@ import { resolveNodeInput } from "./input";
 interface LayerNodeResult {
   readonly artifacts: readonly ArtifactRef[];
   readonly executed: boolean;
-  readonly pending: PendingChildApproval | undefined;
+  readonly pending: PendingApproval | undefined;
   /**
    * True when the artifacts were adopted rather than computed. Reconciliation
    * needs the two apart; every other consumer treats them the same.
@@ -149,6 +153,22 @@ export interface ExecutionEngineConfig {
    * this stage, and every capability that never reads it, is unaffected.
    */
   readonly mcpClient?: McpClient | undefined;
+  readonly policyEvaluator?: PolicyEvaluator | undefined;
+  readonly policy?: ExecutionPolicy | undefined;
+}
+
+interface NodeApprovalCheckpoint {
+  readonly kind: "node-approval";
+  readonly completedNodeIds: readonly string[];
+  readonly completedArtifacts: readonly ArtifactRef[];
+  readonly pendingNodeId: string;
+  readonly pendingCapabilityId: string;
+}
+
+type ResumeState = CompositionCheckpoint | NodeApprovalCheckpoint;
+
+function isNodeApprovalCheckpoint(value: unknown): value is NodeApprovalCheckpoint {
+  return typeof value === "object" && value !== null && (value as { kind?: unknown }).kind === "node-approval";
 }
 
 export class ExecutionEngine {
@@ -167,6 +187,8 @@ export class ExecutionEngine {
   private readonly executionReconciler: ExecutionReconciler | undefined;
   private readonly agentInvoker: AgentInvocationService | undefined;
   private readonly mcpClient: McpClient | undefined;
+  private readonly policyEvaluator: PolicyEvaluator | undefined;
+  private readonly policy: ExecutionPolicy | undefined;
 
   public constructor(config: ExecutionEngineConfig) {
     this.registry = config.registry;
@@ -193,6 +215,8 @@ export class ExecutionEngine {
     this.executionReconciler = config.executionReconciler;
     this.agentInvoker = config.agentInvoker;
     this.mcpClient = config.mcpClient;
+    this.policyEvaluator = config.policyEvaluator;
+    this.policy = config.policy;
   }
 
   public getRegistry(): CapabilityRegistry {
@@ -202,7 +226,7 @@ export class ExecutionEngine {
   public async run(
     definition: WorkflowDefinition,
     context: ExecutionContext,
-    resumeState?: CompositionCheckpoint,
+    resumeState?: ResumeState,
   ): Promise<ExecutionResult> {
     const executionId = context.runId;
 
@@ -278,6 +302,28 @@ export class ExecutionEngine {
 
       // A child execution awaiting approval blocks the parent without failing
       // it: candidate artifacts stay traceable and the run is resumable.
+      const firstNodePending = execution.pendingNodeApprovals[0];
+      if (firstNodePending !== undefined) {
+        await this.recordCheckpoint(definition.id, executionId, "waiting_approval", {
+          nodeApprovalCheckpoint: {
+            kind: "node-approval",
+            completedNodeIds: execution.executedSteps,
+            completedArtifacts: execution.candidateArtifacts,
+            pendingNodeId: firstNodePending.nodeId,
+            pendingCapabilityId: firstNodePending.capabilityId,
+          },
+        });
+        return {
+          workflowId: definition.id,
+          success: false,
+          artifacts: execution.candidateArtifacts,
+          completedSteps: execution.executedSteps,
+          failedStep: undefined,
+          error: undefined,
+          pendingApproval: firstNodePending,
+        };
+      }
+
       const firstPending = execution.pendingApprovals[0];
       if (firstPending !== undefined) {
         const pendingNodes: PendingChildExecution[] =
@@ -497,7 +543,10 @@ export class ExecutionEngine {
     const checkpoint = await this.executionRepository.getLatestCheckpoint(
       targetRecord.executionId,
     );
-    const resumeState = readCompositionCheckpoint(checkpoint?.metadata);
+    const resumeState = readCompositionCheckpoint(checkpoint?.metadata) ??
+      (isNodeApprovalCheckpoint(checkpoint?.metadata?.nodeApprovalCheckpoint)
+        ? checkpoint?.metadata?.nodeApprovalCheckpoint
+        : undefined);
 
     const abortController = new AbortController();
 
@@ -667,7 +716,7 @@ export class ExecutionEngine {
     context: ExecutionContext,
     executionId: string,
     workflowId: string,
-    resumeState?: CompositionCheckpoint,
+    resumeState?: ResumeState,
     plannedSkips: ReadonlySet<string> = new Set(),
   ): Promise<ExecuteResult> {
     // Resuming replays the plan but re-executes nothing that already
@@ -675,8 +724,9 @@ export class ExecutionEngine {
     const alreadyCompleted = new Set(resumeState?.completedNodeIds ?? []);
     const restoredArtifacts = resumeState?.completedArtifacts ?? [];
 
+    const compositionState = resumeState !== undefined && !isNodeApprovalCheckpoint(resumeState) ? resumeState : undefined;
     const resumedChildren = new Map<string, PendingChildExecution>(
-      (resumeState?.pendingNodes ?? []).map((pending) => [
+      (compositionState?.pendingNodes ?? []).map((pending) => [
         pending.nodeId,
         pending,
       ]),
@@ -690,6 +740,7 @@ export class ExecutionEngine {
     const failedErrors = new Map<string, unknown>();
     const pendingSteps = new Set<string>();
     const pendingApprovals: PendingChildApproval[] = [];
+    const pendingNodeApprovals: PendingNodeApproval[] = [];
     const blockedSteps = new Set<string>();
     const plannedSkippedSteps = new Set<string>();
     const allParentArtifacts: ArtifactRef[] = [
@@ -871,7 +922,10 @@ export class ExecutionEngine {
           continue;
         }
 
-        if (result.pending !== undefined) {
+        if (result.pending?.kind === "node") {
+          pendingSteps.add(nodeId);
+          pendingNodeApprovals.push(result.pending);
+        } else if (result.pending !== undefined) {
           pendingSteps.add(nodeId);
           pendingApprovals.push(result.pending);
         } else if (result.executed) {
@@ -901,6 +955,7 @@ export class ExecutionEngine {
       failedSteps: Array.from(failedSteps),
       failedErrors: Object.fromEntries(failedErrors),
       pendingApprovals,
+      pendingNodeApprovals,
       blockedSteps: Array.from(blockedSteps),
     };
   }
@@ -916,6 +971,11 @@ export class ExecutionEngine {
     const capabilityVersion = compiled.capability.version ?? "1";
     const snapshot = [...parentArtifacts];
     const parentArtifactIds = snapshot.map((a) => a.id);
+
+    const nodeApproval = await this.nodeApprovalFor(compiled.node.id, capabilityId, context);
+    if (nodeApproval !== undefined) {
+      return { artifacts: [], executed: false, pending: nodeApproval };
+    }
 
     const reused = await this.resolveReuse(
       compiled.node.id,
@@ -1015,6 +1075,41 @@ export class ExecutionEngine {
       artifacts: stamped,
       executed: true,
       pending: undefined,
+    };
+  }
+
+  private async nodeApprovalFor(
+    nodeId: string,
+    capabilityId: string,
+    context: ExecutionContext,
+  ): Promise<PendingNodeApproval | undefined> {
+    if (this.policyEvaluator === undefined || this.policy === undefined) return undefined;
+    if (context.metadata["approvedNodeId"] === nodeId) return undefined;
+    // Legacy string-target rules are evaluated once by ExecutionService before
+    // the workflow starts. Only structured node/capability targets participate
+    // in the per-node gate; this preserves old workflow-level approval flows.
+    const hasNodeScopedRule = this.policy.rules.some((rule) => {
+      if (typeof rule.target === "string" || rule.target === undefined) return false;
+      return rule.target.nodeId === nodeId || rule.target.capabilityId === capabilityId || rule.target.workflowId === context.workflowId;
+    });
+    if (!hasNodeScopedRule) return undefined;
+    const result = await this.policyEvaluator.evaluate(this.policy, {
+      workflowId: context.workflowId,
+      capabilityIds: [capabilityId],
+      metadata: { nodeId },
+    });
+    const hardViolation = result.violations.find((violation) => violation.type !== "approval_required");
+    if (hardViolation !== undefined) throw new ExecutionError(`Node denied by policy: ${hardViolation.message}`, { nodeId, capabilityId, ruleId: hardViolation.ruleId });
+    const approval = result.violations.find((violation) => violation.type === "approval_required");
+    if (approval === undefined) return undefined;
+    const rule = this.policy.rules.find((candidate) => candidate.id === approval.ruleId);
+    return {
+      kind: "node",
+      nodeId,
+      capabilityId,
+      message: approval.message,
+      metadata: rule?.metadata ?? {},
+      artifacts: [],
     };
   }
 

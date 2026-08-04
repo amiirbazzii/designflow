@@ -12,10 +12,21 @@ export const policyRuleTypeSchema = z.enum([
 
 export type PolicyRuleType = z.infer<typeof policyRuleTypeSchema>;
 
+export const policyRuleTargetSchema = z.union([
+  z.string().min(1),
+  z.object({
+    workflowId: z.string().min(1).optional(),
+    nodeId: z.string().min(1).optional(),
+    capabilityId: z.string().min(1).optional(),
+  }).strict().refine((target) => target.workflowId !== undefined || target.nodeId !== undefined || target.capabilityId !== undefined),
+]);
+
+export type PolicyRuleTarget = z.infer<typeof policyRuleTargetSchema>;
+
 export const policyRuleSchema = z.object({
   id: z.string().min(1),
   type: policyRuleTypeSchema,
-  target: z.string().optional(),
+  target: policyRuleTargetSchema.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

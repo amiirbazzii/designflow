@@ -3,8 +3,9 @@ import {
   heading,
   type Terminal,
 } from "../ui/terminal";
+import { join } from "node:path";
 
-import type { CliContext, ResolvedWorker } from "../services/cli-runner";
+import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
 import type { WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";
 
@@ -73,6 +74,31 @@ export async function runCommand(
 
   const input = await collectInput(terminal, resolved);
 
+  if (workflowIdOf(resolved) === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) {
+    const projectId = options?.projectId ?? (typeof input.projectId === "string" ? input.projectId : undefined);
+    if (projectId === undefined) {
+      terminal.print("A registered project is required before DesignFlow can generate or modify files.");
+      terminal.print();
+      terminal.print("Run:  designflow projects add");
+      return 1;
+    }
+    const project = await context.projects.getProject(projectId).catch(() => null);
+    if (project === null || project.rootPath === undefined) {
+      terminal.print("A registered project with an accessible root is required before implementation.");
+      return 1;
+    }
+    input.enabled = true;
+    input.project = project;
+    input.stateDirectory = join(context.home.layout.home, "projects", project.id, "runs");
+    input.figmaAgentVersion = "0.1.0";
+    input.implementationAgentVersion = "0.1.0";
+    input.implementationAgentModelProfileId = "implementation-default";
+    input.captureScreenshots = true;
+    input.refreshFigmaSource = false;
+    input.allowFixtureNames = false;
+    delete input.projectId;
+  }
+
   // Attached before the session starts, and left attached through the whole
   // clarification loop: a workflow might start on the very first decision, or
   // only after several resumed ones, and either way `runner.start` runs and
@@ -93,6 +119,10 @@ export async function runCommand(
   if (result === null) return 1;
 
   return finishSession(context, terminal, result, options?.interactive ?? false);
+}
+
+function workflowIdOf(resolved: ResolvedWorker): string {
+  return resolved.workflowId;
 }
 
 // ── Input ────────────────────────────────────────────────────────

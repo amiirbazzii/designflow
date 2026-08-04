@@ -119,6 +119,8 @@ export type {
   ExecutionPlan,
   ExecutionResult,
   PendingChildApproval,
+  PendingNodeApproval,
+  PendingApproval,
   ValidationResult,
   ValidationIssue,
 } from "./types";

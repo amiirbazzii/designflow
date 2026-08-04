@@ -5,7 +5,7 @@ import {
   type Terminal,
 } from "../ui/terminal";
 
-import type { CliContext } from "../services/cli-runner";
+import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext } from "../services/cli-runner";
 import type { SessionResult } from "@designflow/sdk";
 import type { ArtifactSummary } from "@designflow/product";
 import { renderDetail, renderList } from "./artifacts";
@@ -144,10 +144,15 @@ async function resolveApproval(
 
   terminal.print();
   terminal.print(heading("Approval required"));
-  terminal.print("DesignFlow wants permission to:");
-  terminal.print();
-  terminal.print("  Store the generated result as a DesignFlow artifact");
-  terminal.print("  (this does not change any file in your project)");
+  const stage4 = pending.workflowId === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID;
+  if (stage4) {
+    await renderImplementationPreview(context, terminal, executionId);
+  } else {
+    terminal.print("DesignFlow wants permission to:");
+    terminal.print();
+    terminal.print("  Store the generated result as a DesignFlow artifact");
+    terminal.print("  (this does not change any file in your project)");
+  }
   terminal.print();
   terminal.print(`Reason: ${pending.reason}`);
   terminal.print();
@@ -178,6 +183,19 @@ async function report(
   terminal.print(heading(overview.state === "ready" ? "Complete" : "Stopped"));
   terminal.print(overview.summary);
 
+  if (overview.state !== "ready") {
+    const validation = artifacts.find((artifact) => artifact.artifactId === "implementation-validation");
+    if (validation !== undefined) {
+      const detail = await context.artifactInspection.getPayload(validation);
+      const payload = detail.payload as { checks?: Array<{ name: string; status: string }>; rollbackTriggered?: boolean };
+      const failed = payload.checks?.find((check) => check.status === "failed");
+      terminal.print();
+      terminal.print(`Implementation validation failed${failed ? `: ${failed.name}` : "."}`);
+      if (payload.rollbackTriggered) terminal.print("DesignFlow restored the project to its previous state.");
+      terminal.print("No generated changes remain in the project.");
+    }
+  }
+
   if (overview.durationLabel !== undefined) {
     terminal.print(`Took ${overview.durationLabel}.`);
   }
@@ -188,7 +206,10 @@ async function report(
   // absence of a file-write message: the two read the same either way, but
   // only one of them cannot be mistaken for "and it also touched my repo".
   if (overview.state === "ready") {
-    terminal.print("No files were written to your project.");
+    const implementation = artifacts.some((artifact) => artifact.artifactId === "file-application-result");
+    terminal.print(implementation ? "Project files were updated after your approval." : "No files were written to your project.");
+    if (implementation) terminal.print("Visual comparison has not been performed yet.");
+    if (implementation) terminal.print("A rollback snapshot is available.");
   }
 
   terminal.print();
@@ -233,6 +254,30 @@ async function report(
   terminal.print();
 
   return overview.state === "ready" ? 0 : 1;
+}
+
+async function renderImplementationPreview(context: CliContext, terminal: Terminal, executionId: string): Promise<void> {
+  const report = await context.runner.explain(executionId);
+  const proposal = report.artifacts.find((artifact) => artifact.artifactId === "proposed-file-changes");
+  terminal.print("DesignFlow wants permission to apply the proposed implementation to the registered project.");
+  terminal.print();
+  if (proposal !== undefined) {
+    const detail = await context.artifactInspection.getPayload(proposal);
+    const payload = detail.payload as { projectId?: string; files?: Array<{ path: string; action: string; reason: string }>; packageChanges?: Array<{ packageName: string }> };
+    const files = Array.isArray(payload.files) ? payload.files : [];
+    terminal.print(`Project: ${payload.projectId ?? "registered project"}`);
+    terminal.print(`Files to create: ${files.filter((file) => file.action === "create").length}`);
+    terminal.print(`Files to modify: ${files.filter((file) => file.action === "modify").length}`);
+    terminal.print(`Dependencies: ${payload.packageChanges?.length ?? 0}`);
+    terminal.print();
+    terminal.print("No files have been changed yet.");
+    terminal.print();
+    for (const file of files.slice(0, 50)) terminal.print(`  ${file.action}  ${file.path} — ${file.reason}`);
+    if (files.length > 50) terminal.print(`  … ${files.length - 50} more files omitted`);
+  }
+  terminal.print();
+  terminal.print("A rollback snapshot will be created before changes are applied.");
+  terminal.print("Validation commands will run after approval.");
 }
 
 /**

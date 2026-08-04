@@ -19,6 +19,7 @@
   "dependencies": {
     "@designflow/sdk": "workspace:*",
     "@designflow/capability-figma-mcp": "workspace:*",
+    "@designflow/capability-implementation": "workspace:*",
     "zod": "^3.24.0"
   },
   "devDependencies": {
