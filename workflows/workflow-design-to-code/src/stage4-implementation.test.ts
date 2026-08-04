@@ -74,6 +74,12 @@ describe("Stage 4 implementation workflow", () => {
     expect(result.state).toBe("failed");
     const validation = await host.artifactStore.getArtifact(IMPLEMENTATION_ARTIFACT_IDS.validation);
     expect(validation).not.toBeNull();
+    const validationPayloadId = validation?.metadata["payloadId"];
+    const validationPayload = await host.artifactStore.get(String(validationPayloadId));
+    expect(validationPayload?.data).toMatchObject({ passed: false, rollbackTriggered: true });
+    expect((validationPayload?.data as { checks: Array<{ name: string; status: string; required: boolean }> }).checks).toContainEqual(expect.objectContaining({ name: "typecheck", status: "failed", required: true }));
+    expect(await host.artifactStore.getArtifact(IMPLEMENTATION_ARTIFACT_IDS.generated)).toBeNull();
+    expect(await host.artifactStore.getArtifact(IMPLEMENTATION_ARTIFACT_IDS.summary)).toBeNull();
     await expect(readFile(join(root, "src/Header.tsx"))).rejects.toBeDefined();
     await rm(root, { recursive: true, force: true });
     await rm(state, { recursive: true, force: true });

@@ -3,12 +3,97 @@ import { implementationValidationReportSchema, projectImplementationContextV1Sch
 import { ImplementationError } from "./errors";
 
 export interface ValidationOptions { timeoutMs?: number; maxOutputBytes?: number; signal?: AbortSignal; }
+
+const CHECK_NAMES = ["format", "typecheck", "lint", "build", "test"] as const;
 const redact = (value: string) => value.replace(/([A-Za-z0-9_-]*(?:token|secret|password|credential)[A-Za-z0-9_-]*\s*[=:]\s*)[^\s\n]+/gi, "$1[REDACTED]");
-async function run(executable: string, args: string[], cwd: string, options: ValidationOptions): Promise<{code:number; output:string; duration:number}> { return await new Promise((resolve, reject) => { const started = Date.now(); const child = spawn(executable, args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] }); let output = ""; const limit = options.maxOutputBytes ?? 100_000; const append = (chunk: Buffer) => { output += chunk.toString(); if (Buffer.byteLength(output) > limit) { child.kill(); reject(new ImplementationError("ERR_VALIDATION_OUTPUT_TOO_LARGE", "Validation output exceeded the configured limit.")); } }; child.stdout.on("data", append); child.stderr.on("data", append); const timer = setTimeout(() => { child.kill(); reject(new ImplementationError("ERR_VALIDATION_TIMEOUT", "Project validation timed out.")); }, options.timeoutMs ?? 120_000); options.signal?.addEventListener("abort", () => { child.kill(); reject(new ImplementationError("ERR_VALIDATION_ABORTED", "Project validation was cancelled.")); }, { once: true }); child.on("error", reject); child.on("close", (code) => { clearTimeout(timer); resolve({ code: code ?? 1, output: redact(output), duration: Date.now() - started }); }); }); }
+
+interface CommandResult {
+  readonly code: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly duration: number;
+  readonly timedOut: boolean;
+  readonly truncated: boolean;
+}
+
+async function run(executable: string, args: string[], cwd: string, options: ValidationOptions): Promise<CommandResult> {
+  return await new Promise((resolve, reject) => {
+    const started = Date.now();
+    const child = spawn(executable, args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
+    const limit = options.maxOutputBytes ?? 100_000;
+    let stdout = "";
+    let stderr = "";
+    let bytes = 0;
+    let timedOut = false;
+    let truncated = false;
+    let settled = false;
+
+    const append = (target: "stdout" | "stderr", chunk: Buffer): void => {
+      if (truncated) return;
+      const remaining = Math.max(0, limit - bytes);
+      const text = chunk.subarray(0, remaining).toString();
+      bytes += Buffer.byteLength(text);
+      if (target === "stdout") stdout += text;
+      else stderr += text;
+      if (bytes >= limit) {
+        truncated = true;
+        child.kill();
+      }
+    };
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, options.timeoutMs ?? 120_000);
+    const abort = (): void => { child.kill(); };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
+    child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
+    child.on("error", (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
+      resolve({ code: code ?? 1, stdout, stderr, duration: Date.now() - started, timedOut, truncated });
+    });
+  });
+}
+
 export async function validateProject(rawContext: unknown, root: string, options: ValidationOptions = {}): Promise<ImplementationValidationReport["checks"]> {
   const context = projectImplementationContextV1Schema.parse(rawContext);
-  const checks: ImplementationValidationReport["checks"] = []; const commands = [context.commands.format, context.commands.typecheck, context.commands.lint, context.commands.build, context.commands.test];
-  for (const [index, command] of commands.entries()) { if (!command) { const name = (["format", "typecheck", "lint", "build", "test"] as const)[index]!; checks.push({ name, status: "unavailable", required: false, summary: "No safe project-declared command was found." }); continue; } try { const result = await run(command.executable, command.args, root, options); checks.push({ name: command.name, status: result.code === 0 ? "passed" : "failed", required: command.required, commandReference: [command.executable, ...command.args].join(" "), exitCode: result.code, durationMs: result.duration, summary: result.code === 0 ? "Command completed successfully." : redact(result.output.slice(-2_000)) || "Command failed." }); } catch (error) { if (error instanceof ImplementationError) throw error; checks.push({ name: command.name, status: "failed", required: command.required, commandReference: [command.executable, ...command.args].join(" "), summary: "Command could not be started." }); } }
+  const checks: ImplementationValidationReport["checks"] = [];
+  const commands = [context.commands.format, context.commands.typecheck, context.commands.lint, context.commands.build, context.commands.test];
+
+  for (const [index, command] of commands.entries()) {
+    const name = CHECK_NAMES[index]!;
+    if (!command) {
+      checks.push({ name, status: "unavailable", required: false, summary: "No safe project-declared command was found." });
+      continue;
+    }
+    try {
+      const result = await run(command.executable, command.args, root, options);
+      const output = redact(`${result.stdout}${result.stderr}`.slice(-2_000));
+      const summary = result.timedOut
+        ? "Command timed out."
+        : result.code === 0
+          ? "Command completed successfully."
+          : output || "Command failed.";
+      checks.push({
+        name: command.name,
+        status: result.code === 0 ? "passed" : "failed",
+        required: command.required,
+        command: [command.executable, ...command.args],
+        commandReference: [command.executable, ...command.args].join(" "),
+        exitCode: result.code,
+        durationMs: result.duration,
+        timedOut: result.timedOut,
+        stdout: redact(result.stdout.slice(-2_000)),
+        stderr: redact(result.stderr.slice(-2_000)),
+        ...(result.truncated ? { summary: `${summary} Output was bounded.` } : { summary }),
+      });
+    } catch (error) {
+      if (error instanceof ImplementationError) throw error;
+      checks.push({ name: command.name, status: "failed", required: command.required, command: [command.executable, ...command.args], commandReference: [command.executable, ...command.args].join(" "), summary: "Command could not be started." });
+    }
+  }
   return checks;
 }
+
 export function makeValidationReport(input: Omit<ImplementationValidationReport, "schemaVersion">): ImplementationValidationReport { return implementationValidationReportSchema.parse({ schemaVersion: "1", ...input }); }
