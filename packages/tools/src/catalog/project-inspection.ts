@@ -51,7 +51,7 @@ export const SKIPPED_DIRECTORIES = new Set([
  * which is what actually catches `.env`, `.git`, `.npmrc` and `.ssh`.
  */
 export const SENSITIVE =
-  /secret|credential|password|token|private[-_.]?key|\.pem$|\.key$|\.p12$|\.pfx$/i;
+  /(^|[._-])(secret|credential(?:s)?|password|access[-_.]?token|private[-_.]?key)([._-]|$)|\.(pem|key|p12|pfx)$/i;
 
 /** Files worth reporting, because they say what kind of project this is. */
 export const INTERESTING =
@@ -281,6 +281,21 @@ export interface ProjectInspectionRaw {
   readonly projectName?: string;
   readonly packageManager?: string;
   readonly frameworks: readonly string[];
+  readonly language?: "typescript" | "javascript";
+  readonly stylingStrategies: readonly string[];
+  readonly tokenSources: readonly { path: string; kind: "css-variables" }[];
+  readonly tokens: readonly {
+    name: string;
+    value: string;
+    reference: string;
+    sourcePath: string;
+  }[];
+  readonly components: readonly {
+    name: string;
+    sourcePath: string;
+    props: readonly string[];
+  }[];
+  readonly commands: readonly string[];
   readonly testFramework?: string;
   readonly designSystemPackage?: string;
   readonly designSystemDirectory?: string;
@@ -303,11 +318,67 @@ export function inspectProjectDirectory(root: string, signal: AbortSignal): Proj
   const designSystemPackage = detectDesignSystemPackage(dependencies);
   const designSystemDirectory = detectDesignSystemDirectory(directories);
   const sourceRoot = detectSourceRoot(topLevelDirectories);
+  const texts = relevantFiles
+    .filter((file) => !isSkippedName(file.split("/").at(-1) ?? file))
+    .map((file) => {
+      try {
+        return { path: file, text: readFileSync(join(root, file), "utf8") };
+      } catch {
+        return { path: file, text: "" };
+      }
+    });
+  const language = relevantFiles.some((file) => /\.tsx?$/.test(file))
+    ? "typescript"
+    : relevantFiles.some((file) => /\.(jsx?|mjs|cjs)$/.test(file))
+      ? "javascript"
+      : undefined;
+  const stylingStrategies = [...new Set(
+    texts.flatMap(({ path, text }) => [
+      ...(path.endsWith(".css") ? ["css"] : []),
+      ...(path.endsWith(".module.css") ? ["css-modules"] : []),
+      ...(path.endsWith(".scss") || path.endsWith(".sass") ? ["sass"] : []),
+      ...(text.includes("styled-components") || text.includes("styled.") ? ["styled-components"] : []),
+      ...(text.includes("@emotion/") ? ["emotion"] : []),
+      ...(text.includes("className=") && text.includes("tailwind") ? ["tailwind"] : []),
+    ]),
+  )].sort();
+  const tokens = texts.flatMap(({ path, text }) => [...text.matchAll(
+    /--([A-Za-z0-9_-]+)\s*:\s*([^;\n]+)/g,
+  )].map((match) => ({
+    name: match[1]!,
+    value: match[2]!.trim(),
+    reference: `var(--${match[1]})`,
+    sourcePath: path,
+  })));
+  const tokenSources = [...new Map(tokens.map((token) => [token.sourcePath, {
+    path: token.sourcePath,
+    kind: "css-variables" as const,
+  }])).values()].sort((left, right) => left.path.localeCompare(right.path));
+  const components = texts
+    .filter(({ path }) => /(^|\/)components\//.test(path) && /\.(tsx?|jsx?)$/.test(path))
+    .flatMap(({ path, text }) => {
+      const names = [...text.matchAll(/export\s+(?:default\s+)?(?:function|const|class)\s+([A-Za-z0-9_]+)/g)]
+        .map((match) => match[1]!);
+      if (names.length === 0) return [];
+      const props = [...text.matchAll(/(?:interface|type)\s+\w*Props\s*\{([\s\S]*?)\}/g)]
+        .flatMap((match) => [...match[1]!.matchAll(/(\w+)\??\s*:/g)].map((prop) => prop[1]!));
+      return [{ name: names[0]!, sourcePath: path, props: [...new Set(props)] }];
+    });
+  const scripts = manifest?.["scripts"];
+  const commands = scripts !== null && typeof scripts === "object" && scripts !== null && !Array.isArray(scripts)
+    ? Object.keys(scripts as Record<string, unknown>).filter((name) => typeof (scripts as Record<string, unknown>)[name] === "string").sort()
+    : [];
 
   return {
     ...(typeof name === "string" && name.length > 0 ? { projectName: name } : {}),
     ...(packageManager !== undefined ? { packageManager } : {}),
     frameworks: detectFrameworks(dependencies),
+    ...(language !== undefined ? { language } : {}),
+    stylingStrategies,
+    tokenSources,
+    tokens,
+    components,
+    commands,
     ...(testFramework !== undefined ? { testFramework } : {}),
     ...(designSystemPackage !== undefined ? { designSystemPackage } : {}),
     ...(designSystemDirectory !== undefined ? { designSystemDirectory } : {}),

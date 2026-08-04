@@ -117,7 +117,7 @@ describe("worker manifest validation", () => {
 
   test("the shipped Design Engineer manifest is valid", () => {
     expect(() => workerManifestSchema.parse(designEngineer)).not.toThrow();
-    expect(designEngineer.workflows).toEqual(["design-to-code"]);
+    expect(designEngineer.workflows).toEqual(["design-to-code", "design-to-code-implementation"]);
     expect(designEngineer.inputs).toHaveLength(3);
   });
 });
@@ -359,7 +359,7 @@ describe("stage 41 worker catalogue", () => {
   });
 
   test("design-engineer keeps its Stage 33 workflow/input shape unchanged", () => {
-    expect(designEngineer.workflows).toEqual(["design-to-code"]);
+    expect(designEngineer.workflows).toEqual(["design-to-code", "design-to-code-implementation"]);
     expect(designEngineer.inputs).toHaveLength(3);
   });
 });

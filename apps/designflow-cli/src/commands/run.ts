@@ -52,6 +52,17 @@ export async function runCommand(
 
   const { worker, workflowId } = resolved;
 
+  const selectedProjectId = options?.projectId;
+  const isDesignEngineer = worker.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID);
+  const directImplementation = workflowIdOf(resolved) === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID;
+  if (context.experimentalImplementationEnabled && isDesignEngineer && selectedProjectId === undefined && !directImplementation) {
+    terminal.print("A registered project must be selected while experimental implementation mode is enabled.");
+    terminal.print();
+    terminal.print("Use the interactive project picker, or run:");
+    terminal.print(`  designflow run ${worker.id} --project <project-id>`);
+    return 1;
+  }
+
   if (!resolved.workflowInstalled) {
     terminal.print(
       `${worker.name} needs the "${workflowId}" workflow, which is not installed.`,
@@ -74,8 +85,10 @@ export async function runCommand(
 
   const input = await collectInput(terminal, resolved);
 
-  if (workflowIdOf(resolved) === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) {
-    const projectId = options?.projectId ?? (typeof input.projectId === "string" ? input.projectId : undefined);
+  const useImplementation = workflowIdOf(resolved) === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID
+    || (context.experimentalImplementationEnabled && isDesignEngineer && selectedProjectId !== undefined);
+  if (useImplementation) {
+    const projectId = selectedProjectId ?? (typeof input.projectId === "string" ? input.projectId : undefined);
     if (projectId === undefined) {
       terminal.print("A registered project is required before DesignFlow can generate or modify files.");
       terminal.print();
@@ -87,8 +100,17 @@ export async function runCommand(
       terminal.print("A registered project with an accessible root is required before implementation.");
       return 1;
     }
+    // The implementation workflow deliberately accepts only the stable
+    // project identity fields. Persistence metadata such as createdAt and
+    // updatedAt must not cross into its strict input schema.
+    const workflowProject = {
+      id: project.id,
+      name: project.name,
+      rootPath: project.rootPath,
+    };
     input.enabled = true;
-    input.project = project;
+    input.projectId = projectId;
+    input.project = workflowProject;
     input.stateDirectory = join(context.home.layout.home, "projects", project.id, "runs");
     input.figmaAgentVersion = "0.1.0";
     input.implementationAgentVersion = "0.1.0";

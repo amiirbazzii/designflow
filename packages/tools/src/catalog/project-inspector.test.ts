@@ -32,6 +32,59 @@ function workspace(): string {
 }
 
 describe("createProjectInspector", () => {
+  test("extracts the complete React TypeScript design-system fixture context", async () => {
+    const root = mkdtempSync(join(tmpdir(), "df-inspector-deep-"));
+    try {
+      writeFileSync(join(root, "package.json"), JSON.stringify({
+        name: "vite-fixture",
+        scripts: { build: "tsc -b && vite build", lint: "oxlint" },
+        dependencies: { react: "^19.0.0" },
+        devDependencies: { typescript: "^5.0.0" },
+      }));
+      writeFileSync(join(root, "package-lock.json"), "{}\n");
+      writeFileSync(join(root, ".env"), "DESIGNFLOW_TEST_SECRET=must-never-leak\n");
+      mkdirSync(join(root, "src", "components"), { recursive: true });
+      mkdirSync(join(root, "src", "styles"), { recursive: true });
+      writeFileSync(join(root, "src", "styles", "tokens.css"), ":root { --color-primary: #635bff; --spacing-md: 16px; }\n");
+      writeFileSync(join(root, "src", "components", "Button.tsx"), [
+        "export interface ButtonProps {",
+        "  children: React.ReactNode;",
+        "  variant?: \"primary\" | \"secondary\";",
+        "  disabled?: boolean;",
+        "}",
+        "export function Button({ children }: ButtonProps) { return <button>{children}</button>; }",
+      ].join("\n"));
+
+      const inspector = createProjectInspector();
+      const first = await inspector.inspect(root);
+      const second = await inspector.inspect(root);
+      const byKey = Object.fromEntries(first.facts.map((fact) => [fact.key, fact.value]));
+
+      expect(first).toEqual(second);
+      expect(byKey["project.frameworks"]).toEqual(["react"]);
+      expect(byKey["project.language"]).toBe("typescript");
+      expect(byKey["project.packageManager"]).toBe("npm");
+      expect(byKey["project.sourceRoot"]).toBe("src");
+      expect(byKey["project.styling"]).toEqual(["css"]);
+      expect(byKey["designSystem.tokenSources"]).toEqual([{ path: "src/styles/tokens.css", kind: "css-variables" }]);
+      expect(byKey["designSystem.tokens"]).toEqual([
+        { name: "color-primary", value: "#635bff", reference: "var(--color-primary)", sourcePath: "src/styles/tokens.css" },
+        { name: "spacing-md", value: "16px", reference: "var(--spacing-md)", sourcePath: "src/styles/tokens.css" },
+      ]);
+      expect(byKey["designSystem.components"]).toEqual([
+        { name: "Button", sourcePath: "src/components/Button.tsx", props: ["children", "variant", "disabled"] },
+      ]);
+      expect(byKey["project.commands"]).toEqual(["build", "lint"]);
+      expect(JSON.stringify(first.facts)).not.toContain("must-never-leak");
+
+      writeFileSync(join(root, "src", "styles", "tokens.css"), ":root { --color-primary: #000000; --spacing-md: 16px; }\n");
+      const changed = await inspector.inspect(root);
+      expect(changed).not.toEqual(first);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("produces inspection facts for name, package manager, frameworks, test framework, source root", async () => {
     const root = workspace();
     try {

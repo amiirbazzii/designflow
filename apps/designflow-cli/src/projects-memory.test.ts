@@ -1,6 +1,6 @@
 // apps/designflow-cli/src/projects-memory.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatch } from "./cli";
@@ -99,6 +99,45 @@ describe("designflow projects", () => {
 
     expect(show.transcript).toContain("project.frameworks");
     expect(show.transcript).toContain("react");
+  });
+
+  test("CLI inspect and show surface the complete disposable React fixture context", async () => {
+    const built = context();
+    const root = workspace();
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      name: "stage4-disposable",
+      scripts: { build: "tsc -b && vite build", lint: "oxlint" },
+      dependencies: { react: "^19.0.0" },
+      devDependencies: { typescript: "^5.0.0" },
+    }));
+    writeFileSync(join(root, "package-lock.json"), "{}\n");
+    writeFileSync(join(root, ".env"), "DESIGNFLOW_TEST_SECRET=must-never-leak\n");
+    mkdirSync(join(root, "src", "components"), { recursive: true });
+    mkdirSync(join(root, "src", "styles"), { recursive: true });
+    writeFileSync(join(root, "src", "styles", "tokens.css"), ":root { --color-primary: #635bff; }\n");
+    writeFileSync(join(root, "src", "components", "Button.tsx"), "export interface ButtonProps { children: React.ReactNode; variant?: string; disabled?: boolean; }\nexport function Button(props: ButtonProps) { return <button>{props.children}</button>; }\n");
+
+    const add = new ScriptedTerminal([]);
+    expect(await dispatch(["projects", "add", "--name", "Stage4", "--path", root], built, add)).toBe(0);
+    const projectId = (await built.projects.listProjects())[0]!.id;
+    const inspect = new ScriptedTerminal([]);
+    expect(await dispatch(["projects", "inspect", projectId], built, inspect)).toBe(0);
+    const show = new ScriptedTerminal([]);
+    expect(await dispatch(["projects", "show", projectId], built, show)).toBe(0);
+    for (const expected of [
+      "project.frameworks: react",
+      "project.language: typescript",
+      "project.packageManager: npm",
+      "project.sourceRoot: src",
+      "project.styling: css",
+      "project.commands: build, lint",
+      "src/styles/tokens.css",
+      "Button",
+      "children",
+      "variant",
+      "disabled",
+    ]) expect(show.transcript).toContain(expected);
+    expect(show.transcript).not.toContain("must-never-leak");
   });
 
   test("inspect is available as its own command", async () => {

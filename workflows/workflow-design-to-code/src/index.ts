@@ -73,7 +73,7 @@ export type {
 } from "./agent-foundation-types";
 
 // ── Stage 3: Figma Specification (internal/experimental) ─────────
-export { designToCodeFigmaSpecificationWorkflowPackage } from "./figma-specification-manifest";
+export { designToCodeFigmaSpecificationWorkflowPackage, sharedFigmaSpecificationCapabilities } from "./figma-specification-manifest";
 export { designToCodeFigmaSpecificationWorkflow } from "./figma-specification-workflow";
 export {
   figmaSpecificationCapabilities,

@@ -147,7 +147,13 @@ function printSummary(terminal: Terminal, project: ProjectIdentity): void {
 }
 
 function renderFactValue(value: unknown): string {
-  return Array.isArray(value) ? value.join(", ") : String(value);
+  if (Array.isArray(value)) {
+    return value.every((entry) => typeof entry === "string")
+      ? value.join(", ")
+      : JSON.stringify(value);
+  }
+  if (typeof value === "object" && value !== null) return JSON.stringify(value);
+  return String(value);
 }
 
 function reportProjectError(terminal: Terminal, projectId: string, error: unknown): number {

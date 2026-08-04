@@ -65,7 +65,7 @@ export const designEngineerAgentManifest: AgentManifest = agentManifestSchema.pa
   instructions:
     "Turn a design into working code. Classify the request first. Run the " +
     "design-to-code workflow when it names design work. Ask what to build when it does not.",
-  allowedWorkflows: ["design-to-code"],
+  allowedWorkflows: ["design-to-code", "design-to-code-implementation"],
   allowedTools: ["classify-design-task"],
   /**
    * A reference, not a configuration. Naming a profile here does not, by
@@ -106,6 +106,15 @@ const CLASSIFIER = "classify-design-task";
 
 /** The kinds of request that describe work `design-to-code` can do. */
 const ACTIONABLE = new Set(["new_component", "modify_component", "page"]);
+const IMPLEMENTATION_WORKFLOW_ID = "design-to-code-implementation";
+
+function wantsImplementation(task: AgentTask, context: AgentContext): boolean {
+  if (!context.availableWorkflows.includes(IMPLEMENTATION_WORKFLOW_ID)) return false;
+  const input = task.input;
+  return typeof input === "object" && input !== null && !Array.isArray(input)
+    && (typeof (input as Record<string, unknown>).projectId === "string"
+      || typeof (input as Record<string, unknown>).project === "object");
+}
 
 /**
  * Whether there is anything at all to act on.
@@ -306,7 +315,9 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
   context,
   manifest,
 ) => {
-  const workflowId = manifest.allowedWorkflows[0];
+  const workflowId = wantsImplementation(task, context)
+    ? IMPLEMENTATION_WORKFLOW_ID
+    : manifest.allowedWorkflows[0];
 
   // Unreachable for a parsed manifest — `allowedWorkflows` is `.min(1)`.
   // Declining rather than asserting keeps a misconfigured install refusing
@@ -314,7 +325,7 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
   if (workflowId === undefined || !context.availableWorkflows.includes(workflowId)) {
     return {
       type: "decline",
-      reason: "The design-to-code workflow is not available in this installation.",
+      reason: "The requested design workflow is not available in this installation.",
       reasoningSummary: "No permitted workflow is installed.",
     };
   }
@@ -346,9 +357,11 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
     workflowId,
     ...(task.input !== undefined ? { input: task.input } : {}),
     reasoningSummary:
-      classification === null
-        ? "The request describes design work, which design-to-code handles."
-        : `The request looks like ${classification.taskType.replace(/_/g, " ")}, which design-to-code handles.`,
+      workflowId === IMPLEMENTATION_WORKFLOW_ID
+        ? "A registered project was explicitly selected, so the experimental implementation workflow will be used."
+        : classification === null
+          ? "The request describes design work, which design-to-code handles."
+          : `The request looks like ${classification.taskType.replace(/_/g, " ")}, which design-to-code handles.`,
   };
 };
 
@@ -394,6 +407,15 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
       question:
         "Which design should I build? Name a design file, or describe what you want made.",
       reasoningSummary: "The request named nothing to work from.",
+    };
+  }
+
+  if (wantsImplementation(task, context)) {
+    return {
+      type: "run_workflow",
+      workflowId: IMPLEMENTATION_WORKFLOW_ID,
+      ...(task.input !== undefined ? { input: task.input } : {}),
+      reasoningSummary: "A registered project was explicitly selected, so the experimental implementation workflow will be used.",
     };
   }
 

@@ -6,7 +6,7 @@ import {
   type Terminal,
 } from "../ui/terminal";
 
-import type { CliContext } from "../services/cli-runner";
+import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext } from "../services/cli-runner";
 import { historyCommand } from "./history";
 import { runCommand } from "./run";
 import { settingsCommand } from "./settings";
@@ -45,7 +45,16 @@ export async function interactiveCommand(
     if (choice === "1" || choice === "use" || choice === "run") {
       const workerId = await chooseWorker(context, terminal);
       if (workerId !== null) {
-        await runCommand(context, terminal, workerId, { interactive: true });
+        const isDesignEngineer = context.workers.getWorker(workerId)?.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) === true;
+        const projectId = context.experimentalImplementationEnabled && isDesignEngineer
+          ? await chooseProject(context, terminal)
+          : null;
+        if (projectId !== null || !(context.experimentalImplementationEnabled && isDesignEngineer)) {
+          await runCommand(context, terminal, workerId, {
+            interactive: true,
+            ...(projectId !== null ? { projectId } : {}),
+          });
+        }
       }
       continue;
     }
@@ -63,6 +72,27 @@ export async function interactiveCommand(
     terminal.print();
     terminal.print(`Not an option: ${choice}`);
   }
+}
+
+async function chooseProject(context: CliContext, terminal: Terminal): Promise<string | null> {
+  const projects = await context.projects.listProjects();
+  if (projects.length === 0) {
+    terminal.print();
+    terminal.print("A registered project is required before experimental implementation can run.");
+    terminal.print("Run  designflow projects add --name <name> --path <path>");
+    return null;
+  }
+
+  terminal.print();
+  terminal.print("Registered projects");
+  projects.forEach((project, index) => terminal.print(`  ${index + 1}. ${project.name} (${project.id})`));
+  const answer = (await terminal.ask("Which project?")).trim();
+  const chosen = projects[Number(answer) - 1] ?? projects.find((project) => project.id === answer);
+  if (chosen === undefined) {
+    terminal.print(`Not a registered project: ${answer}`);
+    return null;
+  }
+  return chosen.id;
 }
 
 /**

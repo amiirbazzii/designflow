@@ -91,10 +91,11 @@ function runtimeWith(options: {
   tools?: ToolInvoker;
   models?: ModelInvoker;
   strategy: typeof deterministicDesignEngineerStrategy;
+  availableWorkflows?: readonly string[];
 }): AgentRuntime {
   return new AgentRuntime({
     registry: new InMemoryAgentRegistry([createDesignEngineerAgent(options.strategy)]),
-    availableWorkflows: ["design-to-code"],
+    availableWorkflows: options.availableWorkflows ?? ["design-to-code"],
     ...(options.tools !== undefined ? { tools: options.tools } : {}),
     ...(options.models !== undefined ? { models: options.models } : {}),
   });
@@ -103,6 +104,19 @@ function runtimeWith(options: {
 // ── The deterministic strategy is unaffected by this stage ──────
 
 describe("the deterministic strategy", () => {
+  test("selects implementation only when the installed Stage 4 workflow and project context are both present", async () => {
+    const result = await runtimeWith({
+      tools: classifierTool("page"),
+      strategy: deterministicDesignEngineerStrategy,
+      availableWorkflows: ["design-to-code", "design-to-code-implementation"],
+    }).decide({ ...TASK, input: { ...TASK.input, project: { id: "p1", name: "Fixture" } } });
+
+    expect(result.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-implementation",
+    });
+  });
+
   test("still works explicitly, with no model layer installed at all", async () => {
     const tools = classifierTool("page");
 

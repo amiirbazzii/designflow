@@ -91,6 +91,10 @@ import {
   designToCodeWorkflowPackage,
   designToCodeFigmaSpecificationWorkflowPackage,
   designToCodeImplementationWorkflowPackage,
+  sharedFigmaSpecificationCapabilities,
+  storeStage3SummaryCapability,
+  implementationCapabilities,
+  implementationSideEffectCapabilities,
   designToCodeImplementationApprovalPolicy,
 } from "@designflow/workflow-design-to-code";
 import {
@@ -115,6 +119,30 @@ import { readModelProfileOverrides } from "./model-config";
 import { readExperimentalFigmaMcpEnabled, readExperimentalImplementationEnabled, readFigmaMcpConfig } from "./figma-mcp-config";
 
 export const EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID = ["design", "to", "code", "implementation"].join("-");
+
+export function registerExperimentalDesignToCodeWorkflows(options: {
+  readonly registry: CapabilityRegistry;
+  readonly workflows: Map<string, WorkflowPackage>;
+  readonly figmaMcpEnabled: boolean;
+  readonly implementationEnabled: boolean;
+}): void {
+  // Shared Figma capabilities are registered exactly once here. The workflow
+  // manifests deliberately register only their stage-specific capabilities.
+  for (const capability of sharedFigmaSpecificationCapabilities) {
+    options.registry.register(capability);
+  }
+
+  if (options.figmaMcpEnabled) {
+    options.registry.register(storeStage3SummaryCapability);
+    options.workflows.set(designToCodeFigmaSpecificationWorkflowPackage.id, designToCodeFigmaSpecificationWorkflowPackage);
+  }
+  if (options.implementationEnabled) {
+    for (const capability of [...implementationCapabilities, ...implementationSideEffectCapabilities]) {
+      options.registry.register(capability);
+    }
+    options.workflows.set(designToCodeImplementationWorkflowPackage.id, designToCodeImplementationWorkflowPackage);
+  }
+}
 import {
   readSessionConfig,
   type SessionConfig,
@@ -242,6 +270,8 @@ export interface CliContext {
   readonly home: HomeState;
   /** Where this context's runs are stored. Shown by `settings`. */
   readonly databasePath: string;
+  /** True when an explicit project can select the experimental implementation path. */
+  readonly experimentalImplementationEnabled: boolean;
   /**
    * Resolves a name to something runnable.
    *
@@ -422,8 +452,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // explicitly sets `settings.experimental.designEngineerFigmaMcp` — every
   // existing worker, workflow and command is unaffected either way. See
   // `docs/adr/*-figma-mcp-integration.md` for the full rollout rationale.
-  const figmaMcpEnabled = readExperimentalFigmaMcpEnabled(home.config);
-  const implementationEnabled = figmaMcpEnabled && readExperimentalImplementationEnabled(home.config);
+  const implementationEnabled = readExperimentalImplementationEnabled(home.config);
+  const figmaMcpEnabled = readExperimentalFigmaMcpEnabled(home.config) || implementationEnabled;
   const figmaMcpConfig = figmaMcpEnabled ? readFigmaMcpConfig(home.config) : undefined;
 
   const mcpClient = figmaMcpConfig !== undefined
@@ -461,12 +491,16 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     qaReviewWorkflowPackage,
     researchAnalysisWorkflowPackage,
     productBriefWorkflowPackage,
-    ...(figmaMcpEnabled ? [designToCodeFigmaSpecificationWorkflowPackage] : []),
-    ...(implementationEnabled ? [designToCodeImplementationWorkflowPackage] : []),
   ]) {
     workflowPackage.load(capabilityRegistry);
     workflows.set(workflowPackage.id, workflowPackage);
   }
+  registerExperimentalDesignToCodeWorkflows({
+    registry: capabilityRegistry,
+    workflows,
+    figmaMcpEnabled,
+    implementationEnabled,
+  });
 
   // Live progress: events publish while `start` is awaited, so a listener
   // attached up front sees each step as it lands.
@@ -788,6 +822,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     workers,
     home,
     databasePath,
+    experimentalImplementationEnabled: implementationEnabled,
     traces,
     artifactInspection,
     sessions,

@@ -15,7 +15,7 @@ export const designEngineer: WorkerManifest = workerManifestSchema.parse({
   name: "Design Engineer",
   description: "Transforms designs into production-ready applications",
   category: "development",
-  workflows: ["design-to-code"],
+  workflows: ["design-to-code", "design-to-code-implementation"],
   /**
    * Delegates its decision to the coordinating agent.
    *

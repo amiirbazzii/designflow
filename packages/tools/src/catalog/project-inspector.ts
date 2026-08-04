@@ -62,8 +62,29 @@ class FileSystemProjectInspector implements ProjectInspector {
       facts.push({ key: "project.frameworks", value: inspected.frameworks, source: "inspection" });
     }
 
+    if (inspected.language !== undefined) {
+      facts.push({ key: "project.language", value: inspected.language, source: "inspection" });
+    }
+
     if (inspected.sourceRoot !== undefined) {
       facts.push({ key: "project.sourceRoot", value: inspected.sourceRoot, source: "inspection" });
+    }
+
+    if (inspected.stylingStrategies.length > 0) {
+      facts.push({ key: "project.styling", value: inspected.stylingStrategies, source: "inspection" });
+    }
+
+    if (inspected.tokenSources.length > 0) {
+      facts.push({ key: "designSystem.tokenSources", value: inspected.tokenSources, source: "inspection" });
+      facts.push({ key: "designSystem.tokens", value: inspected.tokens, source: "inspection" });
+    }
+
+    if (inspected.components.length > 0) {
+      facts.push({ key: "designSystem.components", value: inspected.components, source: "inspection" });
+    }
+
+    if (inspected.commands.length > 0) {
+      facts.push({ key: "project.commands", value: inspected.commands, source: "inspection" });
     }
 
     if (inspected.testFramework !== undefined) {

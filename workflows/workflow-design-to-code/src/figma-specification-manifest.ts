@@ -1,7 +1,7 @@
 // workflows/workflow-design-to-code/src/figma-specification-manifest.ts
 import type { WorkflowPackage } from "@designflow/sdk";
 import { designToCodeFigmaSpecificationWorkflow } from "./figma-specification-workflow";
-import { figmaSpecificationCapabilities } from "./figma-specification-capabilities";
+import { figmaSpecificationCapabilities, storeStage3SummaryCapability } from "./figma-specification-capabilities";
 
 /**
  * The installable package for `design-to-code-figma-specification`.
@@ -22,8 +22,13 @@ export const designToCodeFigmaSpecificationWorkflowPackage: WorkflowPackage = {
   },
   definition: designToCodeFigmaSpecificationWorkflow,
   load(registry) {
-    for (const capability of figmaSpecificationCapabilities) {
-      registry.register(capability);
-    }
+    // Standalone package consumers receive a complete package. The CLI
+    // composition root uses the shared list below and installs the Stage 3
+    // summary separately so two enabled workflows share one registration.
+    for (const capability of figmaSpecificationCapabilities) registry.register(capability);
   },
 };
+
+export const sharedFigmaSpecificationCapabilities = figmaSpecificationCapabilities.filter(
+  (capability) => capability.id !== storeStage3SummaryCapability.id,
+);
