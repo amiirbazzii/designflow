@@ -20,6 +20,7 @@ import {
 import { resolveFigmaFrames } from "./resolve-frames";
 import { FigmaFrameAmbiguousError, FigmaFrameNotFoundError } from "./errors";
 import { storeFigmaScreenshotArtifact } from "./screenshot-artifact";
+import { buildFigmaDesktopSourceSnapshot } from "./figma-desktop-adapter";
 
 /**
  * The full, real retrieval path — capability discovery through to a
@@ -46,6 +47,10 @@ export async function buildFigmaSourceSnapshot(
   const client = context.mcp;
   if (client === undefined) {
     throw new Error("buildFigmaSourceSnapshot requires context.mcp to be configured");
+  }
+
+  if (client.serverIdentity === "figma-desktop-mcp") {
+    return buildFigmaDesktopSourceSnapshot(context, options);
   }
 
   const { parsedSource } = options;

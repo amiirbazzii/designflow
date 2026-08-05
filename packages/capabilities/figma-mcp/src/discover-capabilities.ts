@@ -64,6 +64,31 @@ export async function discoverFigmaMcpCapabilities(
 ): Promise<FigmaMcpCapabilities> {
   const tools = await client.listTools(signal);
 
+  // Figma Desktop MCP is a known, selection-oriented server. Its names are
+  // intentionally mapped exactly here rather than through the generic
+  // keyword rules below: the generic wrappers speak in fileKey/nodeIds and
+  // must not be changed to guess at Desktop's current-selection semantics.
+  if (client.serverIdentity === "figma-desktop-mcp") {
+    const names = new Set(tools.map((tool) => tool.name));
+    const resolvedToolNames: Record<string, string> = {};
+    const setIfPresent = (operation: string, toolName: string): boolean => {
+      if (!names.has(toolName)) return false;
+      resolvedToolNames[operation] = toolName;
+      return true;
+    };
+
+    return {
+      inspectDocument: setIfPresent("inspectDocument", "get_metadata"),
+      inspectNodes: setIfPresent("inspectNodes", "get_design_context"),
+      inspectVariables: setIfPresent("inspectVariables", "get_variable_defs"),
+      inspectStyles: false,
+      inspectComponents: false,
+      exportAssets: false,
+      captureScreenshot: setIfPresent("captureScreenshot", "get_screenshot"),
+      resolvedToolNames,
+    };
+  }
+
   const resolvedToolNames: Record<string, string> = {};
   const flags: Record<string, boolean> = {};
 

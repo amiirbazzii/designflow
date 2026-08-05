@@ -11,6 +11,7 @@ import type { Config } from "./config";
  *   "settings": {
  *     "experimental": { "designEngineerFigmaMcp": true },
  *     "figmaMcp": {
+ *       "transport": "stdio",
  *       "command": "npx",
  *       "args": ["-y", "some-figma-mcp-server"],
  *       "envPassthrough": ["FIGMA_ACCESS_TOKEN"],
@@ -31,7 +32,8 @@ import type { Config } from "./config";
  * inside the one `env` map handed directly to `child_process.spawn`.
  */
 
-export interface FigmaMcpConfig {
+export interface FigmaMcpStdioConfig {
+  readonly transport: "stdio";
   readonly command: string;
   readonly args: readonly string[];
   /** Resolved from `process.env` at read time — never a literal from config.json. */
@@ -41,6 +43,17 @@ export interface FigmaMcpConfig {
   readonly maxResponseBytes?: number;
   readonly captureScreenshots: boolean;
 }
+
+export interface FigmaMcpHttpConfig {
+  readonly transport: "http";
+  readonly url: string;
+  readonly connectTimeoutMs?: number;
+  readonly requestTimeoutMs?: number;
+  readonly maxResponseBytes?: number;
+  readonly captureScreenshots: boolean;
+}
+
+export type FigmaMcpConfig = FigmaMcpStdioConfig | FigmaMcpHttpConfig;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -85,6 +98,27 @@ export function readFigmaMcpConfig(config: Config): FigmaMcpConfig | undefined {
   const raw = config.settings["figmaMcp"];
   if (!isRecord(raw)) return undefined;
 
+  const transport = raw["transport"];
+  const connectTimeoutMs = readNumber(raw, "connectTimeoutMs");
+  const requestTimeoutMs = readNumber(raw, "requestTimeoutMs");
+  const maxResponseBytes = readNumber(raw, "maxResponseBytes");
+  const captureScreenshots = raw["captureScreenshots"] !== false;
+
+  if (transport !== undefined && transport !== "stdio" && transport !== "http") return undefined;
+
+  if (transport === "http") {
+    const url = readString(raw, "url");
+    if (url === undefined) return undefined;
+    return {
+      transport: "http",
+      url,
+      ...(connectTimeoutMs !== undefined ? { connectTimeoutMs } : {}),
+      ...(requestTimeoutMs !== undefined ? { requestTimeoutMs } : {}),
+      ...(maxResponseBytes !== undefined ? { maxResponseBytes } : {}),
+      captureScreenshots,
+    };
+  }
+
   const command = readString(raw, "command");
   if (command === undefined) return undefined;
 
@@ -94,12 +128,8 @@ export function readFigmaMcpConfig(config: Config): FigmaMcpConfig | undefined {
     if (value !== undefined) env[name] = value;
   }
 
-  const connectTimeoutMs = readNumber(raw, "connectTimeoutMs");
-  const requestTimeoutMs = readNumber(raw, "requestTimeoutMs");
-  const maxResponseBytes = readNumber(raw, "maxResponseBytes");
-  const captureScreenshots = raw["captureScreenshots"] !== false;
-
   return {
+    transport: "stdio",
     command,
     args: readStringArray(raw, "args"),
     env,

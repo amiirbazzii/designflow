@@ -47,4 +47,18 @@ describe("designflow doctor", () => {
     expect(report.checks.find((item) => item.id === "state-store")?.status).toBe("failed");
     expect(existsSync(join(created.home.layout.home, "runs.json"))).toBe(true);
   });
+
+  test("reports the configured Desktop HTTP MCP endpoint without exposing a session", async () => {
+    const created = context();
+    created.home.config.settings["experimental"] = { designEngineerFigmaMcp: true };
+    created.home.config.settings["figmaMcp"] = {
+      transport: "http",
+      url: "http://127.0.0.1:3845/mcp",
+    };
+
+    const report = await runDoctor(created);
+    const figma = report.checks.find((item) => item.id === "figma");
+    expect(figma?.detail).toContain("Figma MCP configured: http://127.0.0.1:3845/mcp");
+    expect(figma?.detail.toLowerCase()).not.toContain("mcp-session-id");
+  });
 });

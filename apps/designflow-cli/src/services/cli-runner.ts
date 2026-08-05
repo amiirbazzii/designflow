@@ -54,7 +54,7 @@ import {
   visualCorrectionDefaultModelProfile,
   modelVisualCorrectionStrategy,
 } from "@designflow/agents";
-import { McpRuntime } from "@designflow/mcp";
+import { HttpMcpRuntime, McpRuntime } from "@designflow/mcp";
 import {
   ToolRuntime,
   createToolRegistry,
@@ -519,21 +519,35 @@ export function createCliContext(options?: CliContextOptions): CliContext {
 
   const mcpClient =
     figmaMcpConfig !== undefined
-      ? new McpRuntime({
-          command: figmaMcpConfig.command,
-          args: figmaMcpConfig.args,
-          env: figmaMcpConfig.env,
-          ...(figmaMcpConfig.connectTimeoutMs !== undefined
-            ? { connectTimeoutMs: figmaMcpConfig.connectTimeoutMs }
-            : {}),
-          ...(figmaMcpConfig.requestTimeoutMs !== undefined
-            ? { requestTimeoutMs: figmaMcpConfig.requestTimeoutMs }
-            : {}),
-          ...(figmaMcpConfig.maxResponseBytes !== undefined
-            ? { maxResponseBytes: figmaMcpConfig.maxResponseBytes }
-            : {}),
-          serverIdentity: "figma-mcp",
-        })
+      ? figmaMcpConfig.transport === "http"
+        ? new HttpMcpRuntime({
+            url: figmaMcpConfig.url,
+            ...(figmaMcpConfig.connectTimeoutMs !== undefined
+              ? { connectTimeoutMs: figmaMcpConfig.connectTimeoutMs }
+              : {}),
+            ...(figmaMcpConfig.requestTimeoutMs !== undefined
+              ? { requestTimeoutMs: figmaMcpConfig.requestTimeoutMs }
+              : {}),
+            ...(figmaMcpConfig.maxResponseBytes !== undefined
+              ? { maxResponseBytes: figmaMcpConfig.maxResponseBytes }
+              : {}),
+            serverIdentity: "figma-desktop-mcp",
+          })
+        : new McpRuntime({
+            command: figmaMcpConfig.command,
+            args: figmaMcpConfig.args,
+            env: figmaMcpConfig.env,
+            ...(figmaMcpConfig.connectTimeoutMs !== undefined
+              ? { connectTimeoutMs: figmaMcpConfig.connectTimeoutMs }
+              : {}),
+            ...(figmaMcpConfig.requestTimeoutMs !== undefined
+              ? { requestTimeoutMs: figmaMcpConfig.requestTimeoutMs }
+              : {}),
+            ...(figmaMcpConfig.maxResponseBytes !== undefined
+              ? { maxResponseBytes: figmaMcpConfig.maxResponseBytes }
+              : {}),
+            serverIdentity: "figma-mcp",
+          })
       : undefined;
 
   // A dedicated `AgentInvocationRuntime`, independent of the coordinator's
@@ -997,7 +1011,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       };
     },
 
-    close: () => store.close(),
+    close: () => {
+      mcpClient?.close?.();
+      store.close();
+    },
   };
 }
 

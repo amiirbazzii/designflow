@@ -90,7 +90,13 @@ function provider(context: CliContext): DoctorCheck {
 
 function figma(context: CliContext): DoctorCheck {
   const configured = readFigmaMcpConfig(context.home.config);
-  return configured === undefined ? check("figma", "unavailable", "The experimental Figma MCP integration is not configured.", "Configure the approved MCP command and explicitly enable the experimental integration.") : check("figma", "warning", `Figma MCP command is configured (${configured.command}) but doctor does not launch external MCP commands.`, "Run a bounded Figma acceptance workflow to verify authentication and permissions.");
+  if (configured === undefined) {
+    return check("figma", "unavailable", "The experimental Figma MCP integration is not configured.", "Configure the approved MCP command or localhost HTTP endpoint and explicitly enable the experimental integration.");
+  }
+  if (configured.transport === "http") {
+    return check("figma", "warning", `Figma MCP configured: ${configured.url}. Doctor does not start protocol sessions.`, "Run a bounded Figma MCP discovery to verify the Desktop server is reachable.");
+  }
+  return check("figma", "warning", `Figma MCP stdio command is configured (${configured.command}) but doctor does not launch external MCP commands.`, "Run a bounded Figma acceptance workflow to verify authentication and permissions.");
 }
 
 async function projects(context: CliContext): Promise<DoctorCheck[]> {

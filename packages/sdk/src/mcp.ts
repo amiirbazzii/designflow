@@ -97,13 +97,17 @@ export type McpToolCallResult = z.infer<typeof mcpToolCallResultSchema>;
  *
  * A service port, not a transport handle — a capability never sees a child
  * process, a socket or a request id counter, the same reason `AgentToolService`
- * exposes exactly one verb rather than a registry. `@designflow/mcp`'s
- * `McpRuntime` is the real implementation; a test constructs a
- * protocol-faithful fake implementing the same three methods instead.
+ * exposes exactly one verb rather than a registry. `@designflow/mcp` provides
+ * both stdio and localhost Streamable HTTP implementations; a test constructs
+ * a protocol-faithful fake implementing the two required methods and may
+ * ignore the optional lifecycle hooks.
  */
 export interface McpClient {
   /** The server identity this client is connected to, for provenance — never a credential. */
   readonly serverIdentity?: string;
+
+  /** Optional explicit lifecycle hooks; transports may also connect lazily. */
+  connect?(signal?: AbortSignal): Promise<void>;
 
   listTools(signal?: AbortSignal): Promise<readonly McpToolDescriptor[]>;
 
@@ -111,4 +115,6 @@ export interface McpClient {
     request: McpToolCallRequest,
     signal?: AbortSignal,
   ): Promise<McpToolCallResult>;
+
+  close?(): void;
 }

@@ -40,6 +40,10 @@ describe("reading the Figma MCP server config", () => {
     expect(readFigmaMcpConfig(configWithSettings({ figmaMcp: { args: ["x"] } }))).toBeUndefined();
   });
 
+  test("rejects an unknown transport instead of silently treating it as stdio", () => {
+    expect(readFigmaMcpConfig(configWithSettings({ figmaMcp: { transport: "websocket", command: "npx" } }))).toBeUndefined();
+  });
+
   test("reads command, args and timeouts", () => {
     const result = readFigmaMcpConfig(
       configWithSettings({
@@ -53,6 +57,8 @@ describe("reading the Figma MCP server config", () => {
       }),
     );
 
+    expect(result?.transport).toBe("stdio");
+    if (result?.transport !== "stdio") throw new Error("expected stdio configuration");
     expect(result?.command).toBe("npx");
     expect(result?.args).toEqual(["-y", "some-server"]);
     expect(result?.connectTimeoutMs).toBe(5000);
@@ -62,6 +68,7 @@ describe("reading the Figma MCP server config", () => {
 
   test("captureScreenshots defaults to true", () => {
     const result = readFigmaMcpConfig(configWithSettings({ figmaMcp: { command: "npx" } }));
+    expect(result?.transport).toBe("stdio");
     expect(result?.captureScreenshots).toBe(true);
   });
 
@@ -69,7 +76,33 @@ describe("reading the Figma MCP server config", () => {
     const result = readFigmaMcpConfig(
       configWithSettings({ figmaMcp: { command: "npx", captureScreenshots: false } }),
     );
+    expect(result?.transport).toBe("stdio");
     expect(result?.captureScreenshots).toBe(false);
+  });
+
+  test("reads the official localhost HTTP configuration", () => {
+    const result = readFigmaMcpConfig(
+      configWithSettings({
+        figmaMcp: {
+          transport: "http",
+          url: "http://127.0.0.1:3845/mcp",
+          connectTimeoutMs: 10000,
+          requestTimeoutMs: 30000,
+          maxResponseBytes: 5000000,
+          captureScreenshots: true,
+          envPassthrough: ["FIGMA_ACCESS_TOKEN"],
+        },
+      }),
+    );
+
+    expect(result).toEqual({
+      transport: "http",
+      url: "http://127.0.0.1:3845/mcp",
+      connectTimeoutMs: 10000,
+      requestTimeoutMs: 30000,
+      maxResponseBytes: 5000000,
+      captureScreenshots: true,
+    });
   });
 });
 
@@ -82,6 +115,8 @@ describe("credential handling", () => {
       configWithSettings({ figmaMcp: { command: "npx", envPassthrough: [ENV_KEY] } }),
     );
 
+    expect(result?.transport).toBe("stdio");
+    if (result?.transport !== "stdio") throw new Error("expected stdio configuration");
     expect(result?.env).toEqual({ [ENV_KEY]: "sk-test-secret-value" });
     expect(Object.keys(result?.env ?? {})).not.toContain("DESIGNFLOW_TEST_UNRELATED");
 
@@ -102,6 +137,8 @@ describe("credential handling", () => {
     const result = readFigmaMcpConfig(
       configWithSettings({ figmaMcp: { command: "npx", envPassthrough: ["DESIGNFLOW_TEST_NEVER_SET"] } }),
     );
+    expect(result?.transport).toBe("stdio");
+    if (result?.transport !== "stdio") throw new Error("expected stdio configuration");
     expect(result?.env).toEqual({});
   });
 });

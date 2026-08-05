@@ -45,4 +45,34 @@ describe("discovery", () => {
     const capabilities = await discoverFigmaMcpCapabilities(client);
     expect(capabilities.inspectStyles).toBe(true);
   });
+
+  test("maps the official Desktop MCP tools by exact server-specific names", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [
+        { name: "get_design_context" },
+        { name: "get_variable_defs" },
+        { name: "get_screenshot" },
+        { name: "get_metadata" },
+      ],
+    });
+
+    const capabilities = await discoverFigmaMcpCapabilities(client);
+
+    expect(capabilities).toMatchObject({
+      inspectDocument: true,
+      inspectNodes: true,
+      inspectVariables: true,
+      captureScreenshot: true,
+      inspectStyles: false,
+      inspectComponents: false,
+      exportAssets: false,
+    });
+    expect(capabilities.resolvedToolNames).toEqual({
+      inspectDocument: "get_metadata",
+      inspectNodes: "get_design_context",
+      inspectVariables: "get_variable_defs",
+      captureScreenshot: "get_screenshot",
+    });
+  });
 });
