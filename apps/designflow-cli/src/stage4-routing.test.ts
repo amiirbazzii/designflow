@@ -58,6 +58,9 @@ function context(flags: { implementation: boolean }): CliContext {
       figmaMcp: {
         command: "bun",
         args: ["run", fakeServerPath()],
+        // The MCP child no longer inherits the parent environment (L1-04),
+        // so the fixture variable must be authorized explicitly.
+        envPassthrough: ["FAKE_MCP_FIXTURES"],
         captureScreenshots: false,
       },
     },

@@ -75,13 +75,41 @@ the artifact safe for long-term storage, deterministic reuse comparison,
 and safe inspection (no server-specific shape a person reading
 `designflow artifacts` would need to learn).
 
+### 3b. Initialization and protocol-version validation
+
+- Both MCP transports validate the protocol version the server negotiates
+  during `initialize`. All protocol-version definitions live in one
+  canonical module, `packages/mcp/src/protocol.ts`: the per-transport
+  request versions (`MCP_STDIO_PROTOCOL_VERSION` = 2024-11-05,
+  `MCP_HTTP_PROTOCOL_VERSION` = 2025-03-26) and the per-transport
+  supported sets (`STDIO_SUPPORTED_MCP_PROTOCOL_VERSIONS`,
+  `HTTP_SUPPORTED_MCP_PROTOCOL_VERSIONS`). Each transport accepts exactly
+  the revision it has been implemented and tested against — neither set is
+  widened by inference — and no transport-local version literals remain in
+  the runtime files.
+- An unsupported negotiated version, a missing or malformed
+  `protocolVersion`, or an otherwise malformed initialize result fails
+  initialization closed: the child process (stdio) or session (HTTP) is
+  torn down, pending state is rejected, and no further MCP request is sent
+  on that connection.
+- A JSON-RPC error response to `initialize` is surfaced as a typed MCP
+  connection failure carrying only the safe JSON-RPC code — never the
+  server's own error text — and is distinguishable from the
+  unsupported-protocol failure (`ERR_MCP_PROTOCOL_UNSUPPORTED`).
+
 ### 4. Authentication and secret handling
 
 - `figmaMcpConfig`'s `envPassthrough` names environment variables to
   forward into the spawned server's process — never a literal value.
   `figma-mcp-config.ts` reads the actual value from `process.env` only at
-  the moment a client is constructed, and only that resolved `env` map (not
-  the config object) ever reaches `child_process.spawn`.
+  the moment a client is constructed. The spawned child does **not**
+  inherit the DesignFlow parent environment: `child_process.spawn` receives
+  a minimal platform-aware process-startup baseline (executable discovery,
+  user/temp directories, locale, Windows startup — see
+  `packages/mcp/src/child-env.ts`) plus only the explicitly authorized
+  `env` map, which overrides the baseline on a name collision. Environment
+  variable values are never persisted to config, artifacts, or traces, and
+  never logged.
 - `McpToolCallResult`'s failure variant carries a stable `ERR_MCP_*` code and
   a fixed, generic message — never the server's own error text, which is
   the single most likely place a token fragment or an internal hostname

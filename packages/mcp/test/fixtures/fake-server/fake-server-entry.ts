@@ -42,7 +42,16 @@ rl.on("line", (line) => {
   const { id, method, params } = request;
 
   if (method === "initialize") {
-    reply(id, { protocolVersion: "2024-11-05", serverInfo: { name: "fake-mcp-server" } });
+    if (fixtures.initializeError) {
+      replyError(id, -32601, "Method not found");
+      return;
+    }
+    reply(
+      id,
+      fixtures.initializeResult !== undefined
+        ? fixtures.initializeResult
+        : { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fake-mcp-server" } },
+    );
     return;
   }
 
@@ -64,6 +73,11 @@ rl.on("line", (line) => {
     const respond = (): void => {
       if (fixtures.errorTools.includes(toolName)) {
         reply(id, { isError: true, content: fixtures.toolResults[toolName] ?? "tool failed" });
+        return;
+      }
+
+      if (fixtures.echoEnvTools.includes(toolName)) {
+        reply(id, { content: { env: process.env } });
         return;
       }
 

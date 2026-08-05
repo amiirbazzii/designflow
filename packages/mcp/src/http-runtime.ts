@@ -13,6 +13,8 @@ import {
   mcpInitializeResultSchema,
   mcpToolsCallResultSchema,
   mcpToolsListResultSchema,
+  MCP_HTTP_PROTOCOL_VERSION,
+  HTTP_SUPPORTED_MCP_PROTOCOL_VERSIONS,
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "./protocol";
@@ -28,8 +30,6 @@ import {
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 5_000_000;
-const INITIALIZE_PROTOCOL_VERSION = "2025-03-26";
-const SUPPORTED_PROTOCOL_VERSIONS = new Set([INITIALIZE_PROTOCOL_VERSION]);
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
 export interface HttpMcpServerConfig {
@@ -230,7 +230,7 @@ export class HttpMcpRuntime implements McpClient {
           id: this.nextId++,
           method: "initialize",
           params: {
-            protocolVersion: INITIALIZE_PROTOCOL_VERSION,
+            protocolVersion: MCP_HTTP_PROTOCOL_VERSION,
             capabilities: {},
             clientInfo: { name: "designflow-ai", version: "0.1.1" },
           },
@@ -256,7 +256,7 @@ export class HttpMcpRuntime implements McpClient {
         throw new McpConnectionError("the MCP initialize result did not match the expected shape");
       }
       const { protocolVersion } = initializeResult.data;
-      if (!SUPPORTED_PROTOCOL_VERSIONS.has(protocolVersion)) {
+      if (!HTTP_SUPPORTED_MCP_PROTOCOL_VERSIONS.has(protocolVersion)) {
         throw new McpProtocolUnsupportedError(protocolVersion);
       }
 

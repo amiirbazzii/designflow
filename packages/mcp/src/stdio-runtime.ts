@@ -13,14 +13,19 @@ import {
 import {
   encodeRequest,
   jsonRpcResponseSchema,
+  mcpInitializeResultSchema,
   mcpToolsCallResultSchema,
   mcpToolsListResultSchema,
+  MCP_STDIO_PROTOCOL_VERSION,
+  STDIO_SUPPORTED_MCP_PROTOCOL_VERSIONS,
   type JsonRpcResponse,
 } from "./protocol";
+import { buildMcpChildEnv } from "./child-env";
 import {
   classifyMcpJsonRpcError,
   classifyMcpToolFailure,
   McpConnectionError,
+  McpProtocolUnsupportedError,
   McpRequestInvalidError,
   McpServerLaunchError,
 } from "./errors";
@@ -41,7 +46,12 @@ import {
 export interface McpServerConfig {
   readonly command: string;
   readonly args?: readonly string[];
-  /** Merged over the current process's environment — never replaces it wholesale. */
+  /**
+   * Explicitly authorized variables for the child. The child never
+   * inherits the parent environment wholesale: it receives only a minimal
+   * platform-aware startup baseline (see `child-env.ts`) plus this map,
+   * which overrides the baseline on a name collision.
+   */
   readonly env?: Readonly<Record<string, string>>;
   readonly connectTimeoutMs?: number;
   readonly requestTimeoutMs?: number;
@@ -96,7 +106,7 @@ export class McpRuntime implements McpClient {
       let proc: ChildProcessWithoutNullStreams;
       try {
         proc = spawn(this.config.command, [...(this.config.args ?? [])], {
-          env: { ...process.env, ...this.config.env },
+          env: buildMcpChildEnv(this.config.env !== undefined ? { authorized: this.config.env } : {}),
           stdio: ["pipe", "pipe", "pipe"],
         });
       } catch (error) {
@@ -128,20 +138,54 @@ export class McpRuntime implements McpClient {
     this.child = child;
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.onData(chunk));
-    child.once("exit", () => this.onExit());
+    // Guarded by identity: a previous child killed during a failed
+    // handshake may emit `exit` after a newer connect has already replaced
+    // it — that stale event must not tear down the live connection's state.
+    child.once("exit", () => this.onExit(child));
 
     const connectSignal = withTimeout(
       signal,
       this.config.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
     );
 
+    let response: JsonRpcResponse;
     try {
-      await this.request("initialize", { protocolVersion: "2024-11-05" }, connectSignal.signal);
+      response = await this.request(
+        "initialize",
+        { protocolVersion: MCP_STDIO_PROTOCOL_VERSION },
+        connectSignal.signal,
+      );
     } catch (error) {
       this.close();
       throw new McpConnectionError(error instanceof Error ? error.message : String(error));
     } finally {
       connectSignal.cancel();
+    }
+
+    // Fail closed on anything other than a well-formed result carrying a
+    // protocol version this package implements — matching the HTTP
+    // transport's initialize validation. `close()` runs before the throw so
+    // a failed handshake never leaves a live child or pending entries, and
+    // no further MCP request is ever sent on this connection.
+    if (response.error !== undefined) {
+      this.close();
+      // The JSON-RPC code alone is safe to surface; the server's own error
+      // text is not echoed anywhere the caller can see.
+      throw new McpConnectionError(
+        `the MCP server rejected the initialize request (JSON-RPC ${response.error.code})`,
+      );
+    }
+
+    const initializeResult = mcpInitializeResultSchema.safeParse(response.result);
+    if (!initializeResult.success) {
+      this.close();
+      throw new McpConnectionError("the MCP initialize result did not match the expected shape");
+    }
+
+    const { protocolVersion } = initializeResult.data;
+    if (!STDIO_SUPPORTED_MCP_PROTOCOL_VERSIONS.has(protocolVersion)) {
+      this.close();
+      throw new McpProtocolUnsupportedError(protocolVersion);
     }
   }
 
@@ -173,6 +217,9 @@ export class McpRuntime implements McpClient {
     try {
       await this.connect(signal);
     } catch (error) {
+      if (error instanceof McpProtocolUnsupportedError) {
+        return failure(validated.data.toolName, "ERR_MCP_PROTOCOL_UNSUPPORTED", error.message, false, startedAt);
+      }
       return failure(validated.data.toolName, "ERR_MCP_CONNECTION_FAILED", errorMessage(error), false, startedAt);
     }
 
@@ -351,7 +398,8 @@ export class McpRuntime implements McpClient {
     pending.resolve(parsed.data);
   }
 
-  private onExit(): void {
+  private onExit(exited: ChildProcessWithoutNullStreams): void {
+    if (this.child !== undefined && this.child !== exited) return;
     for (const entry of this.pending.values()) {
       clearTimeout(entry.timer);
       entry.reject(new McpConnectionError("the server process exited"));

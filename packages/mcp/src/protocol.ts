@@ -47,6 +47,31 @@ export const jsonRpcResponseSchema = z
 
 export type JsonRpcResponse = z.infer<typeof jsonRpcResponseSchema>;
 
+/**
+ * The protocol version each transport requests during initialize. The two
+ * transports genuinely speak different revisions today — stdio the earlier
+ * line-delimited revision, Streamable HTTP the later one — so both are
+ * represented explicitly rather than inferred.
+ */
+export const MCP_STDIO_PROTOCOL_VERSION = "2024-11-05";
+export const MCP_HTTP_PROTOCOL_VERSION = "2025-03-26";
+
+/**
+ * The versions each transport accepts from a server's initialize
+ * negotiation. Kept per-transport deliberately: each runtime has only been
+ * proven against the revision it requests (the HTTP runtime's session
+ * headers, `notifications/initialized`, and session DELETE follow the
+ * Streamable HTTP semantics of its own revision), so neither set is
+ * widened by inference. A server answering outside the set fails
+ * initialization closed.
+ */
+export const STDIO_SUPPORTED_MCP_PROTOCOL_VERSIONS: ReadonlySet<string> = new Set([
+  MCP_STDIO_PROTOCOL_VERSION,
+]);
+export const HTTP_SUPPORTED_MCP_PROTOCOL_VERSIONS: ReadonlySet<string> = new Set([
+  MCP_HTTP_PROTOCOL_VERSION,
+]);
+
 /** The negotiated result returned by MCP initialize over Streamable HTTP. */
 export const mcpInitializeResultSchema = z
   .object({

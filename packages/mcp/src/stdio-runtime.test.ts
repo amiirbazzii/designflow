@@ -2,6 +2,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { McpRuntime } from "./stdio-runtime";
+import { McpConnectionError, McpProtocolUnsupportedError } from "./errors";
+import {
+  HTTP_SUPPORTED_MCP_PROTOCOL_VERSIONS,
+  MCP_HTTP_PROTOCOL_VERSION,
+  MCP_STDIO_PROTOCOL_VERSION,
+  STDIO_SUPPORTED_MCP_PROTOCOL_VERSIONS,
+} from "./protocol";
 import type { FakeMcpFixtures } from "../test/fixtures/fake-server/fake-server-fixtures";
 
 /**
@@ -44,6 +51,104 @@ describe("connecting", () => {
     clients.push(runtime);
 
     await expect(runtime.connect()).rejects.toThrow();
+  });
+});
+
+describe("initialize validation", () => {
+  test("a valid supported initialization still permits normal discovery and calls", async () => {
+    const runtime = client({
+      tools: [{ name: "get_document" }],
+      toolResults: { get_document: { name: "Homepage" } },
+    });
+
+    await expect(runtime.connect()).resolves.toBeUndefined();
+    const tools = await runtime.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(["get_document"]);
+    const result = await runtime.callTool({ toolName: "get_document", arguments: {} });
+    expect(result.type).toBe("success");
+  });
+
+  test("an unsupported negotiated protocol version fails closed with the canonical error", async () => {
+    const runtime = client({
+      tools: [{ name: "get_document" }],
+      initializeResult: { protocolVersion: "2099-01-01", capabilities: {} },
+    });
+
+    // Rejects with the protocol error, never with a tools/list shape error —
+    // proof that no post-initialize request was sent.
+    await expect(runtime.listTools()).rejects.toThrow(McpProtocolUnsupportedError);
+  });
+
+  test("a protocol mismatch surfaces through callTool as ERR_MCP_PROTOCOL_UNSUPPORTED, matching HTTP", async () => {
+    const runtime = client({
+      tools: [{ name: "get_document" }],
+      initializeResult: { protocolVersion: "2099-01-01", capabilities: {} },
+    });
+
+    const result = await runtime.callTool({ toolName: "get_document", arguments: {} });
+    expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_PROTOCOL_UNSUPPORTED" });
+  });
+
+  test("a missing protocolVersion fails closed as an invalid initialize result", async () => {
+    const runtime = client({ initializeResult: { capabilities: {} } });
+
+    await expect(runtime.connect()).rejects.toThrow(
+      "the MCP initialize result did not match the expected shape",
+    );
+  });
+
+  test("a non-string protocolVersion fails closed", async () => {
+    const runtime = client({ initializeResult: { protocolVersion: 42, capabilities: {} } });
+    await expect(runtime.connect()).rejects.toThrow(McpConnectionError);
+  });
+
+  test("a malformed initialize result fails closed", async () => {
+    const runtime = client({ initializeResult: "not-an-object" });
+    await expect(runtime.connect()).rejects.toThrow(McpConnectionError);
+  });
+
+  test("a JSON-RPC error response to initialize is rejected, not misparsed as a result", async () => {
+    const runtime = client({ initializeError: true });
+
+    // A connection error carrying only the safe JSON-RPC code — and a type
+    // distinguishable from the unsupported-protocol failure.
+    const rejection = runtime.connect();
+    await expect(rejection).rejects.toThrow(McpConnectionError);
+    await expect(rejection).rejects.not.toThrow(McpProtocolUnsupportedError);
+    await rejection.catch((error: Error) => {
+      expect(error.message).toContain("JSON-RPC -32601");
+      expect(error.message).not.toContain("Method not found");
+    });
+  });
+
+  test("failed initialization cleans up: no pending requests, and later calls fail fast without hanging", async () => {
+    const runtime = client(
+      { tools: [{ name: "get_document" }], initializeResult: { protocolVersion: "2099-01-01", capabilities: {} } },
+      1_000,
+    );
+
+    await expect(runtime.connect()).rejects.toThrow(McpProtocolUnsupportedError);
+
+    // The child was closed and nothing is pending: a follow-up operation
+    // reruns the handshake against the same misbehaving server and fails
+    // deterministically again — it never hangs on state left behind.
+    const result = await runtime.callTool({ toolName: "get_document", arguments: {} });
+    expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_PROTOCOL_UNSUPPORTED" });
+  }, 10_000);
+
+  test("each transport accepts exactly the version it requests, from the shared protocol module", () => {
+    // Per-transport acceptance is deliberate: neither runtime has been
+    // proven against the other's protocol revision, so neither set is
+    // widened by inference.
+    expect([...STDIO_SUPPORTED_MCP_PROTOCOL_VERSIONS]).toEqual([MCP_STDIO_PROTOCOL_VERSION]);
+    expect([...HTTP_SUPPORTED_MCP_PROTOCOL_VERSIONS]).toEqual([MCP_HTTP_PROTOCOL_VERSION]);
+  });
+
+  test("the stdio transport does not accept the HTTP transport's protocol revision", async () => {
+    const runtime = client({
+      initializeResult: { protocolVersion: MCP_HTTP_PROTOCOL_VERSION, capabilities: {} },
+    });
+    await expect(runtime.connect()).rejects.toThrow(McpProtocolUnsupportedError);
   });
 });
 
@@ -140,6 +245,51 @@ describe("calling a tool", () => {
 
     const result = await runtime.callTool({ toolName: "slow", arguments: {} });
     expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_TIMEOUT" });
+  });
+
+  test("the spawned child receives only the baseline plus authorized variables", async () => {
+    // Plant fabricated secrets in the parent (this test process) and prove
+    // they never cross the spawn boundary, while an explicitly authorized
+    // variable does — asserted against the child's actual process.env, not
+    // redacted output.
+    process.env["OPENROUTER_API_KEY"] = "sk-or-fake-parent-secret";
+    process.env["AWS_SECRET_ACCESS_KEY"] = "aws-fake-parent-secret";
+    process.env["CI_JOB_TOKEN"] = "ci-fake-parent-secret";
+    process.env["DESIGNFLOW_TEST_UNRELATED_SECRET"] = "custom-fake-parent-secret";
+
+    try {
+      const runtime = new McpRuntime({
+        command: "bun",
+        args: ["run", FAKE_SERVER_PATH],
+        env: {
+          FAKE_MCP_FIXTURES: JSON.stringify({
+            tools: [{ name: "echo_env" }],
+            echoEnvTools: ["echo_env"],
+          } satisfies Partial<FakeMcpFixtures>),
+          DESIGNFLOW_TEST_AUTHORIZED: "authorized-value",
+        },
+        serverIdentity: "fake-mcp-server",
+      });
+      clients.push(runtime);
+
+      const result = await runtime.callTool({ toolName: "echo_env", arguments: {} });
+      expect(result.type).toBe("success");
+      const childEnv = (result as { content: { env: Record<string, string> } }).content.env;
+
+      expect(childEnv["PATH"]).toBeDefined();
+      expect(childEnv["DESIGNFLOW_TEST_AUTHORIZED"]).toBe("authorized-value");
+      expect(childEnv["FAKE_MCP_FIXTURES"]).toBeDefined();
+
+      expect(childEnv["OPENROUTER_API_KEY"]).toBeUndefined();
+      expect(childEnv["AWS_SECRET_ACCESS_KEY"]).toBeUndefined();
+      expect(childEnv["CI_JOB_TOKEN"]).toBeUndefined();
+      expect(childEnv["DESIGNFLOW_TEST_UNRELATED_SECRET"]).toBeUndefined();
+    } finally {
+      delete process.env["OPENROUTER_API_KEY"];
+      delete process.env["AWS_SECRET_ACCESS_KEY"];
+      delete process.env["CI_JOB_TOKEN"];
+      delete process.env["DESIGNFLOW_TEST_UNRELATED_SECRET"];
+    }
   });
 
   test("aborting the signal cancels the in-flight call", async () => {

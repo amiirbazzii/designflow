@@ -16,6 +16,21 @@ export const fakeMcpFixturesSchema = z
     /** Tool names that respond with an oversized payload, for size-limit tests. */
     oversizedTools: z.array(z.string().min(1)).default([]),
     oversizedByteCount: z.number().int().positive().default(10_000_000),
+    /** When true, the server answers `initialize` with a JSON-RPC error instead of a result. */
+    initializeError: z.boolean().default(false),
+    /**
+     * Overrides the entire `initialize` result verbatim — including malformed
+     * shapes, missing or non-string `protocolVersion`, or unsupported
+     * versions — so initialization-validation tests can drive every failure
+     * path through the real transport.
+     */
+    initializeResult: z.unknown().optional(),
+    /**
+     * Tool names that respond with the server's own `process.env` as the
+     * content, so a test can assert exactly which variables crossed the
+     * spawn boundary. Test fixtures only ever carry fabricated values.
+     */
+    echoEnvTools: z.array(z.string().min(1)).default([]),
     /** Artificial per-tool response delay in milliseconds, for timeout tests. */
     delayMs: z.record(z.string(), z.number().int().nonnegative()).default({}),
   })

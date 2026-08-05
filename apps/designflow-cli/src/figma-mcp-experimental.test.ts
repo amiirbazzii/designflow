@@ -73,6 +73,10 @@ describe("the experimental Figma MCP path, wired through the real CLI compositio
           figmaMcp: {
             command: "bun",
             args: ["run", fakeServerPath()],
+            // The MCP child no longer inherits the parent environment
+            // (L1-04), so the fixture variable must be authorized
+            // explicitly.
+            envPassthrough: ["FAKE_MCP_FIXTURES"],
             captureScreenshots: false,
           },
         },
@@ -118,7 +122,7 @@ describe("the experimental Figma MCP path, wired through the real CLI compositio
           figmaMcp: {
             command: "bun",
             args: ["run", fakeServerPath()],
-            envPassthrough: ["DESIGNFLOW_SECRET_TEST_TOKEN"],
+            envPassthrough: ["DESIGNFLOW_SECRET_TEST_TOKEN", "FAKE_MCP_FIXTURES"],
             captureScreenshots: false,
           },
         },

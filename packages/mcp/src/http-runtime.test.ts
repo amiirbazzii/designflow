@@ -260,6 +260,20 @@ describe("HttpMcpRuntime", () => {
     });
   });
 
+  test("rejects the stdio transport's protocol revision — HTTP support for it is unproven", async () => {
+    const fixture = await httpServer((_request, response) => {
+      json(response, {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { protocolVersion: "2024-11-05", capabilities: {} },
+      }, { "MCP-Session-Id": "older-version-session" });
+    });
+
+    await expect(runtime(fixture.url).connect()).rejects.toMatchObject({
+      code: "ERR_MCP_PROTOCOL_UNSUPPORTED",
+    });
+  });
+
   test("rejects a missing negotiated protocol version as an invalid initialize result", async () => {
     const fixture = await httpServer((_request, response) => {
       json(response, { jsonrpc: "2.0", id: 1, result: { capabilities: {} } });
