@@ -1,6 +1,6 @@
 // packages/agents/src/decision-prompt.test.ts
 import { describe, expect, test } from "bun:test";
-import { buildDecisionPrompt, decisionResponseSchema, modelDecisionSchema } from "./decision-prompt";
+import { buildDecisionPrompt, decisionResponseSchema, modelDecisionFromTransport, modelDecisionSchema } from "./decision-prompt";
 
 /**
  * The bounded prompt builder — deterministic, pure, and tested with no model,
@@ -125,20 +125,38 @@ describe("buildDecisionPrompt", () => {
     ).not.toThrow();
   });
 
-  test("produces a response schema matching modelDecisionSchema's three shapes", () => {
+  test("produces a flat response schema without top-level oneOf", () => {
     const { responseSchema } = buildDecisionPrompt(INPUT);
 
-    expect(responseSchema["oneOf"]).toBeInstanceOf(Array);
-    expect((responseSchema["oneOf"] as readonly unknown[]).length).toBe(3);
+    expect(responseSchema["oneOf"]).toBeUndefined();
+    expect(responseSchema["required"]).toEqual(["type", "workflowId", "question", "reason", "reasoningSummary"]);
+    expect(responseSchema["additionalProperties"]).toBe(false);
   });
 
   test("the response schema constrains workflowId to the permitted list", () => {
     const schema = decisionResponseSchema(["design-to-code", "other-workflow"]);
-    const runWorkflowBranch = (schema["oneOf"] as readonly Record<string, unknown>[])[0];
-    const properties = runWorkflowBranch?.["properties"] as Record<string, unknown>;
-    const workflowIdSchema = properties["workflowId"] as { enum?: readonly string[] };
+    const properties = schema["properties"] as Record<string, unknown>;
+    const workflowIdSchema = properties["workflowId"] as { enum?: readonly unknown[] };
 
-    expect(workflowIdSchema.enum).toEqual(["design-to-code", "other-workflow"]);
+    expect(workflowIdSchema.enum).toEqual(["design-to-code", "other-workflow", null]);
+  });
+});
+
+describe("modelDecisionFromTransport", () => {
+  test("converts valid workflow, clarification, and decline transports", () => {
+    expect(modelDecisionFromTransport({ type: "run_workflow", workflowId: "design-to-code", question: null, reason: null, reasoningSummary: "build it" }, ["design-to-code"]))
+      .toEqual({ type: "run_workflow", workflowId: "design-to-code", reasoningSummary: "build it" });
+    expect(modelDecisionFromTransport({ type: "request_clarification", workflowId: null, question: "Which frame?", reason: null, reasoningSummary: "need detail" }, ["design-to-code"]))
+      .toEqual({ type: "request_clarification", question: "Which frame?", reasoningSummary: "need detail" });
+    expect(modelDecisionFromTransport({ type: "decline", workflowId: null, question: null, reason: "not supported", reasoningSummary: "out of scope" }, ["design-to-code"]))
+      .toEqual({ type: "decline", reason: "not supported", reasoningSummary: "out of scope" });
+  });
+
+  test("rejects invalid conditional fields, unknown workflows, and extra properties", () => {
+    expect(modelDecisionFromTransport({ type: "run_workflow", workflowId: "unknown", question: null, reason: null, reasoningSummary: "x" }, ["design-to-code"])).toBeUndefined();
+    expect(modelDecisionFromTransport({ type: "run_workflow", workflowId: "design-to-code", question: "also", reason: null, reasoningSummary: "x" }, ["design-to-code"])).toBeUndefined();
+    expect(modelDecisionFromTransport({ type: "decline", workflowId: null, question: null, reason: "x", reasoningSummary: "x", extra: true }, ["design-to-code"])).toBeUndefined();
+    expect(modelDecisionFromTransport({ type: "request_clarification", workflowId: null, question: " ", reason: null, reasoningSummary: "x" }, ["design-to-code"])).toBeUndefined();
   });
 });
 

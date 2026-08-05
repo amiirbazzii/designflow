@@ -10,7 +10,7 @@ import {
   type ModelProfile,
 } from "@designflow/sdk";
 
-import { buildDecisionPrompt, modelDecisionSchema } from "../decision-prompt";
+import { buildDecisionPrompt, modelDecisionFromTransport } from "../decision-prompt";
 import {
   describeTask,
   readClarifications,
@@ -128,7 +128,11 @@ export const deterministicResearchAnalystStrategy: ResearchAnalystStrategy = asy
 
 function declineForModelFailure(code: string): AgentDecision {
   const reason =
-    code === "ERR_MODEL_RATE_LIMITED" || code === "ERR_MODEL_UNAVAILABLE"
+    code === "ERR_MODEL_SCHEMA_UNSUPPORTED"
+      ? "The configured model rejected the required structured-output schema."
+      : code === "ERR_MODEL_OUTPUT_UNSUPPORTED"
+        ? "The configured model cannot return the required structured output."
+        : code === "ERR_MODEL_RATE_LIMITED" || code === "ERR_MODEL_UNAVAILABLE"
       ? "The configured model is temporarily unavailable."
       : code === "ERR_MODEL_TIMEOUT"
         ? "The model took too long to respond."
@@ -170,16 +174,14 @@ export const modelResearchAnalystStrategy: ResearchAnalystStrategy = async (
 
   if (result.type === "failure") return declineForModelFailure(result.code);
 
-  const parsed = modelDecisionSchema.safeParse(result.output);
-  if (!parsed.success) {
+  const decision = modelDecisionFromTransport(result.output, context.availableWorkflows);
+  if (decision === undefined) {
     return {
       type: "decline",
       reason: "The model's answer could not be used.",
       reasoningSummary: "The model did not return a usable structured decision.",
     };
   }
-
-  const decision = parsed.data;
 
   if (decision.type === "run_workflow") {
     return {

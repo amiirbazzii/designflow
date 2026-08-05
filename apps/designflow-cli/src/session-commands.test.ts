@@ -64,6 +64,17 @@ const workspaces: string[] = [];
 const contexts: CliContext[] = [];
 const servers: Server[] = [];
 
+function flatDecision(decision: unknown): unknown {
+  if (typeof decision !== "object" || decision === null || !("type" in decision)) return decision;
+  const record = decision as Record<string, unknown>;
+  return {
+    ...record,
+    workflowId: record.workflowId ?? null,
+    question: record.question ?? null,
+    reason: record.reason ?? null,
+  };
+}
+
 /** Answers OpenRouter requests one decision at a time, in the order given. */
 async function mockOpenRouterSequence(decisions: readonly unknown[]): Promise<string> {
   let index = 0;
@@ -82,7 +93,7 @@ async function mockOpenRouterSequence(decisions: readonly unknown[]): Promise<st
         JSON.stringify({
           id: "gen-mock",
           model: "openai/gpt-4o-mini",
-          choices: [{ message: { role: "assistant", content: JSON.stringify(decision) } }],
+          choices: [{ message: { role: "assistant", content: JSON.stringify(flatDecision(decision)) } }],
           usage: { prompt_tokens: 30, completion_tokens: 8, total_tokens: 38 },
         }),
       );

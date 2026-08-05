@@ -57,6 +57,17 @@ interface Captured {
   readonly body: { model?: string; response_format?: unknown } & Record<string, unknown>;
 }
 
+function flatDecision(decision: unknown): unknown {
+  if (typeof decision !== "object" || decision === null || !("type" in decision)) return decision;
+  const record = decision as Record<string, unknown>;
+  return {
+    ...record,
+    workflowId: record.workflowId ?? null,
+    question: record.question ?? null,
+    reason: record.reason ?? null,
+  };
+}
+
 /**
  * One real HTTP server, answering every request with a decision picked for
  * the requested model — each agent's own workflow, by default — echoing the
@@ -85,7 +96,7 @@ async function mockOpenRouter(
         JSON.stringify({
           id: `gen-${requests.length}`,
           model: body.model,
-          choices: [{ message: { role: "assistant", content: JSON.stringify(decisionFor(body.model)) } }],
+          choices: [{ message: { role: "assistant", content: JSON.stringify(flatDecision(decisionFor(body.model))) } }],
           usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
         }),
       );

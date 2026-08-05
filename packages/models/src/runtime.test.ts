@@ -121,6 +121,18 @@ describe("structured-output capability preflight", () => {
     expect(failure.code).toBe("ERR_MODEL_OUTPUT_UNSUPPORTED");
     expect(called).toBe(false);
   });
+
+  test("refuses a schema with unsupported provider features before making a network call", async () => {
+    let called = false;
+    const runtime = runtimeFor({
+      id: "openrouter",
+      capabilities: () => ({ jsonMode: true, strictJsonSchema: true, toolCalling: false, maxOutputTokens: 32_000, responseSchemaIssues: () => ["oneOf is unsupported"] }),
+      generate: async () => { called = true; return {} as ModelResult; },
+    });
+    const failure = expectFailure(await runtime.generate(CALL));
+    expect(failure.code).toBe("ERR_MODEL_SCHEMA_UNSUPPORTED");
+    expect(called).toBe(false);
+  });
 });
 
 // ── Profile and provider resolution fail safely ─────────────────

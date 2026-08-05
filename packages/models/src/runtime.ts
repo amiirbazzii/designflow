@@ -148,6 +148,14 @@ export class ModelRuntime implements ModelInvoker {
       }
     }
 
+    const schemaIssues = capabilities?.responseSchemaIssues?.(wireRequest.responseSchema) ?? [];
+    if (schemaIssues.length > 0) {
+      return fail(
+        "ERR_MODEL_SCHEMA_UNSUPPORTED",
+        "The configured model cannot accept the structured-output schema required by this workflow.",
+      );
+    }
+
     return this.execute(provider, wireRequest, validated, profile.timeoutMs, startedAt, fail);
   }
 

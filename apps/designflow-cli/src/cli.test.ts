@@ -1366,6 +1366,19 @@ describe("explaining an agent failure", () => {
     expect(unmapped).toEqual([]);
   });
 
+  test("schema rejection is not described as temporary model unavailability", () => {
+    const explained = explainError(
+      new DesignFlowError("ERR_MODEL_SCHEMA_UNSUPPORTED", "provider detail must stay private"),
+    );
+
+    expect(explained.problem).toBe(
+      "The configured model rejected the required structured-output schema.",
+    );
+    expect(explained.problem).not.toContain("temporarily unavailable");
+    expect(explained.problem).not.toContain("provider detail");
+    expect(explained.suggestion).not.toContain("provider detail");
+  });
+
   test("every published code says whether anything started", () => {
     // The first question a person has after a failure. Six codes described the
     // problem without ever answering it, which this now prevents.

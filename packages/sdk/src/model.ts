@@ -302,6 +302,7 @@ export interface ModelProviderCapabilities {
   readonly strictJsonSchema: boolean;
   readonly toolCalling: boolean;
   readonly maxOutputTokens: number;
+  readonly responseSchemaIssues?: (schema: JsonSchemaObject) => readonly string[];
 }
 
 /**

@@ -135,9 +135,11 @@ export type { ProductManagerStrategy } from "./catalog/product-manager-agent";
 export {
   buildDecisionPrompt,
   decisionResponseSchema,
+  modelDecisionFromTransport,
   modelDecisionSchema,
+  modelDecisionTransportSchema,
 } from "./decision-prompt";
-export type { DecisionPromptInput, ModelDecision } from "./decision-prompt";
+export type { DecisionPromptInput, ModelDecision, ModelDecisionTransport } from "./decision-prompt";
 
 export {
   designEngineerCoordinator,

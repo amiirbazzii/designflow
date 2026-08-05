@@ -87,9 +87,52 @@ export const modelDecisionSchema = z.discriminatedUnion("type", [
 
 export type ModelDecision = z.infer<typeof modelDecisionSchema>;
 
+const nullableText = z.string().max(400).nullable();
+
+/** Flat transport shape accepted by strict JSON-schema providers. */
+export const modelDecisionTransportSchema = z
+  .object({
+    type: z.enum(["run_workflow", "request_clarification", "decline"]),
+    workflowId: nullableText,
+    question: nullableText,
+    reason: nullableText,
+    reasoningSummary: z.string().min(1).max(400),
+  })
+  .strict();
+
+export type ModelDecisionTransport = z.infer<typeof modelDecisionTransportSchema>;
+
+/** Converts the flat provider response into the existing discriminated union. */
+export function modelDecisionFromTransport(
+  raw: unknown,
+  availableWorkflows: readonly string[],
+): ModelDecision | undefined {
+  const parsed = modelDecisionTransportSchema.safeParse(raw);
+  if (!parsed.success) return undefined;
+
+  const decision = parsed.data;
+  if (decision.type === "run_workflow") {
+    if (decision.workflowId === null || !availableWorkflows.includes(decision.workflowId)) return undefined;
+    if (decision.question !== null || decision.reason !== null) return undefined;
+    return modelDecisionSchema.parse({ type: decision.type, workflowId: decision.workflowId, reasoningSummary: decision.reasoningSummary });
+  }
+
+  if (decision.type === "request_clarification") {
+    if (decision.question === null || decision.question.trim().length === 0) return undefined;
+    if (decision.workflowId !== null || decision.reason !== null) return undefined;
+    return modelDecisionSchema.parse({ type: decision.type, question: decision.question, reasoningSummary: decision.reasoningSummary });
+  }
+
+  if (decision.reason === null || decision.reason.trim().length === 0) return undefined;
+  if (decision.workflowId !== null || decision.question !== null) return undefined;
+  return modelDecisionSchema.parse({ type: decision.type, reason: decision.reason, reasoningSummary: decision.reasoningSummary });
+}
+
 /**
- * The JSON Schema sent to the provider, matching `modelDecisionSchema`
- * structurally.
+ * The JSON Schema sent to the provider. It deliberately uses one flat object
+ * with nullable fields: OpenRouter's strict JSON-schema path rejects a
+ * top-level `oneOf`, while the internal discriminated union remains the
+ * authoritative post-parse contract.
  *
  * Hand-written rather than derived from the Zod schema by a converter —
  * building a general Zod-to-JSON-Schema translator for one call site would be
@@ -105,41 +148,15 @@ export type ModelDecision = z.infer<typeof modelDecisionSchema>;
 export function decisionResponseSchema(availableWorkflows: readonly string[]): JsonSchemaObject {
   return {
     type: "object",
-    oneOf: [
-      {
-        type: "object",
-        properties: {
-          type: { const: "run_workflow" },
-          workflowId:
-            availableWorkflows.length > 0
-              ? { type: "string", enum: [...availableWorkflows] }
-              : { type: "string" },
-          reasoningSummary: { type: "string", maxLength: 400 },
-        },
-        required: ["type", "workflowId", "reasoningSummary"],
-        additionalProperties: false,
-      },
-      {
-        type: "object",
-        properties: {
-          type: { const: "request_clarification" },
-          question: { type: "string", maxLength: 400 },
-          reasoningSummary: { type: "string", maxLength: 400 },
-        },
-        required: ["type", "question", "reasoningSummary"],
-        additionalProperties: false,
-      },
-      {
-        type: "object",
-        properties: {
-          type: { const: "decline" },
-          reason: { type: "string", maxLength: 400 },
-          reasoningSummary: { type: "string", maxLength: 400 },
-        },
-        required: ["type", "reason", "reasoningSummary"],
-        additionalProperties: false,
-      },
-    ],
+    properties: {
+      type: { type: "string", enum: ["run_workflow", "request_clarification", "decline"] },
+      workflowId: { type: ["string", "null"], enum: [...availableWorkflows, null] },
+      question: { type: ["string", "null"], maxLength: 400 },
+      reason: { type: ["string", "null"], maxLength: 400 },
+      reasoningSummary: { type: "string", maxLength: 400 },
+    },
+    required: ["type", "workflowId", "question", "reason", "reasoningSummary"],
+    additionalProperties: false,
   };
 }
 

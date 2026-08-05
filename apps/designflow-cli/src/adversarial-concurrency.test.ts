@@ -77,7 +77,13 @@ async function mockOpenRouter(options?: {
       }
 
       const workflowId = WORKFLOW_FOR_MODEL[body.model ?? ""] ?? "design-to-code";
-      const decision = { type: "run_workflow", workflowId, reasoningSummary: `ok for ${body.model}` };
+      const decision = {
+        type: "run_workflow",
+        workflowId,
+        question: null,
+        reason: null,
+        reasoningSummary: `ok for ${body.model}`,
+      };
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(

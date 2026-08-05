@@ -1,3 +1,3 @@
 // packages/model-provider-openrouter/src/index.ts
-export { OpenRouterProvider } from "./provider";
+export { OpenRouterProvider, openRouterResponseSchemaIssues } from "./provider";
 export type { OpenRouterProviderOptions } from "./provider";

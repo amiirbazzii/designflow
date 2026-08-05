@@ -4,6 +4,7 @@ import {
   type ModelProvider,
   type ModelProviderContext,
   type ModelProviderCapabilities,
+  type JsonSchemaObject,
   type ModelRequest,
   type ModelResponse,
 } from "@designflow/sdk";
@@ -59,7 +60,7 @@ export class OpenRouterProvider implements ModelProvider {
   public readonly id = "openrouter";
 
   public capabilities(_model: string): ModelProviderCapabilities {
-    return { jsonMode: true, strictJsonSchema: true, toolCalling: false, maxOutputTokens: 32_000 };
+    return { jsonMode: true, strictJsonSchema: true, toolCalling: false, maxOutputTokens: 32_000, responseSchemaIssues: openRouterResponseSchemaIssues };
   }
 
   private readonly apiKey: string;
@@ -330,7 +331,14 @@ async function errorFor(response: Response): Promise<Error> {
     );
   }
 
-  if (response.status === 404 || response.status === 400) {
+  if (response.status === 400) {
+    return new DesignFlowError(
+      "ERR_MODEL_SCHEMA_UNSUPPORTED",
+      "The provider rejected the requested structured-output schema.",
+    );
+  }
+
+  if (response.status === 404) {
     return new DesignFlowError(
       "ERR_MODEL_UNAVAILABLE",
       "The requested model is not available.",
@@ -344,4 +352,31 @@ async function errorFor(response: Response): Promise<Error> {
   // for "the provider is having a bad day" without this adapter having to
   // enumerate every 5xx status individually.
   return new Error(`OpenRouter responded with status ${response.status}.`);
+}
+
+const UNSUPPORTED_SCHEMA_KEYWORDS = ["oneOf", "anyOf", "allOf", "not", "if", "then", "else", "const"] as const;
+
+/** Validates the strict JSON-schema subset used by OpenRouter before a call. */
+export function openRouterResponseSchemaIssues(schema: JsonSchemaObject): readonly string[] {
+  const issues: string[] = [];
+  const visit = (value: unknown, path: string, depth: number): void => {
+    if (depth > 32) { issues.push("schema nesting exceeds the supported bound"); return; }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) { issues.push(`${path}: schema node must be an object`); return; }
+    const node = value as Record<string, unknown>;
+    for (const keyword of UNSUPPORTED_SCHEMA_KEYWORDS) if (keyword in node) issues.push(`${path}: ${keyword} is unsupported`);
+    if (node.type === "object") {
+      const properties = node.properties;
+      if (properties !== undefined && (typeof properties !== "object" || properties === null || Array.isArray(properties))) issues.push(`${path}: properties must be an object`);
+      if (properties !== undefined && node.additionalProperties !== false) issues.push(`${path}: additionalProperties must be false`);
+      if (typeof properties === "object" && properties !== null && !Array.isArray(properties)) {
+        const propertyNames = Object.keys(properties as Record<string, unknown>);
+        const required = Array.isArray(node.required) ? node.required.filter((item): item is string => typeof item === "string") : [];
+        for (const name of propertyNames) if (!required.includes(name)) issues.push(`${path}: ${name} must be required`);
+        for (const [name, child] of Object.entries(properties as Record<string, unknown>)) visit(child, `${path}.${name}`, depth + 1);
+      }
+    }
+    if (node.items !== undefined) visit(node.items, `${path}.items`, depth + 1);
+  };
+  visit(schema, "$", 0);
+  return [...new Set(issues)].slice(0, 32);
 }

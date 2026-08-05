@@ -49,6 +49,17 @@ interface MockOpenRouter {
   readonly requests: { readonly headers: Record<string, string | string[] | undefined>; readonly body: unknown }[];
 }
 
+function flatDecision(decision: unknown): unknown {
+  if (typeof decision !== "object" || decision === null || !("type" in decision)) return decision;
+  const record = decision as Record<string, unknown>;
+  return {
+    ...record,
+    workflowId: record.workflowId ?? null,
+    question: record.question ?? null,
+    reason: record.reason ?? null,
+  };
+}
+
 /** A deterministic stand-in for OpenRouter, answering with a fixed decision. */
 async function mockOpenRouter(decision: unknown, status = 200): Promise<MockOpenRouter> {
   const requests: MockOpenRouter["requests"] = [];
@@ -72,7 +83,7 @@ async function mockOpenRouter(decision: unknown, status = 200): Promise<MockOpen
         JSON.stringify({
           id: "gen-mock",
           model: "openai/gpt-4o-mini",
-          choices: [{ message: { role: "assistant", content: JSON.stringify(decision) } }],
+          choices: [{ message: { role: "assistant", content: JSON.stringify(flatDecision(decision)) } }],
           usage: { prompt_tokens: 30, completion_tokens: 8, total_tokens: 38 },
         }),
       );

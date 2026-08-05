@@ -60,12 +60,23 @@ function modelAnswering(
     installedProfileIds: () => ["design-engineer-default"],
     generate: (request) => {
       seen.push(request);
+      // Keep legacy fixture literals concise while sending the exact flat
+      // transport shape that a strict provider receives in production.
+      const transportOutput =
+        typeof output === "object" && output !== null && "type" in output
+          ? {
+              ...(output as Record<string, unknown>),
+              workflowId: (output as Record<string, unknown>).workflowId ?? null,
+              question: (output as Record<string, unknown>).question ?? null,
+              reason: (output as Record<string, unknown>).reason ?? null,
+            }
+          : output;
       return Promise.resolve({
         type: "success",
         requestId: request.requestId,
         providerId: "openrouter",
         model: "openai/gpt-4o-mini",
-        output,
+        output: transportOutput,
         durationMs: 1,
       });
     },
@@ -447,21 +458,22 @@ describe("the model strategy: failure handling", () => {
     expect(result.decision.type).toBe("decline");
   });
 
-  test("a workflow id outside the schema's enum still gets caught downstream", async () => {
-    // The response schema constrains `workflowId` to an enum, but the model
-    // is untrusted regardless — this proves the JSON Schema hint is not the
-    // enforcement.
+  test("a workflow id outside the schema's enum is rejected before execution", async () => {
+    // The provider schema constrains the enum and the post-parse conversion
+    // remains authoritative when a provider ignores that constraint.
     const rogue = modelAnswering({
       type: "run_workflow",
       workflowId: "not-a-real-workflow",
       reasoningSummary: "ok",
     });
 
-    await expect(
-      runtimeWith({ tools: classifierTool("page"), models: rogue, strategy: modelDesignEngineerStrategy }).decide(
-        TASK,
-      ),
-    ).rejects.toThrow(/may not run workflow/);
+    const result = await runtimeWith({
+      tools: classifierTool("page"),
+      models: rogue,
+      strategy: modelDesignEngineerStrategy,
+    }).decide(TASK);
+
+    expect(result.decision).toMatchObject({ type: "decline" });
   });
 
   // 39/40. Clarification and decline start no workflow — proven at the

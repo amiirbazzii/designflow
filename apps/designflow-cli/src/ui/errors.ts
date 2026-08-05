@@ -206,6 +206,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That worker could not put together what it needed to ask its AI.",
     suggestion: TRY_AGAIN,
   },
+  ERR_MODEL_SCHEMA_UNSUPPORTED: {
+    problem: "The configured model rejected the required structured-output schema.",
+    suggestion: "Nothing was started. Check model compatibility and try again.",
+  },
   ERR_MODEL_RESPONSE_INVALID: {
     problem: "That worker's AI sent back something unusable.",
     suggestion: TRY_AGAIN,

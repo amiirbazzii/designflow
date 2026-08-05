@@ -11,7 +11,7 @@ import {
   type ModelProviderContext,
   type ModelRequest,
 } from "@designflow/sdk";
-import { OpenRouterProvider } from "./provider";
+import { OpenRouterProvider, openRouterResponseSchemaIssues } from "./provider";
 
 /**
  * The OpenRouter adapter, exercised against a real local HTTP server rather
@@ -288,6 +288,14 @@ describe("endpoint configuration", () => {
 // ── 32. HTTP and parsing failures are sanitised ─────────────────
 
 describe("HTTP failure normalisation", () => {
+  test("400 normalises to ERR_MODEL_SCHEMA_UNSUPPORTED", async () => {
+    const { endpoint } = await mockServer((_req, res) => jsonResponse(res, 400, { error: "Provider returned error" }));
+
+    await expect(
+      new OpenRouterProvider({ apiKey: "sk-test", endpoint }).generate(REQUEST, CONTEXT),
+    ).rejects.toMatchObject({ code: "ERR_MODEL_SCHEMA_UNSUPPORTED" });
+  });
+
   test("401 normalises to ERR_MODEL_AUTHENTICATION", async () => {
     const { endpoint } = await mockServer((_req, res) => jsonResponse(res, 401, { error: "bad key" }));
 
@@ -384,6 +392,13 @@ describe("HTTP failure normalisation", () => {
     const serialized = JSON.stringify(error instanceof DesignFlowError ? error.toJSON() : error);
     expect(serialized).not.toContain("sk-test");
     expect(serialized).not.toContain("internal_id");
+  });
+});
+
+describe("strict schema capability preflight", () => {
+  test("rejects top-level oneOf and accepts bounded flat schemas", () => {
+    expect(openRouterResponseSchemaIssues({ type: "object", oneOf: [{ type: "object" }] })).toContain("$: oneOf is unsupported");
+    expect(openRouterResponseSchemaIssues({ type: "object", properties: { value: { type: "string" } }, required: ["value"], additionalProperties: false })).toEqual([]);
   });
 });
 
