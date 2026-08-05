@@ -1,7 +1,9 @@
-# Release Checklist (`designflow` npm package)
+# Release Checklist (`designflow-ai` npm package)
 
-Manual steps for cutting and publishing a release of the `designflow` CLI
-(published from `apps/designflow-cli`). Follow in order. Do not skip steps.
+Manual steps for cutting and publishing a release of the `designflow-ai`
+package — the npm package is `designflow-ai`, the installed command is
+`designflow` — published from `apps/designflow-cli`, currently at version
+`0.1.1`. Follow in order. Do not skip steps.
 
 > **`npm publish` requires separate human confirmation.** This checklist
 > documents the full process, but the publish step itself must be run
@@ -10,14 +12,16 @@ Manual steps for cutting and publishing a release of the `designflow` CLI
 ## 0. Preconditions
 
 - [ ] Working tree is clean (`git status`) and you are on `main`, up to date
-      with `origin/main`.
-- [ ] You have npm publish rights for the `designflow` package on the npm
+      with `origin/main`. Release-candidate validation must start from a
+      clean Git state — the only permitted local noise is explicitly
+      ignored local tooling state (e.g. `.claude-flow/`).
+- [ ] You have npm publish rights for the `designflow-ai` package on the npm
       registry, and are logged in (`npm whoami`).
 
 ## 1. Bump the version
 
 - [ ] The version lives **only** in `apps/designflow-cli/package.json`
-      (`"version": "0.1.0"` today). The root `package.json` is
+      (`"version": "0.1.1"` today). The root `package.json` is
       `"private": true` and has no `version` field — there is nothing to keep
       in sync there.
 - [ ] Bump it by hand, or with `npm version <patch|minor|major>` run from
@@ -48,7 +52,14 @@ All four must pass before continuing.
 bash scripts/cli-smoke-test.sh
 ```
 
-This builds the CLI, runs `npm pack`, installs the resulting tarball into a
+This runs `npm pack` — whose `prepack` hook
+(`scripts/prepare-cli-package.sh`) deletes all generated workspace `dist`
+output and `tsc` incremental state, then force-rebuilds the entire
+workspace graph from current source before bundling the CLI. That hook is
+the canonical package-preparation path: it protects both `npm pack` and
+`npm publish`, run from any directory. **`npm pack --ignore-scripts` is
+not a valid release path** — it bypasses the freshness rebuild and can
+package stale dependency output. The smoke test then installs the resulting tarball into a
 throwaway global npm prefix, and exercises the CLI end-to-end under plain
 `node` (not `bun`) against an empty `DESIGNFLOW_HOME`. It is the closest
 local proxy to what a real `npm install -g designflow-ai` user experiences.

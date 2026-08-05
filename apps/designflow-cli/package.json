@@ -18,7 +18,7 @@
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "prepublishOnly": "bun run build",
+    "prepack": "bash ../../scripts/prepare-cli-package.sh",
     "smoke": "bash ../../scripts/cli-smoke-test.sh"
   },
   "keywords": [

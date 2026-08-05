@@ -67,6 +67,19 @@ describe("designflow-ai package contract (CLI-only)", () => {
     expect(pkg.optionalDependencies).toEqual({ playwright: "1.62.1" });
   });
 
+  test("packing is protected by the canonical preparation hook", () => {
+    const pkg = JSON.parse(readFileSync(`${PACKAGE_DIR}package.json`, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+    // prepack runs for BOTH npm pack and npm publish, even from this
+    // directory — the forced workspace rebuild cannot be bypassed by a
+    // direct package-level pack. The old prepublishOnly (CLI-only build,
+    // publish-only trigger) implied protection it did not provide.
+    expect(pkg.scripts?.["prepack"]).toBe("bash ../../scripts/prepare-cli-package.sh");
+    expect(pkg.scripts?.["prepublishOnly"]).toBeUndefined();
+    expect(existsSync(`${PACKAGE_DIR}../../scripts/prepare-cli-package.sh`)).toBe(true);
+  });
+
   test("the emitted binary keeps its shebang", () => {
     const first = readFileSync(`${PACKAGE_DIR}dist/main.js`, "utf8").slice(0, 32);
     expect(first.startsWith("#!/usr/bin/env node")).toBe(true);

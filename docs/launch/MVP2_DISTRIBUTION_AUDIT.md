@@ -346,6 +346,77 @@ pack flow) remain open; MVP-2 is NOT complete.
   2,320 pass / 1 skip / 0 fail, all `--force`, `Cached: 0`.
 ---
 
+# Implementation status — MVP-2B-3: stale-output-proof packaging (2026-08-05)
+
+**Blocker B2 is complete.** MVP-2 is NOT complete until the smoke-coverage
+review (separate follow-up) is addressed.
+
+- **Root cause (two layers):** (1) the CLI bundle inlines every workspace
+  package through its built `dist`, but `prepublishOnly` and the smoke
+  test rebuilt only the CLI, so `npm pack` could ship stale dependency
+  output; (2) deeper, discovered during verification: `tsc -b`
+  incremental state (package-root `tsconfig.tsbuildinfo`) compares
+  timestamps, not content, so corrupted-but-newer output survives even a
+  forced rebuild; and `designflow-ai` declares no workspace dependencies
+  (bundled), so Turbo has **no graph edge** ordering the CLI bundle after
+  the packages it inlines — with outputs deleted, the bundler races the
+  dependency builds.
+- **Canonical path:** `scripts/prepare-cli-package.sh`, wired as the
+  package's `prepack` lifecycle script — npm runs it for both `npm pack`
+  and `npm publish`, from any directory, so direct package-level packing
+  cannot bypass it. It (1) deletes generated output only — `dist/`
+  directories and `*.tsbuildinfo` under `packages/`, `workflows/`, and
+  the CLI — never source, user state, or `.claude-flow/`; (2) rebuilds
+  with `bunx turbo build --force --filter='!designflow-ai'` then
+  `--filter=designflow-ai` (explicit two phases because of the missing
+  graph edge; a manifest devDependencies edge was rejected — it would
+  require lockfile changes, prohibited here); (3) fail-fast verifies
+  `dist/main.js` exists with its shebang. The obsolete `prepublishOnly`
+  (CLI-only build, publish-only trigger) was removed. Scope: the full
+  25-package graph then the CLI — chosen over a narrow filter
+  deliberately; nothing the bundle inlines can be omitted.
+- **Lifecycle:** `prepack` fires before tarball collection for pack and
+  publish; consumers installing the tarball run no repository scripts and
+  need no Bun/Turbo/source (verified: isolated install + `--version`
+  under plain `node`). Version stays 0.1.1.
+- **Freshness verification** (`scripts/verify-package-freshness.sh`,
+  serial, self-healing via trap + final forced rebuild):
+  - Scenario A: `packages/sdk/dist` deleted → canonical pack rebuilds it,
+    tarball installs and runs.
+  - Scenario B: fabricated marker appended to `packages/sdk/dist/index.js`
+    → prepack replaces the file; marker absent from sdk dist, from
+    `dist/main.js`, and from the extracted tarball.
+  - Scenario C: cold (post-scenario) and warm packs produce **identical
+    normalized extracted-payload hashes**
+    (`601a1662baf1b27af48330e4006fb6d222a86dc155db723df106a8385eccf777`
+    for all three packs); whole-`.tgz` bytes can differ via gzip/archive
+    metadata, which is not payload.
+  - No marker, corruption, or tarball remains afterwards; no source file
+    touched.
+- **Smoke test:** `scripts/cli-smoke-test.sh` no longer performs a
+  CLI-only prebuild — packing goes through the prepack hook; asserts
+  `dist/main.js` was produced *by* prepack. Result: exit 0,
+  "SMOKE TEST PASSED".
+- **Release checklist** (`docs/RELEASE_CHECKLIST.md`) corrected: package
+  `designflow-ai` (command `designflow`), version 0.1.1, canonical pack
+  command and what prepack does, clean-Git-state requirement (only
+  ignored local tooling excepted), and an explicit statement that
+  `npm pack --ignore-scripts` is not a valid release path.
+- **Tests:** contract test pins the prepack wiring and the removal of
+  `prepublishOnly`; the in-suite install-acceptance test now packs with
+  `--ignore-scripts` *solely* because it runs inside `turbo test`, where
+  the hook's own forced build would race the running task graph — the
+  freshness path is exercised serially by the verification script and the
+  smoke test (documented in the test).
+- **TypeScript references:** unchanged — Turbo ordering plus the
+  two-phase prepare covers packaging freshness; reference hygiene stays a
+  later item.
+- **Validation:** freshness verification PASSED; smoke exit 0; full
+  forced suite: build 26/26, typecheck 44/44, lint 26/26, tests 2,337
+  pass / 1 skip / 0 fail.
+
+---
+
 # Implementation status — MVP-2B-2: package entry points (2026-08-05)
 
 **Blocker B1 is complete.** B2 (stale-dist pack flow) remains open; MVP-2

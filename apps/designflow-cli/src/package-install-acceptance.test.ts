@@ -22,8 +22,14 @@ describeOnPosix("installed-package acceptance (CLI-only contract)", () => {
   test("pack, isolated install, CLI journey, and rejected library import", () => {
     const work = mkdtempSync(join(tmpdir(), "designflow-pack-"));
     try {
-      // 1. Real tarball from the real package directory (runs prepublishOnly).
-      const packOutput = execFileSync("npm", ["pack", "--pack-destination", work], {
+      // 1. Real tarball from the real package directory. --ignore-scripts
+      // here ONLY because this test runs inside `turbo test`, where the
+      // prepack hook's own forced `turbo build` would race the very task
+      // graph executing this test; the dist under test was just built by
+      // this task's own build dependency. The prepack freshness path is
+      // exercised serially by scripts/verify-package-freshness.sh and the
+      // CLI smoke test — --ignore-scripts is NOT a valid release path.
+      const packOutput = execFileSync("npm", ["pack", "--ignore-scripts", "--pack-destination", work], {
         cwd: PACKAGE_DIR,
         encoding: "utf8",
       }).trim();

@@ -29,12 +29,13 @@ fail() { printf '\033[31mFAIL: %s\033[0m\n' "$1"; exit 1; }
 WARNINGS=0
 warn() { printf '\033[33mWARNING: %s\033[0m\n' "$1"; WARNINGS=$((WARNINGS + 1)); }
 
-step "Build"
-(cd "$CLI_DIR" && npm run --silent build >/dev/null)
-[ -f "$CLI_DIR/dist/main.js" ] || fail "dist/main.js was not produced"
-
-step "npm pack"
-TARBALL="$(cd "$CLI_DIR" && npm pack --silent)"
+step "npm pack (prepack performs the canonical forced workspace build)"
+# No separate CLI-only build here: packing MUST go through the prepack
+# lifecycle (scripts/prepare-cli-package.sh), which rebuilds the whole
+# workspace dependency graph from source — a CLI-only build can bundle
+# stale dependency dist output.
+TARBALL="$(cd "$CLI_DIR" && npm pack --silent | tail -1)"
+[ -f "$CLI_DIR/dist/main.js" ] || fail "dist/main.js was not produced by prepack"
 mv "$CLI_DIR/$TARBALL" "$WORK/"
 echo "packed $TARBALL"
 
