@@ -13,6 +13,7 @@
 
 import { createCliContext } from "../../src/services/cli-runner";
 import { BrokenPipeCoordinator } from "../../src/services/broken-pipe";
+import { ExitOutcome, resolveExitCode } from "../../src/services/exit-outcome";
 import { SignalCoordinator } from "../../src/services/signal-coordinator";
 
 const evidence = (line: string): void => {
@@ -20,9 +21,11 @@ const evidence = (line: string): void => {
 };
 
 const coordinator = new SignalCoordinator({ notify: evidence });
+const outcome = new ExitOutcome();
 const pipeGuard = new BrokenPipeCoordinator({
   onBrokenPipe: () => {
     evidence("PIPE-BROKEN");
+    outcome.recordPipeBroken();
     coordinator.abortQuietly();
   },
 });
@@ -54,7 +57,9 @@ const code = await coordinator.run(async (signal) => {
     });
 
     evidence(`STATE:${handle.state}`);
-    return handle.state === "ready" ? 0 : 1;
+    const commandCode = handle.state === "ready" ? 0 : 1;
+    outcome.recordResult(commandCode);
+    return commandCode;
   } finally {
     clearInterval(heartbeat);
     context.close();
@@ -62,5 +67,9 @@ const code = await coordinator.run(async (signal) => {
   }
 });
 
-pipeGuard.uninstall();
-process.exitCode = pipeGuard.stdoutBroken && !coordinator.interrupted ? 0 : code;
+process.exitCode = resolveExitCode({
+  interrupted: coordinator.interrupted,
+  commandCode: code,
+  stdoutBroken: pipeGuard.stdoutBroken,
+  pipeBrokeBeforeResult: outcome.pipeBrokeBeforeResult,
+});

@@ -344,6 +344,23 @@ pack flow) remain open; MVP-2 is NOT complete.
   `designflow list | grep -q` step. The script itself was not modified.
 - **Validation:** build 26/26, typecheck 44/44, lint 26/26, tests
   2,320 pass / 1 skip / 0 fail, all `--force`, `Cached: 0`.
-- **Limitation:** if a command had already failed for an unrelated reason
-  *and* stdout then broke, the invocation still reports 0 — attribution
-  of a failure that the consumer never saw is not attempted at MVP scope.
+- **Exit-code precedence (corrected 2026-08-05, second pass):** the first
+  implementation could overwrite a genuine nonzero command result with 0
+  when stdout later broke. Final model (`ExitOutcome` +
+  `resolveExitCode`, `services/exit-outcome.ts`): distinct facts —
+  interrupt, recorded command result, stdout broken, and whether the pipe
+  broke *before* the result existed — are tracked separately and the
+  command result is recorded before any failure-report writes, so a late
+  EPIPE is provably late. Precedence: (1) real SIGINT/SIGTERM → 130,
+  never overwritten; (2) an established command result — success or
+  failure — stands even if a stream breaks while the failure is being
+  reported; (3) only a stdout pipe that broke before any result existed
+  yields the quiet pipeline exit 0 (covers both the early-leaving
+  informational consumer and EPIPE-caused workflow cancellation); (4)
+  otherwise the command's own code. Late asynchronous stream errors can
+  suppress output but can never rewrite an established result. Pinned by
+  9 precedence unit tests and a real-subprocess regression: a fixture
+  command emits a 20k-line report, records failure exit 3, the consumer
+  closes mid-flush — the process exits 3 with no EPIPE trace. Residual
+  edge (documented): a failure that *begins* only after the consumer has
+  already left is attributed to the departed consumer and reports 0.

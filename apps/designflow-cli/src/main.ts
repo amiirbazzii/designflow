@@ -8,6 +8,7 @@ import {
 } from "./services/cli-runner";
 
 import { BrokenPipeCoordinator } from "./services/broken-pipe";
+import { ExitOutcome, resolveExitCode } from "./services/exit-outcome";
 import { SignalCoordinator } from "./services/signal-coordinator";
 import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
@@ -104,8 +105,12 @@ async function main(): Promise<number> {
   // quiet host cancellation, not an interrupt), and exit 0 — the consumer
   // already got what it needed, and `set -o pipefail` scripts must not see
   // a failure.
+  const outcome = new ExitOutcome();
   const pipeGuard = new BrokenPipeCoordinator({
-    onBrokenPipe: () => coordinator.abortQuietly(),
+    onBrokenPipe: () => {
+      outcome.recordPipeBroken();
+      coordinator.abortQuietly();
+    },
   });
   activePipeGuard = pipeGuard;
   pipeGuard.install();
@@ -128,8 +133,14 @@ async function main(): Promise<number> {
     const code = await coordinator.run(async (signal) => {
       try {
         context = createCliContext({ signal });
-        return await dispatch(argv, context, terminal);
+        const commandCode = await dispatch(argv, context, terminal);
+        outcome.recordResult(commandCode);
+        return commandCode;
       } catch (error) {
+        // Recorded BEFORE the error is printed: the EPIPE that reporting a
+        // failure into a closed pipe may trigger is then provably late and
+        // cannot convert this established failure into a success.
+        outcome.recordResult(1);
         print(formatError(error));
         return 1;
       } finally {
@@ -137,10 +148,12 @@ async function main(): Promise<number> {
         close();
       }
     });
-    // A broken stdout is the pipeline's normal end, not a CLI failure —
-    // whatever the command reported after losing its output. A real user
-    // interrupt still wins: Ctrl+C reports 130 even if the pipe also broke.
-    return pipeGuard.stdoutBroken && !coordinator.interrupted ? 0 : code;
+    return resolveExitCode({
+      interrupted: coordinator.interrupted,
+      commandCode: code,
+      stdoutBroken: pipeGuard.stdoutBroken,
+      pipeBrokeBeforeResult: outcome.pipeBrokeBeforeResult,
+    });
   } catch (error) {
     pipeGuard.uninstall();
     activePipeGuard = undefined;
