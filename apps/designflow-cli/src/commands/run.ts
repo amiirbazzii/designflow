@@ -4,6 +4,7 @@ import {
   type Terminal,
 } from "../ui/terminal";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
 import type { WorkerInputField } from "@designflow/sdk";
@@ -39,7 +40,7 @@ export async function runCommand(
   context: CliContext,
   terminal: Terminal,
   name: string,
-  options?: { readonly projectId?: string; readonly interactive?: boolean },
+  options?: { readonly projectId?: string; readonly interactive?: boolean; readonly noCache?: boolean },
 ): Promise<number> {
   const resolved = context.resolve(name);
 
@@ -116,9 +117,22 @@ export async function runCommand(
     input.implementationAgentVersion = "0.1.0";
     input.implementationAgentModelProfileId = "implementation-default";
     input.captureScreenshots = true;
-    input.refreshFigmaSource = false;
+    input.refreshFigmaSource = options?.noCache === true || context.figmaSourceMode !== "placeholder";
+    if (options?.noCache === true) input.figmaCacheBypass = randomUUID();
+    input.figmaSourceMode = context.figmaSourceMode ?? "placeholder";
+    if (context.figmaServerIdentity !== undefined) input.figmaServerIdentity = context.figmaServerIdentity;
     input.allowFixtureNames = false;
     delete input.projectId;
+  } else if (context.figmaSourceMode !== undefined && context.figmaSourceMode !== "placeholder" && isDesignEngineer) {
+    // Real-Figma mode is explicitly routed to the MCP-backed specification
+    // workflow. The legacy Stage 1 path remains unchanged when MCP is off.
+    input.figmaSourceMode = context.figmaSourceMode;
+    input.refreshFigmaSource = true;
+    if (options?.noCache === true) input.figmaCacheBypass = randomUUID();
+    input.captureScreenshots = true;
+    input.figmaAgentVersion = "0.1.0";
+    if (context.figmaServerIdentity !== undefined) input.figmaServerIdentity = context.figmaServerIdentity;
+    input.allowFixtureNames = false;
   }
 
   // Attached before the session starts, and left attached through the whole

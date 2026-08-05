@@ -88,6 +88,14 @@ function printDetail(
   );
 
   terminal.print(`    Tools consulted: ${trace.toolCalls.length}`);
+  terminal.print(`    Model calls: ${trace.modelCalls.length}`);
+
+  if (trace.metadata?.["invocationKind"] === "specialized-agent") {
+    terminal.print(`    Specialized agent: ${trace.agentId}`);
+    const capabilityId = trace.metadata["capabilityId"];
+    if (typeof capabilityId === "string") terminal.print(`    Step: ${capabilityId}`);
+    if (trace.errorCode !== undefined) terminal.print(`    Error code: ${trace.errorCode}`);
+  }
 
   if (trace.executionId !== undefined) {
     terminal.print(`    Run: ${trace.executionId}`);

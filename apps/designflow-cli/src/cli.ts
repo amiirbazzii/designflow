@@ -219,7 +219,11 @@ export async function dispatch(
         context,
         terminal,
         name,
-        projectId !== undefined ? { projectId } : undefined,
+        rest.includes("--no-cache")
+          ? { ...(projectId !== undefined ? { projectId } : {}), noCache: true }
+          : projectId !== undefined
+            ? { projectId }
+            : undefined,
       );
     }
 

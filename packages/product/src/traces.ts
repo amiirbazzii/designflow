@@ -23,9 +23,10 @@ import {
  *
  * The split matters at the last one. A CLI holding a `TraceStore` could write
  * traces, and a surface that can write its own audit record is not an audit
- * record. `TraceService` exposes reads plus exactly one write — correlating a
- * trace with the execution it produced — because that fact is only knowable by
- * whoever started the run.
+ * record. `TraceService` exposes reads plus two narrowly scoped writes —
+ * correlating a trace with the execution it produced and attaching bounded
+ * execution metadata — because those facts are only knowable by whoever
+ * started the run.
  *
  * All of it sits outside the engine. `packages/core` does not know agents
  * exist, and after this stage it still does not know traces do.
@@ -101,6 +102,30 @@ export class TraceCollector implements TraceObserver {
     const validated = traceEventSchema.parse(event);
 
     switch (validated.type) {
+      case "agent.invocation.started": {
+        this.pendingTools.set(validated.traceId, []);
+        this.pendingModels.set(validated.traceId, []);
+
+        await this.store.create(
+          agentTraceSchema.parse({
+            id: validated.traceId,
+            workerId: validated.workerId,
+            agentId: validated.agentId,
+            startedAt: validated.timestamp,
+            ...(validated.executionId !== undefined
+              ? { executionId: validated.executionId }
+              : {}),
+            status: "running",
+            toolCalls: [],
+            modelCalls: [],
+            ...(validated.metadata !== undefined
+              ? { metadata: validated.metadata }
+              : {}),
+          }),
+        );
+        return;
+      }
+
       case "agent.decision.started": {
         this.pendingTools.set(validated.traceId, []);
         this.pendingModels.set(validated.traceId, []);
@@ -198,7 +223,30 @@ export class TraceCollector implements TraceObserver {
         return;
       }
 
+      case "agent.invocation.completed": {
+        await this.store.update(validated.traceId, {
+          status: "completed",
+          durationMs: validated.durationMs,
+          completedAt: validated.timestamp,
+        });
+        this.pendingTools.delete(validated.traceId);
+        this.pendingModels.delete(validated.traceId);
+        return;
+      }
+
       case "agent.decision.failed": {
+        await this.store.update(validated.traceId, {
+          status: "failed",
+          errorCode: validated.errorCode,
+          durationMs: validated.durationMs,
+          completedAt: validated.timestamp,
+        });
+        this.pendingTools.delete(validated.traceId);
+        this.pendingModels.delete(validated.traceId);
+        return;
+      }
+
+      case "agent.invocation.failed": {
         await this.store.update(validated.traceId, {
           status: "failed",
           errorCode: validated.errorCode,
@@ -259,5 +307,19 @@ export class TraceService {
    */
   public correlate(traceId: string, executionId: string): Promise<void> {
     return this.store.update(traceId, { executionId });
+  }
+
+  /** Adds bounded host facts learned after the decision starts. */
+  public annotate(
+    traceId: string,
+    metadata: Readonly<{
+      readonly sourceMode?: string;
+      readonly mcpRetrieval?: "succeeded" | "not-completed";
+      readonly cacheBypass?: boolean;
+      readonly artifactsCreated?: number;
+      readonly artifactsReused?: number;
+    }>,
+  ): Promise<void> {
+    return this.store.update(traceId, { metadata: { ...metadata } });
   }
 }

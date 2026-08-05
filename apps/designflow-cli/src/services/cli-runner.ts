@@ -322,6 +322,9 @@ export interface CliContext {
   readonly inspectState: () => StateHealthReport;
   /** True when an explicit project can select the experimental implementation path. */
   readonly experimentalImplementationEnabled: boolean;
+  /** Safe Figma source mode selected by the composition root. */
+  readonly figmaSourceMode?: "placeholder" | "rest" | "mcp-stdio" | "mcp-desktop";
+  readonly figmaServerIdentity?: string;
   /**
    * Resolves a name to something runnable.
    *
@@ -550,6 +553,33 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           })
       : undefined;
 
+  // Build the specialized model port before constructing the invocation
+  // runtime. The coordinator and workflow agents must see the same registered
+  // profiles and provider boundary.
+  const modelProfiles = new InMemoryModelProfileRegistry(
+    mergeModelProfileOverrides(
+      BUILT_IN_MODEL_PROFILES,
+      readModelProfileOverrides(home.config),
+    ),
+  );
+
+  const modelRuntime = modelModeRequested
+    ? new ModelRuntime({
+        profiles: modelProfiles,
+        providers: new InMemoryModelProviderRegistry([
+          new OpenRouterProvider({
+            apiKey: openRouterApiKey,
+            ...(options?.modelEndpointOverride !== undefined
+              ? { endpoint: options.modelEndpointOverride }
+              : {}),
+          }),
+        ]),
+        logger: silentLogger,
+      })
+    : undefined;
+
+  const traceStore = new FileTraceStore(store);
+
   // A dedicated `AgentInvocationRuntime`, independent of the coordinator's
   // `AgentRuntime` below — Stage 2's own boundary between "decides a route"
   // and "invoked by a workflow node for its output" carries through here.
@@ -570,6 +600,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
             ? modelVisualCorrectionStrategy
             : undefined,
         }),
+        ...(modelRuntime !== undefined ? { models: modelRuntime } : {}),
+        modelsRequired: modelModeRequested,
+        tracer: new TraceCollector(traceStore),
       })
     : undefined;
 
@@ -673,34 +706,6 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     logger: silentLogger,
   });
 
-  // Model profiles: registered whether or not a credential is configured, so
-  // `designflow settings` can always show what *would* run — but a live
-  // `ModelRuntime` is only ever built when `OPENROUTER_API_KEY` is actually
-  // present. This is the one and only place mode is decided, and it is
-  // decided once, at wiring time, never per-request and never by falling back
-  // silently after a failed attempt.
-  const modelProfiles = new InMemoryModelProfileRegistry(
-    mergeModelProfileOverrides(
-      BUILT_IN_MODEL_PROFILES,
-      readModelProfileOverrides(home.config),
-    ),
-  );
-
-  const modelRuntime = modelModeRequested
-    ? new ModelRuntime({
-        profiles: modelProfiles,
-        providers: new InMemoryModelProviderRegistry([
-          new OpenRouterProvider({
-            apiKey: openRouterApiKey,
-            ...(options?.modelEndpointOverride !== undefined
-              ? { endpoint: options.modelEndpointOverride }
-              : {}),
-          }),
-        ]),
-        logger: silentLogger,
-      })
-    : undefined;
-
   // Agents decide; they do not execute. The runtime is handed the installed
   // workflow ids and nothing else — no repository, no artifact store, no
   // execution service — so an agent can name a workflow and can do nothing
@@ -726,9 +731,6 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       : undefined,
   });
 
-  // Traces share the same document as executions, so a run and the decision
-  // that started it are written in one atomic rename.
-  const traceStore = new FileTraceStore(store);
   const traces = new TraceService(traceStore);
 
   // The same file-backed store serves as both the payload store and the
@@ -959,6 +961,12 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     modelProviderConfigured: modelModeRequested && openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0,
     inspectState: () => inspectStateFile(databasePath),
     experimentalImplementationEnabled: implementationEnabled,
+    figmaSourceMode: figmaMcpEnabled
+      ? (figmaMcpConfig?.transport === "http" ? "mcp-desktop" : "mcp-stdio")
+      : "placeholder",
+    ...(figmaMcpEnabled && figmaMcpConfig !== undefined
+      ? { figmaServerIdentity: figmaMcpConfig.transport === "http" ? "figma-desktop" : "figma-mcp" }
+      : {}),
     traces,
     artifactInspection,
     artifactStore,

@@ -292,6 +292,15 @@ export class ExecutionEngine {
         await this.publishEvent(executionId, "execution.failed", {
           workflowId: definition.id,
           failedSteps: execution.failedSteps,
+          ...(firstError instanceof DesignFlowError
+            ? {
+                errorCode: firstError.code,
+                ...(typeof firstError.metadata["agentId"] === "string"
+                  ? { agentId: firstError.metadata["agentId"] }
+                  : {}),
+                reason: safeFailureReason(firstError.message),
+              }
+            : {}),
         });
 
         return {
@@ -1653,4 +1662,13 @@ function readProgressCheckpoint(
     completedNodeIds: completedNodeIds.data,
     completedArtifacts: completedArtifacts.data,
   };
+}
+
+function safeFailureReason(message: string): string {
+  return message
+    .replace(/Bearer\s+[^\s]+/gi, "[credential redacted]")
+    .replace(/\b(?:sk-or-v1|figd_)[A-Za-z0-9_-]+/g, "[credential redacted]")
+    .replace(/(?:\/Users\/|\/home\/|[A-Za-z]:\\)[^\s]+/g, "[path redacted]")
+    .replace(/\s+/g, " ")
+    .slice(0, 500);
 }

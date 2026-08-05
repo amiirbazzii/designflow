@@ -1,5 +1,6 @@
 // packages/capabilities/figma-mcp/src/build-snapshot.ts
 import {
+  DesignFlowError,
   figmaSourceSnapshotSchema,
   type CapabilityContext,
   type FigmaScreenshotSnapshot,
@@ -46,7 +47,11 @@ export async function buildFigmaSourceSnapshot(
 ): Promise<FigmaSourceSnapshot> {
   const client = context.mcp;
   if (client === undefined) {
-    throw new Error("buildFigmaSourceSnapshot requires context.mcp to be configured");
+    throw new DesignFlowError(
+      "ERR_FIGMA_MCP_REQUIRED",
+      "Real Figma mode requires a configured MCP connection; placeholder fallback is disabled",
+      {},
+    );
   }
 
   if (client.serverIdentity === "figma-desktop-mcp") {
@@ -197,6 +202,14 @@ export async function buildFigmaSourceSnapshot(
       ...(client.serverIdentity !== undefined ? { mcpServerIdentity: client.serverIdentity } : {}),
       retrievedAt: options.now(),
       toolVersions: capabilities.resolvedToolNames,
+    },
+    sourceProvenance: {
+      mode: "mcp-stdio",
+      transport: "stdio",
+      serverIdentity: client.serverIdentity ?? "mcp-server",
+      requestedFileKey: parsedSource.fileKey,
+      ...(parsedSource.nodeIds[0] !== undefined ? { requestedNodeId: parsedSource.nodeIds[0] } : {}),
+      ...(resolvedNodeIds[0] !== undefined ? { resolvedNodeId: resolvedNodeIds[0] } : {}),
     },
   });
 }

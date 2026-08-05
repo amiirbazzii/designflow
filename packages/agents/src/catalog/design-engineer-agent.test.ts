@@ -139,6 +139,22 @@ describe("the deterministic strategy", () => {
     expect(result.decision.type).toBe("run_workflow");
   });
 
+  test("real Figma source mode selects the MCP-backed specification workflow", async () => {
+    const result = await runtimeWith({
+      tools: classifierTool("page"),
+      strategy: deterministicDesignEngineerStrategy,
+      availableWorkflows: ["design-to-code", "design-to-code-figma-specification"],
+    }).decide({
+      ...TASK,
+      input: { ...TASK.input, figmaSourceMode: "mcp-desktop", figmaAgentVersion: "0.1.0" },
+    });
+
+    expect(result.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-figma-specification",
+    });
+  });
+
   test("the default export is still the deterministic agent", async () => {
     expect(designEngineerAgent.manifest.id).toBe("design-engineer-agent");
 

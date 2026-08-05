@@ -152,6 +152,35 @@ describe("frame resolution failures surface as typed errors, not a generic workf
 });
 
 describe("reuse: Figma source identity", () => {
+  test("source mode is part of the cache identity", async () => {
+    const created = await host(SAMPLE_FIGMA_MCP_FIXTURES, true);
+    await created.runner.start({
+      workflowId: WORKFLOW_ID,
+      input: { ...SAMPLE_FIGMA_SPECIFICATION_INPUT, figmaSourceMode: "placeholder" },
+    });
+    created.events.length = 0;
+
+    await created.service.execute({
+      workflowId: WORKFLOW_ID,
+      input: { ...SAMPLE_FIGMA_SPECIFICATION_INPUT, figmaSourceMode: "mcp-stdio", figmaServerIdentity: "fake-figma-mcp" },
+    });
+
+    expect(versionedArtifactIds(created)).toContain(FIGMA_SPECIFICATION_ARTIFACT_IDS.sourceSnapshot);
+  });
+
+  test("a changed requested node in the source URL invalidates the chain", async () => {
+    const created = await host(SAMPLE_FIGMA_MCP_FIXTURES, true);
+    await created.runner.start({ workflowId: WORKFLOW_ID, input: SAMPLE_FIGMA_SPECIFICATION_INPUT });
+    created.events.length = 0;
+
+    await created.service.execute({
+      workflowId: WORKFLOW_ID,
+      input: { ...SAMPLE_FIGMA_SPECIFICATION_INPUT, designFile: `${SAMPLE_FIGMA_SPECIFICATION_INPUT.designFile}?node-id=9-10` },
+    });
+
+    expect(versionedArtifactIds(created)).toContain(FIGMA_SPECIFICATION_ARTIFACT_IDS.sourceSnapshot);
+  });
+
   test("identical source and document version reuse", async () => {
     const created = await host(SAMPLE_FIGMA_MCP_FIXTURES, true);
     await created.runner.start({ workflowId: WORKFLOW_ID, input: SAMPLE_FIGMA_SPECIFICATION_INPUT });

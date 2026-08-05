@@ -42,7 +42,7 @@ function json(response: ServerResponse, body: unknown, headers: Record<string, s
 }
 
 function initializeResponse(): unknown {
-  return { jsonrpc: "2.0", id: 1, result: { protocolVersion: "2024-11-05", capabilities: {}, serverInfo: { name: "fixture", version: "1" } } };
+  return { jsonrpc: "2.0", id: 1, result: { protocolVersion: "2025-03-26", capabilities: {}, serverInfo: { name: "fixture", version: "1" } } };
 }
 
 function toolsListResponse(): unknown {
@@ -87,10 +87,28 @@ describe("HttpMcpRuntime", () => {
     ]);
     expect(fixture.requests[2]?.headers["mcp-session-id"]).toBe("session-test-only");
     expect(fixture.requests[3]?.headers["mcp-session-id"]).toBe("session-test-only");
+    expect(fixture.requests[0]?.headers["mcp-protocol-version"]).toBeUndefined();
+    expect(fixture.requests[1]?.headers["mcp-protocol-version"]).toBe("2025-03-26");
+    expect(fixture.requests[2]?.headers["mcp-protocol-version"]).toBe("2025-03-26");
+    expect(fixture.requests[3]?.headers["mcp-protocol-version"]).toBe("2025-03-26");
     expect(fixture.requests[2]?.headers.authorization).toBeUndefined();
     expect(fixture.requests[2]?.headers["figma-access-token"]).toBeUndefined();
     expect(fixture.requests[0]?.body.id).toBe(1);
     expect(fixture.requests[2]?.body.id).toBe(2);
+    expect(fixture.requests[1]?.body.id).toBeUndefined();
+  });
+
+  test("sends the negotiated protocol and session headers for tools/call", async () => {
+    const fixture = await httpServer((request, response) => {
+      if (request.body.method === "initialize") json(response, initializeResponse(), { "MCP-Session-Id": "call-header-session" });
+      else if (request.body.method === "notifications/initialized") { response.writeHead(204); response.end(); }
+      else json(response, callResponse());
+    });
+
+    await runtime(fixture.url).callTool({ toolName: "get_metadata", arguments: {} });
+    const call = fixture.requests.find((request) => request.body.method === "tools/call");
+    expect(call?.headers["mcp-session-id"]).toBe("call-header-session");
+    expect(call?.headers["mcp-protocol-version"]).toBe("2025-03-26");
   });
 
   test("handles an SSE tools/list response", async () => {
@@ -119,6 +137,48 @@ describe("HttpMcpRuntime", () => {
     const result = await runtime(fixture.url).callTool({ toolName: "missing", arguments: {} });
     expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_TOOL_NOT_FOUND" });
     expect(JSON.stringify(result)).not.toContain("private local detail");
+  });
+
+  test("preserves a bounded safe reason for application-level tool errors", async () => {
+    const providerLikeSecret = "sk-" + "or-v1-" + "secret";
+    const fixture = await httpServer((request, response) => {
+      if (request.body.method === "initialize") json(response, initializeResponse(), { "MCP-Session-Id": "safe-session" });
+      else if (request.body.method === "notifications/initialized") { response.writeHead(202); response.end(); }
+      else json(response, {
+        jsonrpc: "2.0",
+        id: request.body.id,
+        result: {
+          isError: true,
+          content: [
+            { type: "text", text: `No compatible Figma node is currently selected at /Users/private/project ${providerLikeSecret} mcp-session-id=secret` },
+            { type: "image", data: "secret-binary-payload", mimeType: "image/png" },
+          ],
+        },
+      });
+    });
+
+    const result = await runtime(fixture.url).callTool({ toolName: "get_metadata", arguments: {} });
+    expect(result).toMatchObject({
+      type: "failure",
+      code: "ERR_MCP_SELECTION_UNAVAILABLE",
+      message: "No compatible Figma node is currently selected at <path> <redacted> session-id=<redacted>",
+      retryable: false,
+    });
+    expect(JSON.stringify(result)).not.toContain("secret-binary-payload");
+    expect(JSON.stringify(result)).not.toContain("/Users/private");
+    expect(JSON.stringify(result)).not.toContain(providerLikeSecret);
+    expect(JSON.stringify(result)).not.toContain("secret");
+  });
+
+  test("keeps an invalid session distinct after recovery also fails", async () => {
+    const fixture = await httpServer((request, response) => {
+      if (request.body.method === "initialize") json(response, initializeResponse(), { "MCP-Session-Id": "invalid-session" });
+      else if (request.body.method === "notifications/initialized") { response.writeHead(202); response.end(); }
+      else json(response, { jsonrpc: "2.0", id: request.body.id, error: { code: -32001, message: "Invalid sessionId" } });
+    });
+
+    const result = await runtime(fixture.url).callTool({ toolName: "get_metadata", arguments: {} });
+    expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_SESSION_INVALID" });
   });
 
   test("recovers once from an invalid session", async () => {
@@ -169,7 +229,7 @@ describe("HttpMcpRuntime", () => {
     const missing = await httpServer((request, response) => {
       json(response, initializeResponse());
     });
-    await expect(runtime(missing.url).connect()).rejects.toThrow(McpConnectionError);
+    await expect(runtime(missing.url).connect()).resolves.toBeUndefined();
 
     let initializeCount = 0;
     const fixture = await httpServer((request, response) => {
@@ -184,6 +244,78 @@ describe("HttpMcpRuntime", () => {
     client.close();
     await client.connect();
     expect(initializeCount).toBe(2);
+  });
+
+  test("rejects an unsupported negotiated protocol version safely", async () => {
+    const fixture = await httpServer((_request, response) => {
+      json(response, {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { protocolVersion: "2099-01-01", capabilities: {} },
+      }, { "MCP-Session-Id": "unsupported-version-session" });
+    });
+
+    await expect(runtime(fixture.url).connect()).rejects.toMatchObject({
+      code: "ERR_MCP_PROTOCOL_UNSUPPORTED",
+    });
+  });
+
+  test("rejects a missing negotiated protocol version as an invalid initialize result", async () => {
+    const fixture = await httpServer((_request, response) => {
+      json(response, { jsonrpc: "2.0", id: 1, result: { capabilities: {} } });
+    });
+
+    await expect(runtime(fixture.url).connect()).rejects.toMatchObject({
+      code: "ERR_MCP_CONNECTION_FAILED",
+    });
+  });
+
+  test("preserves bounded HTTP and JSON-RPC rejection details without response leakage", async () => {
+    const fixture = await httpServer((request, response) => {
+      if (request.body.method === "initialize") {
+        json(response, initializeResponse(), { "MCP-Session-Id": "protocol-rejection-session" });
+      } else if (request.body.method === "notifications/initialized") {
+        response.writeHead(204);
+        response.end();
+      } else {
+        response.writeHead(400, { "Content-Type": "application/json", "MCP-Session-Id": "secret-session-header" });
+        response.end(JSON.stringify({
+          jsonrpc: "2.0",
+          id: request.body.id,
+          error: { code: -32600, message: "protocol version header missing at /Users/private" },
+        }));
+      }
+    });
+
+    await expect(runtime(fixture.url).listTools()).rejects.toMatchObject({
+      code: "ERR_MCP_PROTOCOL_REJECTED",
+      message: "tools/list was rejected: HTTP 400, JSON-RPC -32600, protocol version header missing at <path>",
+    });
+  });
+
+  test("sends bounded session deletion and clears local state on close", async () => {
+    const fixture = await httpServer((request, response) => {
+      if (request.method === "DELETE") {
+        response.writeHead(204);
+        response.end();
+      } else if (request.body.method === "initialize") {
+        json(response, initializeResponse(), { "MCP-Session-Id": "delete-session" });
+      } else {
+        response.writeHead(204);
+        response.end();
+      }
+    });
+
+    const client = runtime(fixture.url);
+    await client.connect();
+    client.close();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const deletion = fixture.requests.find((request) => request.method === "DELETE");
+    expect(deletion?.headers["mcp-session-id"]).toBe("delete-session");
+    expect(deletion?.headers["mcp-protocol-version"]).toBe("2025-03-26");
+    await client.connect();
+    expect(fixture.requests.filter((request) => request.body.method === "initialize")).toHaveLength(2);
   });
 
   test("accepts localhost and rejects external, credential-bearing and redirected endpoints", async () => {

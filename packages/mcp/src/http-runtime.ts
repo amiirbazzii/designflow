@@ -10,17 +10,26 @@ import {
 
 import {
   jsonRpcResponseSchema,
+  mcpInitializeResultSchema,
   mcpToolsCallResultSchema,
   mcpToolsListResultSchema,
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "./protocol";
-import { McpConnectionError, McpRequestInvalidError } from "./errors";
+import {
+  classifyMcpJsonRpcError,
+  classifyMcpToolFailure,
+  McpConnectionError,
+  McpProtocolRejectedError,
+  McpProtocolUnsupportedError,
+  McpRequestInvalidError,
+} from "./errors";
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 5_000_000;
-const INITIALIZE_PROTOCOL_VERSION = "2024-11-05";
+const INITIALIZE_PROTOCOL_VERSION = "2025-03-26";
+const SUPPORTED_PROTOCOL_VERSIONS = new Set([INITIALIZE_PROTOCOL_VERSION]);
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
 export interface HttpMcpServerConfig {
@@ -35,6 +44,7 @@ export interface HttpMcpServerConfig {
 interface HttpExchange {
   readonly response: JsonRpcResponse | undefined;
   readonly headers: Headers;
+  readonly status: number;
 }
 
 type HttpRpcRequest = Omit<JsonRpcRequest, "id"> & Partial<Pick<JsonRpcRequest, "id">>;
@@ -60,6 +70,8 @@ export class HttpMcpRuntime implements McpClient {
   private readonly requestTimeoutMs: number;
   private readonly maxResponseBytes: number;
   private sessionId: string | undefined;
+  private negotiatedProtocolVersion: string | undefined;
+  private connected = false;
   private connectPromise: Promise<void> | undefined;
   private nextId = 1;
   private readonly activeControllers = new Set<AbortController>();
@@ -73,7 +85,7 @@ export class HttpMcpRuntime implements McpClient {
   }
 
   public async connect(signal?: AbortSignal): Promise<void> {
-    if (this.sessionId !== undefined) return;
+    if (this.connected && this.negotiatedProtocolVersion !== undefined) return;
     if (this.connectPromise !== undefined) return this.connectPromise;
 
     this.connectPromise = this.initialize(signal).finally(() => {
@@ -87,7 +99,12 @@ export class HttpMcpRuntime implements McpClient {
       await this.connect(signal);
       const response = await this.requestWithRecovery("tools/list", {}, signal);
       if (response.error !== undefined) {
-        throw new McpConnectionError("the MCP server rejected tools/list");
+        throw new McpProtocolRejectedError(
+          "tools/list",
+          200,
+          response.error.code,
+          response.error.message,
+        );
       }
 
       const parsed = mcpToolsListResultSchema.safeParse(response.result);
@@ -107,6 +124,7 @@ export class HttpMcpRuntime implements McpClient {
         }),
       );
     } catch (error) {
+      this.resetSession();
       if (error instanceof HttpResponseTooLargeMarker) {
         throw new McpConnectionError("the MCP response exceeded the configured size limit");
       }
@@ -136,11 +154,12 @@ export class HttpMcpRuntime implements McpClient {
       );
 
       if (response.error !== undefined) {
+        const classified = classifyMcpJsonRpcError(response.error.code, response.error.message);
         return failure(
           validated.data.toolName,
-          classifyRpcError(response.error.code),
-          "the server reported an error executing this tool",
-          response.error.code >= -32099 && response.error.code <= -32000,
+          classified.code,
+          classified.message,
+          classified.retryable,
           startedAt,
         );
       }
@@ -157,11 +176,12 @@ export class HttpMcpRuntime implements McpClient {
       }
 
       if (parsedResult.data.isError === true) {
+        const classified = classifyMcpToolFailure(parsedResult.data.content);
         return failure(
           validated.data.toolName,
-          classifyToolErrorContent(parsedResult.data.content),
-          "the server reported an error executing this tool",
-          false,
+          classified.code,
+          classified.message,
+          classified.retryable,
           startedAt,
         );
       }
@@ -184,14 +204,25 @@ export class HttpMcpRuntime implements McpClient {
   }
 
   public close(): void {
-    this.sessionId = undefined;
-    this.connectPromise = undefined;
+    const sessionId = this.sessionId;
+    const protocolVersion = this.negotiatedProtocolVersion;
+    this.resetSession();
     for (const controller of this.activeControllers) controller.abort();
     this.activeControllers.clear();
+    if (sessionId !== undefined && protocolVersion !== undefined) {
+      void this.deleteSession(sessionId, protocolVersion);
+    }
+  }
+
+  private resetSession(): void {
+    this.sessionId = undefined;
+    this.negotiatedProtocolVersion = undefined;
+    this.connected = false;
+    this.connectPromise = undefined;
   }
 
   private async initialize(signal?: AbortSignal): Promise<void> {
-    this.sessionId = undefined;
+    this.resetSession();
     try {
       const exchange = await this.post(
         {
@@ -209,24 +240,48 @@ export class HttpMcpRuntime implements McpClient {
       );
 
       if (exchange.response?.error !== undefined || exchange.response === undefined) {
-        throw new McpConnectionError("the MCP initialize request was rejected");
+        if (exchange.response?.error !== undefined) {
+          throw new McpProtocolRejectedError(
+            "initialize",
+            exchange.status,
+            exchange.response.error.code,
+            exchange.response.error.message,
+          );
+        }
+        throw new McpConnectionError("the MCP initialize request returned no result");
       }
 
+      const initializeResult = mcpInitializeResultSchema.safeParse(exchange.response.result);
+      if (!initializeResult.success) {
+        throw new McpConnectionError("the MCP initialize result did not match the expected shape");
+      }
+      const { protocolVersion } = initializeResult.data;
+      if (!SUPPORTED_PROTOCOL_VERSIONS.has(protocolVersion)) {
+        throw new McpProtocolUnsupportedError(protocolVersion);
+      }
+
+      this.negotiatedProtocolVersion = protocolVersion;
       const sessionId = exchange.headers.get("MCP-Session-Id");
-      if (sessionId === null || sessionId.length === 0) {
-        throw new McpConnectionError("the MCP server did not return a session identifier");
-      }
+      if (sessionId !== null && sessionId.length > 0) this.sessionId = sessionId;
 
-      this.sessionId = sessionId;
-      await this.post(
+      const initialized = await this.post(
         { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
         signal,
         this.requestTimeoutMs,
         true,
       );
+      if (initialized.response?.error !== undefined) {
+        throw new McpProtocolRejectedError(
+          "notifications/initialized",
+          initialized.status,
+          initialized.response.error.code,
+          initialized.response.error.message,
+        );
+      }
+      this.connected = true;
     } catch (error) {
-      this.sessionId = undefined;
-      if (error instanceof McpConnectionError) throw error;
+      this.resetSession();
+      if (error instanceof McpConnectionError || error instanceof McpProtocolRejectedError || error instanceof McpProtocolUnsupportedError) throw error;
       throw new McpConnectionError(classifyMessage(error));
     }
   }
@@ -244,7 +299,7 @@ export class HttpMcpRuntime implements McpClient {
     );
 
     if (response.response?.error?.code === -32001 && this.sessionId !== undefined) {
-      this.sessionId = undefined;
+      this.resetSession();
       await this.connect(signal);
       const retry = await this.post(
         { jsonrpc: "2.0", id: this.nextId++, method, params },
@@ -271,7 +326,9 @@ export class HttpMcpRuntime implements McpClient {
         Accept: "application/json, text/event-stream",
       };
       if (this.sessionId !== undefined) headers["MCP-Session-Id"] = this.sessionId;
-      headers["MCP-Protocol-Version"] = INITIALIZE_PROTOCOL_VERSION;
+      if (this.negotiatedProtocolVersion !== undefined) {
+        headers["MCP-Protocol-Version"] = this.negotiatedProtocolVersion;
+      }
 
       const response = await fetch(this.endpoint, {
         method: "POST",
@@ -284,25 +341,55 @@ export class HttpMcpRuntime implements McpClient {
       if (response.status >= 300 && response.status < 400) {
         throw new McpConnectionError("the MCP server returned a redirect, which is not permitted");
       }
+      const body = await readBoundedBody(response, this.maxResponseBytes);
       if (!response.ok) {
-        throw new McpConnectionError("the MCP server returned an HTTP error");
+        throw protocolRejectedFromHttp(
+          request.method,
+          response.status,
+          body,
+          response.headers.get("content-type") ?? "",
+        );
       }
 
-      const body = await readBoundedBody(response, this.maxResponseBytes);
-      if (notification && body.byteLength === 0) return { response: undefined, headers: response.headers };
+      if (notification && body.byteLength === 0) {
+        return { response: undefined, headers: response.headers, status: response.status };
+      }
       if (body.byteLength === 0) throw new McpConnectionError("the MCP server returned an empty response");
 
       const parsed = parseResponseBody(body, response.headers.get("content-type") ?? "");
-      return { response: parsed, headers: response.headers };
+      return { response: parsed, headers: response.headers, status: response.status };
     } catch (error) {
       if (guard.timedOut()) throw new HttpTimeoutMarker();
       if (signal?.aborted) throw new HttpAbortMarker();
-      if (error instanceof McpConnectionError) throw error;
+      if (error instanceof McpConnectionError || error instanceof McpProtocolRejectedError || error instanceof McpProtocolUnsupportedError) throw error;
       if (error instanceof HttpResponseTooLargeMarker) throw error;
       throw new McpConnectionError(classifyMessage(error));
     } finally {
       guard.cancel();
       this.activeControllers.delete((guard as TimeoutGuardWithController).controller);
+    }
+  }
+
+  private async deleteSession(sessionId: string, protocolVersion: string): Promise<void> {
+    const guard = createTimeoutGuard(undefined, this.requestTimeoutMs);
+    this.activeControllers.add(guard.controller);
+    try {
+      const response = await fetch(this.endpoint, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json, text/event-stream",
+          "MCP-Session-Id": sessionId,
+          "MCP-Protocol-Version": protocolVersion,
+        },
+        signal: guard.signal,
+        redirect: "manual",
+      });
+      if (response.body !== null) await response.body.cancel();
+    } catch {
+      // Session deletion is best effort; local state is already cleared.
+    } finally {
+      guard.cancel();
+      this.activeControllers.delete(guard.controller);
     }
   }
 }
@@ -375,6 +462,28 @@ function parseResponseBody(bytes: Uint8Array, contentType: string): JsonRpcRespo
   return parsed.data;
 }
 
+function protocolRejectedFromHttp(
+  method: string,
+  status: number,
+  bytes: Uint8Array,
+  contentType: string,
+): McpProtocolRejectedError {
+  let response: JsonRpcResponse | undefined;
+  if (bytes.byteLength > 0) {
+    try {
+      response = parseResponseBody(bytes, contentType);
+    } catch {
+      // The bounded HTTP status is still useful when the body is not JSON-RPC.
+    }
+  }
+  return new McpProtocolRejectedError(
+    method,
+    status,
+    response?.error?.code,
+    response?.error?.message,
+  );
+}
+
 function parseSseData(text: string): unknown {
   const data: string[] = [];
   const flush = (): unknown | undefined => {
@@ -434,6 +543,8 @@ function classifyThrown(error: unknown): string {
   if (error instanceof HttpTimeoutMarker) return "ERR_MCP_TIMEOUT";
   if (error instanceof HttpAbortMarker) return "ERR_MCP_ABORTED";
   if (error instanceof HttpResponseTooLargeMarker) return "ERR_MCP_RESPONSE_TOO_LARGE";
+  if (error instanceof McpProtocolUnsupportedError) return "ERR_MCP_PROTOCOL_UNSUPPORTED";
+  if (error instanceof McpProtocolRejectedError) return "ERR_MCP_PROTOCOL_REJECTED";
   return "ERR_MCP_CONNECTION_FAILED";
 }
 
@@ -442,25 +553,8 @@ function classifyMessage(error: unknown): string {
   if (code === "ERR_MCP_TIMEOUT") return "the MCP request did not respond in time";
   if (code === "ERR_MCP_ABORTED") return "the MCP request was cancelled";
   if (code === "ERR_MCP_RESPONSE_TOO_LARGE") return "the MCP response exceeded the configured size limit";
+  if (error instanceof McpProtocolRejectedError || error instanceof McpProtocolUnsupportedError) return error.message;
   return error instanceof McpConnectionError ? error.message : "the MCP HTTP request failed";
-}
-
-function classifyRpcError(code: number): "ERR_MCP_TOOL_NOT_FOUND" | "ERR_MCP_REQUEST_INVALID" | "ERR_MCP_CONNECTION_FAILED" {
-  if (code === -32601) return "ERR_MCP_TOOL_NOT_FOUND";
-  if (code === -32602) return "ERR_MCP_REQUEST_INVALID";
-  return "ERR_MCP_CONNECTION_FAILED";
-}
-
-function classifyToolErrorContent(content: unknown): "ERR_MCP_AUTHENTICATION_FAILED" | "ERR_MCP_ACCESS_DENIED" | "ERR_MCP_RESPONSE_INVALID" {
-  const text = summarize(content).toLowerCase();
-  if (text.includes("unauthorized") || text.includes("authentication") || text.includes("401")) return "ERR_MCP_AUTHENTICATION_FAILED";
-  if (text.includes("forbidden") || text.includes("access denied") || text.includes("403")) return "ERR_MCP_ACCESS_DENIED";
-  return "ERR_MCP_RESPONSE_INVALID";
-}
-
-function summarize(content: unknown): string {
-  if (typeof content === "string") return content;
-  try { return JSON.stringify(content) ?? ""; } catch { return ""; }
 }
 
 function failure(toolName: string, code: string, message: string, retryable: boolean, startedAt: number): McpToolCallResult {

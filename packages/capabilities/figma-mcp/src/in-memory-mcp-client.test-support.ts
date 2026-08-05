@@ -51,7 +51,7 @@ export class InMemoryMcpClient implements McpClient {
       return {
         type: "failure",
         toolName: request.toolName,
-        code: "ERR_MCP_RESPONSE_INVALID",
+        code: "ERR_MCP_TOOL_FAILED",
         message: "the tool reported a failure",
         retryable: false,
         durationMs: 0,

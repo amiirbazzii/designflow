@@ -37,6 +37,9 @@ export const figmaSpecificationInputSchema = z
     refreshFigmaSource: z.boolean().default(false),
     /** Internal/test-only — never set by a real production request. */
     allowFixtureNames: z.boolean().default(false),
+    figmaSourceMode: z.enum(["placeholder", "rest", "mcp-stdio", "mcp-desktop"]).default("placeholder"),
+    figmaServerIdentity: z.string().min(1).optional(),
+    figmaCacheBypass: z.string().min(1).optional(),
     figmaAgentVersion: z.string().min(1),
     figmaAgentModelProfileId: z.string().min(1).optional(),
   })

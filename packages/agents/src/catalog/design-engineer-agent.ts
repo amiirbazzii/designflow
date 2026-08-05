@@ -65,7 +65,7 @@ export const designEngineerAgentManifest: AgentManifest = agentManifestSchema.pa
   instructions:
     "Turn a design into working code. Classify the request first. Run the " +
     "design-to-code workflow when it names design work. Ask what to build when it does not.",
-  allowedWorkflows: ["design-to-code", "design-to-code-implementation"],
+  allowedWorkflows: ["design-to-code", "design-to-code-implementation", "design-to-code-figma-specification"],
   allowedTools: ["classify-design-task"],
   /**
    * A reference, not a configuration. Naming a profile here does not, by
@@ -103,6 +103,7 @@ export const designEngineerDefaultModelProfile: ModelProfile = modelProfileSchem
 });
 
 const CLASSIFIER = "classify-design-task";
+export const FIGMA_SPECIFICATION_WORKFLOW_ID = "design-to-code-figma-specification";
 
 /** The kinds of request that describe work `design-to-code` can do. */
 const ACTIONABLE = new Set(["new_component", "modify_component", "page"]);
@@ -114,6 +115,14 @@ function wantsImplementation(task: AgentTask, context: AgentContext): boolean {
   return typeof input === "object" && input !== null && !Array.isArray(input)
     && (typeof (input as Record<string, unknown>).projectId === "string"
       || typeof (input as Record<string, unknown>).project === "object");
+}
+
+function wantsRealFigmaSpecification(task: AgentTask, context: AgentContext): boolean {
+  if (!context.availableWorkflows.includes(FIGMA_SPECIFICATION_WORKFLOW_ID)) return false;
+  const input = task.input;
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+  const mode = (input as Record<string, unknown>).figmaSourceMode;
+  return typeof mode === "string" && mode !== "placeholder";
 }
 
 /**
@@ -317,7 +326,9 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
 ) => {
   const workflowId = wantsImplementation(task, context)
     ? IMPLEMENTATION_WORKFLOW_ID
-    : manifest.allowedWorkflows[0];
+    : wantsRealFigmaSpecification(task, context)
+      ? FIGMA_SPECIFICATION_WORKFLOW_ID
+      : manifest.allowedWorkflows[0];
 
   // Unreachable for a parsed manifest — `allowedWorkflows` is `.min(1)`.
   // Declining rather than asserting keeps a misconfigured install refusing
@@ -420,6 +431,15 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
       workflowId: IMPLEMENTATION_WORKFLOW_ID,
       ...(task.input !== undefined ? { input: task.input } : {}),
       reasoningSummary: "A registered project was explicitly selected, so the experimental implementation workflow will be used.",
+    };
+  }
+
+  if (wantsRealFigmaSpecification(task, context)) {
+    return {
+      type: "run_workflow",
+      workflowId: FIGMA_SPECIFICATION_WORKFLOW_ID,
+      ...(task.input !== undefined ? { input: task.input } : {}),
+      reasoningSummary: "Real Figma MCP mode is enabled, so the MCP-backed specification workflow will be used.",
     };
   }
 

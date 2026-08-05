@@ -9,6 +9,7 @@ export const FIGMA_MCP_ERROR_CODES = [
   "ERR_FIGMA_FRAME_AMBIGUOUS",
   "ERR_FIGMA_FRAME_NOT_FOUND",
   "ERR_FIGMA_SCREENSHOT_INVALID",
+  "ERR_FIGMA_MCP_REQUIRED",
 ] as const;
 
 export type FigmaMcpErrorCode = (typeof FIGMA_MCP_ERROR_CODES)[number];

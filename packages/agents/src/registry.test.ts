@@ -159,7 +159,7 @@ describe("the built-in catalogue", () => {
   });
 
   test("its manifest is valid and permits only design-to-code", () => {
-    expect(designEngineerAgentManifest.allowedWorkflows).toEqual(["design-to-code", "design-to-code-implementation"]);
+    expect(designEngineerAgentManifest.allowedWorkflows).toEqual(["design-to-code", "design-to-code-implementation", "design-to-code-figma-specification"]);
     // One tool, named explicitly. No wildcard exists to grant more.
     expect(designEngineerAgentManifest.allowedTools).toEqual(["classify-design-task"]);
     expect(designEngineerAgentManifest.version).toBe("0.3.0");

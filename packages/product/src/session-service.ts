@@ -38,7 +38,7 @@ import {
 
 import type { AgentKnowledgeContext, AgentKnowledgeService } from "./context-assembly";
 import { WorkerTaskRouter, UnknownWorkerError } from "./worker-task";
-import type { ExecutionHandle, WorkflowLaunchRequest } from "./schemas";
+import type { ExecutionHandle, ExecutionReport, WorkflowLaunchRequest } from "./schemas";
 import { TraceService } from "./traces";
 import {
   SessionAnswerInvalidError,
@@ -93,6 +93,7 @@ export const SYSTEM_CLOCK: SessionClock = {
  */
 export interface SessionWorkflowStarter {
   start(request: WorkflowLaunchRequest): Promise<ExecutionHandle>;
+  explain?(executionId: string): Promise<ExecutionReport>;
 }
 
 // ── Options ─────────────────────────────────────────────────────
@@ -531,6 +532,28 @@ export class AgentSessionService {
       if (traceId !== undefined && this.traces !== undefined) {
         try {
           await this.traces.correlate(traceId, execution.executionId);
+          const original = session.originalInput as Record<string, unknown> | undefined;
+          const sourceMode = original !== undefined && typeof original["figmaSourceMode"] === "string"
+            ? original["figmaSourceMode"]
+            : undefined;
+          if (sourceMode !== undefined) {
+            const report = this.runner.explain !== undefined
+              ? await this.runner.explain(execution.executionId)
+              : undefined;
+            await this.traces.annotate(traceId, {
+              sourceMode,
+              ...(report !== undefined
+                ? { mcpRetrieval: report.artifacts.some((artifact) => artifact.artifactId === "figma-source-snapshot")
+                  ? "succeeded" as const
+                  : "not-completed" as const }
+                : {}),
+              cacheBypass: original?.["refreshFigmaSource"] === true,
+              ...(report !== undefined ? {
+                artifactsCreated: report.overview.artifacts.created,
+                artifactsReused: report.overview.artifacts.reused,
+              } : {}),
+            });
+          }
         } catch {
           // Tracing must never break the run it traces — `run.ts` applies the
           // same discipline for the non-session path.
@@ -743,9 +766,43 @@ export class AgentSessionService {
       ...(projectContextFingerprint !== undefined ? { projectContextFingerprint } : {}),
       ...(session.modelProfileId !== undefined ? { modelProfileId: session.modelProfileId } : {}),
       ...(agentVersion !== undefined ? { agentVersion } : {}),
+      ...figmaReuseIdentity(session.originalInput),
     };
 
     return Object.keys(identity).length > 0 ? identity : undefined;
+  }
+}
+
+function figmaReuseIdentity(input: unknown): ReuseIdentity {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return {};
+  const record = input as Record<string, unknown>;
+  const mode = record["figmaSourceMode"];
+  if (mode !== "placeholder" && mode !== "rest" && mode !== "mcp-stdio" && mode !== "mcp-desktop") return {};
+
+  const frames = Array.isArray(record["frames"])
+    ? record["frames"].filter((value): value is string => typeof value === "string")
+    : undefined;
+  const serverIdentity = record["figmaServerIdentity"];
+  return {
+    figmaSourceMode: mode,
+    ...(typeof serverIdentity === "string" ? { figmaServerIdentity: serverIdentity } : {}),
+    ...(typeof record["designFile"] === "string" ? { figmaFileKey: extractFigmaFileKey(record["designFile"]) } : {}),
+    ...(frames !== undefined ? { figmaFrames: frames } : {}),
+    ...(typeof record["captureScreenshots"] === "boolean" ? { figmaCaptureScreenshots: record["captureScreenshots"] } : {}),
+    ...(typeof record["figmaCacheBypass"] === "string" ? { figmaCacheBypass: record["figmaCacheBypass"] } : {}),
+  };
+}
+
+function extractFigmaFileKey(value: string): string {
+  try {
+    const parsed = new URL(value);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const kindIndex = segments.findIndex((segment) => segment === "design" || segment === "file");
+    return kindIndex >= 0 && segments[kindIndex + 1] !== undefined
+      ? segments[kindIndex + 1]!
+      : value.slice(0, 160);
+  } catch {
+    return value.slice(0, 160);
   }
 }
 

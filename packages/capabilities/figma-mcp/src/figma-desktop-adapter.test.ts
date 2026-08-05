@@ -37,6 +37,7 @@ function context(mcp: CapabilityContext["mcp"]): CapabilityContext {
 
 const tools = [
   { name: "get_metadata" },
+  { name: "get_design_context" },
   { name: "get_variable_defs" },
   { name: "get_screenshot" },
 ];
@@ -51,6 +52,7 @@ describe("Figma Desktop MCP adapter", () => {
           { type: "text", text: "Currently selected nodes:\n- 32148:21075: Header" },
           { type: "text", text: '<instance id="32148:21075" name="Header">' },
         ],
+        get_design_context: [{ type: "text", text: "Detailed design context" }],
         get_variable_defs: [{ type: "text", text: "No variables selected" }],
         get_screenshot: [{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" }],
       },
@@ -67,6 +69,13 @@ describe("Figma Desktop MCP adapter", () => {
     expect(snapshot.source.resolvedFrames).toEqual([{ id: "32148:21075", name: "Header", path: ["Header"] }]);
     expect(snapshot.screenshots).toHaveLength(1);
     expect(snapshot.screenshots[0]?.format).toBe("png");
+    expect(snapshot.sourceProvenance).toEqual({
+      mode: "mcp-desktop",
+      transport: "http",
+      serverIdentity: "figma-desktop",
+      requestedFileKey: "abc123",
+      resolvedNodeId: "32148:21075",
+    });
     expect(snapshot.capabilities.stylesAvailable).toBe(false);
     expect(snapshot.warnings.map((warning) => warning.code)).toEqual([
       "DESKTOP_MCP_SELECTION_SCOPE",
@@ -74,11 +83,19 @@ describe("Figma Desktop MCP adapter", () => {
     ]);
     expect(client.calls.map((call) => call.toolName)).toEqual([
       "get_metadata",
+      "get_design_context",
       "get_variable_defs",
       "get_screenshot",
     ]);
+    expect(client.calls[0]?.arguments).toEqual({});
+    expect(client.calls[1]?.arguments).toEqual({
+      nodeId: "32148:21075",
+      clientLanguages: "typescript",
+      clientFrameworks: "react",
+    });
+    expect(client.calls[2]?.arguments).toEqual(client.calls[1]?.arguments);
+    expect(client.calls[3]?.arguments).toEqual({ nodeId: "32148:21075", contentsOnly: true });
     expect(client.calls.every((call) => !("fileKey" in call.arguments))).toBe(true);
-    expect(client.calls.every((call) => Object.keys(call.arguments).length === 0)).toBe(true);
   });
 
   test("does not claim a requested node when Desktop MCP returns another selection", async () => {

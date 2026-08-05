@@ -164,6 +164,7 @@ export const agentTracePatchSchema = z
     durationMs: z.number().nonnegative().optional(),
     toolCalls: z.array(traceToolCallSchema).optional(),
     modelCalls: z.array(traceModelCallSchema).optional(),
+    metadata: z.record(z.unknown()).optional(),
   })
   .strict();
 
@@ -184,6 +185,34 @@ export type AgentTracePatch = z.infer<typeof agentTracePatchSchema>;
  * to put a payload rather than that nobody put one there.
  */
 export const traceEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("agent.invocation.started"),
+      traceId: z.string().min(1),
+      workerId: z.string().min(1),
+      agentId: z.string().min(1),
+      timestamp: z.string().min(1),
+      executionId: z.string().min(1).optional(),
+      metadata: z.record(z.unknown()).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("agent.invocation.completed"),
+      traceId: z.string().min(1),
+      durationMs: z.number().nonnegative(),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("agent.invocation.failed"),
+      traceId: z.string().min(1),
+      errorCode: z.string().min(1),
+      durationMs: z.number().nonnegative(),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("agent.decision.started"),

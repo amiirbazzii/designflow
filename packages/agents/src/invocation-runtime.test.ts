@@ -1,14 +1,16 @@
 // packages/agents/src/invocation-runtime.test.ts
 import { describe, expect, test } from "bun:test";
-import type {
-  AgentManifest,
-  ModelInvocationRequest,
-  ModelInvoker,
-  ModelResult,
-  SpecializedAgent,
-  ToolInvocationRequest,
-  ToolInvoker,
-  ToolResult,
+import {
+  DesignFlowError,
+  type AgentManifest,
+  type ModelInvocationRequest,
+  type ModelInvoker,
+  type ModelResult,
+  type SpecializedAgent,
+  type ToolInvocationRequest,
+  type ToolInvoker,
+  type ToolResult,
+  type TraceEvent,
 } from "@designflow/sdk";
 
 import { InMemorySpecializedAgentRegistry } from "./specialized-registry";
@@ -246,5 +248,137 @@ describe("model isolation", () => {
 
     expect(models.seen).toHaveLength(0);
     expect(outcome.type === "success" && outcome.output).toEqual({ failed: true });
+  });
+
+  test("live model mode reaches the configured model service", async () => {
+    const registry = new InMemorySpecializedAgentRegistry([
+      agentThatPerformsWith(async (_request, context) => {
+        const result = await context.model.generate({
+          messages: [{ role: "user", content: "bounded" }],
+          responseSchema: { type: "object" },
+        });
+        return { modelSucceeded: result.type === "success" };
+      }),
+    ]);
+    const models = fakeModelInvoker(["alpha-profile"]);
+    const runtime = new AgentInvocationRuntime({ registry, models, modelsRequired: true });
+
+    const outcome = await runtime.invoke({
+      agentId: "alpha-agent",
+      objective: "test",
+      input: {},
+      attempt: 1,
+    });
+
+    expect(outcome.type === "success" && outcome.output).toEqual({ modelSucceeded: true });
+    expect(models.seen).toHaveLength(1);
+  });
+
+  test("missing model service is an explicit preflight failure", async () => {
+    const registry = new InMemorySpecializedAgentRegistry([
+      agentThatPerformsWith(async () => {
+        throw new Error("must not perform");
+      }),
+    ]);
+    const events: TraceEvent[] = [];
+    const runtime = new AgentInvocationRuntime({
+      registry,
+      modelsRequired: true,
+      tracer: { onEvent: async (event) => events.push(event) },
+    });
+
+    const outcome = await runtime.invoke({
+      agentId: "alpha-agent",
+      objective: "test",
+      input: {},
+      attempt: 1,
+      metadata: { executionId: "exec-1", capabilityId: "cap-1" },
+    });
+
+    expect(outcome).toMatchObject({
+      type: "failure",
+      code: "ERR_AGENT_MODEL_SERVICE_UNAVAILABLE",
+      message: "No model service is configured for this specialized agent.",
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "agent.invocation.started",
+      "agent.invocation.failed",
+    ]);
+    expect(events[0]).toMatchObject({
+      type: "agent.invocation.started",
+      metadata: { executionId: "exec-1", capabilityId: "cap-1" },
+    });
+  });
+
+  test("missing model profile is rejected before perform", async () => {
+    let performed = false;
+    const registry = new InMemorySpecializedAgentRegistry([
+      agentThatPerformsWith(async () => {
+        performed = true;
+        return {};
+      }),
+    ]);
+    const runtime = new AgentInvocationRuntime({
+      registry,
+      models: fakeModelInvoker(["other-profile"]),
+      modelsRequired: true,
+    });
+
+    const outcome = await runtime.invoke({
+      agentId: "alpha-agent",
+      objective: "test",
+      input: {},
+      attempt: 1,
+    });
+
+    expect(outcome).toMatchObject({ type: "failure", code: "ERR_MODEL_PROFILE_NOT_FOUND" });
+    expect(performed).toBe(false);
+  });
+
+  test("specialized model calls have a separate trace and safe failure code", async () => {
+    const registry = new InMemorySpecializedAgentRegistry([
+      agentThatPerformsWith(async (_request, context) => {
+        const result = await context.model.generate({
+          messages: [{ role: "user", content: "bounded" }],
+          responseSchema: { type: "object" },
+        });
+        if (result.type === "failure") throw new DesignFlowError(result.code, result.message);
+        return {};
+      }),
+    ]);
+    const models: ModelInvoker = {
+      installedProfileIds: () => ["alpha-profile"],
+      generate: async (request) => ({
+        type: "failure" as const,
+        requestId: request.requestId,
+        code: "ERR_MODEL_TIMEOUT",
+        message: "provider detail must not be persisted",
+        retryable: true,
+        durationMs: 4,
+      }),
+    };
+    const events: TraceEvent[] = [];
+    const runtime = new AgentInvocationRuntime({
+      registry,
+      models,
+      modelsRequired: true,
+      tracer: { onEvent: async (event) => events.push(event) },
+    });
+
+    const outcome = await runtime.invoke({
+      agentId: "alpha-agent",
+      objective: "test",
+      input: {},
+      attempt: 1,
+    });
+
+    expect(outcome).toMatchObject({ type: "failure", code: "ERR_MODEL_TIMEOUT" });
+    expect(events.map((event) => event.type)).toEqual([
+      "agent.invocation.started",
+      "model.request.started",
+      "model.request.failed",
+      "agent.invocation.failed",
+    ]);
+    expect(JSON.stringify(events)).not.toContain("provider detail");
   });
 });

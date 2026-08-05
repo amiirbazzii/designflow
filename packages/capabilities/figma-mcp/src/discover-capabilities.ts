@@ -42,9 +42,42 @@ const RULES: readonly KeywordRule[] = [
   { operation: "captureScreenshot", keywords: ["screenshot", "render", "image"] },
 ];
 
+const OFFICIAL_DESKTOP_REQUIRED_TOOLS = [
+  "get_design_context",
+  "get_variable_defs",
+  "get_screenshot",
+  "get_metadata",
+] as const;
+
 function matches(tool: McpToolDescriptor, keywords: readonly string[]): boolean {
   const haystack = `${tool.name} ${tool.description ?? ""}`.toLowerCase();
   return keywords.some((keyword) => haystack.includes(keyword));
+}
+
+function hasOfficialDesktopToolSet(tools: readonly McpToolDescriptor[]): boolean {
+  const names = new Set(tools.map((tool) => tool.name));
+  return OFFICIAL_DESKTOP_REQUIRED_TOOLS.every((toolName) => names.has(toolName));
+}
+
+function discoverOfficialDesktopCapabilities(tools: readonly McpToolDescriptor[]): FigmaMcpCapabilities {
+  const names = new Set(tools.map((tool) => tool.name));
+  const resolvedToolNames: Record<string, string> = {};
+  const setIfPresent = (operation: string, toolName: string): boolean => {
+    if (!names.has(toolName)) return false;
+    resolvedToolNames[operation] = toolName;
+    return true;
+  };
+
+  return {
+    inspectDocument: setIfPresent("inspectDocument", "get_metadata"),
+    inspectNodes: setIfPresent("inspectNodes", "get_design_context"),
+    inspectVariables: setIfPresent("inspectVariables", "get_variable_defs"),
+    inspectStyles: false,
+    inspectComponents: false,
+    exportAssets: false,
+    captureScreenshot: setIfPresent("captureScreenshot", "get_screenshot"),
+    resolvedToolNames,
+  };
 }
 
 /**
@@ -64,29 +97,13 @@ export async function discoverFigmaMcpCapabilities(
 ): Promise<FigmaMcpCapabilities> {
   const tools = await client.listTools(signal);
 
-  // Figma Desktop MCP is a known, selection-oriented server. Its names are
-  // intentionally mapped exactly here rather than through the generic
-  // keyword rules below: the generic wrappers speak in fileKey/nodeIds and
-  // must not be changed to guess at Desktop's current-selection semantics.
-  if (client.serverIdentity === "figma-desktop-mcp") {
-    const names = new Set(tools.map((tool) => tool.name));
-    const resolvedToolNames: Record<string, string> = {};
-    const setIfPresent = (operation: string, toolName: string): boolean => {
-      if (!names.has(toolName)) return false;
-      resolvedToolNames[operation] = toolName;
-      return true;
-    };
-
-    return {
-      inspectDocument: setIfPresent("inspectDocument", "get_metadata"),
-      inspectNodes: setIfPresent("inspectNodes", "get_design_context"),
-      inspectVariables: setIfPresent("inspectVariables", "get_variable_defs"),
-      inspectStyles: false,
-      inspectComponents: false,
-      exportAssets: false,
-      captureScreenshot: setIfPresent("captureScreenshot", "get_screenshot"),
-      resolvedToolNames,
-    };
+  // Figma Desktop MCP is a known, selection-oriented server. Exact tool
+  // names take precedence over descriptions and over client identity: a
+  // runtime wrapper or a test double may not set serverIdentity, and the
+  // generic keyword rules would otherwise mistake get_design_context for a
+  // screenshot/document tool.
+  if (client.serverIdentity === "figma-desktop-mcp" || hasOfficialDesktopToolSet(tools)) {
+    return discoverOfficialDesktopCapabilities(tools);
   }
 
   const resolvedToolNames: Record<string, string> = {};

@@ -18,6 +18,8 @@ import {
   type JsonRpcResponse,
 } from "./protocol";
 import {
+  classifyMcpJsonRpcError,
+  classifyMcpToolFailure,
   McpConnectionError,
   McpRequestInvalidError,
   McpServerLaunchError,
@@ -194,11 +196,12 @@ export class McpRuntime implements McpClient {
     }
 
     if (response.error !== undefined) {
+      const classified = classifyMcpJsonRpcError(response.error.code, response.error.message);
       return failure(
         validated.data.toolName,
-        classifyRpcError(response.error.code),
-        "the server reported an error executing this tool",
-        response.error.code >= -32099 && response.error.code <= -32000,
+        classified.code,
+        classified.message,
+        classified.retryable,
         startedAt,
       );
     }
@@ -215,11 +218,12 @@ export class McpRuntime implements McpClient {
     }
 
     if (parsedResult.data.isError === true) {
+      const classified = classifyMcpToolFailure(parsedResult.data.content);
       return failure(
         validated.data.toolName,
-        classifyToolErrorContent(parsedResult.data.content),
-        "the server reported an error executing this tool",
-        false,
+        classified.code,
+        classified.message,
+        classified.retryable,
         startedAt,
       );
     }
@@ -366,44 +370,6 @@ function classifyThrown(error: unknown): "ERR_MCP_TIMEOUT" | "ERR_MCP_ABORTED" |
   if (error instanceof McpTimeoutMarker) return "ERR_MCP_TIMEOUT";
   if (error instanceof McpAbortMarker) return "ERR_MCP_ABORTED";
   return "ERR_MCP_CONNECTION_FAILED";
-}
-
-function classifyRpcError(code: number): "ERR_MCP_TOOL_NOT_FOUND" | "ERR_MCP_REQUEST_INVALID" | "ERR_MCP_CONNECTION_FAILED" {
-  if (code === -32601) return "ERR_MCP_TOOL_NOT_FOUND";
-  if (code === -32602) return "ERR_MCP_REQUEST_INVALID";
-  return "ERR_MCP_CONNECTION_FAILED";
-}
-
-/**
- * A best-effort classification of an application-level tool error, from the
- * (untrusted, free-text) content a server returned alongside `isError: true`.
- *
- * Heuristic and intentionally narrow: it only ever downgrades to a more
- * specific code among a fixed, safe set — it never surfaces the server's own
- * text to a caller, and an unrecognised message safely falls back to the
- * generic `ERR_MCP_RESPONSE_INVALID`.
- */
-function classifyToolErrorContent(
-  content: unknown,
-): "ERR_MCP_AUTHENTICATION_FAILED" | "ERR_MCP_ACCESS_DENIED" | "ERR_MCP_RESPONSE_INVALID" {
-  const text = summarize(content).toLowerCase();
-
-  if (text.includes("unauthorized") || text.includes("authentication") || text.includes("401")) {
-    return "ERR_MCP_AUTHENTICATION_FAILED";
-  }
-  if (text.includes("forbidden") || text.includes("access denied") || text.includes("403")) {
-    return "ERR_MCP_ACCESS_DENIED";
-  }
-  return "ERR_MCP_RESPONSE_INVALID";
-}
-
-function summarize(content: unknown): string {
-  if (typeof content === "string") return content;
-  try {
-    return JSON.stringify(content) ?? "";
-  } catch {
-    return "";
-  }
 }
 
 function errorMessage(error: unknown): string {

@@ -190,6 +190,37 @@ export const figmaSnapshotWarningSchema = z
 
 export type FigmaSnapshotWarning = z.infer<typeof figmaSnapshotWarningSchema>;
 
+/** Safe, typed identity of the Figma source behind a derived artifact. */
+export const figmaSourceProvenanceSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("placeholder") }).strict(),
+  z.object({
+    mode: z.literal("rest"),
+    transport: z.literal("rest"),
+    serverIdentity: z.string().min(1),
+    requestedFileKey: z.string().min(1),
+    requestedNodeId: z.string().min(1).optional(),
+    resolvedNodeId: z.string().min(1).optional(),
+  }).strict(),
+  z.object({
+    mode: z.literal("mcp-stdio"),
+    transport: z.literal("stdio"),
+    serverIdentity: z.string().min(1),
+    requestedFileKey: z.string().min(1),
+    requestedNodeId: z.string().min(1).optional(),
+    resolvedNodeId: z.string().min(1).optional(),
+  }).strict(),
+  z.object({
+    mode: z.literal("mcp-desktop"),
+    transport: z.literal("http"),
+    serverIdentity: z.literal("figma-desktop"),
+    requestedFileKey: z.string().min(1),
+    requestedNodeId: z.string().min(1).optional(),
+    resolvedNodeId: z.string().min(1),
+  }).strict(),
+]);
+
+export type FigmaSourceProvenance = z.infer<typeof figmaSourceProvenanceSchema>;
+
 /**
  * Normalized, implementation-relevant Figma source data.
  *
@@ -262,6 +293,8 @@ export const figmaSourceSnapshotSchema = z
       })
       .strict()
       .default({}),
+    /** Source-mode identity is separate from transport provenance and is safe to inspect. */
+    sourceProvenance: figmaSourceProvenanceSchema.optional(),
     /** Retained from Stage 2; superseded by `screenshots` above but harmless to keep reading. */
     screenshotArtifactId: z.string().min(1).optional(),
   })
@@ -327,6 +360,7 @@ export const designSpecificationSchema = z
       .strict(),
     /** The source snapshot artifact this specification was derived from — for lineage and inspection. */
     sourceSnapshotArtifactId: z.string().min(1).optional(),
+    sourceProvenanceDigest: z.string().min(1).optional(),
     /** Screenshot artifact ids the source snapshot carried, copied forward for easy inspection. */
     screenshotArtifactIds: z.array(z.string().min(1)).default([]),
     frames: z.array(z.string().min(1)),
@@ -431,6 +465,7 @@ export type ImplementationPlan = z.infer<typeof implementationPlanSchema>;
  */
 export const generatedImplementationSchema = z
   .object({
+    sourceProvenanceDigest: z.string().min(1).optional(),
     files: z.array(
       z
         .object({

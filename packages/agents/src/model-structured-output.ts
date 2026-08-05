@@ -30,7 +30,13 @@ export async function generateValidatedModelOutput<T>(options: {
     });
 
     if (result.type === "failure") {
-      throw new SpecializedAgentOutputInvalidError(options.agentId, [`model call failed: ${result.code}`]);
+      // The model call reached the provider boundary but failed there. Keep
+      // that stable code distinct from a response that was returned and then
+      // failed the specialized agent's own output schema.
+      throw new DesignFlowError(
+        result.code,
+        `Model request failed for ${options.agentId}: ${result.code}`,
+      );
     }
 
     try {

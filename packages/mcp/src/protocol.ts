@@ -47,6 +47,23 @@ export const jsonRpcResponseSchema = z
 
 export type JsonRpcResponse = z.infer<typeof jsonRpcResponseSchema>;
 
+/** The negotiated result returned by MCP initialize over Streamable HTTP. */
+export const mcpInitializeResultSchema = z
+  .object({
+    protocolVersion: z.string().min(1),
+    capabilities: z.record(z.string(), z.unknown()),
+    serverInfo: z
+      .object({
+        name: z.string().min(1),
+        version: z.string().min(1).optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+export type McpInitializeResult = z.infer<typeof mcpInitializeResultSchema>;
+
 /** The MCP-level shape of a successful `tools/list` result. */
 export const mcpToolsListResultSchema = z.object({
   tools: z.array(

@@ -91,6 +91,17 @@ describe("calling a tool", () => {
     expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_AUTHENTICATION_FAILED" });
   });
 
+  test("an application-level selection error keeps its safe server reason", async () => {
+    const runtime = client({
+      tools: [{ name: "get_metadata" }],
+      errorTools: ["get_metadata"],
+      toolResults: { get_metadata: "No compatible Figma node is currently selected" },
+    });
+
+    const result = await runtime.callTool({ toolName: "get_metadata", arguments: {} });
+    expect(result).toMatchObject({ type: "failure", code: "ERR_MCP_SELECTION_UNAVAILABLE", message: "No compatible Figma node is currently selected" });
+  });
+
   test("a request with a malformed shape throws before anything is sent", async () => {
     const runtime = client();
     await expect(

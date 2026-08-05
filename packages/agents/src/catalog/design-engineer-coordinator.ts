@@ -9,6 +9,7 @@ import {
 
 import {
   deterministicDesignEngineerStrategy,
+  FIGMA_SPECIFICATION_WORKFLOW_ID,
   type DesignEngineerStrategy,
 } from "./design-engineer-agent";
 
@@ -50,7 +51,7 @@ export const designEngineerCoordinatorManifest: AgentManifest = agentManifestSch
   instructions:
     "Turn a design into working code. Classify the request first. Run the " +
     "design-to-code workflow when it names design work. Ask what to build when it does not.",
-  allowedWorkflows: ["design-to-code", "design-to-code-implementation"],
+  allowedWorkflows: ["design-to-code", "design-to-code-implementation", FIGMA_SPECIFICATION_WORKFLOW_ID],
   allowedTools: ["classify-design-task"],
   modelProfileId: MODEL_PROFILE_ID,
   metadata: { author: "DesignFlow" },

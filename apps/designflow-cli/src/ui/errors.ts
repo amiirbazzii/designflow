@@ -130,6 +130,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That worker could not finish an internal step.",
     suggestion: TRY_AGAIN,
   },
+  ERR_AGENT_MODEL_SERVICE_UNAVAILABLE: {
+    problem: "The specialized design step has no configured model service.",
+    suggestion: "Nothing was started. Set OPENROUTER_API_KEY and try again, or disable model mode.",
+  },
 
   // Tool failures. A tool is something a worker consults while working out
   // what to do; a person never asked for one and should not have to learn the
@@ -443,9 +447,37 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "The Figma connection does not support something this request needed.",
     suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
   },
+  ERR_MCP_TOOL_FAILED: {
+    problem: "The Figma connection reported an error while handling the request.",
+    suggestion: "Nothing was started. Check the selected Figma node and try again.",
+  },
+  ERR_MCP_SELECTION_UNAVAILABLE: {
+    problem: "Figma Desktop does not have a compatible node selected.",
+    suggestion: "Nothing was started. Select the requested frame in Figma Desktop, then try again.",
+  },
+  ERR_MCP_NODE_NOT_FOUND: {
+    problem: "The requested Figma node was not found.",
+    suggestion: "Nothing was started. Check the Figma link and selected node, then try again.",
+  },
+  ERR_MCP_SESSION_INVALID: {
+    problem: "The local Figma Desktop connection session is no longer valid.",
+    suggestion: "Nothing was started. Keep Figma Desktop open and try again to establish a fresh session.",
+  },
+  ERR_MCP_OPERATION_UNSUPPORTED: {
+    problem: "The Figma connection does not support this operation.",
+    suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
   ERR_MCP_REQUEST_INVALID: {
     problem: "DesignFlow could not put together a valid request to the Figma connection.",
     suggestion: `Nothing was started. ${PACKAGING_PROBLEM}`,
+  },
+  ERR_MCP_PROTOCOL_REJECTED: {
+    problem: "The Figma connection rejected the MCP protocol request.",
+    suggestion: "Nothing was started. Keep Figma Desktop open and try again; if it continues, check the Desktop MCP version.",
+  },
+  ERR_MCP_PROTOCOL_UNSUPPORTED: {
+    problem: "The Figma connection negotiated an MCP protocol version this DesignFlow build does not support.",
+    suggestion: "Nothing was started. Check the Figma Desktop integration version and try again.",
   },
   ERR_MCP_RESPONSE_INVALID: {
     problem: "The Figma connection sent back something unusable.",
@@ -466,6 +498,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
   ERR_FIGMA_SOURCE_INVALID: {
     problem: "That does not look like a Figma design URL or file key.",
     suggestion: "Nothing was started. Check the link and try again.",
+  },
+  ERR_FIGMA_MCP_REQUIRED: {
+    problem: "Real Figma mode is enabled, but no MCP connection is configured.",
+    suggestion: "Nothing was started. Configure the local Figma Desktop MCP connection and try again.",
   },
   ERR_FIGMA_MCP_UNSUPPORTED_OPERATION: {
     problem: "The Figma connection does not support something this request needed.",

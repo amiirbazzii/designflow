@@ -16,6 +16,7 @@ import type { CapturedScreenshot } from "./figma-mcp-tools";
 
 const DESKTOP_TOOLS = {
   metadata: "get_metadata",
+  designContext: "get_design_context",
   screenshot: "get_screenshot",
   variables: "get_variable_defs",
 } as const;
@@ -50,7 +51,11 @@ export async function buildFigmaDesktopSourceSnapshot(
 ): Promise<FigmaSourceSnapshot> {
   const client = context.mcp;
   if (client === undefined) {
-    throw new Error("buildFigmaDesktopSourceSnapshot requires context.mcp to be configured");
+    throw new DesignFlowError(
+      "ERR_FIGMA_MCP_REQUIRED",
+      "Real Figma mode requires a configured MCP connection; placeholder fallback is disabled",
+      {},
+    );
   }
 
   const capabilities = await discoverFigmaMcpCapabilities(client, context.signal);
@@ -94,17 +99,48 @@ export async function buildFigmaDesktopSourceSnapshot(
     nodeId: selection.id,
   });
 
+  const desktopNodeArgs = {
+    nodeId: selection.id,
+    clientLanguages: "typescript",
+    clientFrameworks: "react",
+  };
+  if (capabilities.inspectNodes) {
+    try {
+      await callDesktopTool(client, DESKTOP_TOOLS.designContext, desktopNodeArgs, context.signal);
+    } catch {
+      warnings.push({
+        code: "DESIGN_CONTEXT_RETRIEVAL_FAILED",
+        message: "Figma Desktop MCP did not return detailed design context for the selected node",
+        nodeId: selection.id,
+      });
+    }
+  }
+
   const variables = capabilities.inspectVariables
-    ? await readDesktopVariables(client, context.signal)
+    ? await readDesktopVariables(client, desktopNodeArgs, context.signal)
     : { variables: [], warnings: [] as FigmaSnapshotWarning[] };
   warnings.push(...variables.warnings);
 
   const resolvedFrame = { id: selection.id, name: selection.name, path: [selection.name] };
   const screenshots: FigmaScreenshotSnapshot[] = [];
   if (options.captureScreenshots && capabilities.captureScreenshot) {
-    const captured = await callDesktopTool(client, DESKTOP_TOOLS.screenshot, desktopSelectionArgs, context.signal)
-      .then(parseDesktopScreenshot)
-      .catch(() => undefined);
+    let captured: CapturedScreenshot | undefined;
+    try {
+      captured = parseDesktopScreenshot(
+        await callDesktopTool(
+          client,
+          DESKTOP_TOOLS.screenshot,
+          { nodeId: selection.id, contentsOnly: true },
+          context.signal,
+        ),
+      );
+    } catch (error) {
+      // Preserve the bounded, classified MCP application error. Only an
+      // unexpected payload/parser failure is downgraded to a warning.
+      if (error instanceof DesignFlowError && error.code.startsWith("ERR_MCP_")) {
+        throw error;
+      }
+    }
 
     if (captured === undefined) {
       warnings.push({
@@ -166,9 +202,20 @@ export async function buildFigmaDesktopSourceSnapshot(
       retrievedAt: options.now(),
       toolVersions: {
         inspectDocument: DESKTOP_TOOLS.metadata,
+        inspectNodes: DESKTOP_TOOLS.designContext,
         inspectVariables: DESKTOP_TOOLS.variables,
         captureScreenshot: DESKTOP_TOOLS.screenshot,
       },
+    },
+    sourceProvenance: {
+      mode: "mcp-desktop",
+      transport: "http",
+      serverIdentity: "figma-desktop",
+      requestedFileKey: options.parsedSource.fileKey,
+      ...(options.parsedSource.nodeIds[0] !== undefined
+        ? { requestedNodeId: options.parsedSource.nodeIds[0] }
+        : {}),
+      resolvedNodeId: selection.id,
     },
   });
 
@@ -183,7 +230,7 @@ async function callDesktopTool(
 ): Promise<unknown> {
   const result = await client.callTool({ toolName, arguments: arguments_ }, signal);
   if (result.type === "failure") {
-    throw new DesignFlowError("ERR_FIGMA_DESKTOP_MCP_TOOL_FAILED", `Figma Desktop MCP tool "${toolName}" failed`, { toolName });
+    throw new DesignFlowError(result.code, result.message, { toolName });
   }
   return result.content;
 }
@@ -216,10 +263,11 @@ function parseDesktopSelection(content: unknown): DesktopSelection | undefined {
 
 async function readDesktopVariables(
   client: McpClient,
+  arguments_: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ): Promise<{ readonly variables: readonly []; readonly warnings: FigmaSnapshotWarning[] }> {
   try {
-    const content = await callDesktopTool(client, DESKTOP_TOOLS.variables, {}, signal);
+    const content = await callDesktopTool(client, DESKTOP_TOOLS.variables, arguments_, signal);
     const text = textFromContent(content);
     // Desktop MCP currently returns a human-readable variable definition
     // block, not the generic `{ variables: [...] }` envelope. Do not invent

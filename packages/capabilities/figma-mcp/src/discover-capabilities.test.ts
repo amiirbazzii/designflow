@@ -48,12 +48,13 @@ describe("discovery", () => {
 
   test("maps the official Desktop MCP tools by exact server-specific names", async () => {
     const client = new InMemoryMcpClient({
-      serverIdentity: "figma-desktop-mcp",
       tools: [
-        { name: "get_design_context" },
-        { name: "get_variable_defs" },
+        { name: "get_figjam" },
         { name: "get_screenshot" },
         { name: "get_metadata" },
+        { name: "get_motion_context" },
+        { name: "get_variable_defs" },
+        { name: "get_design_context" },
       ],
     });
 
@@ -74,5 +75,30 @@ describe("discovery", () => {
       inspectVariables: "get_variable_defs",
       captureScreenshot: "get_screenshot",
     });
+  });
+
+  test("exact Desktop mappings are stable when tool order changes and unsupported tools stay unmapped", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "unrelated-wrapper",
+      tools: [
+        { name: "get_figjam", description: "exports images" },
+        { name: "get_screenshot" },
+        { name: "get_design_context" },
+        { name: "get_metadata" },
+        { name: "get_variable_defs" },
+      ],
+    });
+
+    const capabilities = await discoverFigmaMcpCapabilities(client);
+
+    expect(capabilities.resolvedToolNames).toEqual({
+      inspectDocument: "get_metadata",
+      inspectNodes: "get_design_context",
+      inspectVariables: "get_variable_defs",
+      captureScreenshot: "get_screenshot",
+    });
+    expect(capabilities.inspectStyles).toBe(false);
+    expect(capabilities.inspectComponents).toBe(false);
+    expect(capabilities.exportAssets).toBe(false);
   });
 });

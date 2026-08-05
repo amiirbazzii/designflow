@@ -27,6 +27,16 @@ export const reuseIdentitySchema = z.object({
   modelProfileId: z.string().min(1).optional(),
   /** The deciding agent's manifest version, for the same reason. */
   agentVersion: z.string().min(1).optional(),
+  /** Figma retrieval mode is part of cache identity; placeholder and MCP data never mix. */
+  figmaSourceMode: z.enum(["placeholder", "rest", "mcp-stdio", "mcp-desktop"]).optional(),
+  figmaServerIdentity: z.string().min(1).optional(),
+  figmaFileKey: z.string().min(1).optional(),
+  figmaRequestedNodeId: z.string().min(1).optional(),
+  figmaResolvedNodeId: z.string().min(1).optional(),
+  figmaFrames: z.array(z.string().min(1)).optional(),
+  figmaCaptureScreenshots: z.boolean().optional(),
+  /** Per-run nonce used only by an explicit --no-cache acceptance/request. */
+  figmaCacheBypass: z.string().min(1).optional(),
 });
 
 export type ReuseIdentity = z.infer<typeof reuseIdentitySchema>;

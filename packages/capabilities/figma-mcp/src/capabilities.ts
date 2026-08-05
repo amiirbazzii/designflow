@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   DesignFlowError,
   figmaSourceSnapshotSchema,
+  hashContent,
   type Capability,
   type CapabilityContext,
 } from "@designflow/sdk";
@@ -110,6 +111,9 @@ const retrieveSnapshotInputSchema = z
      * this node's own input, which forces a fresh retrieval.
      */
     refreshFigmaSource: z.boolean().default(false),
+    sourceMode: z.enum(["placeholder", "rest", "mcp-stdio", "mcp-desktop"]).default("placeholder"),
+    serverIdentity: z.string().min(1).optional(),
+    requestedNodeId: z.string().min(1).optional(),
   })
   .strict();
 
@@ -135,6 +139,14 @@ export const retrieveFigmaSourceSnapshotCapability: Capability<unknown, Capabili
 
   async execute(context: CapabilityContext, input: unknown): Promise<CapabilityOutput> {
     const parsedNodeInput = retrieveSnapshotInputSchema.parse(input);
+
+    if (parsedNodeInput.sourceMode !== "placeholder" && context.mcp === undefined) {
+      throw new DesignFlowError(
+        "ERR_FIGMA_MCP_REQUIRED",
+        "Real Figma mode requires a configured MCP connection; placeholder fallback is disabled",
+        { sourceMode: parsedNodeInput.sourceMode },
+      );
+    }
 
     const ref = findParsedSourceRef(context);
     if (ref === undefined) {
@@ -165,6 +177,7 @@ export const retrieveFigmaSourceSnapshotCapability: Capability<unknown, Capabili
     });
 
     const validated = figmaSourceSnapshotSchema.parse(snapshot);
+    const sourceProvenanceDigest = await hashContent(validated.sourceProvenance ?? { mode: "placeholder" });
     const savedPayload = await context.artifactStore.save(validated, {
       type: "figma.source-snapshot",
       artifactId: FIGMA_MCP_ARTIFACT_IDS.sourceSnapshot,
@@ -182,6 +195,9 @@ export const retrieveFigmaSourceSnapshotCapability: Capability<unknown, Capabili
           nodeCount: validated.nodes.length,
           screenshotCount: validated.screenshots.length,
           warningCount: validated.warnings.length,
+          sourceMode: validated.sourceProvenance?.mode ?? "placeholder",
+          ...(validated.sourceProvenance !== undefined ? { sourceProvenance: validated.sourceProvenance } : {}),
+          sourceProvenanceDigest,
           [PAYLOAD_ID_KEY]: savedPayload.id,
         },
       },

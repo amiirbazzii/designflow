@@ -194,6 +194,9 @@ async function report(
       if (payload.rollbackTriggered) terminal.print("DesignFlow restored the project to its previous state.");
       terminal.print("No generated changes remain in the project.");
     }
+    if (overview.failureReason !== undefined) {
+      terminal.print(`Reason: ${overview.failureReason}`);
+    }
   }
 
   if (overview.durationLabel !== undefined) {

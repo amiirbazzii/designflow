@@ -5,6 +5,7 @@ import {
   designSpecificationSchema,
   figmaSourceSnapshotSchema,
   generatedImplementationSchema,
+  hashContent,
   visualValidationReportSchema,
   type Capability,
   type CapabilityContext,
@@ -80,6 +81,7 @@ export const prepareFigmaSourceFixtureCapability: Capability<unknown, Capability
       nodes,
       variables: [{ name: "color.brand", value: "#111827" }],
       assets: [],
+      sourceProvenance: { mode: "placeholder" },
     });
 
     return writeArtifact(context, {
@@ -90,6 +92,7 @@ export const prepareFigmaSourceFixtureCapability: Capability<unknown, Capability
       summary: {
         designFile: snapshot.source.designFile,
         frameCount: snapshot.source.frames.length,
+        sourceMode: "placeholder",
       },
     });
   },
@@ -122,17 +125,28 @@ export const invokeFigmaSpecificationAgentCapability: Capability<unknown, Capabi
         objective: "Produce a design specification from the Figma source snapshot",
         input: { figmaSnapshot: snapshot },
         attempt: 1,
+        metadata: {
+          executionId: context.executionId,
+          capabilityId: context.capabilityId,
+          nodeId: context.capabilityId,
+        },
       },
       context.signal,
     );
 
     if (outcome.type === "failure") {
-      throw new DesignFlowError(outcome.code, "The Figma Specification Agent could not produce a specification", {
+      throw new DesignFlowError(outcome.code, outcome.message, {
         capabilityId: context.capabilityId,
+        agentId: outcome.agentId,
+        attempt: outcome.attempt,
       });
     }
 
-    const spec = designSpecificationSchema.parse(outcome.output);
+    const sourceProvenanceDigest = await hashContent(snapshot.sourceProvenance ?? { mode: "placeholder" });
+    const spec = designSpecificationSchema.parse({
+      ...(outcome.output as Record<string, unknown>),
+      sourceProvenanceDigest,
+    });
 
     return writeArtifact(context, {
       artifactId: AGENT_FOUNDATION_ARTIFACT_IDS.designSpecification,
@@ -144,6 +158,7 @@ export const invokeFigmaSpecificationAgentCapability: Capability<unknown, Capabi
         producedByAgentVersion: outcome.agentVersion,
         frameCount: spec.frames.length,
         ambiguityCount: spec.ambiguities.length,
+        sourceProvenanceDigest,
       },
     });
   },
@@ -176,17 +191,28 @@ export const invokeImplementationAgentCapability: Capability<unknown, Capability
         objective: "Propose an implementation for the design specification within the given project",
         input: { designSpecification: spec, projectContext: requested.projectContext },
         attempt: 1,
+        metadata: {
+          executionId: context.executionId,
+          capabilityId: context.capabilityId,
+          nodeId: context.capabilityId,
+        },
       },
       context.signal,
     );
 
     if (outcome.type === "failure") {
-      throw new DesignFlowError(outcome.code, "The Implementation Agent could not produce an implementation", {
+      throw new DesignFlowError(outcome.code, outcome.message, {
         capabilityId: context.capabilityId,
+        agentId: outcome.agentId,
+        attempt: outcome.attempt,
       });
     }
 
-    const implementation = generatedImplementationSchema.parse(outcome.output);
+    const sourceProvenanceDigest = spec.sourceProvenanceDigest ?? await hashContent({ mode: "placeholder" });
+    const implementation = generatedImplementationSchema.parse({
+      ...(outcome.output as Record<string, unknown>),
+      sourceProvenanceDigest,
+    });
 
     return writeArtifact(context, {
       artifactId: AGENT_FOUNDATION_ARTIFACT_IDS.generatedImplementation,
@@ -229,13 +255,20 @@ export const invokeVisualValidationAgentCapability: Capability<unknown, Capabili
         objective: "Evaluate the generated implementation for structural completeness",
         input: { generatedImplementation: implementation, threshold: requested.threshold },
         attempt: 1,
+        metadata: {
+          executionId: context.executionId,
+          capabilityId: context.capabilityId,
+          nodeId: context.capabilityId,
+        },
       },
       context.signal,
     );
 
     if (outcome.type === "failure") {
-      throw new DesignFlowError(outcome.code, "The Visual Validation Agent could not produce a report", {
+      throw new DesignFlowError(outcome.code, outcome.message, {
         capabilityId: context.capabilityId,
+        agentId: outcome.agentId,
+        attempt: outcome.attempt,
       });
     }
 

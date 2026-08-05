@@ -28,6 +28,51 @@ function collector(): { store: InMemoryTraceStore; observer: TraceCollector } {
 // ── 5/6/7/8. The trace lifecycle ────────────────────────────────
 
 describe("building a trace from events", () => {
+  test("specialized invocations have their own trace lifecycle and safe metadata", async () => {
+    const { store, observer } = collector();
+
+    await observer.onEvent({
+      type: "agent.invocation.started",
+      traceId: "specialized-1",
+      workerId: "capability-invocation",
+      agentId: "figma-specification-agent",
+      timestamp: "2026-08-01T10:00:00.000Z",
+      metadata: { executionId: "exec-1", capabilityId: "invoke-figma-specification-agent" },
+    });
+    await observer.onEvent({
+      type: "model.request.started",
+      traceId: "specialized-1",
+      requestId: "request-1",
+      profileId: "figma-specification-default",
+      timestamp: "2026-08-01T10:00:00.001Z",
+    });
+    await observer.onEvent({
+      type: "model.request.failed",
+      traceId: "specialized-1",
+      requestId: "request-1",
+      profileId: "figma-specification-default",
+      errorCode: "ERR_MODEL_TIMEOUT",
+      durationMs: 4,
+      timestamp: "2026-08-01T10:00:00.005Z",
+    });
+    await observer.onEvent({
+      type: "agent.invocation.failed",
+      traceId: "specialized-1",
+      errorCode: "ERR_MODEL_TIMEOUT",
+      durationMs: 5,
+      timestamp: "2026-08-01T10:00:00.006Z",
+    });
+
+    expect(await store.get("specialized-1")).toMatchObject({
+      workerId: "capability-invocation",
+      agentId: "figma-specification-agent",
+      status: "failed",
+      errorCode: "ERR_MODEL_TIMEOUT",
+      metadata: { executionId: "exec-1", capabilityId: "invoke-figma-specification-agent" },
+      modelCalls: [{ requestId: "request-1", status: "failure", errorCode: "ERR_MODEL_TIMEOUT" }],
+    });
+  });
+
   test("a started event opens a running trace", async () => {
     const { store, observer } = collector();
 
@@ -354,6 +399,7 @@ describe("TraceService", () => {
     // A surface that could create or patch traces could make the record say
     // whatever it liked, which is not an audit record.
     expect(surface).toEqual([
+      "annotate",
       "constructor",
       "correlate",
       "getExecutionTrace",

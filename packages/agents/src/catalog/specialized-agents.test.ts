@@ -92,6 +92,7 @@ describe("Implementation Agent", () => {
 
     expect(() => generatedImplementationSchema.parse(implementation)).not.toThrow();
     expect(implementation.files).toHaveLength(1);
+    expect(implementation.files[0]?.content).not.toContain("return null");
   });
 
   test("reuses an existing project component instead of proposing a new file for it", async () => {

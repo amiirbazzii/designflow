@@ -75,7 +75,7 @@ describe("MCP errors map to typed DesignFlow errors", () => {
       throw new Error("expected a throw");
     } catch (error) {
       expect(error).toBeInstanceOf(DesignFlowError);
-      expect((error as DesignFlowError).code).toBe("ERR_MCP_RESPONSE_INVALID");
+      expect((error as DesignFlowError).code).toBe("ERR_MCP_TOOL_FAILED");
     }
   });
 });
