@@ -112,4 +112,24 @@ describe("Figma Desktop MCP adapter", () => {
       now: () => "2026-08-10T00:00:00.000Z",
     })).rejects.toMatchObject({ code: "ERR_FIGMA_NODE_NOT_FOUND" });
   });
+
+  test("stops before implementation when the selected node name does not match the requested frame", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }],
+      results: { get_metadata: [{ type: "text", text: "- 1026:6098: iPhone 16 Pro Max - 14" }] },
+    });
+
+    await expect(buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/Spendly?node-id=1026-6098", { frames: ["Header"] }),
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    })).rejects.toMatchObject({
+      code: "ERR_FIGMA_FRAME_SEMANTIC_MISMATCH",
+      message: expect.stringContaining("Header"),
+      metadata: expect.objectContaining({ resolvedName: "iPhone 16 Pro Max - 14", resolvedNodeId: "1026:6098" }),
+    });
+    expect(client.calls.map((call) => call.toolName)).toEqual(["get_metadata"]);
+  });
 });

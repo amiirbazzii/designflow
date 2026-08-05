@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   DesignFlowError,
   designSpecificationSchema,
+  figmaSourceProvenanceSchema,
   figmaSourceSnapshotSchema,
   projectImplementationContextV1Schema,
   generatedImplementationV1Schema,
@@ -253,24 +254,45 @@ export const resolveReferenceEvidenceCapability: Capability<unknown, CapabilityO
     const snapshot = await readArtifact(context, "figma-source-snapshot", figmaSourceSnapshotSchema);
     const evidence: ScreenshotEvidenceV1[] = [];
     const warnings: string[] = [];
+    const source = classifyReferenceSource(snapshot);
     for (const screenshot of snapshot.screenshots ?? []) {
       const stored = await context.artifactStore.get(screenshot.artifactId);
       if (stored === null || typeof stored.data !== "string") { warnings.push(`Reference screenshot payload ${screenshot.artifactId} was unavailable.`); continue; }
       const bytes = new Uint8Array(Buffer.from(stored.data, "base64"));
-      const viewport = input.viewports[0] ?? { id: "desktop", width: 1440, height: 1024 };
       try {
         const dimensions = comparePngImages(bytes, bytes);
         const node = (snapshot.nodes ?? []).find((item) => item.id === screenshot.nodeId);
-        const rawScreenshot = screenshot as unknown as { viewportId?: string };
         const nodeName = typeof node?.name === "string" ? node.name.toLowerCase() : "";
-        const targetViewport = input.viewports.find((item) => item.id === rawScreenshot.viewportId) ??
-          input.viewports.find((item) => item.width === dimensions.referenceWidth && item.height === dimensions.referenceHeight) ??
-          input.viewports.find((item) => nodeName.includes(item.id.toLowerCase())) ??
-          viewport;
-        evidence.push({ schemaVersion: "1", evidenceId: `reference-${screenshot.nodeId}-${targetViewport.id}`, sourceType: "reference", frame: { id: screenshot.nodeId, ...(node !== undefined ? { name: node.name } : {}) }, viewport: { ...targetViewport, width: dimensions.referenceWidth, height: dimensions.referenceHeight }, image: { width: dimensions.referenceWidth, height: dimensions.referenceHeight, contentHash: hash(bytes), artifactId: screenshot.artifactId }, capturedAt: new Date().toISOString(), captureMethod: "fake-mcp", warnings: ["source: fake-mcp", "comparison mode: synthetic-fixture"], authenticity: "fake-mcp", sourceLabel: "fake-mcp", ...(node?.absoluteBoundingBox !== undefined ? { specification: [{ selector: node.name, boundingRectangle: node.absoluteBoundingBox, styles: { ...(node.cornerRadius !== undefined ? { borderRadius: node.cornerRadius } : {}), ...(node.itemSpacing !== undefined ? { gap: node.itemSpacing } : {}) } }] } : {}) });
+        const viewportOptions = screenshot.viewportId === undefined
+          ? { nodeName }
+          : { explicitViewportId: screenshot.viewportId, nodeName };
+        const targetViewport = associateReferenceViewport(
+          dimensions.referenceWidth,
+          dimensions.referenceHeight,
+          input.viewports,
+          viewportOptions,
+        );
+        const synthetic = source.authenticity === "synthetic-fixture" || source.authenticity === "fake-mcp";
+        evidence.push({
+          schemaVersion: "1",
+          evidenceId: `reference-${screenshot.nodeId}-${targetViewport.id}`,
+          sourceType: "reference",
+          frame: { id: screenshot.nodeId, ...(node !== undefined ? { name: node.name } : {}) },
+          viewport: targetViewport,
+          image: { width: dimensions.referenceWidth, height: dimensions.referenceHeight, contentHash: hash(bytes), artifactId: screenshot.artifactId },
+          capturedAt: new Date().toISOString(),
+          captureMethod: source.captureMethod,
+          warnings: synthetic ? ["source: synthetic-fixture", "comparison mode: synthetic-fixture"] : [],
+          authenticity: source.authenticity,
+          ...(source.sourceLabel !== undefined ? { sourceLabel: source.sourceLabel } : {}),
+          sourceArtifactId: screenshot.artifactId,
+          ...(snapshot.sourceProvenance !== undefined ? { sourceProvenance: snapshot.sourceProvenance } : {}),
+          ...(node?.absoluteBoundingBox !== undefined ? { specification: [{ selector: node.name, boundingRectangle: node.absoluteBoundingBox, styles: { ...(node.cornerRadius !== undefined ? { borderRadius: node.cornerRadius } : {}), ...(node.itemSpacing !== undefined ? { gap: node.itemSpacing } : {}) } }] } : {}),
+        });
       } catch { warnings.push(`Reference screenshot payload ${screenshot.artifactId} was not a bounded valid RGBA PNG.`); }
     }
-    const ref = await writeArtifact(context, { artifactId: VISUAL_VALIDATION_ARTIFACT_IDS.referenceEvidence, artifactType: VISUAL_VALIDATION_ARTIFACT_TYPES.referenceEvidence, name: "Reference Screenshot Evidence", payload: { schemaVersion: "1", evidence, warnings }, summary: { count: evidence.length, mode: evidence.length > 0 ? "synthetic-fixture" : "insufficient-reference", projectFilesChanged: false } });
+    const mode = comparisonModeForReferenceEvidence(evidence);
+    const ref = await writeArtifact(context, { artifactId: VISUAL_VALIDATION_ARTIFACT_IDS.referenceEvidence, artifactType: VISUAL_VALIDATION_ARTIFACT_TYPES.referenceEvidence, name: "Reference Screenshot Evidence", payload: { schemaVersion: "1", evidence, warnings }, summary: { count: evidence.length, mode, projectFilesChanged: false } });
     return ref;
   },
 };
@@ -286,6 +308,92 @@ async function imageBytes(context: CapabilityContext, evidence: ScreenshotEviden
   return bytes.byteLength <= 10_000_000 ? bytes : undefined;
 }
 
+type ReferenceSourceClassification = Pick<ScreenshotEvidenceV1, "captureMethod" | "authenticity" | "sourceLabel">;
+
+/**
+ * Converts the typed upstream Figma provenance into reference-evidence
+ * provenance. This is intentionally source-bound: a workflow/capability name
+ * or a screenshot payload cannot turn a real image into a synthetic one (or
+ * vice versa).
+ */
+export function classifyReferenceSource(snapshot: { readonly sourceProvenance?: unknown }): ReferenceSourceClassification {
+  const parsed = figmaSourceProvenanceSchema.safeParse(snapshot.sourceProvenance);
+  const provenance = parsed.success ? parsed.data : undefined;
+  if (provenance?.mode === "mcp-desktop") {
+    return { captureMethod: "figma", authenticity: "real-figma", sourceLabel: "figma-desktop" };
+  }
+  if (provenance?.mode === "rest") {
+    return { captureMethod: "figma", authenticity: "real-figma", sourceLabel: "figma-rest" };
+  }
+  if (provenance?.mode === "mcp-stdio") {
+    const identity = provenance.serverIdentity.toLowerCase();
+    if (!identity.includes("fake") && !identity.includes("synthetic")) {
+      return { captureMethod: "figma", authenticity: "real-figma", sourceLabel: "mcp-stdio" };
+    }
+    return { captureMethod: "fake-mcp", authenticity: "synthetic-fixture", sourceLabel: "synthetic-fixture" };
+  }
+  if (provenance?.mode === "placeholder") {
+    return { captureMethod: "synthetic", authenticity: "synthetic-fixture", sourceLabel: "synthetic-fixture" };
+  }
+  return { captureMethod: "synthetic", authenticity: "unavailable", sourceLabel: "unavailable" };
+}
+
+/**
+ * Associates a source-native image with a requested viewport only when the
+ * association is defensible. A single reference is never copied to every
+ * requested viewport as an implicit fallback.
+ */
+export function associateReferenceViewport(
+  width: number,
+  height: number,
+  requested: readonly VisualViewportV1[],
+  options: { readonly explicitViewportId?: string; readonly nodeName?: string } = {},
+): VisualViewportV1 {
+  const explicit = options.explicitViewportId === undefined
+    ? undefined
+    : requested.find((viewport) => viewport.id === options.explicitViewportId);
+  if (explicit !== undefined) return { ...explicit, width, height };
+
+  const exact = requested.find((viewport) => viewport.width === width && viewport.height === height);
+  if (exact !== undefined) return { ...exact, width, height };
+
+  const nodeName = options.nodeName?.toLowerCase() ?? "";
+  const named = requested.find((viewport) => nodeName.includes(viewport.id.toLowerCase()));
+  if (named !== undefined) return { ...named, width, height };
+
+  const candidates = requested
+    .map((viewport) => ({
+      viewport,
+      score: Math.max(Math.abs(width - viewport.width) / viewport.width, Math.abs(height - viewport.height) / viewport.height),
+    }))
+    .sort((left, right) => left.score - right.score);
+  const best = candidates[0];
+  const second = candidates[1];
+  // A close, unambiguous match is useful for native Figma frame sizes such
+  // as 413x1024. Otherwise preserve the honest source-native identity.
+  if (best !== undefined && best.score <= 0.35 && (second === undefined || second.score - best.score > 0.02)) {
+    return { ...best.viewport, width, height };
+  }
+  return { id: "source-native", width, height };
+}
+
+export function comparisonModeForReferenceEvidence(
+  evidence: readonly ScreenshotEvidenceV1[],
+): "pixel-reference" | "real-reference" | "synthetic-fixture" | "insufficient-reference" {
+  if (evidence.length === 0) return "insufficient-reference";
+  if (evidence.some((item) => item.authenticity === "synthetic-fixture" || item.authenticity === "fake-mcp")) return "synthetic-fixture";
+  if (evidence.some((item) => item.authenticity === "real-figma")) return "real-reference";
+  if (evidence.every((item) => item.authenticity === "unavailable")) return "insufficient-reference";
+  return "pixel-reference";
+}
+
+export function referencesForViewport(
+  evidence: readonly ScreenshotEvidenceV1[],
+  viewportId: string,
+): ScreenshotEvidenceV1[] {
+  return evidence.filter((item) => item.viewport.id === viewportId);
+}
+
 export const compareVisualEvidenceCapability: Capability<unknown, CapabilityOutput> = {
   id: "compare-visual-evidence", name: "Compare visual evidence", description: "Runs deterministic evidence and policy checks before agent interpretation.", type: "pure", version: "1", inputSchema: z.unknown(), outputSchema,
   async execute(context): Promise<CapabilityOutput> {
@@ -296,7 +404,7 @@ export const compareVisualEvidenceCapability: Capability<unknown, CapabilityOutp
     const findings: VisualFindingV1[] = [];
     const results = await Promise.all(input.viewports.map(async (viewport) => {
       const impl = implementation.evidence.find((item) => item.viewport.id === viewport.id);
-      const refs = reference.evidence.filter((item) => item.viewport.id === viewport.id || reference.evidence.length === 1);
+      const refs = referencesForViewport(reference.evidence, viewport.id);
       const viewportFindingIds: string[] = [];
       const viewportFindings: VisualFindingV1[] = [];
       const warnings = [...implementation.warnings, ...reference.warnings];
@@ -330,7 +438,7 @@ export const compareVisualEvidenceCapability: Capability<unknown, CapabilityOutp
     }));
     findings.push(...results.flatMap((result) => result.findings));
     const viewportResults = results.map(({ findings: _findings, ...result }) => result);
-    const mode = reference.evidence.length === 0 ? "insufficient-reference" : reference.evidence.some((item) => item.authenticity === "fake-mcp") ? "synthetic-fixture" : "pixel-reference";
+    const mode = comparisonModeForReferenceEvidence(reference.evidence);
     const payload = visualComparisonMetricsSchema.parse({ schemaVersion: "1", mode, comparison: { algorithmVersion: "png-rgba-pixel-diff-v1", threshold: 8, mismatchRatioThreshold: 0.005, maxPixels: input.capture.maxImagePixels ?? 8_000_000, maxImageBytes: input.capture.maxImageBytes ?? 10_000_000 }, findings, referenceEvidence: reference.evidence, implementationEvidence: implementation.evidence, viewportResults, warnings: [...implementation.warnings, ...reference.warnings, ...(preview.warnings)] });
     return writeArtifact(context, { artifactId: VISUAL_VALIDATION_ARTIFACT_IDS.metrics, artifactType: VISUAL_VALIDATION_ARTIFACT_TYPES.metrics, name: "Image Comparison Metrics", payload, summary: { mode, findingCount: findings.length, projectFilesChanged: false } });
   },

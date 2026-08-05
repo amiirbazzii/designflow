@@ -8,6 +8,7 @@ export const FIGMA_MCP_ERROR_CODES = [
   "ERR_FIGMA_NODE_NOT_FOUND",
   "ERR_FIGMA_FRAME_AMBIGUOUS",
   "ERR_FIGMA_FRAME_NOT_FOUND",
+  "ERR_FIGMA_FRAME_SEMANTIC_MISMATCH",
   "ERR_FIGMA_SCREENSHOT_INVALID",
   "ERR_FIGMA_MCP_REQUIRED",
 ] as const;
@@ -50,5 +51,19 @@ export class FigmaFrameNotFoundError extends DesignFlowError {
     );
     this.name = "FigmaFrameNotFoundError";
     Object.setPrototypeOf(this, FigmaFrameNotFoundError.prototype);
+  }
+}
+
+/** A requested semantic frame label resolved to a different selected node. */
+export class FigmaFrameSemanticMismatchError extends DesignFlowError {
+  public constructor(requested: readonly string[], resolvedName: string, resolvedNodeId: string) {
+    const requestedLabel = requested.join(", ");
+    super(
+      "ERR_FIGMA_FRAME_SEMANTIC_MISMATCH",
+      `Requested frame "${requestedLabel}" resolved to Figma node "${resolvedName}". Confirm whether to implement the full frame or select the requested layer.`,
+      { requested: [...requested], resolvedName, resolvedNodeId },
+    );
+    this.name = "FigmaFrameSemanticMismatchError";
+    Object.setPrototypeOf(this, FigmaFrameSemanticMismatchError.prototype);
   }
 }

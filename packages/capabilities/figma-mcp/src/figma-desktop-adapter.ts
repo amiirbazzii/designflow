@@ -13,6 +13,7 @@ import { discoverFigmaMcpCapabilities } from "./discover-capabilities";
 import { normalizeFigmaNodeTree } from "./normalize-nodes";
 import { storeFigmaScreenshotArtifact } from "./screenshot-artifact";
 import type { CapturedScreenshot } from "./figma-mcp-tools";
+import { FigmaFrameSemanticMismatchError } from "./errors";
 
 const DESKTOP_TOOLS = {
   metadata: "get_metadata",
@@ -84,11 +85,7 @@ export async function buildFigmaDesktopSourceSnapshot(
   }
 
   if (options.parsedSource.requestedFrames.length > 0 && !options.parsedSource.requestedFrames.includes(selection.name)) {
-    warnings.push({
-      code: "DESKTOP_MCP_CURRENT_SELECTION_USED",
-      message: "Figma Desktop MCP operates on the current selection; the selected node name did not match every requested frame",
-      nodeId: selection.id,
-    });
+    throw new FigmaFrameSemanticMismatchError(options.parsedSource.requestedFrames, selection.name, selection.id);
   }
 
   const normalized = normalizeFigmaNodeTree({ id: selection.id, name: selection.name, type: selection.type });

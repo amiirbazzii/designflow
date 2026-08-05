@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { deflateSync } from "node:zlib";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { inspectRegisteredProject } from "@designflow/capability-implementation";
 import { previewRuntimeRecordSchema } from "./visual-validation-types";
@@ -37,6 +37,14 @@ function png(width: number, height: number, color: (x: number, y: number) => [nu
 }
 
 describe("Stage 5 preview runtime", () => {
+  test("the tracked React acceptance fixture exposes a safe declared preview script", async () => {
+    const root = resolve(import.meta.dir, "../../../apps/designflow-cli/tmp/designflow-stage7-preview");
+    const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
+    const context = inspectRegisteredProject({ id: "stage7-preview", name: "Stage 7 preview", rootPath: root });
+    expect(packageJson.scripts?.preview).toBe("vite --host 127.0.0.1");
+    expect(discoverPreviewCommand(context)).toMatchObject({ executable: "npm", scriptName: "preview", args: ["run", "preview", "--", "--host", "127.0.0.1", "--port", "0"] });
+  });
+
   test("discovers only the declared npm preview script and constructs safe argv", async () => {
     const root = await fixture();
     const context = inspectRegisteredProject({ id: "preview", name: "Preview", rootPath: root });

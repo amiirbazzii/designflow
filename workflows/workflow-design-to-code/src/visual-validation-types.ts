@@ -64,7 +64,7 @@ const domViewportEvidenceSchema = z.object({ viewport: visualViewportV1Schema, e
 export const screenshotEvidenceCollectionSchema = z.object({ schemaVersion: z.literal("1"), evidence: z.array(screenshotEvidenceV1Schema), domEvidence: z.array(domViewportEvidenceSchema).default([]), warnings: z.array(z.string().max(500)).max(64) }).strict();
 export const domEvidenceCollectionSchema = z.object({ schemaVersion: z.literal("1"), viewports: z.array(domViewportEvidenceSchema), warnings: z.array(z.string().max(500)).max(64) }).strict();
 export const visualComparisonMetricsSchema = z.object({
-  schemaVersion: z.literal("1"), mode: z.enum(["pixel-reference", "geometry-and-specification", "synthetic-fixture", "insufficient-reference"]),
+  schemaVersion: z.literal("1"), mode: z.enum(["pixel-reference", "geometry-and-specification", "real-reference", "synthetic-fixture", "insufficient-reference"]),
   comparison: z.object({
     algorithmVersion: z.literal("png-rgba-pixel-diff-v1"),
     threshold: z.number().min(0).max(255),

@@ -171,6 +171,8 @@ export const figmaScreenshotSnapshotSchema = z
   .object({
     nodeId: z.string().min(1),
     artifactId: z.string().min(1),
+    /** Optional source-native viewport identity supplied by an upstream capture. */
+    viewportId: z.string().min(1).optional(),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
     format: z.enum(["png", "jpeg", "webp"]),

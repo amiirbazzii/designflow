@@ -523,6 +523,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That frame could not be found in the Figma file.",
     suggestion: "Nothing was started. Check the frame name and try again.",
   },
+  ERR_FIGMA_FRAME_SEMANTIC_MISMATCH: {
+    problem: "The selected Figma node does not match the requested frame.",
+    suggestion: "Nothing was started. Check the selected layer or confirm the full frame, then try again.",
+  },
   ERR_FIGMA_SCREENSHOT_INVALID: {
     problem: "The reference screenshot the Figma connection sent back was unusable.",
     suggestion: TRY_AGAIN,

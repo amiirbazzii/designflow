@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { figmaSourceProvenanceSchema } from "./design-engineer-contracts";
 
 const boundedText = (limit: number) => z.string().max(limit);
 
@@ -84,8 +85,10 @@ export const screenshotEvidenceV1Schema = z.object({
   capturedAt: z.string().datetime(),
   captureMethod: z.enum(["figma", "fake-mcp", "browser", "synthetic"]),
   warnings: z.array(boundedText(500)).max(32),
-  authenticity: z.enum(["real-figma", "fake-mcp", "browser-rendered", "synthetic-fixture"]),
+  authenticity: z.enum(["real-figma", "fake-mcp", "browser-rendered", "synthetic-fixture", "unavailable"]),
   sourceLabel: z.string().min(1).max(64).optional(),
+  sourceArtifactId: z.string().min(1).optional(),
+  sourceProvenance: figmaSourceProvenanceSchema.optional(),
   specification: z.object({
     selector: z.string().min(1).max(256),
     boundingRectangle: z.object({ x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative() }).strict().optional(),
@@ -153,7 +156,7 @@ export const visualValidationReportV1Schema = z.object({
   confidence: z.number().min(0).max(1),
   limitations: z.array(boundedText(1_000)).max(64),
   captureWarnings: z.array(boundedText(500)).max(64),
-  comparisonMode: z.enum(["pixel-reference", "geometry-and-specification", "synthetic-fixture", "insufficient-reference"]),
+  comparisonMode: z.enum(["pixel-reference", "geometry-and-specification", "real-reference", "synthetic-fixture", "insufficient-reference"]),
   overallStatus: z.enum(["pass", "pass_with_findings", "fail", "inconclusive", "unavailable"]),
   passFailPolicy: z.object({ criticalFails: z.boolean(), majorDeterministicFails: z.boolean(), rendererFailureFails: z.boolean(), missingRequiredViewportFails: z.boolean(), unavailableReferenceIsInconclusive: z.boolean() }).strict(),
   agent: z.object({ id: z.literal("visual-validation-agent"), version: z.string().min(1), modelProfileId: z.string().min(1).optional() }).strict(),
