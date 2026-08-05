@@ -7,6 +7,7 @@ import {
   type CliContext,
 } from "./services/cli-runner";
 
+import { BrokenPipeCoordinator } from "./services/broken-pipe";
 import { SignalCoordinator } from "./services/signal-coordinator";
 import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
@@ -19,8 +20,20 @@ import type { Terminal } from "./ui/terminal";
  * without a pseudo-terminal.
  */
 
+// Set once per invocation in main(); print() consults it so that after a
+// consumer closes the pipe, every later write anywhere in the CLI becomes a
+// safe no-op instead of a second EPIPE.
+let activePipeGuard: BrokenPipeCoordinator | undefined;
+
 function print(line = ""): void {
-  process.stdout.write(`${line}\n`);
+  if (activePipeGuard?.isBroken("stdout") === true) return;
+  try {
+    process.stdout.write(`${line}\n`);
+  } catch (error) {
+    // A destroyed pipe can also throw synchronously; that exact condition
+    // is the one thing safe to ignore here.
+    if ((error as { code?: unknown }).code !== "EPIPE") throw error;
+  }
 }
 
 function prompt(question: string, options?: readonly string[]): string {
@@ -86,6 +99,17 @@ async function main(): Promise<number> {
 
   const coordinator = new SignalCoordinator({ notify: print });
 
+  // A consumer closing the pipe is a normal pipeline event: stop writing,
+  // cancel any active work through the same root signal Ctrl+C uses (as a
+  // quiet host cancellation, not an interrupt), and exit 0 — the consumer
+  // already got what it needed, and `set -o pipefail` scripts must not see
+  // a failure.
+  const pipeGuard = new BrokenPipeCoordinator({
+    onBrokenPipe: () => coordinator.abortQuietly(),
+  });
+  activePipeGuard = pipeGuard;
+  pipeGuard.install();
+
   // Reading stdin for a non-interactive command would block on a pipe that
   // never closes, so only the prompting paths drain it.
   const needsInput = argv.length === 0 || argv[0] === "run" || argv[0] === "answer" || argv[0] === "feedback-loop";
@@ -100,18 +124,32 @@ async function main(): Promise<number> {
   // deserves the same explanation as any other failure rather than a raw trace.
   let context: CliContext | undefined;
 
-  return coordinator.run(async (signal) => {
-    try {
-      context = createCliContext({ signal });
-      return await dispatch(argv, context, terminal);
-    } catch (error) {
-      print(formatError(error));
-      return 1;
-    } finally {
-      context?.close();
-      close();
-    }
-  });
+  try {
+    const code = await coordinator.run(async (signal) => {
+      try {
+        context = createCliContext({ signal });
+        return await dispatch(argv, context, terminal);
+      } catch (error) {
+        print(formatError(error));
+        return 1;
+      } finally {
+        context?.close();
+        close();
+      }
+    });
+    // A broken stdout is the pipeline's normal end, not a CLI failure —
+    // whatever the command reported after losing its output. A real user
+    // interrupt still wins: Ctrl+C reports 130 even if the pipe also broke.
+    return pipeGuard.stdoutBroken && !coordinator.interrupted ? 0 : code;
+  } catch (error) {
+    pipeGuard.uninstall();
+    activePipeGuard = undefined;
+    throw error;
+  }
+  // Deliberately NOT uninstalled on the success path: stdout writes are
+  // buffered, so the EPIPE for the final lines can arrive *after* main()
+  // returns, while the loop drains — exactly when the listener is still
+  // needed. The process is exiting; there is nothing to leak.
 }
 
 // `process.exitCode` instead of `process.exit()`: the loop drains buffered

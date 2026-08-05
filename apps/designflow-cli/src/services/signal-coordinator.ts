@@ -52,9 +52,13 @@ export class SignalCoordinator {
     return this.controller.signal;
   }
 
-  /** True once the first interrupt (or an explicit interrupt()) happened. */
+  /**
+   * True once a real user interrupt happened. Deliberately NOT derived from
+   * `signal.aborted`: a quiet host-side abort (broken output pipe) cancels
+   * work but is not an interrupt and must not produce exit code 130.
+   */
   public get interrupted(): boolean {
-    return this.interrupts > 0 || this.controller.signal.aborted;
+    return this.interrupts > 0;
   }
 
   /**
@@ -79,6 +83,16 @@ export class SignalCoordinator {
     }
     // Third and later interrupts: forceExit already ran (or was injected to
     // no-op in tests); nothing further to do.
+  }
+
+  /**
+   * Cancels the root signal without counting as a user interrupt: no
+   * notice, no effect on the exit code, no forced-exit escalation. Used by
+   * the broken-pipe coordinator — a closed consumer wants remaining work
+   * stopped, but it is not a Ctrl+C.
+   */
+  public abortQuietly(): void {
+    if (!this.controller.signal.aborted) this.controller.abort();
   }
 
   /**
