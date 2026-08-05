@@ -8,6 +8,19 @@ Your AI workforce in the terminal.
 npm install -g designflow-ai
 ```
 
+The npm package is named `designflow-ai`; the installed command is
+`designflow`. To run it without installing, use the package name:
+
+```bash
+npx --yes designflow-ai --help
+```
+
+(`npx designflow` would resolve a different, unrelated npm package.)
+
+This package is a command-line application, not a JavaScript library:
+it exposes the `designflow` binary and no importable API.
+`import "designflow-ai"` is intentionally not supported.
+
 ## First run
 
 The first invocation introduces itself and lays out its application directory:

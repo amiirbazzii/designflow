@@ -344,6 +344,45 @@ pack flow) remain open; MVP-2 is NOT complete.
   `designflow list | grep -q` step. The script itself was not modified.
 - **Validation:** build 26/26, typecheck 44/44, lint 26/26, tests
   2,320 pass / 1 skip / 0 fail, all `--force`, `Cached: 0`.
+---
+
+# Implementation status — MVP-2B-2: package entry points (2026-08-05)
+
+**Blocker B1 is complete.** B2 (stale-dist pack flow) remains open; MVP-2
+is NOT complete.
+
+- **Outcome selected: A — CLI-only package.** Evidence: the build emits
+  only `dist/main.js`; the `src/index.ts` facade is never compiled or
+  packed and exports composition-root internals (`createCliContext`,
+  config IO) that must not become public API; no repository code imports
+  `designflow-ai` as a library; the README advertises only CLI usage.
+  No supported programmatic API exists, so none was invented.
+- **Manifest before → after:** `main: ./dist/index.js`,
+  `types: ./dist/index.d.ts`, and a root `exports` entry pointing at the
+  same nonexistent files → all removed. `exports` now contains only
+  `"./package.json"`, so `import "designflow-ai"` fails with Node's
+  standard `ERR_PACKAGE_PATH_NOT_EXPORTED` (verified from an isolated
+  install) instead of a broken-path error — and can never resolve CLI
+  internals. `bin`/`files`/`type`/`engines`/`optionalDependencies`/
+  version untouched; no dependencies added (the bundle is self-contained
+  per the audit above).
+- **README correction:** documents that the package is `designflow-ai`,
+  the command is `designflow`, the supported npx form is
+  `npx --yes designflow-ai` (plain `npx designflow` resolves an
+  unrelated registry package), and that the MVP package is a CLI
+  application with no importable API.
+- **Tests:** 5 packed-manifest contract tests (every declared path
+  exists, no library entry point, bin/files/exports pinned, no new
+  dependencies, shebang intact) plus a full installed-package acceptance
+  test — real `npm pack` (4 files, 230.0 kB / 1.2 MB unpacked), isolated
+  no-workspace install, installed-manifest inspection, `--help` /
+  `--version` / `workers` against an isolated `DESIGNFLOW_HOME`, and the
+  rejected-import probe. EPIPE (informational, failure-precedence,
+  active-workflow), SIGINT, and the CLI smoke test re-run green.
+- **Compatibility:** no consumer existed for the broken library entry
+  point (it never resolved), so removal breaks nothing; the change is
+  strictly a truthful-metadata correction at unreleased 0.1.1.
+
 - **Exit-code precedence (corrected 2026-08-05, second pass):** the first
   implementation could overwrite a genuine nonzero command result with 0
   when stdout later broke. Final model (`ExitOutcome` +

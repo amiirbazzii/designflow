@@ -3,8 +3,6 @@
   "version": "0.1.1",
   "description": "AI workflows that turn ideas into results, from your terminal",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
     "designflow": "dist/main.js"
   },
@@ -12,10 +10,7 @@
     "dist"
   ],
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "bun build src/main.ts --target=node --format=esm --outfile=dist/main.js",
