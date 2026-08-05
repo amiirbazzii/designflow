@@ -14,7 +14,7 @@ import {
   SAMPLE_REQUEST,
   createHost,
   type ProductBriefHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

@@ -1,12 +1,12 @@
-// packages/core/src/service/execution-service.test.ts
+// packages/core/src/application/execution/execution-service.test.ts
 import { describe, expect, test, beforeEach } from "bun:test";
 import { z } from "zod";
 import { ExecutionService } from "./execution-service";
-import { CapabilityRegistry } from "../registry";
-import { InMemoryExecutionRepository } from "../repository";
-import { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "../events";
-import { InMemoryPolicyEvaluator } from "../policy";
-import { InMemoryApprovalManager } from "../approval";
+import { CapabilityRegistry } from "../../registry";
+import { InMemoryExecutionRepository } from "../../repository";
+import { InMemoryEventPublisher, ExecutionEventRepositorySubscriber } from "../../events";
+import { InMemoryPolicyEvaluator } from "../../policy";
+import { InMemoryApprovalManager } from "../../approval";
 import type {
   WorkflowPackage,
   WorkflowResolver,

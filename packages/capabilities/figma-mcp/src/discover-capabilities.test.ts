@@ -1,6 +1,6 @@
 // packages/capabilities/figma-mcp/src/discover-capabilities.test.ts
 import { describe, expect, test } from "bun:test";
-import { InMemoryMcpClient } from "./in-memory-mcp-client.test-support";
+import { InMemoryMcpClient } from "../test/support/in-memory-mcp-client";
 import { discoverFigmaMcpCapabilities } from "./discover-capabilities";
 
 describe("discovery", () => {

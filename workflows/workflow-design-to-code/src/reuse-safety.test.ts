@@ -9,7 +9,7 @@ import {
   SAMPLE_DESIGN,
   createHost,
   type DesignToCodeHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 
 /**
  * Stage 1 regression suite: reuse must depend on the true identity of a run

@@ -38,7 +38,7 @@ function png(width: number, height: number, color: (x: number, y: number) => [nu
 
 describe("Stage 5 preview runtime", () => {
   test("the tracked React acceptance fixture exposes a safe declared preview script", async () => {
-    const root = resolve(import.meta.dir, "../../../apps/designflow-cli/tmp/designflow-stage7-preview");
+    const root = resolve(import.meta.dir, "../../../test-fixtures/designflow-stage7-preview");
     const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
     const context = inspectRegisteredProject({ id: "stage7-preview", name: "Stage 7 preview", rootPath: root });
     expect(packageJson.scripts?.preview).toBe("vite --host 127.0.0.1");

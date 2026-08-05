@@ -20,6 +20,11 @@ dist/
 # Runtime storage
 .designflow/
 
+# Generated project copies and preview output. Source-controlled acceptance
+# fixtures live under test-fixtures/ and are intentionally kept stable.
+/apps/designflow-cli/tmp/
+/test-fixtures/.generated/
+
 # Ruflo local secrets and runtime data
 .env
 .env.local

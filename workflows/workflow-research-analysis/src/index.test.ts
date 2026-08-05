@@ -19,7 +19,7 @@ import {
   createHost,
   incrementalMetadata,
   type ResearchAnalysisHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

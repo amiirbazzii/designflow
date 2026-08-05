@@ -4,7 +4,7 @@ import {
   createAgentFoundationHost,
   SAMPLE_AGENT_FOUNDATION_INPUT,
   type AgentFoundationHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 import { AGENT_FOUNDATION_ARTIFACT_IDS } from "./agent-foundation-types";
 
 /**

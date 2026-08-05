@@ -15,7 +15,7 @@ import {
   createHost,
   incrementalMetadata,
   type DesignToCodeHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

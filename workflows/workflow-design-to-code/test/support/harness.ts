@@ -1,4 +1,4 @@
-// workflows/workflow-design-to-code/src/harness.test-support.ts
+// workflows/workflow-design-to-code/test/support/harness.ts
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import {
@@ -30,10 +30,10 @@ import {
   createSpecializedAgentRegistry,
   type SpecializedAgentCatalogOptions,
 } from "@designflow/agents";
-import { designToCodeWorkflowPackage } from "./manifest";
-import { designToCodeAgentFoundationWorkflowPackage } from "./agent-foundation-manifest";
-import { designToCodeFigmaSpecificationWorkflowPackage } from "./figma-specification-manifest";
-import { designToCodeImplementationWorkflowPackage } from "./implementation-manifest";
+import { designToCodeWorkflowPackage } from "../../src/manifest";
+import { designToCodeAgentFoundationWorkflowPackage } from "../../src/agent-foundation-manifest";
+import { designToCodeFigmaSpecificationWorkflowPackage } from "../../src/figma-specification-manifest";
+import { designToCodeImplementationWorkflowPackage } from "../../src/implementation-manifest";
 
 /**
  * A fully wired DesignFlow host, for the workflow's integration tests.
@@ -288,7 +288,7 @@ const require = createRequire(import.meta.url);
 /** The fake MCP server `@designflow/mcp`'s own tests spawn — reused here for the same reason. */
 function fakeMcpServerPath(): string {
   const packageDir = fileURLToPath(new URL(".", `file://${require.resolve("@designflow/mcp/package.json")}`));
-  return `${packageDir}src/fake-server-entry.ts`;
+  return `${packageDir}test/fixtures/fake-server/fake-server-entry.ts`;
 }
 
 /**

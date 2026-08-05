@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import type { ArtifactStore, CapabilityContext } from "@designflow/sdk";
-import type { FakeMcpFixtures } from "@designflow/mcp";
+import type { FakeMcpFixtures } from "../../../mcp/test/fixtures/fake-server/fake-server-fixtures";
 import { buildFigmaSourceSnapshot } from "./build-snapshot";
 import { parseFigmaSource } from "./parse-figma-source";
 
@@ -20,11 +20,11 @@ import { parseFigmaSource } from "./parse-figma-source";
 // package rather than a relative path into its `src/` — this package only
 // declares `@designflow/mcp` as a devDependency (test-only), and the
 // installed workspace package's `dist` does not ship the fake server, so
-// this reaches into its `src` the same way any workspace consumer resolves
-// a sibling package's source for a dev-only test fixture.
+// this reaches into its package-level test fixture instead of production
+// source.
 const require = createRequire(import.meta.url);
 const MCP_PACKAGE_DIR = fileURLToPath(new URL(".", `file://${require.resolve("@designflow/mcp/package.json")}`));
-const FAKE_SERVER_PATH = `${MCP_PACKAGE_DIR}src/fake-server-entry.ts`;
+const FAKE_SERVER_PATH = `${MCP_PACKAGE_DIR}test/fixtures/fake-server/fake-server-entry.ts`;
 
 const clients: Array<{ close(): void }> = [];
 

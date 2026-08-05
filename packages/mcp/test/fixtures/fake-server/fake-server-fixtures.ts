@@ -1,4 +1,4 @@
-// packages/mcp/src/fake-server-fixtures.ts
+// packages/mcp/test/fixtures/fake-server/fake-server-fixtures.ts
 import { z } from "zod";
 
 /** What `fake-server-entry.ts` serves, configured via the `FAKE_MCP_FIXTURES` env var. */

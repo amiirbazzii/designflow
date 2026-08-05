@@ -1,7 +1,7 @@
 // packages/capabilities/figma-mcp/src/figma-mcp-tools.test.ts
 import { describe, expect, test } from "bun:test";
 import { DesignFlowError } from "@designflow/sdk";
-import { InMemoryMcpClient } from "./in-memory-mcp-client.test-support";
+import { InMemoryMcpClient } from "../test/support/in-memory-mcp-client";
 import { discoverFigmaMcpCapabilities } from "./discover-capabilities";
 import { figmaMcpGetDocument, figmaMcpGetStyles, figmaMcpGetVariables } from "./figma-mcp-tools";
 import { FigmaMcpUnsupportedOperationError } from "./errors";

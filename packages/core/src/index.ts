@@ -73,9 +73,9 @@ export type {
 export { InMemoryPolicyEvaluator } from "./policy";
 
 // ── Service ────────────────────────────────────────────────────────
-export { ExecutionService } from "./service";
-export type { WorkflowResolver, ExecutionServiceConfig } from "./service";
-export { WorkflowNotFoundError, InvalidRequestError } from "./service";
+export { ExecutionService } from "./application/execution";
+export type { WorkflowResolver, ExecutionServiceConfig } from "./application/execution";
+export { WorkflowNotFoundError, InvalidRequestError } from "./application/execution";
 
 // ── Composition ────────────────────────────────────────────────────
 export {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createFigmaSpecificationHost, SAMPLE_FIGMA_MCP_FIXTURES, type FigmaSpecificationHost } from "./harness.test-support";
+import { createFigmaSpecificationHost, SAMPLE_FIGMA_MCP_FIXTURES, type FigmaSpecificationHost } from "../test/support/harness";
 import { designToCodeImplementationApprovalPolicy } from "./implementation-manifest";
 import { IMPLEMENTATION_ARTIFACT_IDS } from "./implementation-types";
 import { VISUAL_VALIDATION_ARTIFACT_IDS } from "./visual-validation-types";

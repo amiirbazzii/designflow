@@ -21,7 +21,7 @@ const contexts: CliContext[] = [];
 
 function fakeServerPath(): string {
   const packageDir = fileURLToPath(new URL(".", `file://${require.resolve("@designflow/mcp/package.json")}`));
-  return `${packageDir}src/fake-server-entry.ts`;
+  return `${packageDir}test/fixtures/fake-server/fake-server-entry.ts`;
 }
 
 afterEach(() => {

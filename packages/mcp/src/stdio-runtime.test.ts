@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { McpRuntime } from "./stdio-runtime";
-import type { FakeMcpFixtures } from "./fake-server-fixtures";
+import type { FakeMcpFixtures } from "../test/fixtures/fake-server/fake-server-fixtures";
 
 /**
  * Every test here spawns a *real, separate process* — the fake MCP server
@@ -13,7 +13,7 @@ import type { FakeMcpFixtures } from "./fake-server-fixtures";
  * rather than Figma's own server.
  */
 
-const FAKE_SERVER_PATH = fileURLToPath(new URL("./fake-server-entry.ts", import.meta.url));
+const FAKE_SERVER_PATH = fileURLToPath(new URL("../test/fixtures/fake-server/fake-server-entry.ts", import.meta.url));
 
 const clients: McpRuntime[] = [];
 

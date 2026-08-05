@@ -1,4 +1,4 @@
-// workflows/workflow-research-analysis/src/harness.test-support.ts
+// workflows/workflow-research-analysis/test/support/harness.ts
 import {
   ArtifactIntelligenceService,
   ArtifactSetReconciler,
@@ -25,7 +25,7 @@ import {
   type Logger,
   type WorkflowPackage,
 } from "@designflow/sdk";
-import { researchAnalysisWorkflowPackage } from "./manifest";
+import { researchAnalysisWorkflowPackage } from "../../src/manifest";
 
 /**
  * A fully wired DesignFlow host, for the workflow's integration tests.

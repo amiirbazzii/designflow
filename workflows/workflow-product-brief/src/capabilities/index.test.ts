@@ -19,7 +19,7 @@ import {
   riskAssumptionRegisterSchema,
   scopeDefinitionSchema,
 } from "../types";
-import { SAMPLE_REQUEST } from "../harness.test-support";
+import { SAMPLE_REQUEST } from "../../test/support/harness";
 
 /**
  * Unit tests for each capability, exercised directly against `execute` rather

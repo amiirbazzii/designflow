@@ -1,4 +1,4 @@
-// packages/core/src/service/execution-service.ts
+// packages/core/src/application/execution/execution-service.ts
 import { createHash } from "node:crypto";
 import {
   executionRequestSchema,
@@ -36,11 +36,11 @@ import {
   DesignFlowError,
 } from "@designflow/sdk";
 
-import { CapabilityRegistry } from "../registry";
-import { ExecutionEngine } from "../engine";
-import { ExecutionServiceWorkflowResolver } from "../composition";
-import { PolicyViolationError, ApprovalError } from "../errors";
-import type { PendingChildApproval, PendingNodeApproval } from "../types";
+import { CapabilityRegistry } from "../../registry";
+import { ExecutionEngine } from "../../engine";
+import { ExecutionServiceWorkflowResolver } from "../../composition";
+import { PolicyViolationError, ApprovalError } from "../../errors";
+import type { PendingChildApproval, PendingNodeApproval } from "../../types";
 
 // ── Errors ──────────────────────────────────────────────────────
 

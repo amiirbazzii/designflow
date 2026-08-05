@@ -5,7 +5,7 @@ import {
   SAMPLE_FIGMA_MCP_FIXTURES,
   SAMPLE_FIGMA_SPECIFICATION_INPUT,
   type FigmaSpecificationHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 import { FIGMA_SPECIFICATION_ARTIFACT_IDS } from "./figma-specification-types";
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ArtifactStore, CapabilityContext } from "@designflow/sdk";
 import { buildFigmaDesktopSourceSnapshot } from "./figma-desktop-adapter";
 import { parseFigmaSource } from "./parse-figma-source";
-import { InMemoryMcpClient } from "./in-memory-mcp-client.test-support";
+import { InMemoryMcpClient } from "../test/support/in-memory-mcp-client";
 
 function store(): ArtifactStore {
   const payloads = new Map<string, unknown>();

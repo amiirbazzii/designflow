@@ -42,7 +42,7 @@ const FIGMA_FIXTURES = {
 
 function fakeServerPath(): string {
   const packageDir = fileURLToPath(new URL(".", `file://${require.resolve("@designflow/mcp/package.json")}`));
-  return `${packageDir}src/fake-server-entry.ts`;
+  return `${packageDir}test/fixtures/fake-server/fake-server-entry.ts`;
 }
 
 function context(flags: { implementation: boolean }): CliContext {

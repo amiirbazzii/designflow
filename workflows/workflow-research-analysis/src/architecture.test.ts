@@ -14,7 +14,7 @@ import { join } from "node:path";
  * package is no longer safely re-runnable and pure — exactly what a
  * deterministic workflow promises its caller.
  *
- * `harness.test-support.ts` is deliberately excluded: it is imported only by
+ * `test/support/harness.ts` is deliberately excluded: it is imported only by
  * this package's own `*.test.ts` files (never by real `src` code) and exists
  * solely to give tests a throwaway `@designflow/core` + `@designflow/product`
  * harness to run the workflow end to end. It is the test-only equivalent of a

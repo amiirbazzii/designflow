@@ -15,5 +15,3 @@ export {
 } from "./errors";
 export type { McpErrorCode } from "./errors";
 export type { McpToolFailure } from "./errors";
-export { fakeMcpFixturesSchema } from "./fake-server-fixtures";
-export type { FakeMcpFixtures } from "./fake-server-fixtures";

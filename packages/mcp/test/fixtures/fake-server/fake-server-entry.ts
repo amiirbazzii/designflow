@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// packages/mcp/src/fake-server-entry.ts
+// packages/mcp/test/fixtures/fake-server/fake-server-entry.ts
 //
 // A protocol-faithful fake MCP server, run as a real, separate process over
 // real stdio pipes — the same transport `McpRuntime` speaks to a real

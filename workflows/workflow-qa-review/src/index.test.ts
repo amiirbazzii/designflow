@@ -16,7 +16,7 @@ import {
   createHost,
   incrementalMetadata,
   type QaReviewHost,
-} from "./harness.test-support";
+} from "../test/support/harness";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
