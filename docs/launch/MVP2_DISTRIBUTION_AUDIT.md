@@ -346,6 +346,61 @@ pack flow) remain open; MVP-2 is NOT complete.
   2,320 pass / 1 skip / 0 fail, all `--force`, `Cached: 0`.
 ---
 
+# Implementation status — MVP-2B-4: expanded smoke coverage and MVP-2 completion (2026-08-06)
+
+**All three blockers are complete (B1, B2, B3) and MVP-2 distribution
+readiness is COMPLETE.** The canonical release smoke command is:
+
+```bash
+bun run smoke:cli        # = bash scripts/cli-smoke-test.sh (serial)
+```
+
+**Expanded matrix (all from the real canonical tarball; exit 0 overall):**
+
+| Check | Result |
+|---|---|
+| package (prepack + pack) | PASS |
+| tarball contract (4 files, manifest paths, shebang, +x, CLI-only exports) | PASS |
+| security scan (no secrets/paths/fixtures/local state in tarball or bundle) | PASS |
+| global-prefix install + full worker journey (existing assertions retained) | PASS |
+| local consumer install (`--omit=optional`, bin resolves inside consumer) | PASS |
+| installed CLI commands (help/version/workers/doctor/settings/projects/history/sessions/traces/artifacts/memory/cleanup; `artifacts` without id exits 1 by documented design) | PASS |
+| credentials/config honesty (env-isolated: deterministic mode, safe doctor guidance, no secret values) | PASS |
+| Playwright absent (package omitted → `browser: unavailable`, never a false pass) | PASS |
+| registrations & gating (4 workers visible; distinct per-worker models in settings; experimental workflow id unresolvable without the flag; no agent-id leaks — deterministic authority never presented as agent authority) | PASS |
+| CLI-only import contract (root import → `ERR_PACKAGE_PATH_NOT_EXPORTED`; `designflow-ai/package.json` importable with no side effects) | PASS |
+| npm-exec local tarball (`npm exec --package=<tgz> -- designflow --version` → 0.1.1; nothing invokes plain `npx designflow`) | PASS |
+| EPIPE (installed binary, `workers \| grep -q` under pipefail) | PASS |
+| SIGINT (installed binary) | **PASS_WITH_LIMITATION** — the installed-binary check interrupts the CLI pre-dispatch (stdin drain) and proves exit 130 with no stack trace; the full graceful workflow cancellation (cancelled record, MCP child teardown, store close) is proven at **source level** by `sigint-acceptance.test.ts` against the real composition root. Two distinct evidence classes, both green; non-blocking. |
+| project fixture (register, list, doctor inspection, fixture unmodified) | PASS |
+| state isolation (created state parses; real `~/.designflow` mtime-proven untouched; all temp state removed by trap) | PASS |
+
+**Other outcomes:**
+- The agent-centric surface holds from the installed package: four workers
+  with distinct model assignments, no internal agent/workflow/tool ids in
+  any user-facing output (existing leak-check retained), Design Engineer
+  agent-driven path present but experimental-gated. Facts the CLI does not
+  expose (e.g. internal registry composition) are deliberately not
+  asserted — no debug API was added.
+- **Legacy tarball removed:** `apps/designflow-cli/designflow-0.1.0.tgz`
+  was proven ignored (`git check-ignore`), generated (an old `npm pack`
+  artifact of the obsolete `designflow@0.1.0` naming), unreferenced (only
+  historical ADR transcript text mentions the filename), and regenerable —
+  deleted.
+- Stale-output freshness re-verified after the changes: PASSED (same
+  three scenarios; payload-identical packs).
+- Full forced validation: build 26/26, typecheck 44/44, lint 26/26, tests
+  2,337 pass / 1 skip / 0 fail.
+- Root `package.json` gained the `smoke:cli` script (script only, no
+  dependencies).
+
+**MVP-2 completion recommendation: COMPLETE.** Remaining distribution
+evidence beyond MVP scope (live provider, real Figma, Playwright browser
+download, real-project apply) belongs to L5 real-environment validation
+per the launch gates.
+
+---
+
 # Implementation status — MVP-2B-3: stale-output-proof packaging (2026-08-05)
 
 **Blocker B2 is complete.** MVP-2 is NOT complete until the smoke-coverage

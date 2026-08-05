@@ -13,7 +13,8 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test"
+    "test": "turbo test",
+    "smoke:cli": "bash scripts/cli-smoke-test.sh"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

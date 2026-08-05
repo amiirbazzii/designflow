@@ -17,6 +17,17 @@ PREFIX="$WORK/npm-global"
 export DESIGNFLOW_HOME="$WORK/home"
 export PATH="$PREFIX/bin:$PATH"
 
+# Installed-distribution checks must not inherit operator credentials.
+unset OPENROUTER_API_KEY FIGMA_ACCESS_TOKEN FIGMA_TOKEN 2>/dev/null || true
+
+# Real-home protection: anything newer than this marker inside the real
+# ~/.designflow at the end of the run is a state-isolation failure.
+REAL_HOME_MARKER="$WORK/real-home-marker"
+touch "$REAL_HOME_MARKER"
+
+RESULTS=()
+mark() { RESULTS+=("$1: $2"); }
+
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
@@ -339,6 +350,172 @@ done
 
 [ "$LEAK_FOUND" -eq 0 ] || fail "internal vocabulary leaked into user-facing output — see FAIL lines above"
 echo "ok"
+
+
+# ════════════════════════════════════════════════════════════════
+# MVP-2B-4 expanded installed-distribution matrix
+# ════════════════════════════════════════════════════════════════
+mark "package" "PASS"          # pack + prepack + dist assertions above
+mark "global-prefix install" "PASS"
+mark "CLI commands (global journey)" "PASS"
+
+step "tarball inventory and packed manifest"
+TARLIST="$(tar -tzf "$WORK/$TARBALL" | sort)"
+EXPECTED_TARLIST="package/LICENSE
+package/README.md
+package/dist/main.js
+package/package.json"
+[ "$TARLIST" = "$EXPECTED_TARLIST" ] || fail "tarball contents differ from the documented 4-file MVP payload: $TARLIST"
+mkdir -p "$WORK/extract" && tar -xzf "$WORK/$TARBALL" -C "$WORK/extract"
+node -e '
+  const fs = require("fs");
+  const pkg = JSON.parse(fs.readFileSync(process.argv[1] + "/package/package.json", "utf8"));
+  const assert = (cond, msg) => { if (!cond) { console.error("packed manifest: " + msg); process.exit(1); } };
+  assert(pkg.name === "designflow-ai", "name");
+  assert(pkg.version === "0.1.1", "version");
+  assert(pkg.bin && pkg.bin.designflow === "dist/main.js", "bin");
+  assert(pkg.main === undefined && pkg.types === undefined, "no library entry point");
+  assert(JSON.stringify(pkg.exports) === JSON.stringify({"./package.json": "./package.json"}), "exports is ./package.json only");
+' "$WORK/extract" || fail "packed manifest contract violated"
+head -c 19 "$WORK/extract/package/dist/main.js" | grep -q "#!/usr/bin/env node" || fail "packed bundle lost its shebang"
+[ -x "$WORK/extract/package/dist/main.js" ] || fail "packed bundle is not executable"
+echo "ok — 4 files, manifest and binary contract intact"
+mark "tarball contract" "PASS"
+
+step "security scan: tarball and bundle hygiene"
+grep -qE "designflow-cli/src/|\.claude-flow|\.env$" <<<"$TARLIST" && fail "tarball contains source, env, or local tooling entries"
+BUNDLE_FILE="$WORK/extract/package/dist/main.js"
+grep -qE "sk-or-v1-[A-Za-z0-9]{8}|ghp_[A-Za-z0-9]{8}|AKIA[A-Z0-9]{8}|-----BEGIN [A-Z ]*PRIVATE" "$BUNDLE_FILE" && fail "credential-shaped value in bundle"
+grep -q "/Users/wallex" "$BUNDLE_FILE" && fail "operator path in bundle"
+grep -q "FAKE_MCP_FIXTURES" "$BUNDLE_FILE" && fail "test fixture vocabulary in bundle"
+echo "ok — no secrets, operator paths, fixtures, or local state in the package"
+mark "security scan" "PASS"
+
+step "local isolated consumer install (--omit=optional, no Playwright)"
+CONSUMER="$WORK/consumer"
+mkdir -p "$CONSUMER"
+printf '{"name":"smoke-consumer","private":true}\n' > "$CONSUMER/package.json"
+(cd "$CONSUMER" && npm install --omit=optional --no-audit --no-fund "$WORK/$TARBALL" >/dev/null)
+LOCAL_BIN="$CONSUMER/node_modules/.bin/designflow"
+[ -x "$LOCAL_BIN" ] || fail "consumer install produced no executable designflow bin"
+BIN_TARGET="$(node -e 'console.log(require("fs").realpathSync(process.argv[1]))' "$LOCAL_BIN")"
+grep -q "$CONSUMER/node_modules/designflow-ai" <<<"$BIN_TARGET" || fail "installed bin does not resolve inside the consumer installation: $BIN_TARGET"
+echo "ok — bin resolves to $BIN_TARGET"
+mark "local install" "PASS"
+
+step "installed CLI non-destructive command matrix (fresh isolated home)"
+LOCAL_HOME="$WORK/local-home"
+lcli() { DESIGNFLOW_HOME="$LOCAL_HOME" "$LOCAL_BIN" "$@"; }
+lcli --help | grep -q "your AI workforce" || fail "--help"
+lcli --version | grep -q "DesignFlow 0.1.1" || fail "--version"
+lcli workers | grep -q "Design Engineer" || fail "workers"
+DOCTOR="$(lcli doctor)"
+grep -q "Doctor is read-only" <<<"$DOCTOR" || fail "doctor did not state its read-only contract"
+lcli settings | grep -q "DesignFlow 0.1.1" || fail "settings"
+lcli projects | grep -q "No projects registered yet." || fail "projects empty state"
+lcli history | grep -q "Nothing has run yet." || fail "history empty state"
+lcli sessions | grep -q "Nothing is waiting on you" || fail "sessions empty state"
+lcli traces | grep -q "No AI decisions have been made yet." || fail "traces empty state"
+# `artifacts` without a run id exits 1 by design (documented
+# missing-argument behavior) while printing usage — assert both facts.
+ARTIFACTS_OUT="$(lcli artifacts 2>&1)" && ARTIFACTS_CODE=0 || ARTIFACTS_CODE=$?
+[ "$ARTIFACTS_CODE" -eq 1 ] || fail "artifacts without an id should exit 1 (documented missing-argument behavior), got $ARTIFACTS_CODE"
+grep -q "designflow artifacts <run-id>" <<<"$ARTIFACTS_OUT" || fail "artifacts missing-argument usage text"
+lcli memory | grep -q "Nothing remembered yet." || fail "memory empty state"
+lcli cleanup | grep -q "Nothing to clean up." || fail "cleanup empty state"
+echo "ok — 12 commands, exit 0, stable empty-state semantics"
+mark "CLI commands (local consumer)" "PASS"
+
+step "no-credential and no-Figma honesty (doctor, env-isolated)"
+grep -q "No model-provider credential is configured; deterministic execution remains available." <<<"$DOCTOR" \
+  || fail "doctor did not report the missing model credential honestly"
+grep -q "Figma MCP integration is not configured" <<<"$DOCTOR" || fail "doctor did not report Figma as unconfigured"
+grep -qE "sk-or-|OPENROUTER_API_KEY=[^ ]" <<<"$DOCTOR" && fail "doctor printed a credential-shaped value"
+mark "credentials/config honesty" "PASS"
+echo "ok"
+
+step "optional Playwright absence is honest (package omitted, not falsely healthy)"
+[ -d "$CONSUMER/node_modules/playwright" ] && fail "--omit=optional still installed playwright"
+grep -q "\[unavailable\] browser:" <<<"$DOCTOR" || fail "doctor did not report the browser as unavailable"
+grep -q "\[healthy\] browser" <<<"$DOCTOR" && fail "doctor claimed a healthy browser without Playwright"
+echo "ok — renderer absence reported, never a false visual pass"
+mark "Playwright absent" "PASS"
+
+step "experimental Design Engineer implementation path stays gated"
+GATED="$(lcli run design-to-code-figma-specification 2>&1 || true)"
+grep -qi "no such worker" <<<"$GATED" || fail "the experimental workflow id resolved without the experimental flag"
+echo "ok — experimental workflow unreachable without explicit configuration"
+mark "registrations & gating" "PASS"
+
+step "CLI-only import contract from the consumer project"
+IMPORT_PROBE="$(cd "$CONSUMER" && node -e 'import("designflow-ai").then(() => { console.log("RESOLVED"); process.exit(7); }, (e) => { console.log(e.code ?? e.name); })')"
+grep -q "ERR_PACKAGE_PATH_NOT_EXPORTED" <<<"$IMPORT_PROBE" || fail "root import did not fail with the documented error: $IMPORT_PROBE"
+META_PROBE="$(cd "$CONSUMER" && node -e 'const p = require("designflow-ai/package.json"); if (p.version !== "0.1.1") process.exit(1); console.log("META-ONLY");')"
+[ "$META_PROBE" = "META-ONLY" ] || fail "package.json export failed or produced side-effect output: $META_PROBE"
+echo "ok — root import rejected, metadata importable, no side effects"
+mark "CLI-only contract" "PASS"
+
+step "npm exec against the local tarball (documented package name designflow-ai)"
+NPX_OUT="$(cd "$WORK" && DESIGNFLOW_HOME="$WORK/npx-home" npm exec --yes --package="$WORK/$TARBALL" -- designflow --version 2>/dev/null | tail -1)"
+grep -q "DesignFlow 0.1.1" <<<"$NPX_OUT" || fail "npm exec local-tarball invocation failed: $NPX_OUT"
+echo "ok — $NPX_OUT"
+mark "npm-exec" "PASS"
+
+step "installed-binary EPIPE: early-closing consumer under pipefail"
+lcli workers | grep -q "Design Engineer" || fail "piped workers | grep -q failed under pipefail (EPIPE regression)"
+echo "ok — pipeline succeeded; no unhandled EPIPE (nonzero-failure precedence is covered by the dedicated epipe-acceptance suite)"
+mark "EPIPE (installed)" "PASS"
+
+step "installed-binary SIGINT: interrupted process dies with 130 and no stack trace"
+# Evidence class: installed-binary interrupt while the CLI is waiting on
+# piped stdin (pre-dispatch). The full graceful workflow-cancellation path
+# (cancelled record, MCP child teardown, store close) is covered at source
+# level by sigint-acceptance.test.ts — that distinction is deliberate and
+# recorded as a limitation, not hidden.
+SIGINT_OUT="$WORK/sigint-out.log"
+DESIGNFLOW_HOME="$LOCAL_HOME" "$LOCAL_BIN" run design-engineer > "$SIGINT_OUT" 2>&1 < <(sleep 300) &
+SIGINT_PID=$!
+sleep 1
+kill -INT "$SIGINT_PID" 2>/dev/null || true
+for _ in $(seq 1 50); do
+  if ! kill -0 "$SIGINT_PID" 2>/dev/null; then break; fi
+  sleep 0.1
+done
+kill -0 "$SIGINT_PID" 2>/dev/null && { kill -9 "$SIGINT_PID"; fail "installed CLI did not exit after SIGINT"; }
+SIGINT_CODE=0
+wait "$SIGINT_PID" 2>/dev/null && SIGINT_CODE=0 || SIGINT_CODE=$?
+[ "$SIGINT_CODE" -eq 130 ] || fail "installed CLI SIGINT exit code was $SIGINT_CODE, expected 130"
+grep -q "    at " "$SIGINT_OUT" && fail "SIGINT produced a stack trace"
+echo "ok — exit 130, no stack trace (workflow-level graceful cancellation evidence lives in sigint-acceptance.test.ts)"
+mark "SIGINT (installed)" "PASS_WITH_LIMITATION (pre-dispatch interrupt; graceful workflow cancellation proven at source level)"
+
+step "project registration fixture through the installed CLI"
+PROJ="$WORK/fixture-project"
+mkdir -p "$PROJ"
+printf '{"name":"smoke-fixture","dependencies":{"react":"18.0.0"}}\n' > "$PROJ/package.json"
+touch "$PROJ/package-lock.json"
+PROJ_SUM_BEFORE="$(find "$PROJ" -type f -exec shasum -a 256 {} + | sort | shasum -a 256)"
+lcli projects add --name SmokeFixture --path "$PROJ" | grep -q "Project registered" || fail "projects add failed"
+lcli projects | grep -q "$PROJ" || fail "projects did not list the canonical fixture path"
+lcli doctor | grep -q "SmokeFixture is accessible" || fail "doctor did not inspect the registered project"
+PROJ_SUM_AFTER="$(find "$PROJ" -type f -exec shasum -a 256 {} + | sort | shasum -a 256)"
+[ "$PROJ_SUM_BEFORE" = "$PROJ_SUM_AFTER" ] || fail "audit-only commands modified the fixture project"
+echo "ok — registered, listed, inspected, unmodified"
+mark "project fixture" "PASS"
+
+step "state isolation: created state parses; nothing written to the real home or repository"
+node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$LOCAL_HOME/config.json" || fail "isolated config.json does not parse"
+node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$LOCAL_HOME/history/runs.json" || fail "isolated runs.json does not parse"
+echo "created state: $(cd "$LOCAL_HOME" && find . -type f | sort | tr '\n' ' ')"
+if [ -d "$HOME/.designflow" ]; then
+  REAL_TOUCHED="$(find "$HOME/.designflow" -newer "$REAL_HOME_MARKER" -type f | head -5)"
+  [ -z "$REAL_TOUCHED" ] || fail "files were written under the real ~/.designflow: $REAL_TOUCHED"
+fi
+echo "ok — all state under isolated homes; real ~/.designflow untouched"
+mark "state isolation" "PASS"
+
+printf '\n\033[1m== MVP-2B-4 smoke matrix ==\033[0m\n'
+for line in "${RESULTS[@]}"; do printf '  %s\n' "$line"; done
 
 step "cleanup: temporary global install is removed on exit"
 # `cleanup` is registered on `trap ... EXIT` at the top of this script and has
