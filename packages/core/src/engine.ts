@@ -59,6 +59,7 @@ import type { ExecuteResult, ApplyResult } from "./lifecycle";
 import { WorkflowCompiler } from "./compiler";
 import { CapabilityRegistry } from "./registry";
 import {
+  ExecutionCancelledError,
   ExecutionError,
   WorkflowCompositionCycleError,
   WorkflowResolverNotConfiguredError,
@@ -488,6 +489,7 @@ export class ExecutionEngine {
     definition: WorkflowDefinition,
     workflowId: string,
     executionId?: string,
+    rootSignal?: AbortSignal,
   ): Promise<ExecutionResult> {
     const resumeId = executionId ?? crypto.randomUUID();
 
@@ -573,6 +575,12 @@ export class ExecutionEngine {
         : readProgressCheckpoint(checkpoint?.metadata) ?? undefined);
 
     const abortController = new AbortController();
+    // Link the resume context to the caller-owned root signal, so Ctrl+C
+    // reaches a resumed execution exactly as it reaches a fresh one.
+    if (rootSignal !== undefined) {
+      if (rootSignal.aborted) abortController.abort();
+      else rootSignal.addEventListener("abort", () => abortController.abort(), { once: true });
+    }
 
     const executionContext: ExecutionContext = {
       runId: resumeId,
@@ -794,6 +802,16 @@ export class ExecutionEngine {
     }
 
     for (let layerIndex = 0; layerIndex < plan.layers.length; layerIndex++) {
+      // Root cancellation: no new layer starts after the caller's signal
+      // aborts. Work already in flight unwinds through its own signal-aware
+      // paths; this only stops *new* nodes from beginning.
+      if (context.signal.aborted) {
+        throw new ExecutionCancelledError(
+          "Execution cancelled before starting the next step",
+          { workflowId: context.workflowId, executionId: context.runId },
+        );
+      }
+
       const layer = plan.layers[layerIndex];
       if (!layer) continue;
 
@@ -1495,6 +1513,7 @@ export class ExecutionEngine {
       parentWorkflowId: context.workflowId,
       compositionPath,
       metadata: context.metadata,
+      signal: context.signal,
     });
 
     if (outcome.status === "pending_approval") {

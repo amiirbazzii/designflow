@@ -38,6 +38,18 @@ export class ExecutionError extends DesignFlowError {
   }
 }
 
+/** The caller's root cancellation signal aborted the execution. */
+export class ExecutionCancelledError extends DesignFlowError {
+  public constructor(
+    message = "Execution was cancelled",
+    metadata?: Record<string, unknown>,
+  ) {
+    super("ERR_EXECUTION_CANCELLED", message, metadata);
+    this.name = "ExecutionCancelledError";
+    Object.setPrototypeOf(this, ExecutionCancelledError.prototype);
+  }
+}
+
 export class ExecutionRepositoryError extends DesignFlowError {
   public constructor(
     message: string,

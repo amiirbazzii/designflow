@@ -43,6 +43,9 @@ async function run(executable: string, args: string[], cwd: string, options: Val
     const timer = setTimeout(() => { timedOut = true; child.kill(); }, options.timeoutMs ?? 120_000);
     const abort = (): void => { child.kill(); };
     options.signal?.addEventListener("abort", abort, { once: true });
+    // A signal that aborted before the listener attached still kills the
+    // child — otherwise a pre-cancelled validation would run to completion.
+    if (options.signal?.aborted === true) child.kill();
     child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
     child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
     child.on("error", (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } });
@@ -61,7 +64,21 @@ export async function validateProject(rawContext: unknown, root: string, options
   const checks: ImplementationValidationReport["checks"] = [];
   const commands = [context.commands.format, context.commands.typecheck, context.commands.lint, context.commands.build, context.commands.test];
 
+  // Cancellation is a hard stop, never a partial verdict: a cancelled
+  // validation must not produce a report at all (a killed required check
+  // reads as "failed" and an aborted optional check could read as "passed
+  // overall"), so the caller's rollback-on-throw path handles it instead.
+  const throwIfCancelled = (): void => {
+    if (options.signal?.aborted === true) {
+      throw new ImplementationError(
+        "ERR_VALIDATION_CANCELLED",
+        "Project validation was cancelled before completion.",
+      );
+    }
+  };
+
   for (const [index, command] of commands.entries()) {
+    throwIfCancelled();
     const name = CHECK_NAMES[index]! as "format" | "typecheck" | "lint" | "build" | "test";
     if (!command) {
       checks.push({ name, status: "unavailable", required: false, summary: "No safe project-declared command was found." });
@@ -69,6 +86,7 @@ export async function validateProject(rawContext: unknown, root: string, options
     }
     try {
       const result = await run(command.executable, command.args, root, options);
+      throwIfCancelled();
       const output = redact(`${result.stdout}${result.stderr}`.slice(-2_000));
       const summary = result.timedOut
         ? "Command timed out."

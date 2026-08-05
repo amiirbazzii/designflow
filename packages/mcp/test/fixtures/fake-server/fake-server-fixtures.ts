@@ -16,6 +16,11 @@ export const fakeMcpFixturesSchema = z
     /** Tool names that respond with an oversized payload, for size-limit tests. */
     oversizedTools: z.array(z.string().min(1)).default([]),
     oversizedByteCount: z.number().int().positive().default(10_000_000),
+    /**
+     * When set, the server writes its own pid to this file at startup, so a
+     * process-lifecycle test can verify the child actually terminated.
+     */
+    pidFilePath: z.string().optional(),
     /** When true, the server answers `initialize` with a JSON-RPC error instead of a result. */
     initializeError: z.boolean().default(false),
     /**

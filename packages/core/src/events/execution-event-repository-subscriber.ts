@@ -21,7 +21,7 @@ const EVENT_TO_PHASE: Partial<
   "execution.applying": "applying",
   "execution.completed": "completed",
   "execution.failed": "failed",
-  "execution.cancelled": "failed",
+  "execution.cancelled": "cancelled",
   "execution.policy_denied": "failed",
   "execution.waiting_approval": "waiting_approval",
   "execution.approval_approved": "approval_approved",

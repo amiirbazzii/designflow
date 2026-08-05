@@ -41,10 +41,32 @@ export type ExecutionResult = z.infer<typeof executionResultSchema>;
 
 // ── Execution Contract Interface ─────────────────────────────────
 
+/**
+ * Host-only runtime options for one contract call. Never part of the
+ * Zod-validated request, never persisted, never serialized — an
+ * `AbortSignal` is process-local runtime state, not workflow data.
+ */
+export interface ExecutionRuntimeOptions {
+  /** Caller-owned root cancellation signal (e.g. the CLI's SIGINT controller). */
+  readonly signal?: AbortSignal;
+}
+
 export interface ExecutionContract {
-  execute(request: ExecutionRequest): Promise<ExecutionResult>;
-  resume(workflowId: string): Promise<ExecutionResult>;
-  resumeAfterApproval(approvalId: string): Promise<ExecutionResult>;
+  execute(
+    request: ExecutionRequest,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult>;
+  resume(
+    workflowId: string,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult>;
+  resumeAfterApproval(
+    approvalId: string,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult>;
   /** Resumes using the durable approval bound to an existing execution. */
-  resumeAfterConsumedApproval(executionId: string): Promise<ExecutionResult>;
+  resumeAfterConsumedApproval(
+    executionId: string,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult>;
 }

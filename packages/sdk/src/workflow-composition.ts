@@ -5,6 +5,7 @@ import {
   executionErrorSchema,
   executionRequestSchema,
   type ExecutionResult,
+  type ExecutionRuntimeOptions,
 } from "./execution-contract";
 
 // ── Workflow Invocation ──────────────────────────────────────────
@@ -67,6 +68,7 @@ export interface WorkflowExecutionResolver {
   executeWorkflow(
     invocation: WorkflowInvocation,
     context: WorkflowInvocationContext,
+    runtime?: ExecutionRuntimeOptions,
   ): Promise<WorkflowInvocationResult>;
 }
 
@@ -106,7 +108,10 @@ export type ChildExecutionRequest = z.infer<typeof childExecutionRequestSchema>;
  * not replayed against a child execution.
  */
 export interface ChildExecutionContract {
-  executeChild(request: ChildExecutionRequest): Promise<ExecutionResult>;
+  executeChild(
+    request: ChildExecutionRequest,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult>;
 }
 
 /**

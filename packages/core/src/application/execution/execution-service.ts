@@ -9,6 +9,7 @@ import {
   withExecutionInput,
   withExecutionLineage,
   type ExecutionRequest,
+  type ExecutionRuntimeOptions,
   type ExecutionResult,
   type ExecutionContract,
   type WorkflowPackage,
@@ -39,7 +40,7 @@ import {
 import { CapabilityRegistry } from "../../registry";
 import { ExecutionEngine } from "../../engine";
 import { ExecutionServiceWorkflowResolver } from "../../composition";
-import { PolicyViolationError, ApprovalError } from "../../errors";
+import { PolicyViolationError, ApprovalError, ExecutionCancelledError } from "../../errors";
 import type { PendingChildApproval, PendingNodeApproval } from "../../types";
 
 // ── Errors ──────────────────────────────────────────────────────
@@ -160,18 +161,24 @@ export class ExecutionService
     this.mcpClient = config.mcpClient;
   }
 
-  public async execute(request: ExecutionRequest): Promise<ExecutionResult> {
+  public async execute(
+    request: ExecutionRequest,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult> {
     const validatedRequest = this.validateRequest(request);
 
     if (validatedRequest.options?.resume) {
-      return this.resume(validatedRequest.workflowId);
+      return this.resume(validatedRequest.workflowId, runtime);
     }
 
-    return this.startExecution({
-      workflowId: validatedRequest.workflowId,
-      input: validatedRequest.input,
-      metadata: validatedRequest.metadata,
-    });
+    return this.startExecution(
+      {
+        workflowId: validatedRequest.workflowId,
+        input: validatedRequest.input,
+        metadata: validatedRequest.metadata,
+      },
+      runtime,
+    );
   }
 
   /**
@@ -184,18 +191,23 @@ export class ExecutionService
    */
   public async executeChild(
     request: ChildExecutionRequest,
+    runtime?: ExecutionRuntimeOptions,
   ): Promise<ExecutionResult> {
     const validated = this.validateChildRequest(request);
 
-    return this.startExecution({
-      workflowId: validated.workflowId,
-      input: validated.input,
-      metadata: withExecutionLineage(validated.metadata, validated.lineage),
-    });
+    return this.startExecution(
+      {
+        workflowId: validated.workflowId,
+        input: validated.input,
+        metadata: withExecutionLineage(validated.metadata, validated.lineage),
+      },
+      runtime,
+    );
   }
 
   private async startExecution(
     input: StartExecutionParams,
+    runtime?: ExecutionRuntimeOptions,
   ): Promise<ExecutionResult> {
     // The execution's input travels in metadata so that it is persisted with
     // the record and recoverable when the execution is resumed.
@@ -297,6 +309,15 @@ export class ExecutionService
       const engine = this.createEngine();
 
       const abortController = new AbortController();
+      // Linked to the caller-owned root signal (never replaced by it): the
+      // context signal stays engine-owned while cancellation authority stays
+      // with the host that created the runtime option.
+      const rootSignal = runtime?.signal;
+      const onRootAbort = (): void => abortController.abort();
+      if (rootSignal !== undefined) {
+        if (rootSignal.aborted) abortController.abort();
+        else rootSignal.addEventListener("abort", onRootAbort, { once: true });
+      }
 
       const executionContext = {
         runId: executionId,
@@ -309,19 +330,36 @@ export class ExecutionService
 
       await this.appendEvent(executionId, "executing");
 
-      const engineResult = await engine.run(
-        workflowPackage.definition,
-        executionContext,
-      );
+      try {
+        const engineResult = await engine.run(
+          workflowPackage.definition,
+          executionContext,
+        );
 
-      return this.finalizeResult(executionId, params.workflowId, engineResult);
+        // The engine only observes cancellation between layers; a signal
+        // that aborted while the final in-flight work was unwinding still
+        // means the run was cancelled, not that it failed or succeeded.
+        if (rootSignal?.aborted === true) {
+          return await this.markCancelled(executionId, params.workflowId);
+        }
+
+        return await this.finalizeResult(executionId, params.workflowId, engineResult);
+      } finally {
+        rootSignal?.removeEventListener("abort", onRootAbort);
+      }
     } catch (error) {
+      if (error instanceof ExecutionCancelledError || runtime?.signal?.aborted === true) {
+        return this.markCancelled(executionId, params.workflowId);
+      }
       await this.markFailed(executionId, params.workflowId, error);
       throw error;
     }
   }
 
-  public async resume(workflowId: string): Promise<ExecutionResult> {
+  public async resume(
+    workflowId: string,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult> {
     const workflowPackage = this.resolveWorkflow(workflowId);
 
     const executionRecords = await this.executionRepository.list(workflowId);
@@ -343,10 +381,13 @@ export class ExecutionService
       }
     }
 
-    return this.resumeExecution(latestRecord, workflowPackage);
+    return this.resumeExecution(latestRecord, workflowPackage, runtime);
   }
 
-  public async resumeAfterApproval(approvalId: string): Promise<ExecutionResult> {
+  public async resumeAfterApproval(
+    approvalId: string,
+    runtime?: ExecutionRuntimeOptions,
+  ): Promise<ExecutionResult> {
     if (this.approvalManager === undefined) {
       throw new ApprovalError("Approval manager not configured");
     }
@@ -453,7 +494,7 @@ export class ExecutionService
     const resumedRecord = approvedNodeId !== undefined
       ? await this.executionRepository.get(record.executionId)
       : record;
-    return this.resumeExecution(resumedRecord ?? record, workflowPackage);
+    return this.resumeExecution(resumedRecord ?? record, workflowPackage, runtime);
   }
 
   public async resumeAfterConsumedApproval(
@@ -496,6 +537,7 @@ export class ExecutionService
   private async resumeExecution(
     record: ExecutionRecord,
     workflowPackage: WorkflowPackage,
+    runtime?: ExecutionRuntimeOptions,
   ): Promise<ExecutionResult> {
     switch (record.status) {
       case "completed": {
@@ -553,14 +595,22 @@ export class ExecutionService
             workflowPackage.definition,
             record.workflowId,
             record.executionId,
+            runtime?.signal,
           );
 
-          return this.finalizeResult(
+          if (runtime?.signal?.aborted === true) {
+            return await this.markCancelled(record.executionId, record.workflowId);
+          }
+
+          return await this.finalizeResult(
             record.executionId,
             record.workflowId,
             engineResult,
           );
         } catch (error) {
+          if (error instanceof ExecutionCancelledError || runtime?.signal?.aborted === true) {
+            return this.markCancelled(record.executionId, record.workflowId);
+          }
           await this.markFailed(record.executionId, record.workflowId, error);
           throw error;
         }
@@ -675,6 +725,53 @@ export class ExecutionService
     );
 
     return sorted[0] ?? null;
+  }
+
+  /**
+   * Records cancellation as the execution's terminal state and returns the
+   * corresponding result. Never reports success artifacts: work the run
+   * completed before cancellation stays inspectable through the artifact
+   * store and lineage, but a cancelled run has no success output.
+   */
+  private async markCancelled(
+    executionId: string,
+    workflowId: string,
+  ): Promise<ExecutionResult> {
+    const now = Date.now();
+
+    try {
+      await this.executionRepository.update(executionId, {
+        status: "cancelled",
+        completedAt: now,
+      });
+      await this.appendEvent(executionId, "cancelled");
+    } catch (updateError) {
+      this.logger.error("Failed to persist execution cancellation", {
+        executionId,
+        workflowId,
+        updateError: String(updateError),
+      });
+    }
+
+    await this.eventPublisher.publish({
+      id: crypto.randomUUID(),
+      executionId,
+      type: "execution.cancelled",
+      timestamp: Date.now(),
+      payload: { workflowId },
+    });
+
+    const result: ExecutionResult = {
+      executionId,
+      workflowId,
+      status: "cancelled",
+      artifacts: [],
+      error: {
+        code: "ERR_EXECUTION_CANCELLED",
+        message: "Execution was cancelled before completion",
+      },
+    };
+    return executionResultSchema.parse(result);
   }
 
   private async markFailed(

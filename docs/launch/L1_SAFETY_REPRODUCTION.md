@@ -204,9 +204,9 @@ Each issue remains a separate implementation step; only L1-04/L1-05 share files 
 - [x] L1-04 implemented, echo-env negative test green, ADR 20260810 corrected (L1B-1, 2026-08-05 — see addendum F)
 - [x] L1-05 implemented, shared version constants, stdio mismatch tests green (L1B-2, 2026-08-05 — see addendum G)
 - [x] L1-01 implemented, both-context tests green, engine comment reconciled (L1B-3, 2026-08-05 — see addendum H)
-- [ ] L1-02 `resource_limit` removed from public contract, grep clean
+- [x] L1-02 `resource_limit` removed from public contract, grep clean (MVP-1/L1B-4, 2026-08-05 — see addendum I)
 - [ ] L1-06 casts removed, typecheck clean
-- [ ] L1-03 implemented, signal tests green, exit codes 130/143
+- [x] L1-03 implemented, signal tests green, exit code 130 (MVP-1 final task, 2026-08-05 — see addendum J)
 - [ ] Full suite: build 26/26, typecheck 44/44, lint 26/26, tests 0 fail (with `--force`)
 - [ ] Gate G-05 re-evaluated in `docs/launch/LAUNCH_GATES.md`
 
@@ -514,6 +514,144 @@ the child). Resume/approval suites unchanged and green.
 **Validation:** core 445 pass / 0 fail; SDK 302 pass; workflow-design-to-code
 92 pass; CLI 260 pass / 1 skip. Full suite with `--force`: build 26/26,
 typecheck 44/44, lint 26/26, tests 2,293 pass / 1 skip / 0 fail.
+
+## I. Implementation-status addendum — MVP-1 / L1-02 (2026-08-05)
+
+**L1-02 implemented** (only L1-02 in this step; L1-03 and L1-06 remain
+open; Stage L1 and MVP-1 are NOT complete).
+
+- **Contract removed, not deprecated:** `"resource_limit"` deleted from
+  `policyRuleTypeSchema` (`packages/sdk/src/execution-policy.ts`); the
+  inferred public `PolicyRuleType` union no longer contains it, so typed
+  SDK consumers cannot construct such a rule. A custom enum error map
+  makes any attempt fail with: "Unsupported policy rule type. Supported
+  types: allow_capability, deny_capability, require_approval. Policy-level
+  resource limits are not supported in this release."
+- **Why no enforcement:** enforcement needs a metering subsystem,
+  resource measurements in `PolicyContext`, and a violation-contract
+  extension (`policyViolationTypeSchema` has no resource slot) — a
+  separate post-MVP design. Exposing an accepted-but-inert rule is a
+  false safety guarantee; the MVP ships only what it enforces. Agents
+  gain no resource-enforcement role; deterministic layers retain safety
+  authority.
+- **Rejection boundaries:** earliest is `ExecutionService` construction
+  (its policy parse), then `evaluate()`'s parse for any other entry —
+  both proven by tests, including that no capability executes first. The
+  empty `evaluateResourceRule` method, its filter and dispatch loop, and
+  the characterization test ("stored but not enforced") were removed;
+  the characterization test is replaced by a loud-rejection test.
+- **Persistence:** policy rules are not persisted anywhere (FileStore,
+  SQLite, checkpoints, config, project/session state, and artifacts hold
+  approvals, executions, and artifacts — never policy rules; composition
+  roots hard-code the shipped policies). No migration is needed at
+  unreleased 0.1.1; raw invalid data reaching a boundary fails with the
+  actionable message above, never silently dropped.
+- **No shipped dependency:** no workflow manifest, worker, CLI config,
+  fixture, or example uses `resource_limit` (repo grep: only the SDK
+  enum, the evaluator branch, one test, and this document's own
+  investigation record referenced it).
+- **Existing deterministic limits untouched:** per-node
+  `execution.timeout`, tool/model timeout caps, MCP response-size caps,
+  correction-iteration bounds, and subprocess timeouts are unrelated
+  mechanisms and were not modified.
+- **Tests:** SDK — rejection + actionable message, exact supported-set
+  assertion (`policyRuleTypeSchema.options`), compile-time union-absence
+  assertion, allow/deny/approval still parse (13 pass). Core — evaluator
+  loud-rejection of an unchecked raw rule; ExecutionService
+  construction-time rejection with side-effect counter at 0 (446 pass).
+- **Validation:** full suite with `--force`: build 26/26, typecheck
+  44/44, lint 26/26, tests 2,297 pass / 1 skip / 0 fail.
+
+## J. Implementation-status addendum — MVP-1 final task / L1-03 (2026-08-05)
+
+**L1-03 implemented** (only L1-03 in this step; L1-06 remains open; Stage L1
+is NOT marked complete here).
+
+**Root signal ownership.** One `SignalCoordinator`
+(`apps/designflow-cli/src/services/signal-coordinator.ts`) per CLI
+invocation owns the root `AbortController` and the SIGINT/SIGTERM
+handlers. Handlers exist only while `run()` is active and are removed in
+`finally`; a terminal-mode readline forwards its own SIGINT event to the
+same coordinator. Agents install no handlers and own no cancellation
+policy — they only observe the signal through their execution context.
+
+**Ctrl+C behavior.** First interrupt: one concise notice, the root
+controller aborts exactly once, no `process.exit` — the operation unwinds
+through the signal-aware stack, cleanup (`context.close()`, store close,
+readline close) runs, and the process exits with code **130** via
+`process.exitCode` (SIGTERM behaves identically). Second interrupt: one
+"Force quitting." warning and immediate `process.exit(130)`. `main.ts`
+also no longer calls `process.exit(await main())`, so piped stdout is
+never truncated on the graceful path.
+
+**Signal propagation path.** Coordinator signal →
+`createCliContext({ signal })` → `WorkflowRunner` (constructor option;
+forwarded on `start`/`resumeLatest`/`resumeApproved`/
+`resumeConsumedApproval`) → new host-only `ExecutionRuntimeOptions`
+parameter on `ExecutionContract` (never inside the Zod request, never
+persisted) → `ExecutionService` links its per-execution controller to the
+root signal → `ExecutionContext.signal` → capability runner, agent
+invocation, model calls, MCP stdio/HTTP, preview server, Playwright
+renderer (all already signal-correct) → child workflows via
+`WorkflowCompositionRequest.signal` → `executeChild(request, runtime)`.
+The engine refuses to start any new layer once the signal is aborted
+(`ExecutionCancelledError`).
+
+**Execution state.** A cancelled run is persisted as terminal
+`cancelled` (existing canonical status) with a `cancelled` lifecycle
+phase (added to the SDK phase enum) and an `execution.cancelled` event
+(subscriber mapping corrected from `failed` to `cancelled`); the result
+carries `ERR_EXECUTION_CANCELLED` and empty artifacts — completed
+artifacts stay inspectable through the store/lineage but a cancelled run
+reports no success output. Resume of a cancelled execution returns
+`WORKFLOW_PREVIOUSLY_TERMINATED` (pre-existing rule, now test-pinned for
+cancellation).
+
+**Approval-wait behavior (documented decision).** Ctrl+C while an
+execution is parked at `waiting_approval` leaves it `waiting_approval`
+and fully resumable: nothing is in flight to abort, no approval token is
+consumed, and explicit cancellation remains the job of the existing
+`designflow cancel` domain command. Feedback loop: the iteration driver
+checks the root signal before starting any new iteration and stops with
+the parent's durable state intact; the active child is cancelled through
+the same runner signal.
+
+**Project-write safety.** Abort before apply: the engine's layer gate
+means no write begins. Abort during validation: `validateProject` now
+fails closed — a pre-aborted signal kills the child immediately, and
+cancellation throws `ERR_VALIDATION_CANCELLED` instead of producing a
+partial verdict (a killed optional check could otherwise have read as an
+overall pass); `applyAndValidateProject`'s existing catch path rolls back
+from the snapshot. Atomic application, snapshot recovery, write-lock
+self-healing, and git-safety behavior are unchanged.
+
+**Cleanup.** MCP stdio child killed via runtime close (pid-verified in the
+acceptance test), MCP HTTP requests aborted via tracked controllers,
+validation child killed on abort, preview child and Playwright resources
+already close on abort (verified at L1B-2 reconciliation), stores closed
+in the CLI `finally`.
+
+**Tests.** 8 SignalCoordinator unit tests (fake process source; no real
+signals in-process); 4 ExecutionService cancellation tests (pre-aborted,
+between-layers with no-later-node + no-success-artifacts, signal reaching
+a running capability's context, cancelled-resume); 2 validation
+cancellation tests (zero-writes pre-abort, mid-command kill); 1
+subprocess acceptance test (real child process, real composition root,
+real fake-MCP-backed workflow, real SIGINT → exit 130, persisted
+`cancelled` record, fake-server pid dead, output not truncated). Gated
+off only on Windows (POSIX signal delivery), documented in the test.
+
+**Known limitations.** (a) The subprocess acceptance test drives the real
+composition root and coordinator but bypasses argv dispatch (interactive
+prompts cannot be scripted deterministically for the experimental
+workflow); the `main.ts` wrapper is the same code path. (b) Exit code is
+130 for both SIGINT and SIGTERM (one interrupted-exit convention, chosen
+over 143 for SIGTERM to keep the coordinator single-purpose). (c) In-flight
+work that ignores its signal still runs to its own timeout — cancellation
+stops new work and aborts signal-aware work; it cannot preempt a
+non-cooperative promise. (d) Executions left `running` by a pre-fix crash
+are unchanged; only runs cancelled through the new path are recorded
+`cancelled`.
 
 ## Confirmation
 

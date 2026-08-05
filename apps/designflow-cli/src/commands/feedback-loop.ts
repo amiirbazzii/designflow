@@ -922,6 +922,15 @@ async function runParentLoop(
   terminal.print("Visual correction");
   terminal.print("──────────────────────────────────────────────");
   while (true) {
+    // Root cancellation: an interrupted loop starts no further iteration.
+    // The parent record already persists the state the active child reached
+    // (the runner recorded the child as cancelled), so the loop simply stops
+    // here and the existing resume path picks up from durable state later.
+    if (context.signal?.aborted === true) {
+      terminal.print("Correction loop interrupted — no further iteration will start.");
+      terminal.print(`Parent run: ${parent.parentExecutionId}`);
+      return 1;
+    }
     if (parent.finalReport !== undefined) {
       const status = parent.finalStatus ?? "stopped";
       terminal.print(`Parent run: ${parent.parentExecutionId}`);

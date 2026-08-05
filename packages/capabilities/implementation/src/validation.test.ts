@@ -30,6 +30,44 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+describe("validation cancellation", () => {
+  test("a pre-aborted signal stops validation before any command starts, with no report", async () => {
+    const marker = join(tmpdir(), `designflow-abort-marker-${crypto.randomUUID()}`);
+    const root = await fixture({
+      build: `node -e "require('fs').writeFileSync('${marker}', 'ran')"`,
+    });
+    const context = inspectRegisteredProject({ id: "abort-project", name: "Abort", rootPath: root });
+
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(validateProject(context, root, { signal: controller.signal })).rejects.toThrow(
+      "cancelled before completion",
+    );
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("aborting mid-command kills the child and throws instead of producing a partial verdict", async () => {
+    const root = await fixture({
+      // Blocks until killed: reads stdin that never arrives... use a long sleep loop.
+      build: "node -e \"setInterval(() => {}, 1000)\"",
+    });
+    const context = inspectRegisteredProject({ id: "abort-mid", name: "AbortMid", rootPath: root });
+
+    const controller = new AbortController();
+    const pending = validateProject(context, root, {
+      signal: controller.signal,
+      timeoutMs: 60_000,
+    });
+    // Deterministic enough: the abort listener kills the child whenever the
+    // spawn completes; the promise then rejects via throwIfCancelled.
+    controller.abort();
+
+    await expect(pending).rejects.toThrow("cancelled before completion");
+  });
+});
+
 describe("Stage 4 declared validation commands", () => {
   test("discovers compound npm build and lint scripts as package-manager argv", async () => {
     const root = await fixture({

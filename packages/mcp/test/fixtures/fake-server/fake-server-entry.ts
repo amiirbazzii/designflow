@@ -26,6 +26,11 @@ function replyError(id: string | number, code: number, message: string): void {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
 }
 
+if (fixtures.pidFilePath !== undefined) {
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync(fixtures.pidFilePath, String(process.pid));
+}
+
 const rl = createInterface({ input: process.stdin });
 
 rl.on("line", (line) => {

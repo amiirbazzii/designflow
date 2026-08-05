@@ -48,6 +48,12 @@ export interface WorkflowRunnerOptions {
    * Without it, `total` grows as steps are observed.
    */
   readonly resolveWorkflowStepCount?: WorkflowStepCountResolver | undefined;
+  /**
+   * Host-owned root cancellation signal (e.g. the CLI's SIGINT controller).
+   * Runtime-only: forwarded to the execution contract on every launch and
+   * resume, never serialized, never part of any request schema.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -72,6 +78,7 @@ export class WorkflowRunner {
   private readonly resolveWorkflowStepCount:
     | WorkflowStepCountResolver
     | undefined;
+  private readonly signal: AbortSignal | undefined;
 
   public constructor(options: WorkflowRunnerOptions) {
     this.executionContract = options.executionContract;
@@ -79,6 +86,7 @@ export class WorkflowRunner {
     this.eventSource = options.eventSource;
     this.resolveWorkflowName = options.resolveWorkflowName;
     this.resolveWorkflowStepCount = options.resolveWorkflowStepCount;
+    this.signal = options.signal;
 
     this.product = new ProductExecutionService({
       executionRepository: options.executionRepository,
@@ -96,6 +104,11 @@ export class WorkflowRunner {
             executionContract: options.executionContract,
           })
         : undefined;
+  }
+
+  /** The host-only runtime options every contract call receives. */
+  private runtime(): { signal?: AbortSignal } | undefined {
+    return this.signal !== undefined ? { signal: this.signal } : undefined;
   }
 
   // ── Launch ────────────────────────────────────────────────────
@@ -116,13 +129,16 @@ export class WorkflowRunner {
   public async start(request: WorkflowLaunchRequest): Promise<ExecutionHandle> {
     const validated = workflowLaunchRequestSchema.parse(request);
 
-    const result = await this.executionContract.execute({
-      workflowId: validated.workflowId,
-      ...(validated.input !== undefined ? { input: validated.input } : {}),
-      ...(validated.metadata !== undefined
-        ? { metadata: validated.metadata }
-        : {}),
-    });
+    const result = await this.executionContract.execute(
+      {
+        workflowId: validated.workflowId,
+        ...(validated.input !== undefined ? { input: validated.input } : {}),
+        ...(validated.metadata !== undefined
+          ? { metadata: validated.metadata }
+          : {}),
+      },
+      this.runtime(),
+    );
 
     return executionHandleSchema.parse({
       executionId: result.executionId,
@@ -141,7 +157,7 @@ export class WorkflowRunner {
    * execution id with its persisted child binding before accepting the result.
    */
   public async resumeLatest(workflowId: string): Promise<ExecutionHandle> {
-    const result = await this.executionContract.resume(workflowId);
+    const result = await this.executionContract.resume(workflowId, this.runtime());
     return executionHandleSchema.parse({
       executionId: result.executionId,
       workflowId: result.workflowId,
@@ -152,7 +168,7 @@ export class WorkflowRunner {
 
   /** Resumes a previously approved node without creating a new approval. */
   public async resumeApproved(approvalId: string): Promise<ExecutionHandle> {
-    const result = await this.executionContract.resumeAfterApproval(approvalId);
+    const result = await this.executionContract.resumeAfterApproval(approvalId, this.runtime());
     return executionHandleSchema.parse({
       executionId: result.executionId,
       workflowId: result.workflowId,
@@ -167,6 +183,7 @@ export class WorkflowRunner {
   ): Promise<ExecutionHandle> {
     const result = await this.executionContract.resumeAfterConsumedApproval(
       executionId,
+      this.runtime(),
     );
     return executionHandleSchema.parse({
       executionId: result.executionId,

@@ -32,6 +32,8 @@ export interface WorkflowCompositionRequest {
   readonly compositionPath: readonly string[];
   /** Parent execution metadata propagated to the child invocation. */
   readonly metadata: Readonly<Record<string, unknown>>;
+  /** The parent execution's abort signal, forwarded so cancellation reaches the child. */
+  readonly signal?: AbortSignal;
 }
 
 export interface WorkflowCompositionOutcome {
@@ -124,6 +126,7 @@ export class WorkflowCompositionExecutor {
       const raw = await this.resolver.executeWorkflow(
         invocation,
         invocationContext,
+        request.signal !== undefined ? { signal: request.signal } : undefined,
       );
       result = workflowInvocationResultSchema.parse(raw);
     } catch (error) {

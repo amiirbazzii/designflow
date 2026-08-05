@@ -35,6 +35,7 @@ export const lifecycleEventPhaseSchema = z.enum([
   "approval_rejected",
   "completed",
   "failed",
+  "cancelled",
 ]);
 
 export type LifecycleEventPhase = z.infer<typeof lifecycleEventPhaseSchema>;

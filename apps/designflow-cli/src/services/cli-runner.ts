@@ -304,6 +304,12 @@ export interface CleanupReport {
 
 export interface CliContext {
   readonly runner: WorkflowRunner;
+  /**
+   * The invocation's root cancellation signal, when the host installed one.
+   * Commands with their own loops (the feedback loop's iterations) check it
+   * before starting new work; everything else receives it via `runner`.
+   */
+  readonly signal?: AbortSignal;
   /** The worker catalogue — what a person chooses from. */
   readonly workers: InMemoryWorkerRegistry;
   /**
@@ -422,6 +428,12 @@ export interface CliContext {
 export interface CliContextOptions {
   /** Overrides the configured database. Tests pass a temporary file. */
   readonly databasePath?: string;
+  /**
+   * Host-owned root cancellation signal (the CLI's SIGINT controller).
+   * Runtime-only: threaded into the workflow runner and every execution it
+   * starts or resumes — never persisted or serialized.
+   */
+  readonly signal?: AbortSignal;
   readonly requireApproval?: boolean;
   /**
    * Overrides the worker catalogue.
@@ -797,6 +809,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     resolveWorkflowName: (id) => workflows.get(id)?.name,
     resolveWorkflowStepCount: (id) =>
       workflows.get(id)?.definition.nodes.length,
+    signal: options?.signal,
   });
 
   // Projects and Agent Memory (Stage 40) — durable, product-level knowledge,
@@ -958,6 +971,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     workers,
     home,
     databasePath,
+    ...(options?.signal !== undefined ? { signal: options.signal } : {}),
     modelProviderConfigured: modelModeRequested && openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0,
     inspectState: () => inspectStateFile(databasePath),
     experimentalImplementationEnabled: implementationEnabled,

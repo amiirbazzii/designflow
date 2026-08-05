@@ -452,6 +452,167 @@ describe("ExecutionService", () => {
     });
   });
 
+  describe("root cancellation", () => {
+    test("an already-aborted signal cancels before any capability runs", async () => {
+      let executed = 0;
+      const cap = createMockCapability("never-cap");
+      capabilityRegistry.register({
+        ...cap,
+        execute: async (context, input) => {
+          executed += 1;
+          return cap.execute(context, input);
+        },
+      });
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [{ id: "node-1", capabilityId: "never-cap", inputMap: {} }];
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const controller = new AbortController();
+      controller.abort();
+
+      const result = await service.execute({ workflowId: "test-wf" }, { signal: controller.signal });
+
+      expect(result.status).toBe("cancelled");
+      expect(result.error?.code).toBe("ERR_EXECUTION_CANCELLED");
+      expect(executed).toBe(0);
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.status).toBe("cancelled");
+    });
+
+    test("cancellation between layers stops later nodes, records cancelled, and emits no success artifacts", async () => {
+      const controller = new AbortController();
+      let secondNodeRuns = 0;
+      let firstNodeArtifacts = 0;
+
+      const first = createMockCapability("first-cap");
+      capabilityRegistry.register({
+        ...first,
+        execute: async (context, input) => {
+          const out = await first.execute(context, input);
+          firstNodeArtifacts += 1;
+          // The user presses Ctrl+C while the first step is finishing.
+          controller.abort();
+          return out;
+        },
+      });
+      const second = createMockCapability("second-cap");
+      capabilityRegistry.register({
+        ...second,
+        execute: async (context, input) => {
+          secondNodeRuns += 1;
+          return second.execute(context, input);
+        },
+      });
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "first-cap", inputMap: {} },
+        { id: "node-2", capabilityId: "second-cap", inputMap: {}, execution: { dependsOn: ["node-1"] } },
+      ];
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf" }, { signal: controller.signal });
+
+      expect(result.status).toBe("cancelled");
+      expect(result.artifacts).toEqual([]);
+      expect(firstNodeArtifacts).toBe(1);
+      expect(secondNodeRuns).toBe(0);
+
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.status).toBe("cancelled");
+      expect(record?.status).not.toBe("running");
+    });
+
+    test("the root signal reaches a running capability's context", async () => {
+      const controller = new AbortController();
+      let started: (() => void) | undefined;
+      const startedPromise = new Promise<void>((resolve) => { started = resolve; });
+      let observedAbort = false;
+
+      const cap = createMockCapability("waiting-cap");
+      capabilityRegistry.register({
+        ...cap,
+        execute: async (context, input) => {
+          started?.();
+          await new Promise<void>((resolve) => {
+            if (context.signal.aborted) { resolve(); return; }
+            context.signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+          observedAbort = context.signal.aborted;
+          return cap.execute(context, input);
+        },
+      });
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [{ id: "node-1", capabilityId: "waiting-cap", inputMap: {} }];
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const pending = service.execute({ workflowId: "test-wf" }, { signal: controller.signal });
+      await startedPromise;
+      controller.abort();
+      const result = await pending;
+
+      expect(observedAbort).toBe(true);
+      expect(result.status).toBe("cancelled");
+    });
+
+    test("resume cannot treat a cancelled execution as successful", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const cap = createMockCapability("test-cap");
+      capabilityRegistry.register(cap);
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [{ id: "node-1", capabilityId: "test-cap", inputMap: {} }];
+      const resolver: WorkflowResolver = (id) => (id === "test-wf" ? workflow : undefined);
+
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore,
+        executionRepository,
+        eventPublisher,
+      });
+
+      const cancelled = await service.execute({ workflowId: "test-wf" }, { signal: controller.signal });
+      expect(cancelled.status).toBe("cancelled");
+
+      const resumed = await service.resume("test-wf");
+      expect(resumed.status).toBe("cancelled");
+      expect(resumed.error?.code).toBe("WORKFLOW_PREVIOUSLY_TERMINATED");
+    });
+  });
+
   describe("policy evaluation", () => {
     let policyEvaluator: PolicyEvaluator;
 
@@ -577,6 +738,50 @@ describe("ExecutionService", () => {
         });
 
       expect(construct).toThrow(/nodeId or a capabilityId/);
+      expect(executed).toBe(0);
+    });
+
+    test("a raw resource_limit rule fails at construction before any capability can run", async () => {
+      let executed = 0;
+      const cap = createMockCapability("metered-cap");
+      capabilityRegistry.register({
+        ...cap,
+        execute: async (context, input) => {
+          executed += 1;
+          return cap.execute(context, input);
+        },
+      });
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "metered-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      // resource_limit is no longer part of the public union, so simulate
+      // raw persisted/configured data via a narrow structural mutation.
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Removed resource policy",
+        rules: [{ id: "limit-1", type: "deny_capability", target: "memory" }],
+      };
+      (policy.rules[0] as { type?: unknown }).type = "resource_limit";
+
+      const construct = (): ExecutionService =>
+        new ExecutionService({
+          workflowResolver: resolver,
+          capabilityRegistry,
+          logger,
+          artifactStore,
+          executionRepository,
+          eventPublisher,
+          policyEvaluator,
+          policy,
+        });
+
+      expect(construct).toThrow(/Unsupported policy rule type/);
       expect(executed).toBe(0);
     });
 

@@ -679,6 +679,7 @@ export type {
   ExecutionResult,
   ExecutionErrorDetail,
   ExecutionContract,
+  ExecutionRuntimeOptions,
 } from "./execution-contract";
 
 // ── Execution Events ────────────────────────────────────────────

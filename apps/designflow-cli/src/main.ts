@@ -7,6 +7,7 @@ import {
   type CliContext,
 } from "./services/cli-runner";
 
+import { SignalCoordinator } from "./services/signal-coordinator";
 import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
 
@@ -28,11 +29,19 @@ function prompt(question: string, options?: readonly string[]): string {
     : `${question}: `;
 }
 
-function interactiveTerminal(): { terminal: Terminal; close: () => void } {
+function interactiveTerminal(onInterrupt: () => void): {
+  terminal: Terminal;
+  close: () => void;
+} {
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
+
+  // A terminal-mode readline swallows Ctrl+C instead of letting it reach the
+  // process-level handlers, so its SIGINT event is forwarded to the same
+  // coordinator the process handlers use.
+  readline.on("SIGINT", onInterrupt);
 
   return {
     terminal: {
@@ -75,6 +84,8 @@ async function pipedTerminal(): Promise<{
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
 
+  const coordinator = new SignalCoordinator({ notify: print });
+
   // Reading stdin for a non-interactive command would block on a pipe that
   // never closes, so only the prompting paths drain it.
   const needsInput = argv.length === 0 || argv[0] === "run" || argv[0] === "answer" || argv[0] === "feedback-loop";
@@ -82,23 +93,28 @@ async function main(): Promise<number> {
   const { terminal, close } =
     needsInput && process.stdin.isTTY !== true
       ? await pipedTerminal()
-      : interactiveTerminal();
+      : interactiveTerminal(() => coordinator.interrupt());
 
   // Built inside the guard: preparing `~/.designflow` is filesystem work, so
   // this is exactly where a permissions or disk problem surfaces, and it
   // deserves the same explanation as any other failure rather than a raw trace.
   let context: CliContext | undefined;
 
-  try {
-    context = createCliContext();
-    return await dispatch(argv, context, terminal);
-  } catch (error) {
-    print(formatError(error));
-    return 1;
-  } finally {
-    context?.close();
-    close();
-  }
+  return coordinator.run(async (signal) => {
+    try {
+      context = createCliContext({ signal });
+      return await dispatch(argv, context, terminal);
+    } catch (error) {
+      print(formatError(error));
+      return 1;
+    } finally {
+      context?.close();
+      close();
+    }
+  });
 }
 
-process.exit(await main());
+// `process.exitCode` instead of `process.exit()`: the loop drains buffered
+// stdout before exiting, so a piped `designflow ... | head` never loses the
+// tail of its output. Forced exit (second Ctrl+C) is the coordinator's job.
+process.exitCode = await main();

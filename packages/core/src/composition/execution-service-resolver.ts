@@ -4,6 +4,7 @@ import {
   readExecutionLineage,
   workflowInvocationResultSchema,
   type ChildExecutionContract,
+  type ExecutionRuntimeOptions,
   type WorkflowExecutionResolver,
   type WorkflowInvocation,
   type WorkflowInvocationContext,
@@ -28,6 +29,7 @@ export class ExecutionServiceWorkflowResolver
   public async executeWorkflow(
     invocation: WorkflowInvocation,
     context: WorkflowInvocationContext,
+    runtime?: ExecutionRuntimeOptions,
   ): Promise<WorkflowInvocationResult> {
     const inheritedLineage = readExecutionLineage(context.metadata);
 
@@ -43,7 +45,7 @@ export class ExecutionServiceWorkflowResolver
       },
     });
 
-    const result = await this.executionContract.executeChild(request);
+    const result = await this.executionContract.executeChild(request, runtime);
 
     return workflowInvocationResultSchema.parse({
       executionId: result.executionId,
