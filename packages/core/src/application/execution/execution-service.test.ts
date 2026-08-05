@@ -528,6 +528,58 @@ describe("ExecutionService", () => {
       expect(result.error?.message).toContain("test-cap");
     });
 
+    test("a workflowId-only policy rule is rejected before any capability runs", async () => {
+      let executed = 0;
+      const cap = createMockCapability("side-effect-cap");
+      capabilityRegistry.register({
+        ...cap,
+        execute: async (context, input) => {
+          executed += 1;
+          return cap.execute(context, input);
+        },
+      });
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "node-1", capabilityId: "side-effect-cap", inputMap: {} },
+      ];
+
+      const resolver: WorkflowResolver = (id) =>
+        id === "test-wf" ? workflow : undefined;
+
+      // Structurally invalid under the target contract: workflowId is only
+      // a scope qualifier. The rule must be rejected at the evaluation
+      // parsing boundary — not silently ignored (fail-open) and not
+      // treated as match-all — and nothing side-effecting may run first.
+      // Type-checks because the refine constrains parsing, not the inferred
+      // type — exactly why the runtime boundary must reject it.
+      const policy: ExecutionPolicy = {
+        id: "policy-1",
+        name: "Invalid workflow-only policy",
+        rules: [
+          { id: "bad-1", type: "require_approval", target: { workflowId: "test-wf" } },
+        ],
+      };
+
+      // The earliest reliable boundary is ExecutionService construction,
+      // which parses the policy — the invalid rule never survives to an
+      // execution at all.
+      const construct = (): ExecutionService =>
+        new ExecutionService({
+          workflowResolver: resolver,
+          capabilityRegistry,
+          logger,
+          artifactStore,
+          executionRepository,
+          eventPublisher,
+          policyEvaluator,
+          policy,
+        });
+
+      expect(construct).toThrow(/nodeId or a capabilityId/);
+      expect(executed).toBe(0);
+    });
+
     test("require_approval without approval manager still fails", async () => {
       const cap = createMockCapability("test-cap");
       capabilityRegistry.register(cap);

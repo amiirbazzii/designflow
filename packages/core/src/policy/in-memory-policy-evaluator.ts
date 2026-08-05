@@ -9,6 +9,8 @@ import {
   type PolicyRule,
 } from "@designflow/sdk";
 
+import { PolicyViolationError } from "../errors";
+
 // ── In-Memory Policy Evaluator ─────────────────────────────────
 
 export class InMemoryPolicyEvaluator implements PolicyEvaluator {
@@ -114,6 +116,16 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
     }
   }
 
+  /**
+   * AND semantics over the target's supplied fields, decided by the target
+   * alone: every supplied field must match the context; omitted fields
+   * impose no condition. A node-scoped selector simply does not match a
+   * context that carries no node (e.g. workflow-level pre-flight) — the
+   * per-node evaluation enforces it. `workflowId` is a scope qualifier and
+   * is never sufficient by itself; the schema rejects such targets, and an
+   * invalid target reaching this point through an unchecked internal path
+   * fails loudly rather than silently open.
+   */
   private targetMatches(
     target: PolicyRule["target"],
     context: PolicyContext,
@@ -121,11 +133,19 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
   ): boolean {
     if (typeof target === "string") return target === capabilityId;
     if (target === undefined) return false;
+    if (target.nodeId === undefined && target.capabilityId === undefined) {
+      throw new PolicyViolationError(
+        "A policy target must name a nodeId or a capabilityId; a workflowId-only or empty object target is structurally invalid.",
+        { workflowId: context.workflowId },
+      );
+    }
     if (target.workflowId !== undefined && target.workflowId !== context.workflowId) return false;
     if (target.capabilityId !== undefined && target.capabilityId !== capabilityId) return false;
-    const nodeId = typeof context.metadata?.nodeId === "string" ? context.metadata.nodeId : undefined;
-    if (target.nodeId !== undefined && target.nodeId !== nodeId) return false;
-    return nodeId !== undefined || target.capabilityId !== undefined;
+    if (target.nodeId !== undefined) {
+      const nodeId = typeof context.metadata?.["nodeId"] === "string" ? context.metadata["nodeId"] : undefined;
+      if (target.nodeId !== nodeId) return false;
+    }
+    return true;
   }
 
   private evaluateResourceRule(

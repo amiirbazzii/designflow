@@ -15,10 +15,17 @@ export type PolicyRuleType = z.infer<typeof policyRuleTypeSchema>;
 export const policyRuleTargetSchema = z.union([
   z.string().min(1),
   z.object({
+    /** Scope qualifier only — never sufficient on its own. */
     workflowId: z.string().min(1).optional(),
     nodeId: z.string().min(1).optional(),
     capabilityId: z.string().min(1).optional(),
-  }).strict().refine((target) => target.workflowId !== undefined || target.nodeId !== undefined || target.capabilityId !== undefined),
+  }).strict().refine(
+    (target) => target.nodeId !== undefined || target.capabilityId !== undefined,
+    {
+      message:
+        "An object policy target must name a nodeId or a capabilityId; workflowId is only a scope qualifier and is never sufficient on its own.",
+    },
+  ),
 ]);
 
 export type PolicyRuleTarget = z.infer<typeof policyRuleTargetSchema>;

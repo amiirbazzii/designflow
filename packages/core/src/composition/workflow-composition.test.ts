@@ -12,6 +12,7 @@ import {
 } from "../service";
 
 import { WorkflowCompositionExecutor } from "./workflow-composition-executor";
+import { InMemoryPolicyEvaluator } from "../policy/in-memory-policy-evaluator";
 import { WorkflowCompositionCycleError } from "../errors";
 import {
   DesignFlowError,
@@ -926,6 +927,82 @@ describe("ExecutionService workflow composition", () => {
 
     const childFailed = events.find((e) => e.type === "workflow.child_failed");
     expect(childFailed).toBeDefined();
+  });
+
+  test("a string capability target still gates the matching capability inside a child workflow", async () => {
+    capabilityRegistry.register(createCapability("cap-child"));
+
+    const service = createService(
+      [
+        createWorkflowPackage(parentWithChild("wf-child")),
+        createWorkflowPackage(childWorkflow("wf-child", "cap-child")),
+      ],
+      {
+        policyEvaluator: new InMemoryPolicyEvaluator(),
+        policy: {
+          id: "deny-child-cap",
+          name: "Deny child capability",
+          rules: [{ id: "deny-1", type: "deny_capability", target: "cap-child" }],
+        },
+      },
+    );
+
+    const result = await service.execute({ workflowId: "wf-parent" });
+
+    // The child execution evaluates the same combined policy under its own
+    // workflow id; the string capability target matches there, so the
+    // denied capability never runs.
+    expect(result.status).toBe("failed");
+    const childRecord = (await executionRepository.list("wf-child"))[0]!;
+    expect(childRecord.status).toBe("failed");
+  });
+
+  test("a parent-workflowId-scoped object target does not cascade to a differently identified child workflow", async () => {
+    capabilityRegistry.register(createCapability("cap-child"));
+
+    const service = createService(
+      [
+        createWorkflowPackage(parentWithChild("wf-child")),
+        createWorkflowPackage(childWorkflow("wf-child", "cap-child")),
+      ],
+      {
+        policyEvaluator: new InMemoryPolicyEvaluator(),
+        // The child's node is also named "work", but the rule is scoped to
+        // the parent's workflow id — it must not gate the child.
+        policy: {
+          id: "parent-scope",
+          name: "Parent-scoped approval",
+          rules: [{ id: "approval-parent", type: "require_approval", target: { workflowId: "wf-parent", nodeId: "work" } }],
+        },
+        approvalManager: new InMemoryApprovalManager(),
+      },
+    );
+
+    const result = await service.execute({ workflowId: "wf-parent" });
+    expect(result.status).toBe("completed");
+  });
+
+  test("an explicitly child-workflowId-scoped object target gates the child", async () => {
+    capabilityRegistry.register(createCapability("cap-child"));
+
+    const service = createService(
+      [
+        createWorkflowPackage(parentWithChild("wf-child")),
+        createWorkflowPackage(childWorkflow("wf-child", "cap-child")),
+      ],
+      {
+        policyEvaluator: new InMemoryPolicyEvaluator(),
+        policy: {
+          id: "child-scope",
+          name: "Child-scoped approval",
+          rules: [{ id: "approval-child", type: "require_approval", target: { workflowId: "wf-child", nodeId: "work" } }],
+        },
+        approvalManager: new InMemoryApprovalManager(),
+      },
+    );
+
+    const result = await service.execute({ workflowId: "wf-parent" });
+    expect(result.status).toBe("pending_approval");
   });
 
   test("a child awaiting approval propagates pending_approval to the parent", async () => {

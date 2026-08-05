@@ -154,6 +154,108 @@ describe("InMemoryPolicyEvaluator", () => {
     });
   });
 
+  describe("object target semantics", () => {
+    test("a workflowId-only rule is rejected at the evaluation parsing boundary, never silently ignored", async () => {
+      const policy: ExecutionPolicy = {
+        id: "policy-wf-only",
+        name: "Workflow-only target",
+        rules: [{ id: "bad-rule", type: "require_approval", target: { workflowId: "wf-1" } }],
+      };
+
+      // Identical rejection regardless of caller context shape — the exact
+      // divergence L1-01 reproduced (pre-flight matched nothing, per-node
+      // matched everything) can no longer occur because neither path gets
+      // to interpret the rule.
+      await expect(evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"] })).rejects.toThrow();
+      await expect(
+        evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"], metadata: { nodeId: "n1" } }),
+      ).rejects.toThrow();
+    });
+
+    test("every supplied field must match: a workflow mismatch prevents a capability match", async () => {
+      const policy: ExecutionPolicy = {
+        id: "p",
+        name: "P",
+        rules: [{ id: "deny-1", type: "deny_capability", target: { workflowId: "wf-other", capabilityId: "cap-a" } }],
+      };
+      const result = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"] });
+      expect(result.allowed).toBe(true);
+    });
+
+    test("a capability mismatch prevents a match", async () => {
+      const policy: ExecutionPolicy = {
+        id: "p",
+        name: "P",
+        rules: [{ id: "deny-1", type: "deny_capability", target: { workflowId: "wf-1", capabilityId: "cap-other" } }],
+      };
+      const result = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"] });
+      expect(result.allowed).toBe(true);
+    });
+
+    test("a node mismatch prevents a match", async () => {
+      const policy: ExecutionPolicy = {
+        id: "p",
+        name: "P",
+        rules: [{ id: "approval-1", type: "require_approval", target: { nodeId: "node-b" } }],
+      };
+      const result = await evaluator.evaluate(policy, {
+        workflowId: "wf-1",
+        capabilityIds: ["cap-a"],
+        metadata: { nodeId: "node-a" },
+      });
+      expect(result.allowed).toBe(true);
+    });
+
+    test("a capabilityId-only target matches identically with and without node metadata", async () => {
+      const policy: ExecutionPolicy = {
+        id: "p",
+        name: "P",
+        rules: [{ id: "deny-1", type: "deny_capability", target: { capabilityId: "cap-a" } }],
+      };
+
+      const preFlight = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"] });
+      const perNode = await evaluator.evaluate(policy, {
+        workflowId: "wf-1",
+        capabilityIds: ["cap-a"],
+        metadata: { nodeId: "any-node" },
+      });
+
+      expect(preFlight.allowed).toBe(false);
+      expect(perNode.allowed).toBe(false);
+      expect(preFlight.violations[0]?.ruleId).toBe("deny-1");
+      expect(perNode.violations[0]?.ruleId).toBe("deny-1");
+    });
+
+    test("a fully specified target matches exactly its node, workflow, and capability", async () => {
+      const policy: ExecutionPolicy = {
+        id: "p",
+        name: "P",
+        rules: [{ id: "approval-1", type: "require_approval", target: { workflowId: "wf-1", nodeId: "n1", capabilityId: "cap-a" } }],
+      };
+      const match = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"], metadata: { nodeId: "n1" } });
+      const wrongCap = await evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-b"], metadata: { nodeId: "n1" } });
+      expect(match.allowed).toBe(false);
+      expect(match.violations).toHaveLength(1);
+      expect(wrongCap.allowed).toBe(true);
+    });
+
+    test("a structurally invalid target smuggled past the schema fails loudly, never silently open", async () => {
+      const policy: ExecutionPolicy = {
+        id: "p",
+        name: "P",
+        rules: [{ id: "deny-1", type: "deny_capability", target: { capabilityId: "cap-a" } }],
+      };
+      // Corrupt the already-typed object through an internal unchecked
+      // mutation — the schema cannot see this, so the evaluator must.
+      const rule = policy.rules[0] as { target?: unknown };
+      rule.target = { workflowId: "wf-1" };
+
+      await expect(evaluator.evaluate(policy, { workflowId: "wf-1", capabilityIds: ["cap-a"] })).rejects.toThrow(
+        "nodeId or a capabilityId",
+      );
+    });
+  });
+
   describe("resource_limit policy", () => {
     test("resource_limit rules are stored but not enforced", async () => {
       const policy: ExecutionPolicy = {

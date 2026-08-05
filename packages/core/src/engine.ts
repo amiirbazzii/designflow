@@ -1128,12 +1128,15 @@ export class ExecutionEngine {
   ): Promise<PendingNodeApproval | undefined> {
     if (this.policyEvaluator === undefined || this.policy === undefined) return undefined;
     if (context.metadata["approvedNodeId"] === nodeId) return undefined;
-    // Legacy string-target rules are evaluated once by ExecutionService before
-    // the workflow starts. Only structured node/capability targets participate
-    // in the per-node gate; this preserves old workflow-level approval flows.
+    // String-target rules are evaluated once by ExecutionService before the
+    // workflow starts. Object targets always carry a nodeId or capabilityId
+    // selector (the schema rejects workflowId-only targets), so the
+    // per-node gate runs whenever any object rule's selector could concern
+    // this node or capability; the evaluator then applies the full AND
+    // semantics, including the workflowId scope qualifier.
     const hasNodeScopedRule = this.policy.rules.some((rule) => {
       if (typeof rule.target === "string" || rule.target === undefined) return false;
-      return rule.target.nodeId === nodeId || rule.target.capabilityId === capabilityId || rule.target.workflowId === context.workflowId;
+      return rule.target.nodeId === nodeId || rule.target.capabilityId === capabilityId;
     });
     if (!hasNodeScopedRule) return undefined;
     const result = await this.policyEvaluator.evaluate(this.policy, {
