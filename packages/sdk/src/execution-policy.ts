@@ -3,12 +3,22 @@ import { z } from "zod";
 
 // ── Policy Rule Schema ─────────────────────────────────────────
 
-export const policyRuleTypeSchema = z.enum([
-  "allow_capability",
-  "deny_capability",
-  "require_approval",
-  "resource_limit",
-]);
+/**
+ * The supported policy rule types. Policy-level resource limits are NOT
+ * supported in this release: DesignFlow does not expose a policy contract
+ * it does not enforce. Deterministic bounds (subprocess timeouts, response
+ * size caps, correction-iteration limits) live in their owning layers, not
+ * in policy rules. Resource metering is deferred post-MVP.
+ */
+export const policyRuleTypeSchema = z.enum(
+  ["allow_capability", "deny_capability", "require_approval"],
+  {
+    errorMap: () => ({
+      message:
+        "Unsupported policy rule type. Supported types: allow_capability, deny_capability, require_approval. Policy-level resource limits are not supported in this release.",
+    }),
+  },
+);
 
 export type PolicyRuleType = z.infer<typeof policyRuleTypeSchema>;
 

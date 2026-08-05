@@ -256,25 +256,27 @@ describe("InMemoryPolicyEvaluator", () => {
     });
   });
 
-  describe("resource_limit policy", () => {
-    test("resource_limit rules are stored but not enforced", async () => {
+  describe("resource_limit policy (unsupported)", () => {
+    test("a resource_limit rule reaching evaluation through an unchecked path is rejected loudly, never silently allowed", async () => {
       const policy: ExecutionPolicy = {
         id: "policy-1",
         name: "Resource Policy",
-        rules: [
-          { id: "limit-1", type: "resource_limit", target: "memory", metadata: { maxMB: 512 } },
-        ],
+        rules: [{ id: "limit-1", type: "deny_capability", target: "memory" }],
       };
+      // The public union no longer includes "resource_limit"; corrupt the
+      // typed object through a narrow structural view, as persisted or
+      // internal unchecked data could.
+      const rule = policy.rules[0] as { type?: unknown };
+      rule.type = "resource_limit";
 
       const context: PolicyContext = {
         workflowId: "wf-1",
         capabilityIds: ["cap-a"],
       };
 
-      const result = await evaluator.evaluate(policy, context);
-
-      expect(result.allowed).toBe(true);
-      expect(result.violations).toHaveLength(0);
+      await expect(evaluator.evaluate(policy, context)).rejects.toThrow(
+        "Unsupported policy rule type",
+      );
     });
   });
 

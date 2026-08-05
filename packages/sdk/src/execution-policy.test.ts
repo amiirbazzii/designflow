@@ -4,6 +4,8 @@ import {
   executionPolicySchema,
   policyRuleSchema,
   policyRuleTargetSchema,
+  policyRuleTypeSchema,
+  type PolicyRuleType,
 } from "./execution-policy";
 
 describe("policy target schema", () => {
@@ -60,6 +62,38 @@ describe("policy target schema", () => {
     if (!parsed.success) {
       expect(JSON.stringify(parsed.error.issues)).toContain("nodeId or a capabilityId");
     }
+  });
+
+  test("resource_limit is rejected with an actionable message", () => {
+    const parsed = policyRuleSchema.safeParse({ id: "limit-1", type: "resource_limit", target: "memory" });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const message = JSON.stringify(parsed.error.issues);
+      expect(message).toContain("Unsupported policy rule type");
+      expect(message).toContain("resource limits are not supported");
+    }
+  });
+
+  test("the supported rule-type contract is exactly allow, deny, and approval", () => {
+    // Source-level contract assertion: the enum's own options are the whole
+    // supported surface — resource_limit is absent by construction.
+    expect([...policyRuleTypeSchema.options].sort()).toEqual([
+      "allow_capability",
+      "deny_capability",
+      "require_approval",
+    ]);
+    // Compile-time twin: the inferred public union excludes the removed
+    // member (this line fails to typecheck if it ever returns).
+    const excluded: "resource_limit" extends PolicyRuleType ? never : true = true;
+    expect(excluded).toBe(true);
+  });
+
+  test("valid allow, deny, and approval rules still parse", () => {
+    expect(policyRuleSchema.safeParse({ id: "a", type: "allow_capability", target: "cap-a" }).success).toBe(true);
+    expect(policyRuleSchema.safeParse({ id: "d", type: "deny_capability", target: "cap-b" }).success).toBe(true);
+    expect(
+      policyRuleSchema.safeParse({ id: "r", type: "require_approval", target: { workflowId: "wf", nodeId: "n" } }).success,
+    ).toBe(true);
   });
 
   test("a rule with a valid object target parses", () => {

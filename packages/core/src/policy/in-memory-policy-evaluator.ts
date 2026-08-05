@@ -26,7 +26,6 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
     const denyRules = validatedPolicy.rules.filter((r) => r.type === "deny_capability");
     const allowRules = validatedPolicy.rules.filter((r) => r.type === "allow_capability");
     const approvalRules = validatedPolicy.rules.filter((r) => r.type === "require_approval");
-    const resourceRules = validatedPolicy.rules.filter((r) => r.type === "resource_limit");
 
     for (const rule of denyRules) {
       this.evaluateDenyRule(rule, validatedContext, violations);
@@ -38,10 +37,6 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
 
     for (const rule of approvalRules) {
       this.evaluateApprovalRule(rule, validatedContext, violations);
-    }
-
-    for (const rule of resourceRules) {
-      this.evaluateResourceRule(rule, validatedContext, violations);
     }
 
     return {
@@ -146,13 +141,5 @@ export class InMemoryPolicyEvaluator implements PolicyEvaluator {
       if (target.nodeId !== nodeId) return false;
     }
     return true;
-  }
-
-  private evaluateResourceRule(
-    _rule: PolicyRule,
-    _context: PolicyContext,
-    _violations: PolicyEvaluationResult["violations"],
-  ): void {
-    // Store rule only - no runtime resource tracking yet
   }
 }
