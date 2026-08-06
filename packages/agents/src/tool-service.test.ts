@@ -354,7 +354,7 @@ describe("the Design Engineer agent's tool use", () => {
   const task: AgentTask = {
     workerId: "design-engineer",
     agentId: "design-engineer-agent",
-    request: "build a login page",
+    request: "a login page from this design",
     input: { figmaSourceMode: "mcp-stdio" },
   };
 

@@ -59,7 +59,7 @@ function runtimeFor(
 const TASK: AgentTask = {
   workerId: "test-worker",
   agentId: "test-agent",
-  request: "build the homepage",
+  request: "the homepage from this design",
 };
 
 async function codeOf(run: () => Promise<unknown>): Promise<string> {
@@ -436,7 +436,7 @@ describe("the Design Engineer agent", () => {
   const task = (overrides: Partial<AgentTask> = {}): AgentTask => ({
     workerId: "design-engineer",
     agentId: "design-engineer-agent",
-    request: "build the homepage",
+    request: "the homepage from this design",
     input: { figmaSourceMode: "mcp-stdio" },
     ...overrides,
   });

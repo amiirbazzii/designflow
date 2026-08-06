@@ -384,6 +384,66 @@ autonomy theater.
 
 ---
 
+# Implementation status — MVP-3B reconciliation: genuine coordinator intent routing (2026-08-06)
+
+**The reconciliation is implemented.** MVP-3C/3D/3E remain open.
+
+- **Why prerequisite-only routing was insufficient:** the first MVP-3B
+  pass made routing purely a function of what was *permitted* (Figma,
+  project, consent), removing the coordinator's model call entirely. Safe,
+  but not agent-centric: when both journeys are permitted, "document this
+  frame" and "implement this frame" must route differently — permission
+  cannot substitute for understanding the goal.
+- **Responsibility split (final):** deterministic prerequisite resolver
+  (host) → produces allowed PRODUCT ACTIONS and safe facts → coordinator
+  agent interprets intent among them → deterministic validator re-checks
+  the choice and translates it to a workflow. The coordinator never sees
+  or selects workflow ids; a model answer can narrow behavior but never
+  broaden authority.
+- **Product-action contract** (`packages/agents/src/decision-prompt.ts`):
+  `create_specification` / `prepare_implementation` /
+  `request_clarification` / `decline`; flat provider transport with a
+  per-request action enum; `productActionFromTransport` refuses actions
+  outside the allowed set; `buildProductActionPrompt` carries action
+  descriptions and host facts (Figma connected, project selected, consent
+  given, classifier verdict) — no secrets, ids, config, or registry
+  objects.
+- **Model-backed behavior:** when a route exists and the request is
+  meaningful, the coordinator makes exactly one model call through its
+  own profile (`design-engineer-coordinator-default`, overridable,
+  independent settings) via the existing model runtime — normal
+  provenance/trace recording applies. Choice → deterministic translation
+  → post-decision revalidation against live prerequisites; a disallowed
+  or invented answer becomes a typed decline/clarification, never the
+  placeholder. Model failure declines with a safe reason.
+- **Deterministic fallback (no credential):** same contract, conservative
+  intent reading — explicit specification vocabulary (or
+  "do not change …") wins even with a consented project; explicit
+  implementation vocabulary routes to implementation only when permitted
+  and clarifies (naming the missing prerequisite, no internal ids)
+  otherwise; unrecognisable non-design requests decline; ambiguous
+  design requests clarify. For form-style requests with no prose, the
+  explicit yes to "Prepare changes for this project?" this run is the
+  intent signal — documented deliberately: consent is an answered intent
+  question, not mere project presence, and a specification-worded request
+  still overrides it.
+- **Hard short-circuits (zero model calls):** no supported route (setup
+  guidance), nothing to decide (empty request/input), malformed Figma
+  config (unavailable upstream). Test-pinned.
+- **Consent unchanged:** per-run, non-persisted, distinct from proposal
+  approval; permits implementation as an *option*, never forces it.
+- **Tests:** product-action transport/refusal; model-backed intent
+  routing (one call, own profile, spec-over-impl when asked, disallowed
+  and invented answers refused, prerequisite-absence short-circuits with
+  zero calls, input passthrough); deterministic intent matrix; source
+  boundary test pinning `productActionFromTransport` and the absence of
+  workflow-id transport in the DE strategy. CLI/API suites unchanged and
+  green (their no-Figma harnesses exercise the short-circuit paths, so
+  model-mode expectations still hold). No safety authority moved into any
+  agent.
+
+---
+
 # Implementation status — MVP-3B: canonical routing, gating, and honesty (2026-08-06)
 
 **MVP-3B is implemented.** MVP-3C/3D/3E remain open; MVP-3 is NOT complete.

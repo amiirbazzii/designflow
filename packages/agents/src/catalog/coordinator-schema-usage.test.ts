@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// design-engineer-agent.ts is deliberately absent since MVP-3B: its model
-// strategy no longer routes via a model call at all — deterministic
-// prerequisites fully determine the permitted outcome, so there is no
-// provider transport to convert.
+// design-engineer-agent.ts is covered separately below: since the MVP-3B
+// reconciliation its model strategy decides over PRODUCT ACTIONS (never
+// workflow ids), converting the provider transport through
+// productActionFromTransport instead of modelDecisionFromTransport.
 const coordinatorFiles = [
   "product-manager-agent.ts",
   "qa-reviewer-agent.ts",
@@ -21,4 +21,14 @@ describe("coordinator model transport boundary", () => {
       expect(source).not.toContain("modelDecisionSchema.safeParse(result.output)");
     });
   }
+});
+
+describe("design engineer product-action transport boundary", () => {
+  test("design-engineer-agent.ts converts the provider transport via productActionFromTransport", () => {
+    const source = readFileSync(join(import.meta.dir, "design-engineer-agent.ts"), "utf8");
+    expect(source).toContain("productActionFromTransport(result.output, allowedActions)");
+    // The model never sees or selects workflow ids: translation is a
+    // deterministic mapping applied after validation.
+    expect(source).not.toContain("modelDecisionFromTransport");
+  });
 });

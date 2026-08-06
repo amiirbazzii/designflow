@@ -329,3 +329,145 @@ export function buildDecisionPrompt(input: DecisionPromptInput): {
     responseSchema: decisionResponseSchema(input.availableWorkflows),
   };
 }
+
+// ── Product-action decisions (MVP-3B reconciliation) ─────────────
+//
+// The Design Engineer coordinator decides among PRODUCT ACTIONS, never raw
+// workflow ids: the host supplies the actions currently permitted, the model
+// (or the deterministic strategy) interprets the user's intent among them,
+// and a deterministic translator downstream maps the chosen action onto a
+// workflow. A model answer can narrow behavior but can never broaden
+// authority — every response is re-validated against the allowed set here
+// and against live prerequisites after translation.
+
+export const PRODUCT_ACTIONS = [
+  "create_specification",
+  "prepare_implementation",
+  "request_clarification",
+  "decline",
+] as const;
+
+export type ProductAction = (typeof PRODUCT_ACTIONS)[number];
+
+export const productActionDecisionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("create_specification"), reasoningSummary: z.string().min(1).max(400) }).strict(),
+  z.object({ action: z.literal("prepare_implementation"), reasoningSummary: z.string().min(1).max(400) }).strict(),
+  z.object({ action: z.literal("request_clarification"), question: z.string().min(1).max(400), reasoningSummary: z.string().min(1).max(400) }).strict(),
+  z.object({ action: z.literal("decline"), reason: z.string().min(1).max(400), reasoningSummary: z.string().min(1).max(400) }).strict(),
+]);
+
+export type ProductActionDecision = z.infer<typeof productActionDecisionSchema>;
+
+const productActionTransportSchema = z
+  .object({
+    action: z.enum(PRODUCT_ACTIONS),
+    question: nullableText,
+    reason: nullableText,
+    reasoningSummary: z.string().min(1).max(400),
+  })
+  .strict();
+
+/**
+ * Converts the flat provider response into the product-action union,
+ * refusing any action outside the allowed set supplied for THIS request.
+ */
+export function productActionFromTransport(
+  raw: unknown,
+  allowedActions: readonly ProductAction[],
+): ProductActionDecision | undefined {
+  const parsed = productActionTransportSchema.safeParse(raw);
+  if (!parsed.success) return undefined;
+
+  const decision = parsed.data;
+  if (!allowedActions.includes(decision.action)) return undefined;
+
+  if (decision.action === "request_clarification") {
+    if (decision.question === null || decision.question.trim().length === 0) return undefined;
+    if (decision.reason !== null) return undefined;
+    return productActionDecisionSchema.parse({ action: decision.action, question: decision.question, reasoningSummary: decision.reasoningSummary });
+  }
+
+  if (decision.action === "decline") {
+    if (decision.reason === null || decision.reason.trim().length === 0) return undefined;
+    if (decision.question !== null) return undefined;
+    return productActionDecisionSchema.parse({ action: decision.action, reason: decision.reason, reasoningSummary: decision.reasoningSummary });
+  }
+
+  if (decision.question !== null || decision.reason !== null) return undefined;
+  return productActionDecisionSchema.parse({ action: decision.action, reasoningSummary: decision.reasoningSummary });
+}
+
+const PRODUCT_ACTION_DESCRIPTIONS: Record<ProductAction, string> = {
+  create_specification:
+    "produce a structured engineering specification of the design; reads only, writes nothing to the user's project",
+  prepare_implementation:
+    "prepare a reviewed implementation proposal for the user's selected project; nothing is written until they approve the exact proposal",
+  request_clarification: "ask the user one clarifying question",
+  decline: "decline work outside the Design Engineer's scope",
+};
+
+export interface ProductActionFact {
+  readonly key: string;
+  readonly value: string | boolean;
+}
+
+export interface ProductActionPromptInput {
+  readonly instructions: string;
+  readonly request: string;
+  readonly allowedActions: readonly ProductAction[];
+  /** Safe, host-derived facts only — never secrets, ids, or raw config. */
+  readonly facts: readonly ProductActionFact[];
+  readonly clarifications?: readonly DecisionPromptClarification[] | undefined;
+}
+
+function productActionResponseSchema(allowedActions: readonly ProductAction[]): JsonSchemaObject {
+  return {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: [...allowedActions] },
+      question: { type: ["string", "null"], maxLength: 400 },
+      reason: { type: ["string", "null"], maxLength: 400 },
+      reasoningSummary: { type: "string", maxLength: 400 },
+    },
+    required: ["action", "question", "reason", "reasoningSummary"],
+    additionalProperties: false,
+  };
+}
+
+/** Builds the messages and response schema for one product-action decision. */
+export function buildProductActionPrompt(input: ProductActionPromptInput): {
+  readonly messages: readonly ModelMessage[];
+  readonly responseSchema: JsonSchemaObject;
+} {
+  const system = [
+    input.instructions,
+    "",
+    "You are the routing decision for one bounded request. Interpret what the user " +
+      "wants and answer with exactly one structured decision matching the schema.",
+    "",
+    "Available actions:",
+    ...input.allowedActions.map((action) => `- ${action}: ${PRODUCT_ACTION_DESCRIPTIONS[action]}`),
+    "",
+    "You may only choose from the actions listed above. You cannot name workflows, " +
+      "tools, commands, or files. Choosing prepare_implementation never writes " +
+      "anything by itself — a separate explicit approval always follows.",
+    "",
+    REASONING_INSTRUCTION,
+  ].join("\n");
+
+  const user = [
+    `Request: ${input.request.length > 0 ? input.request : "(empty)"}`,
+    "",
+    "Situation:",
+    ...input.facts.map((fact) => `- ${fact.key}: ${String(fact.value)}`),
+    ...summarizeClarifications(input.clarifications),
+  ].join("\n");
+
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    responseSchema: productActionResponseSchema(input.allowedActions),
+  };
+}

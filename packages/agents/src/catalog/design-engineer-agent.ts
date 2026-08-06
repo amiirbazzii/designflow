@@ -11,6 +11,13 @@ import {
   type ToolResult,
 } from "@designflow/sdk";
 
+import {
+  buildProductActionPrompt,
+  productActionFromTransport,
+  type ProductAction,
+  type ProductActionFact,
+} from "../decision-prompt";
+
 
 /**
  * The Design Engineer's agent.
@@ -58,8 +65,11 @@ export const designEngineerAgentManifest: AgentManifest = agentManifestSchema.pa
   description: "Decides how a Design Engineer request should be carried out",
   version: "0.3.0",
   instructions:
-    "Turn a design into working code. Classify the request first. Run the " +
-    "design-to-code workflow when it names design work. Ask what to build when it does not.",
+    "You coordinate the Design Engineer. Understand what the user wants from a " +
+    "Figma design: choose create_specification to document or analyze it; choose " +
+    "prepare_implementation only when they want code changes prepared for their " +
+    "selected project; ask one clarifying question when the goal is unclear; " +
+    "decline work that is not about a design.",
   allowedWorkflows: ["design-to-code", "design-to-code-implementation", "design-to-code-figma-specification"],
   allowedTools: ["classify-design-task"],
   /**
@@ -125,6 +135,73 @@ function wantsRealFigmaSpecification(task: AgentTask, context: AgentContext): bo
   if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
   const mode = (input as Record<string, unknown>).figmaSourceMode;
   return typeof mode === "string" && mode !== "placeholder";
+}
+
+// ── Product-action routing facts (MVP-3B reconciliation) ────────
+//
+// The deterministic host resolves what is PERMITTED; the coordinator
+// interprets what is WANTED among those permissions. These facts are the
+// bridge: safe, host-derived booleans — never secrets, ids, or raw config.
+
+interface DesignRoutingFacts {
+  readonly specificationAvailable: boolean;
+  readonly implementationAvailable: boolean;
+  readonly projectSelected: boolean;
+  readonly projectWriteConsent: boolean;
+}
+
+function buildRoutingFacts(task: AgentTask, context: AgentContext): DesignRoutingFacts {
+  const input = typeof task.input === "object" && task.input !== null && !Array.isArray(task.input)
+    ? (task.input as Record<string, unknown>)
+    : {};
+  return {
+    specificationAvailable: wantsRealFigmaSpecification(task, context),
+    implementationAvailable: wantsImplementation(task, context),
+    projectSelected: typeof input.projectId === "string" || typeof input.project === "object",
+    projectWriteConsent: input.projectWriteConsent === true,
+  };
+}
+
+function allowedActionsFor(facts: DesignRoutingFacts): ProductAction[] {
+  return [
+    ...(facts.specificationAvailable ? (["create_specification"] as const) : []),
+    ...(facts.implementationAvailable ? (["prepare_implementation"] as const) : []),
+    "request_clarification",
+    "decline",
+  ];
+}
+
+/**
+ * Conservative intent reading for the deterministic strategy. Explicit
+ * specification vocabulary (or an explicit do-not-change instruction)
+ * always wins; explicit implementation vocabulary selects implementation
+ * only when it is actually permitted. Neither list is load-bearing for
+ * safety — translation and post-validation are.
+ */
+const SPECIFICATION_INTENT = /\b(document(?:ation)?|describe|inspect|analy[sz]e|specif\w*|spec|review|audit|explain)\b/i;
+const NO_WRITE_INTENT = /\b(?:do\s+not|don'?t|no|without)\s+(?:chang\w*|modify\w*|touch\w*|writ\w*)\b/i;
+const IMPLEMENTATION_INTENT = /\b(implement\w*|build|apply|integrat\w*|convert)\b/i;
+const DESIGN_VOCABULARY = /\b(design|figma|frame|component|page|screen|ui|mockup|layout)\b/i;
+
+function hasSpecificationIntent(text: string): boolean {
+  return SPECIFICATION_INTENT.test(text) || NO_WRITE_INTENT.test(text);
+}
+
+const SETUP_CLARIFICATION = {
+  type: "request_clarification",
+  question:
+    "I work from a connected Figma design. Connect Figma (run `designflow doctor` to check the setup), then tell me which design to build from.",
+  reasoningSummary: "No supported journey is available for this request: no real Figma source (and no consented project) was provided.",
+} as const;
+
+/** Deterministic translation: product action → workflow. Never model-owned. */
+function runFor(action: "create_specification" | "prepare_implementation", task: AgentTask, reasoningSummary: string): AgentDecision {
+  return {
+    type: "run_workflow",
+    workflowId: action === "prepare_implementation" ? IMPLEMENTATION_WORKFLOW_ID : FIGMA_SPECIFICATION_WORKFLOW_ID,
+    ...(task.input !== undefined ? { input: task.input } : {}),
+    reasoningSummary,
+  };
 }
 
 /**
@@ -286,24 +363,13 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
   context,
   _manifest,
 ) => {
-  // Product-valid routes only. The legacy `design-to-code` scaffold stays on
-  // the technical allow-list for compatibility, but the canonical journey
-  // never falls back to it: a request the supported routes cannot serve gets
-  // a clarification with actionable guidance, not a prototype pretending to
-  // be the product.
-  const workflowId = wantsImplementation(task, context)
-    ? IMPLEMENTATION_WORKFLOW_ID
-    : wantsRealFigmaSpecification(task, context)
-      ? FIGMA_SPECIFICATION_WORKFLOW_ID
-      : undefined;
+  const facts = buildRoutingFacts(task, context);
 
-  if (workflowId === undefined) {
-    return {
-      type: "request_clarification",
-      question:
-        "I work from a connected Figma design. Connect Figma (run `designflow doctor` to check the setup), then tell me which design to build from.",
-      reasoningSummary: "No supported journey is available for this request: no real Figma source (and no consented project) was provided.",
-    };
+  // Hard prerequisite short-circuits: with no supported route there is no
+  // meaningful product decision to interpret. The legacy scaffold is never
+  // an answer.
+  if (!facts.specificationAvailable && !facts.implementationAvailable) {
+    return { ...SETUP_CLARIFICATION };
   }
 
   if (!readyToDecide(task)) {
@@ -315,30 +381,57 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
     };
   }
 
-  const classification = await classify(task, context);
+  const text = describe(task);
 
-  // The load-bearing branch. A request that describes nothing recognisable
-  // gets a question, even though it carried enough input to start.
-  if (classification !== null && !ACTIONABLE.has(classification.taskType)) {
+  // Intent first: an explicit specification request stays specification even
+  // when a consented project makes implementation permitted.
+  if (hasSpecificationIntent(text) && facts.specificationAvailable) {
+    return runFor("create_specification", task, "The request asks for documentation or analysis, so the design-specification journey will be used.");
+  }
+
+  if (IMPLEMENTATION_INTENT.test(text) && !facts.implementationAvailable) {
     return {
       type: "request_clarification",
-      question:
-        "What would you like built? Describe a component, a page, or the change you want made.",
-      reasoningSummary: "The request did not describe a recognisable kind of design work.",
+      question: facts.projectSelected
+        ? "Preparing implementation changes needs your explicit go-ahead for the selected project. Run again and confirm when asked, or ask for a design specification instead."
+        : "Preparing implementation changes needs a registered project. Select one with --project (see `designflow projects`), or ask for a design specification instead.",
+      reasoningSummary: "The request asks for implementation, but its prerequisites (project and explicit consent) are not in place.",
     };
   }
 
-  return {
-    type: "run_workflow",
-    workflowId,
-    ...(task.input !== undefined ? { input: task.input } : {}),
-    reasoningSummary:
-      workflowId === IMPLEMENTATION_WORKFLOW_ID
-        ? "A registered project was selected and implementation was explicitly consented to, so the implementation journey will be used."
-        : classification === null
-          ? "A real Figma source is connected, so the design-specification journey will be used."
-          : `The request looks like ${classification.taskType.replace(/_/g, " ")}; the design-specification journey will be used.`,
-  };
+  const classification = await classify(task, context);
+
+  // A request that describes nothing recognisable gets a question — or a
+  // decline when it does not even sound like design work.
+  if (classification !== null && !ACTIONABLE.has(classification.taskType)
+      && !IMPLEMENTATION_INTENT.test(text) && !hasSpecificationIntent(text)) {
+    if (!DESIGN_VOCABULARY.test(text)) {
+      return {
+        type: "decline",
+        reason: "That is outside the Design Engineer's scope. I turn Figma designs into specifications and reviewed code changes.",
+        reasoningSummary: "The request did not describe design work.",
+      };
+    }
+    return {
+      type: "request_clarification",
+      question:
+        "What would you like from this design — an engineering specification, or prepared code changes for your project?",
+      reasoningSummary: "The request did not make the desired outcome recognisable.",
+    };
+  }
+
+  // Defaults: journey consent is an explicit, user-visible product choice
+  // ("Prepare changes for this project?" answered yes this run) — it is the
+  // intent signal for form-style requests that carry no prose. Without it,
+  // the read-only specification journey is the default.
+  if (facts.implementationAvailable) {
+    return runFor("prepare_implementation", task, "A registered project was selected and implementation was explicitly consented to this run, so the implementation journey will be used.");
+  }
+
+  return runFor("create_specification", task,
+    classification === null
+      ? "A real Figma source is connected, so the design-specification journey will be used."
+      : `The request looks like ${classification.taskType.replace(/_/g, " ")}; the design-specification journey will be used.`);
 };
 
 // ── The model strategy ──────────────────────────────────────────
@@ -354,11 +447,49 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
  * here, and then faces the same allow-list enforcement every decision faces
  * in `AgentRuntime`, model-backed or not.
  */
+/** A short, safe explanation for a model failure — never the provider's own message. */
+function declineForModelFailure(code: string): AgentDecision {
+  const reason =
+    code === "ERR_MODEL_SCHEMA_UNSUPPORTED"
+      ? "The configured model rejected the required structured-output schema."
+      : code === "ERR_MODEL_OUTPUT_UNSUPPORTED"
+        ? "The configured model cannot return the required structured output."
+        : code === "ERR_MODEL_RATE_LIMITED" || code === "ERR_MODEL_UNAVAILABLE"
+          ? "The configured model is temporarily unavailable."
+          : code === "ERR_MODEL_TIMEOUT"
+            ? "The model took too long to respond."
+            : code === "ERR_AGENT_MODEL_BUDGET_EXCEEDED"
+              ? "This request needed more from the model than is allowed at once."
+              : "The model could not be reached.";
+
+  return {
+    type: "decline",
+    reason,
+    reasoningSummary: "The configured model call did not succeed.",
+  };
+}
+
+/**
+ * The genuine coordinator: interprets the user's intent among the product
+ * actions the deterministic host currently permits, through the agent's own
+ * configured model profile. The model sees product actions and safe facts —
+ * never workflow ids, secrets, or config — and its answer is re-validated
+ * against the allowed set and translated deterministically afterwards. A
+ * model answer can narrow behavior but can never broaden authority.
+ */
 export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
   task,
   context,
-  _manifest,
+  manifest,
 ) => {
+  const facts = buildRoutingFacts(task, context);
+
+  // Hard prerequisite short-circuits: no supported route, or nothing to
+  // interpret — no model call is spent on a decision that cannot exist.
+  if (!facts.specificationAvailable && !facts.implementationAvailable) {
+    return { ...SETUP_CLARIFICATION };
+  }
+
   if (!readyToDecide(task)) {
     return {
       type: "request_clarification",
@@ -368,35 +499,82 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
     };
   }
 
-  if (wantsImplementation(task, context)) {
+  const allowedActions = allowedActionsFor(facts);
+
+  // The same classifier the deterministic strategy uses, folded into the
+  // prompt as a bounded fact.
+  const classification = await classify(task, context);
+
+  const promptFacts: ProductActionFact[] = [
+    { key: "a real Figma design source is connected", value: facts.specificationAvailable },
+    { key: "a registered project is selected", value: facts.projectSelected },
+    { key: "the user explicitly consented this run to preparing project changes", value: facts.projectWriteConsent },
+    { key: "preparing implementation changes is currently permitted", value: facts.implementationAvailable },
+    ...(classification !== null
+      ? [{ key: "a deterministic classifier read the request as", value: classification.taskType }]
+      : []),
+  ];
+
+  const clarifications = readClarifications(task);
+
+  const { messages, responseSchema } = buildProductActionPrompt({
+    instructions: manifest.instructions,
+    request: describe(task),
+    allowedActions,
+    facts: promptFacts,
+    ...(clarifications.length > 0 ? { clarifications } : {}),
+  });
+
+  const result = await context.model.generate({
+    messages,
+    responseSchema,
+    maxOutputTokens: 300,
+  });
+
+  if (result.type === "failure") return declineForModelFailure(result.code);
+
+  const decision = productActionFromTransport(result.output, allowedActions);
+
+  if (decision === undefined) {
     return {
-      type: "run_workflow",
-      workflowId: IMPLEMENTATION_WORKFLOW_ID,
-      ...(task.input !== undefined ? { input: task.input } : {}),
-      reasoningSummary: "A registered project was explicitly selected, so the experimental implementation workflow will be used.",
+      type: "decline",
+      reason: "The model's answer could not be used.",
+      reasoningSummary: "The model did not return a usable product-action decision.",
     };
   }
 
-  if (wantsRealFigmaSpecification(task, context)) {
+  // Deterministic translation + post-decision revalidation: even a decision
+  // that passed the allowed-set check is re-checked against live
+  // prerequisites before it becomes a workflow.
+  if (decision.action === "create_specification") {
+    if (!facts.specificationAvailable) return { ...SETUP_CLARIFICATION };
+    return runFor("create_specification", task, decision.reasoningSummary);
+  }
+
+  if (decision.action === "prepare_implementation") {
+    if (!facts.implementationAvailable) {
+      return {
+        type: "request_clarification",
+        question:
+          "Preparing implementation changes needs a registered project and your explicit go-ahead. Select a project and confirm when asked, or ask for a design specification instead.",
+        reasoningSummary: "The model chose implementation, but its prerequisites are not in place.",
+      };
+    }
+    return runFor("prepare_implementation", task, decision.reasoningSummary);
+  }
+
+  if (decision.action === "request_clarification") {
     return {
-      type: "run_workflow",
-      workflowId: FIGMA_SPECIFICATION_WORKFLOW_ID,
-      ...(task.input !== undefined ? { input: task.input } : {}),
-      reasoningSummary: "A real Figma source is connected, so the design-specification journey will be used.",
+      type: "request_clarification",
+      question: decision.question,
+      reasoningSummary: decision.reasoningSummary,
     };
   }
 
-  // MVP-3B: a model answer must never override a missing deterministic
-  // prerequisite. With neither supported route available there is no
-  // workflow the model would be permitted to choose (the legacy scaffold is
-  // compatibility-only), so the honest outcome is the same actionable
-  // clarification the deterministic strategy gives — not a model call whose
-  // only allowed answers were already determined here.
   return {
-    type: "request_clarification",
-    question:
-      "I work from a connected Figma design. Connect Figma (run `designflow doctor` to check the setup), then tell me which design to build from.",
-    reasoningSummary: "No supported journey is available for this request: no real Figma source (and no consented project) was provided.",
+    type: "decline",
+    reason: decision.reason,
+    reasoningSummary: decision.reasoningSummary,
   };
 };
 

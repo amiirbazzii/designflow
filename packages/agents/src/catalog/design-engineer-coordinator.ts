@@ -49,8 +49,11 @@ export const designEngineerCoordinatorManifest: AgentManifest = agentManifestSch
   description: "Decides how a Design Engineer request should be carried out",
   version: "0.1.0",
   instructions:
-    "Turn a design into working code. Classify the request first. Run the " +
-    "design-to-code workflow when it names design work. Ask what to build when it does not.",
+    "You coordinate the Design Engineer. Understand what the user wants from a " +
+    "Figma design: choose create_specification to document or analyze it; choose " +
+    "prepare_implementation only when they want code changes prepared for their " +
+    "selected project; ask one clarifying question when the goal is unclear; " +
+    "decline work that is not about a design.",
   allowedWorkflows: ["design-to-code", "design-to-code-implementation", FIGMA_SPECIFICATION_WORKFLOW_ID],
   allowedTools: ["classify-design-task"],
   modelProfileId: MODEL_PROFILE_ID,

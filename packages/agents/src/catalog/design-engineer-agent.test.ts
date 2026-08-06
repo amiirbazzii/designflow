@@ -38,7 +38,7 @@ const SUPPORTED = [
 const TASK: AgentTask = {
   workerId: "design-engineer",
   agentId: "design-engineer-agent",
-  request: "build a login page",
+  request: "a login page from this design",
   input: { designFile: "homepage.fig", figmaSourceMode: "mcp-stdio" },
 };
 
@@ -58,25 +58,6 @@ function classifierTool(taskType: string): ToolInvoker & { readonly seen: ToolCa
         durationMs: 1,
       };
       return Promise.resolve(result);
-    },
-  };
-}
-
-function modelSpy(): ModelInvoker & { readonly seen: ModelInvocationRequest[] } {
-  const seen: ModelInvocationRequest[] = [];
-  return {
-    seen,
-    installedProfileIds: () => ["design-engineer-default"],
-    generate: (request) => {
-      seen.push(request);
-      return Promise.resolve({
-        type: "success",
-        requestId: request.requestId,
-        providerId: "openrouter",
-        model: "openai/gpt-4o-mini",
-        output: { type: "decline", workflowId: null, question: null, reason: "unused" },
-        durationMs: 1,
-      });
     },
   };
 }
@@ -187,65 +168,133 @@ describe("the deterministic strategy", () => {
   });
 });
 
-describe("the model strategy: prerequisites rule, the model does not", () => {
-  test("a real Figma source routes to specification without consulting the model", async () => {
-    const models = modelSpy();
-    const result = await runtimeWith({
-      models,
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
+describe("the model-backed coordinator: intent interpretation over product actions", () => {
+  function productModel(
+    transport: unknown,
+  ): ModelInvoker & { readonly seen: ModelInvocationRequest[] } {
+    const seen: ModelInvocationRequest[] = [];
+    return {
+      seen,
+      installedProfileIds: () => ["design-engineer-default"],
+      generate: (request) => {
+        seen.push(request);
+        return Promise.resolve({
+          type: "success",
+          requestId: request.requestId,
+          providerId: "openrouter",
+          model: "openai/gpt-4o-mini",
+          output: transport,
+          durationMs: 1,
+        });
+      },
+    };
+  }
 
-    expect(result.decision).toMatchObject({
-      type: "run_workflow",
-      workflowId: "design-to-code-figma-specification",
-    });
-    expect(models.seen).toHaveLength(0);
-  });
+  const spec = { action: "create_specification", question: null, reason: null, reasoningSummary: "documentation intent" };
+  const impl = { action: "prepare_implementation", question: null, reason: null, reasoningSummary: "implementation intent" };
 
-  test("a consented project routes to implementation without consulting the model", async () => {
-    const models = modelSpy();
-    const result = await runtimeWith({
-      models,
-      strategy: modelDesignEngineerStrategy,
-    }).decide({
+  const CONSENTED = {
+    ...TASK,
+    request: "implement this design in my project",
+    input: { ...(TASK.input as object), project: { id: "p1", name: "Fixture" }, projectWriteConsent: true },
+  };
+
+  test("an eligible specification request performs exactly one coordinator model call and routes to specification", async () => {
+    const models = productModel(spec);
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide({
       ...TASK,
-      input: { ...(TASK.input as object), project: { id: "p1", name: "Fixture" }, projectWriteConsent: true },
+      request: "document this Figma frame for engineering",
     });
 
-    expect(result.decision).toMatchObject({
-      type: "run_workflow",
-      workflowId: "design-to-code-implementation",
+    expect(models.seen).toHaveLength(1);
+    expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-figma-specification" });
+  });
+
+  test("an eligible implementation request performs exactly one coordinator model call and routes to implementation", async () => {
+    const models = productModel(impl);
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+
+    expect(models.seen).toHaveLength(1);
+    expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-implementation" });
+  });
+
+  test("the model chooses specification even when implementation is available", async () => {
+    const models = productModel(spec);
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide({
+      ...CONSENTED,
+      request: "review the design but do not change the project",
     });
-    expect(models.seen).toHaveLength(0);
+
+    expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-figma-specification" });
   });
 
-  test("missing prerequisites clarify — a model answer can never override them", async () => {
-    const models = modelSpy();
-    const result = await runtimeWith({
-      models,
-      strategy: modelDesignEngineerStrategy,
-    }).decide({ ...TASK, input: { designFile: "homepage.fig" } });
+  test("the prompt offers product actions and safe facts — never workflow ids", async () => {
+    const models = productModel(spec);
+    await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
 
-    expect(result.decision.type).toBe("request_clarification");
-    expect(models.seen).toHaveLength(0);
+    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
+    expect(prompt).toContain("create_specification");
+    expect(prompt).toContain("prepare_implementation");
+    expect(prompt).not.toContain("design-to-code");
+    expect(prompt).not.toContain("workflow id");
   });
 
-  test("an empty request never reaches the model at all", async () => {
-    const models = modelSpy();
-    const result = await runtimeWith({
-      models,
-      strategy: modelDesignEngineerStrategy,
-    }).decide({ ...TASK, request: "", input: undefined });
+  test("a disallowed action is rejected: implementation without consent cannot be accepted", async () => {
+    // No consent → prepare_implementation is not in the allowed set; the
+    // model answering it anyway is refused deterministically.
+    const models = productModel(impl);
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(TASK);
 
-    expect(result.decision.type).toBe("request_clarification");
+    expect(models.seen).toHaveLength(1);
+    expect(result.decision.type).toBe("decline");
+  });
+
+  test("an invented action or workflow id cannot be accepted", async () => {
+    const rogue = productModel({ action: "run_workflow", workflowId: "design-to-code", question: null, reason: null, reasoningSummary: "x" });
+    const result = await runtimeWith({ models: rogue, strategy: modelDesignEngineerStrategy }).decide(TASK);
+
+    expect(result.decision.type).toBe("decline");
+  });
+
+  test("a model failure declines with a safe reason, never a silent deterministic fallback", async () => {
+    const failing: ModelInvoker = {
+      installedProfileIds: () => ["design-engineer-default"],
+      generate: (request) =>
+        Promise.resolve({
+          type: "failure",
+          requestId: request.requestId,
+          code: "ERR_MODEL_TIMEOUT",
+          message: "provider says no",
+          retryable: false,
+          durationMs: 1,
+        }),
+    };
+
+    const result = await runtimeWith({ models: failing, strategy: modelDesignEngineerStrategy }).decide(TASK);
+    expect(result.decision.type).toBe("decline");
+    expect(JSON.stringify(result.decision)).not.toContain("provider says no");
+  });
+
+  test("missing prerequisites short-circuit with zero model calls", async () => {
+    const models = productModel(spec);
+    const noFigma = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide({
+      ...TASK,
+      input: { designFile: "homepage.fig" },
+    });
+    const empty = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide({
+      ...TASK,
+      request: "",
+      input: undefined,
+    });
+
+    expect(noFigma.decision.type).toBe("request_clarification");
+    expect(empty.decision.type).toBe("request_clarification");
     expect(models.seen).toHaveLength(0);
   });
 
   test("the task's own input is passed through unchanged on a routed run", async () => {
-    const result = await runtimeWith({
-      models: modelSpy(),
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
+    const models = productModel(spec);
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(TASK);
 
     expect(result.decision.type === "run_workflow" ? result.decision.input : undefined).toEqual(
       TASK.input,
