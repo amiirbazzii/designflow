@@ -64,11 +64,27 @@ function context(options?: { readonly requireApproval?: boolean }): CliContext {
   return created;
 }
 
-/** Answers for the design-to-code form, then a decision. */
+/**
+ * Answers for the QA Reviewer form.
+ *
+ * QA Reviewer is this suite's generic worker: it completes deterministically
+ * with no network, no model and no external connection, so the tests about
+ * runs, history, traces and artifacts can drive a real end-to-end execution.
+ * Design Engineer is no longer usable that way — it requires a connected
+ * Figma source, which none of these tests configure — so it appears here only
+ * in the tests that are *about* that requirement.
+ */
 const RUN_ANSWERS = [
-  "homepage.fig",
-  "react",
-  "brand/Header, brand/Footer, layout/Dashboard",
+  "src/components/Header.tsx",
+  "accessibility",
+  "major",
+];
+
+/** The form questions `RUN_ANSWERS` answers, in order. */
+const RUN_QUESTIONS = [
+  "Review target (src/components/Header.tsx)",
+  "Review scope (correctness, accessibility)",
+  "Severity threshold (major)",
 ];
 
 afterEach(() => {
@@ -134,7 +150,7 @@ describe("designflow list", () => {
     expect(terminal.transcript).toContain("Available AI Workers");
     expect(terminal.transcript).toContain("Design Engineer");
     expect(terminal.transcript).toContain(
-      "Transforms designs into production-ready applications",
+      "Turns a connected Figma design into reviewed code changes you approve before anything is written",
     );
   });
 
@@ -208,7 +224,7 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     const code = await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
@@ -216,7 +232,9 @@ describe("designflow run", () => {
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Complete");
     expect(terminal.transcript).toContain("Created  5");
-    expect(terminal.transcript).toContain("No files were written to your project.");
+    expect(terminal.transcript).toContain(
+      "Output stored as DesignFlow artifacts — no files were written to your project.",
+    );
     expect(terminal.transcript).toContain("Inspect the result: designflow artifacts");
   });
 
@@ -224,29 +242,25 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    expect(terminal.questions).toEqual([
-      "Design file (homepage.fig)",
-      "Framework (react)",
-      "Frames (comma separated) (brand/Header, brand/Footer, layout/Dashboard)",
-    ]);
+    expect(terminal.questions).toEqual(RUN_QUESTIONS);
   });
 
   test("shows the checklist as steps land", async () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    expect(terminal.transcript).toContain("✓ Analyze design");
-    expect(terminal.transcript).toContain("✓ Validate output");
+    expect(terminal.transcript).toContain("✓ Collect review target");
+    expect(terminal.transcript).toContain("✓ Produce qa report");
     expect(terminal.transcript).toContain("5 of 5 steps");
   });
 
@@ -254,46 +268,51 @@ describe("designflow run", () => {
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    expect(terminal.transcript).toContain("Design tokens");
-    expect(terminal.transcript).toContain("from Design analysis");
+    expect(terminal.transcript).toContain("Issue list");
+    expect(terminal.transcript).toContain("from Review target summary");
   });
 
   test("asks for approval when the workflow is gated", async () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS, "approve"]);
 
-    const code = await dispatch(["run", "design-engineer"], context(), terminal);
+    const code = await dispatch(["run", "qa-reviewer"], context(), terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Approval required");
     expect(terminal.transcript).toContain("Store the generated result as a DesignFlow artifact");
-    expect(terminal.transcript).toContain("No files were written to your project.");
+    expect(terminal.transcript).toContain(
+      "Output stored as DesignFlow artifacts — no files were written to your project.",
+    );
   });
 
   test("rejecting stops the run and reports a failure exit code", async () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS, "reject"]);
 
-    const code = await dispatch(["run", "design-engineer"], context(), terminal);
+    const code = await dispatch(["run", "qa-reviewer"], context(), terminal);
 
     expect(code).toBe(1);
     expect(terminal.transcript).toContain("Stopped. Nothing was written.");
   });
 
-  test("falls back to placeholders for blank answers", async () => {
+  test("blank answers are left absent rather than filled with placeholders", async () => {
+    const created = context({ requireApproval: false });
     const terminal = new ScriptedTerminal(["", "", ""]);
 
-    const code = await dispatch(
-      ["run", "design-engineer"],
-      context({ requireApproval: false }),
-      terminal,
-    );
+    const code = await dispatch(["run", "qa-reviewer"], created, terminal);
 
-    // Pressing through the form still produces a working run.
-    expect(code).toBe(0);
+    // Pressing through the form used to silently substitute each field's
+    // placeholder, so a run happened on input nobody had actually given. An
+    // empty answer now leaves the field absent, and a request describing no
+    // work is asked about rather than invented.
+    expect(code).toBe(1);
+    expect(terminal.transcript).toContain("needs more information");
+    expect(terminal.transcript).not.toContain("src/components/Header.tsx");
+    expect(await created.runner.history()).toHaveLength(0);
   });
 
   test("rejects an unknown worker", async () => {
@@ -332,7 +351,7 @@ describe("designflow history", () => {
     const created = context({ requireApproval: false });
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       created,
       new ScriptedTerminal(RUN_ANSWERS),
     );
@@ -340,7 +359,7 @@ describe("designflow history", () => {
     const terminal = new ScriptedTerminal();
     await dispatch(["history"], created, terminal);
 
-    expect(terminal.transcript).toContain("Design → Code");
+    expect(terminal.transcript).toContain("QA Review");
     expect(terminal.transcript).toContain("completed");
     expect(terminal.transcript).toContain("finished — created 5 artifacts");
   });
@@ -353,7 +372,7 @@ describe("designflow history", () => {
     // First "invocation".
     const first = createCliContext({ databasePath, requireApproval: false });
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       first,
       new ScriptedTerminal(RUN_ANSWERS),
     );
@@ -368,22 +387,22 @@ describe("designflow history", () => {
 
     // Every CLI command is its own process, so without this the command could
     // only ever report on runs from its own lifetime.
-    expect(terminal.transcript).toContain("Design → Code");
+    expect(terminal.transcript).toContain("QA Review");
     expect(terminal.transcript).not.toContain("Nothing has run yet.");
   });
 
   test("can be narrowed to one workflow", async () => {
     const created = context({ requireApproval: false });
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       created,
       new ScriptedTerminal(RUN_ANSWERS),
     );
 
     const terminal = new ScriptedTerminal();
-    await dispatch(["history", "design-to-code"], created, terminal);
+    await dispatch(["history", "qa-review"], created, terminal);
 
-    expect(terminal.transcript).toContain("Design → Code");
+    expect(terminal.transcript).toContain("QA Review");
   });
 });
 
@@ -751,13 +770,13 @@ describe("worker resolution", () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     await dispatch(
-      ["run", "design-to-code"],
+      ["run", "qa-review"],
       context({ requireApproval: false }),
       terminal,
     );
 
     expect(terminal.transcript).toContain(
-      "(design-to-code is a workflow — its worker is design-engineer)",
+      "(qa-review is a workflow — its worker is qa-reviewer)",
     );
   });
 
@@ -765,12 +784,12 @@ describe("worker resolution", () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).toContain("QA Reviewer");
     expect(terminal.transcript).not.toContain("is a workflow");
   });
 
@@ -793,14 +812,14 @@ describe("running a worker", () => {
     const created = context({ requireApproval: false });
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
-    await dispatch(["run", "design-engineer"], created, terminal);
+    await dispatch(["run", "qa-reviewer"], created, terminal);
 
     // The run is recorded against the workflow, not the worker: workers are a
     // naming layer, and the engine never learns they exist.
     const history = await created.runner.history();
 
     expect(history).toHaveLength(1);
-    expect(history[0]?.workflowId).toBe("design-to-code");
+    expect(history[0]?.workflowId).toBe("qa-review");
     expect(history[0]?.state).toBe("ready");
   });
 
@@ -808,30 +827,26 @@ describe("running a worker", () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
     // The questions come from the manifest, so adding a worker adds no code to
     // the run command.
-    expect(terminal.questions).toEqual([
-      "Design file (homepage.fig)",
-      "Framework (react)",
-      "Frames (comma separated) (brand/Header, brand/Footer, layout/Dashboard)",
-    ]);
+    expect(terminal.questions).toEqual(RUN_QUESTIONS);
   });
 
   test("produces the workflow's artifacts", async () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    expect(terminal.transcript).toContain("Design tokens");
+    expect(terminal.transcript).toContain("Review target summary");
     expect(terminal.transcript).toContain("Created  5");
   });
 
@@ -867,46 +882,46 @@ describe("running through an agent", () => {
     expect(worker?.agentId).toBe("design-engineer-coordinator");
   });
 
-  test("the agent resolves the request to design-to-code", async () => {
+  test("the agent resolves the request to the workflow that handles it", async () => {
     const created = context();
 
     const { decision } = await created.routeTask({
-      workerId: "design-engineer",
-      request: "designFile: homepage.fig",
-      input: { designFile: "homepage.fig" },
+      workerId: "qa-reviewer",
+      request: "reviewTarget: src/components/Header.tsx",
+      input: { reviewTarget: "src/components/Header.tsx" },
     });
 
     expect(decision).toMatchObject({
       type: "run_workflow",
-      workflowId: "design-to-code",
+      workflowId: "qa-review",
     });
   });
 
-  test("designflow run design-engineer executes what the agent chose", async () => {
+  test("designflow run executes what the agent chose", async () => {
     const created = context({ requireApproval: false });
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
-    const code = await dispatch(["run", "design-engineer"], created, terminal);
+    const code = await dispatch(["run", "qa-reviewer"], created, terminal);
 
-    // Worker → product boundary → AgentRuntime → WorkflowRunner → design-to-code.
+    // Worker → product boundary → AgentRuntime → WorkflowRunner → qa-review.
     // The user experience is unchanged; the path underneath is not.
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Complete");
 
     const history = await created.runner.history();
-    expect(history[0]?.workflowId).toBe("design-to-code");
+    expect(history[0]?.workflowId).toBe("qa-review");
   });
 
   test("the run says nothing about agents", async () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    // A person hires a Design Engineer. That an agent picked the workflow is
+    // A person hires a QA Reviewer. That an agent picked the workflow is
     // machinery they should not have to learn, exactly as workflow ids are.
     expect(terminal.transcript).not.toContain("agent");
     expect(terminal.transcript).not.toContain("Agent");
@@ -916,12 +931,12 @@ describe("running through an agent", () => {
     const created = context();
 
     const { worker, decision } = await created.routeTask({
-      workerId: "design-to-code",
-      request: "build it",
+      workerId: "qa-review",
+      request: "review src/components/Header.tsx",
     });
 
-    expect(worker.id).toBe("design-engineer");
-    expect(decision).toMatchObject({ workflowId: "design-to-code" });
+    expect(worker.id).toBe("qa-reviewer");
+    expect(decision).toMatchObject({ workflowId: "qa-review" });
   });
 
   test("a legacy worker with no agent still resolves directly", async () => {
@@ -983,7 +998,7 @@ describe("running through an agent", () => {
 
     expect(code).toBe(1);
     expect(terminal.transcript).toContain("needs more information");
-    expect(terminal.transcript).toContain("Which design should I build?");
+    expect(terminal.transcript).toContain("I work from a connected Figma design.");
     expect(terminal.transcript).toContain("Session saved.");
 
     // Stopped safely with no answer given, no execution recorded.
@@ -992,28 +1007,23 @@ describe("running through an agent", () => {
 
   test("answering a clarification with a real answer resolves it rather than asking again", async () => {
     const created = context({ requireApproval: false });
-    // Nothing typed into the form (`silent-worker` collects none) — but the
+    // Nothing typed into the form (`silent-worker-2` collects none) — but the
     // clarification's own answer is real, on-topic text. Before the fix for
     // an adversarial-verification finding, this asked the identical question
     // a second time no matter what was answered here, forever. It now
-    // resolves and the workflow actually starts — Design Engineer has no
-    // `shapeWorkflowInput`-style mapper from a clarification answer to
-    // `design-to-code`'s structured fields (unlike QA Reviewer/Research
-    // Analyst/Product Manager — see `clarification-resume-regression.test.ts`
-    // for a worker that carries an answer all the way to a completed run),
-    // so it fails on its own missing `designFile`. Failing cleanly on a
-    // second, *different* reason is still proof the loop is broken; the
-    // question is never repeated.
-    const terminal = new ScriptedTerminal(["Build the homepage from homepage.fig in react"]);
+    // resolves and the answer is carried all the way into a finished run.
+    const terminal = new ScriptedTerminal([
+      "Review src/components/Header.tsx for accessibility",
+    ]);
 
     created.workers.registerWorker({
       id: "silent-worker-2",
       name: "Silent Worker Two",
       description: "Collects no input",
       category: "testing",
-      workflows: ["design-to-code"],
+      workflows: ["qa-review"],
       inputs: [],
-      agentId: "design-engineer-agent",
+      agentId: "qa-reviewer-agent",
     });
 
     const code = await dispatch(["run", "silent-worker-2"], created, terminal);
@@ -1023,47 +1033,77 @@ describe("running through an agent", () => {
     expect(terminal.transcript.match(/needs more information/g)).toHaveLength(1);
     expect(terminal.transcript).not.toContain("Session saved.");
     // Progressed into real execution rather than staying `waiting_for_user`.
-    expect(terminal.transcript).toContain("Analyze design");
-    expect(code).toBe(1);
+    expect(terminal.transcript).toContain("Collect review target");
+    expect(code).toBe(0);
   });
 });
 
 // ── Tool-backed decisions ───────────────────────────────────────
 
 describe("running through a tool-backed agent", () => {
-  test("designflow run design-engineer completes end to end", async () => {
+  test("designflow run design-engineer stops on setup guidance when Figma is not connected", async () => {
     const created = context({ requireApproval: false });
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     const code = await dispatch(["run", "design-engineer"], created, terminal);
 
-    // Worker → router → AgentRuntime → tool service → ToolRuntime →
-    // classifier → decision → WorkflowRunner → design-to-code.
-    expect(code).toBe(0);
-    expect(terminal.transcript).toContain("Complete");
-    expect((await created.runner.history())[0]?.workflowId).toBe("design-to-code");
+    // The Design Engineer works from a connected Figma design. With none
+    // configured there is nothing honest to run, so the command explains the
+    // setup instead of falling back to the legacy scaffold — and it does so
+    // before collecting a single answer.
+    expect(code).toBe(1);
+    expect(terminal.questions).toEqual([]);
+    expect(terminal.transcript).toContain(
+      "The Design Engineer works from a connected Figma design",
+    );
+    expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
+
+    // Nothing was started: no execution, and no session left waiting.
+    expect(await created.runner.history()).toHaveLength(0);
+    expect(await created.sessions.listSessions()).toHaveLength(0);
+  });
+
+  test("the setup guidance names a command, not an internal switch", async () => {
+    const terminal = new ScriptedTerminal();
+
+    await dispatch(["run", "design-engineer"], context(), terminal);
+
+    // Guidance a person can act on: a command they can run. Which flag or
+    // workflow id makes it work is machinery, exactly as elsewhere.
+    expect(terminal.transcript).toContain("designflow doctor");
+    for (const leak of [
+      "settings.experimental",
+      "experimental",
+      "design-to-code",
+      "design-to-code-implementation",
+    ]) {
+      expect(terminal.transcript).not.toContain(leak);
+    }
   });
 
   test("the classifier's answer changes what happens", async () => {
     const created = context();
 
-    // A request describing recognisable design work runs.
-    const built = await created.routeTask({
+    // A request describing recognisable review work runs.
+    const reviewed = await created.routeTask({
+      workerId: "qa-reviewer",
+      request: "review the header component",
+      input: { reviewTarget: "src/components/Header.tsx" },
+    });
+
+    // Design Engineer asks instead — it has no connected Figma design to work
+    // from, so it clarifies rather than reaching for the legacy scaffold.
+    const asked = await created.routeTask({
       workerId: "design-engineer",
       request: "build a login page",
       input: { designFile: "homepage.fig" },
     });
 
-    // One describing nothing recognisable asks instead — same worker, same
-    // shape of input, different tool answer, different outcome.
-    const asked = await created.routeTask({
-      workerId: "design-engineer",
-      request: "do the thing",
-      input: { note: "asdf" },
-    });
-
-    expect(built.decision.type).toBe("run_workflow");
+    expect(reviewed.decision.type).toBe("run_workflow");
     expect(asked.decision.type).toBe("request_clarification");
+    expect(asked.decision).toMatchObject({
+      question: expect.stringContaining("Figma") as unknown as string,
+    });
     expect(await created.runner.history()).toHaveLength(0);
   });
 
@@ -1085,7 +1125,7 @@ describe("running through a tool-backed agent", () => {
 
     expect(code).toBe(1);
     expect(terminal.transcript).toContain("needs more information");
-    expect(terminal.transcript).toContain("What would you like built?");
+    expect(terminal.transcript).toContain("I work from a connected Figma design.");
     expect(await created.runner.history()).toHaveLength(0);
   });
 
@@ -1093,14 +1133,14 @@ describe("running through a tool-backed agent", () => {
     const terminal = new ScriptedTerminal([...RUN_ANSWERS]);
 
     await dispatch(
-      ["run", "design-engineer"],
+      ["run", "qa-reviewer"],
       context({ requireApproval: false }),
       terminal,
     );
 
-    // A person hires a Design Engineer. That it consulted a classifier is
+    // A person hires a QA Reviewer. That it consulted a classifier is
     // machinery, exactly as agents and workflow ids are.
-    for (const leak of ["tool", "Tool", "classify", "agent", "Agent", "design-to-code"]) {
+    for (const leak of ["tool", "Tool", "classify", "agent", "Agent", "qa-review\n"]) {
       expect(terminal.transcript).not.toContain(leak);
     }
   });
@@ -1145,14 +1185,14 @@ describe("designflow traces", () => {
 
   test("shows a completed run's decision in the user's vocabulary", async () => {
     const created = context({ requireApproval: false });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     const terminal = new ScriptedTerminal();
     const code = await dispatch(["traces"], created, terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("AI decisions");
-    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).toContain("QA Reviewer");
     expect(terminal.transcript).toContain("started the work");
     expect(terminal.transcript).toContain("Tools consulted: 1");
   });
@@ -1161,13 +1201,13 @@ describe("designflow traces", () => {
 
   test("the trace names the run it produced", async () => {
     const created = context({ requireApproval: false });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     const [trace] = await created.traces.listTraces();
     const [run] = await created.runner.history();
 
     expect(trace?.executionId).toBe(run?.executionId);
-    expect(trace?.workflowId).toBe("design-to-code");
+    expect(trace?.workflowId).toBe("qa-review");
 
     // And the bridge works in the other direction.
     const found = await created.traces.getExecutionTrace(run?.executionId ?? "");
@@ -1203,13 +1243,13 @@ describe("designflow traces", () => {
 
   test("a single trace can be looked up by id", async () => {
     const created = context({ requireApproval: false });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     const [trace] = await created.traces.listTraces();
     const terminal = new ScriptedTerminal();
 
     expect(await dispatch(["traces", trace?.id ?? ""], created, terminal)).toBe(0);
-    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).toContain("QA Reviewer");
   });
 
   test("an unknown id is reported without a stack trace", async () => {
@@ -1224,18 +1264,18 @@ describe("designflow traces", () => {
 
   test("shows no reasoning, prompt, tool payload or internal id", async () => {
     const created = context({ requireApproval: false });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     const terminal = new ScriptedTerminal();
     await dispatch(["traces"], created, terminal);
 
     for (const leak of [
-      "design-to-code",
-      "design-engineer-agent",
+      "qa-review\n",
+      "qa-reviewer-agent",
       "classify-design-task",
       "taskType",
       "confidence",
-      "homepage.fig",
+      "src/components/Header.tsx",
       "reasoning",
       "chainOfThought",
     ]) {
@@ -1249,7 +1289,7 @@ describe("designflow traces", () => {
     const databasePath = join(home, "runs.json");
 
     const first = createCliContext({ databasePath, requireApproval: false });
-    await dispatch(["run", "design-engineer"], first, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], first, new ScriptedTerminal(RUN_ANSWERS));
     first.close();
 
     // A second "invocation" sharing nothing but the file.
@@ -1274,7 +1314,7 @@ describe("designflow traces", () => {
       Promise.reject(new Error("disk full"));
 
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
-    const code = await dispatch(["run", "design-engineer"], created, terminal);
+    const code = await dispatch(["run", "qa-reviewer"], created, terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Complete");
@@ -1291,7 +1331,7 @@ describe("designflow traces", () => {
     };
 
     expect(
-      await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS)),
+      await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS)),
     ).toBe(0);
   });
 
@@ -1300,7 +1340,7 @@ describe("designflow traces", () => {
     const created = context({ requireApproval: false });
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
-    expect(await dispatch(["run", "design-engineer"], created, terminal)).toBe(0);
+    expect(await dispatch(["run", "qa-reviewer"], created, terminal)).toBe(0);
     expect(terminal.transcript).toContain("Created  5");
     expect((await created.runner.history())[0]?.state).toBe("ready");
   });

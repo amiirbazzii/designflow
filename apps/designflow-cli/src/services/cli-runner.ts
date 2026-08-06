@@ -519,18 +519,26 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
   const modelModeRequested = openRouterApiKey !== undefined;
 
-  // Stage 3: the experimental Figma MCP path. Off unless a local config
-  // explicitly sets `settings.experimental.designEngineerFigmaMcp` — every
-  // existing worker, workflow and command is unaffected either way. See
-  // `docs/adr/*-figma-mcp-integration.md` for the full rollout rationale.
-  const implementationEnabled = readExperimentalImplementationEnabled(
-    home.config,
-  );
-  const figmaMcpEnabled =
-    readExperimentalFigmaMcpEnabled(home.config) || implementationEnabled;
-  const figmaMcpConfig = figmaMcpEnabled
-    ? readFigmaMcpConfig(home.config)
-    : undefined;
+  // Figma availability (MVP-3B): a successfully parsed `settings.figmaMcp`
+  // block IS the intent to use Figma — no separate architecture flag is
+  // required for the supported journey. The legacy
+  // `settings.experimental.designEngineerFigmaMcp` /
+  // `...designEngineerImplementation` keys are still read for
+  // compatibility, but they can no longer force availability without a
+  // valid configuration: a flag with a malformed `figmaMcp` block used to
+  // yield an MCP source mode with no MCP client — routing toward a server
+  // that could never exist. Availability now means "parsed and
+  // constructable", and every consumer (registration, run input, routing,
+  // source mode) derives from this one result.
+  void readExperimentalFigmaMcpEnabled(home.config);
+  void readExperimentalImplementationEnabled(home.config);
+  const figmaMcpConfig = readFigmaMcpConfig(home.config);
+  const figmaMcpEnabled = figmaMcpConfig !== undefined;
+  // Implementation workflows register whenever Figma is available: routing
+  // to them still requires an explicit per-run project-write consent (see
+  // `commands/run.ts`), and any actual write still requires exact-proposal
+  // approval — registration is capability presence, never permission.
+  const implementationEnabled = figmaMcpEnabled;
 
   const mcpClient =
     figmaMcpConfig !== undefined
@@ -892,6 +900,16 @@ export function createCliContext(options?: CliContextOptions): CliContext {
    * it: both answer the same question about the same name, and two copies of
    * this would let `run <name>` and the decision behind it disagree.
    */
+  // Workflow ids the public `run` surface must never resolve: the gated
+  // Design Engineer pipeline stages (reachable only through coordinator
+  // routing) and the internal foundation workflow.
+  const INTERNAL_WORKFLOW_IDS = new Set([
+    "design-to-code-figma-specification",
+    "design-to-code-implementation",
+    "design-to-code-feedback-loop",
+    "design-to-code-agent-foundation",
+  ]);
+
   const resolveName = (name: string): ResolvedWorker | null => {
     const worker = workers.getWorker(name);
 
@@ -911,41 +929,15 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     const workflow = workflows.get(name);
     if (workflow === undefined) return null;
 
-    const owner = workers.findByWorkflow(name);
+    // Gated and internal workflows are not public workers. The synthetic
+    // implementation worker this fallback used to fabricate bypassed the
+    // coordinator, prerequisite validation, and the project-write consent —
+    // exactly the routes MVP-3B closes. Internal harnesses that need direct
+    // execution use `runner.start` against this same context, never the
+    // public `run` surface.
+    if (INTERNAL_WORKFLOW_IDS.has(name)) return null;
 
-    if (name === "design-to-code-implementation") {
-      return {
-        worker: {
-          id: workflow.id,
-          name: workflow.name,
-          description: workflow.description ?? "",
-          category: "workflow",
-          workflows: [workflow.id],
-          inputs: [
-            {
-              key: "designFile",
-              label: "Figma design URL",
-              placeholder: "https://www.figma.com/design/...",
-            },
-            {
-              key: "frames",
-              label: "Frames",
-              placeholder: "432-2906",
-              list: true,
-            },
-            {
-              key: "projectId",
-              label: "Registered project ID",
-              placeholder: "project-id",
-            },
-          ],
-          evaluationCriteria: [],
-        },
-        workflowId: workflow.id,
-        workflowInstalled: true,
-        steps: workflow.definition.nodes.length,
-      };
-    }
+    const owner = workers.findByWorkflow(name);
 
     return {
       // Synthesised so the caller has one shape to render either way. The

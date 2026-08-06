@@ -6,11 +6,11 @@ import {
 } from "node:http";
 
 import {
-  createDesignEngineerAgent,
-  deterministicDesignEngineerStrategy,
-  designEngineerAgentManifest,
-  designEngineerDefaultModelProfile,
-  modelDesignEngineerStrategy,
+  createResearchAnalystAgent,
+  deterministicResearchAnalystStrategy,
+  researchAnalystAgentManifest,
+  researchAnalystDefaultModelProfile,
+  modelResearchAnalystStrategy,
   createQaReviewerAgent,
   modelQaReviewerStrategy,
   qaReviewerAgentManifest,
@@ -76,7 +76,7 @@ function flatDecision(decision: unknown): unknown {
 async function mockOpenRouter(
   decisionFor: (model: string | undefined) => unknown = (model) => ({
     type: "run_workflow",
-    workflowId: model === qaReviewerDefaultModelProfile.model ? "qa-review" : "design-to-code",
+    workflowId: model === qaReviewerDefaultModelProfile.model ? "qa-review" : "research-analysis",
     reasoningSummary: "ok",
   }),
 ): Promise<{ endpoint: string; requests: Captured[] }> {
@@ -125,7 +125,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
@@ -133,18 +133,18 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
-        createDesignEngineerAgent(modelDesignEngineerStrategy),
+        createResearchAnalystAgent(modelResearchAnalystStrategy),
         createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
-    await agentRuntime.decide(taskFor("design-engineer-agent"));
+    await agentRuntime.decide(taskFor("research-analyst-agent"));
     await agentRuntime.decide(taskFor("qa-reviewer-agent"));
 
     expect(mock.requests).toHaveLength(2);
-    expect(mock.requests[0]?.body.model).toBe("openai/gpt-4o-mini");
+    expect(mock.requests[0]?.body.model).toBe("perplexity/sonar");
     expect(mock.requests[1]?.body.model).toBe("anthropic/claude-3.5-haiku");
     // The two slugs actually differ — this is not two agents that happen to
     // agree; changing one cannot silently be "the same value twice."
@@ -157,7 +157,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
@@ -165,17 +165,17 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
-        createDesignEngineerAgent(modelDesignEngineerStrategy),
+        createResearchAnalystAgent(modelResearchAnalystStrategy),
         createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
-    await agentRuntime.decide(taskFor("design-engineer-agent"));
+    await agentRuntime.decide(taskFor("research-analyst-agent"));
 
     expect(mock.requests).toHaveLength(1);
-    expect(mock.requests[0]?.body.model).toBe("openai/gpt-4o-mini");
+    expect(mock.requests[0]?.body.model).toBe("perplexity/sonar");
     expect(mock.requests[0]?.body.model).not.toBe("anthropic/claude-3.5-haiku");
   });
 
@@ -185,7 +185,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
@@ -193,10 +193,10 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
-        createDesignEngineerAgent(modelDesignEngineerStrategy),
+        createResearchAnalystAgent(modelResearchAnalystStrategy),
         createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
@@ -213,8 +213,8 @@ describe("two real agents, one provider-neutral runtime", () => {
     const provider = new OpenRouterProvider({ apiKey: "sk-fake-adversarial-marker", endpoint: mock.endpoint });
 
     const overridden = mergeModelProfileOverrides(
-      [designEngineerDefaultModelProfile, qaReviewerDefaultModelProfile],
-      { "design-engineer-default": { model: "openai/gpt-4o" } },
+      [researchAnalystDefaultModelProfile, qaReviewerDefaultModelProfile],
+      { "research-analyst-default": { model: "openai/gpt-4o" } },
     );
 
     const runtime = new ModelRuntime({
@@ -224,14 +224,14 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
-        createDesignEngineerAgent(modelDesignEngineerStrategy),
+        createResearchAnalystAgent(modelResearchAnalystStrategy),
         createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
-    await agentRuntime.decide(taskFor("design-engineer-agent"));
+    await agentRuntime.decide(taskFor("research-analyst-agent"));
     await agentRuntime.decide(taskFor("qa-reviewer-agent"));
 
     // Agent A's override reached agent A ...
@@ -245,21 +245,21 @@ describe("two real agents, one provider-neutral runtime", () => {
     // Structural: there is no "default model" concept anywhere in the
     // contracts these agents were built from. Each manifest names its own
     // profile id and nothing else.
-    expect(designEngineerAgentManifest.modelProfileId).toBe("design-engineer-default");
+    expect(researchAnalystAgentManifest.modelProfileId).toBe("research-analyst-default");
     expect(qaReviewerAgentManifest.modelProfileId).toBe("qa-reviewer-default");
-    expect(designEngineerAgentManifest.modelProfileId).not.toBe(qaReviewerAgentManifest.modelProfileId);
-    expect(Object.keys(designEngineerDefaultModelProfile)).not.toContain("default");
-    expect("global" in designEngineerDefaultModelProfile).toBe(false);
+    expect(researchAnalystAgentManifest.modelProfileId).not.toBe(qaReviewerAgentManifest.modelProfileId);
+    expect(Object.keys(researchAnalystDefaultModelProfile)).not.toContain("default");
+    expect("global" in researchAnalystDefaultModelProfile).toBe(false);
   });
 
   // 6. An agent cannot request another agent's profile.
-  test("qa-reviewer's model port has no field through which to name design-engineer's profile", async () => {
+  test("qa-reviewer's model port has no field through which to name research-analyst's profile", async () => {
     const mock = await mockOpenRouter();
     const provider = new OpenRouterProvider({ apiKey: "sk-fake-adversarial-marker", endpoint: mock.endpoint });
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
@@ -267,7 +267,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([createQaReviewerAgent(modelQaReviewerStrategy)]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
@@ -277,7 +277,7 @@ describe("two real agents, one provider-neutral runtime", () => {
     // `profileId` field — the runtime, not the agent, decides which profile
     // a call resolves to, from the manifest alone. There is no way for
     // `qaReviewerAgent`'s own code to have produced a request naming
-    // "design-engineer-default": the type does not admit one.
+    // "research-analyst-default": the type does not admit one.
     expect(mock.requests).toHaveLength(1);
     expect(mock.requests[0]?.body.model).toBe("anthropic/claude-3.5-haiku");
   });
@@ -296,12 +296,12 @@ describe("two real agents, one provider-neutral runtime", () => {
     });
 
     const agentRuntime = new AgentRuntime({
-      registry: new InMemoryAgentRegistry([createDesignEngineerAgent(modelDesignEngineerStrategy)]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      registry: new InMemoryAgentRegistry([createResearchAnalystAgent(modelResearchAnalystStrategy)]),
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
-    const result = await agentRuntime.decide(taskFor("design-engineer-agent"));
+    const result = await agentRuntime.decide(taskFor("research-analyst-agent"));
 
     expect(mock.requests).toHaveLength(0);
     expect(result.decision.type).toBe("decline");
@@ -314,22 +314,22 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
     });
 
     const agentRuntime = new AgentRuntime({
-      registry: new InMemoryAgentRegistry([createDesignEngineerAgent(deterministicDesignEngineerStrategy)]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      registry: new InMemoryAgentRegistry([createResearchAnalystAgent(deterministicResearchAnalystStrategy)]),
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
       // No classifier tool installed — `hasSomethingToDo` still resolves
       // from the task's own request/input, so this exercises the fully
       // offline legacy path with a real ModelRuntime present but idle.
     });
 
-    const result = await agentRuntime.decide(taskFor("design-engineer-agent"));
+    const result = await agentRuntime.decide(taskFor("research-analyst-agent"));
 
     expect(mock.requests).toHaveLength(0);
     expect(result.decision.type).toBe("run_workflow");
@@ -342,7 +342,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
@@ -350,21 +350,21 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
-        createDesignEngineerAgent(modelDesignEngineerStrategy),
+        createResearchAnalystAgent(modelResearchAnalystStrategy),
         createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
     await Promise.all(
       Array.from({ length: 6 }, (_unused, index) =>
-        agentRuntime.decide(taskFor(index % 2 === 0 ? "design-engineer-agent" : "qa-reviewer-agent")),
+        agentRuntime.decide(taskFor(index % 2 === 0 ? "research-analyst-agent" : "qa-reviewer-agent")),
       ),
     );
 
     const models = mock.requests.map((request) => request.body.model);
-    expect(models.filter((model) => model === "openai/gpt-4o-mini")).toHaveLength(3);
+    expect(models.filter((model) => model === "perplexity/sonar")).toHaveLength(3);
     expect(models.filter((model) => model === "anthropic/claude-3.5-haiku")).toHaveLength(3);
   });
 
@@ -376,7 +376,7 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const runtime = new ModelRuntime({
       profiles: new InMemoryModelProfileRegistry([
-        designEngineerDefaultModelProfile,
+        researchAnalystDefaultModelProfile,
         qaReviewerDefaultModelProfile,
       ]),
       providers: new InMemoryModelProviderRegistry([provider]),
@@ -384,14 +384,14 @@ describe("two real agents, one provider-neutral runtime", () => {
 
     const agentRuntime = new AgentRuntime({
       registry: new InMemoryAgentRegistry([
-        createDesignEngineerAgent(modelDesignEngineerStrategy),
+        createResearchAnalystAgent(modelResearchAnalystStrategy),
         createQaReviewerAgent(modelQaReviewerStrategy),
       ]),
-      availableWorkflows: ["design-to-code", "qa-review"],
+      availableWorkflows: ["research-analysis", "qa-review"],
       models: runtime,
     });
 
-    await agentRuntime.decide(taskFor("design-engineer-agent"));
+    await agentRuntime.decide(taskFor("research-analyst-agent"));
     await agentRuntime.decide(taskFor("qa-reviewer-agent"));
 
     for (const request of mock.requests) {

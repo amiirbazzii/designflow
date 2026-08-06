@@ -329,7 +329,7 @@ describe("the Design Engineer agent's tool use", () => {
 
     const runtime = new AgentRuntime({
       registry: createAgentRegistry(),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "design-to-code-figma-specification"],
       tools: {
         installedToolIds: () => installed,
         invoke: (request) => {
@@ -348,10 +348,14 @@ describe("the Design Engineer agent's tool use", () => {
     return { runtime, calls };
   }
 
+  // MVP-3B: the canonical Design Engineer routes only to the supported
+  // journeys — a real Figma source selects the specification workflow, so
+  // the classifier's influence is observed on that route.
   const task: AgentTask = {
     workerId: "design-engineer",
     agentId: "design-engineer-agent",
     request: "build a login page",
+    input: { figmaSourceMode: "mcp-stdio" },
   };
 
   test("calls the classifier before deciding", async () => {
@@ -388,7 +392,7 @@ describe("the Design Engineer agent's tool use", () => {
   test("a tool failure is not fatal — it falls back rather than breaking", async () => {
     const runtime = new AgentRuntime({
       registry: createAgentRegistry(),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: ["design-to-code", "design-to-code-figma-specification"],
       tools: {
         installedToolIds: () => ["classify-design-task"],
         invoke: (request) =>

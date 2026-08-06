@@ -11,11 +11,6 @@ import {
   type ToolResult,
 } from "@designflow/sdk";
 
-import {
-  buildDecisionPrompt,
-  modelDecisionFromTransport,
-  type DecisionPromptFact,
-} from "../decision-prompt";
 
 /**
  * The Design Engineer's agent.
@@ -112,9 +107,16 @@ const IMPLEMENTATION_WORKFLOW_ID = "design-to-code-implementation";
 function wantsImplementation(task: AgentTask, context: AgentContext): boolean {
   if (!context.availableWorkflows.includes(IMPLEMENTATION_WORKFLOW_ID)) return false;
   const input = task.input;
-  return typeof input === "object" && input !== null && !Array.isArray(input)
-    && (typeof (input as Record<string, unknown>).projectId === "string"
-      || typeof (input as Record<string, unknown>).project === "object");
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+  const record = input as Record<string, unknown>;
+  // Project presence is where changes COULD go, never permission to prepare
+  // them: implementation routing additionally requires the host-collected,
+  // user-visible journey consent. The later exact-proposal approval remains
+  // a separate, unbypassed gate.
+  return (
+    (typeof record.projectId === "string" || typeof record.project === "object")
+    && record.projectWriteConsent === true
+  );
 }
 
 function wantsRealFigmaSpecification(task: AgentTask, context: AgentContext): boolean {
@@ -217,46 +219,6 @@ function readyToDecide(task: AgentTask): boolean {
 }
 
 /**
- * Stage 40's Project Context, when the resumed or fresh task carries one.
- *
- * Read the same defensive, re-checked way `readClarifications` reads a
- * session's clarifications — `task.context` is untrusted `unknown` at this
- * boundary regardless of which product-layer service populated it, and this
- * agent depends on `@designflow/sdk` alone, never on `@designflow/product`.
- */
-function readProjectFacts(task: AgentTask): readonly DecisionPromptFact[] {
-  const { context } = task;
-  if (typeof context !== "object" || context === null) return [];
-
-  const project = (context as { project?: unknown }).project;
-  if (typeof project !== "object" || project === null) return [];
-
-  const facts = (project as { facts?: unknown }).facts;
-  if (!Array.isArray(facts)) return [];
-
-  return facts.flatMap((entry) => {
-    if (typeof entry !== "object" || entry === null) return [];
-    const key = (entry as { key?: unknown }).key;
-    return typeof key === "string" ? [{ key, value: (entry as { value?: unknown }).value }] : [];
-  });
-}
-
-/** Stage 40's Agent Memory, read the same defensive way as `readProjectFacts`. */
-function readMemoryNotes(task: AgentTask): readonly DecisionPromptFact[] {
-  const { context } = task;
-  if (typeof context !== "object" || context === null) return [];
-
-  const memory = (context as { memory?: unknown }).memory;
-  if (!Array.isArray(memory)) return [];
-
-  return memory.flatMap((entry) => {
-    if (typeof entry !== "object" || entry === null) return [];
-    const key = (entry as { key?: unknown }).key;
-    return typeof key === "string" ? [{ key, value: (entry as { value?: unknown }).value }] : [];
-  });
-}
-
-/**
  * What the classifier said, or null when it could not be consulted.
  *
  * Null covers every failure mode identically — not installed, not permitted,
@@ -322,22 +284,25 @@ export type DesignEngineerStrategy = (
 export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async (
   task,
   context,
-  manifest,
+  _manifest,
 ) => {
+  // Product-valid routes only. The legacy `design-to-code` scaffold stays on
+  // the technical allow-list for compatibility, but the canonical journey
+  // never falls back to it: a request the supported routes cannot serve gets
+  // a clarification with actionable guidance, not a prototype pretending to
+  // be the product.
   const workflowId = wantsImplementation(task, context)
     ? IMPLEMENTATION_WORKFLOW_ID
     : wantsRealFigmaSpecification(task, context)
       ? FIGMA_SPECIFICATION_WORKFLOW_ID
-      : manifest.allowedWorkflows[0];
+      : undefined;
 
-  // Unreachable for a parsed manifest — `allowedWorkflows` is `.min(1)`.
-  // Declining rather than asserting keeps a misconfigured install refusing
-  // work instead of throwing from under the runtime.
-  if (workflowId === undefined || !context.availableWorkflows.includes(workflowId)) {
+  if (workflowId === undefined) {
     return {
-      type: "decline",
-      reason: "The requested design workflow is not available in this installation.",
-      reasoningSummary: "No permitted workflow is installed.",
+      type: "request_clarification",
+      question:
+        "I work from a connected Figma design. Connect Figma (run `designflow doctor` to check the setup), then tell me which design to build from.",
+      reasoningSummary: "No supported journey is available for this request: no real Figma source (and no consented project) was provided.",
     };
   }
 
@@ -369,36 +334,14 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
     ...(task.input !== undefined ? { input: task.input } : {}),
     reasoningSummary:
       workflowId === IMPLEMENTATION_WORKFLOW_ID
-        ? "A registered project was explicitly selected, so the experimental implementation workflow will be used."
+        ? "A registered project was selected and implementation was explicitly consented to, so the implementation journey will be used."
         : classification === null
-          ? "The request describes design work, which design-to-code handles."
-          : `The request looks like ${classification.taskType.replace(/_/g, " ")}, which design-to-code handles.`,
+          ? "A real Figma source is connected, so the design-specification journey will be used."
+          : `The request looks like ${classification.taskType.replace(/_/g, " ")}; the design-specification journey will be used.`,
   };
 };
 
 // ── The model strategy ──────────────────────────────────────────
-
-/** A short, safe explanation for a model failure — never the provider's own message. */
-function declineForModelFailure(code: string): AgentDecision {
-  const reason =
-    code === "ERR_MODEL_SCHEMA_UNSUPPORTED"
-      ? "The configured model rejected the required structured-output schema."
-      : code === "ERR_MODEL_OUTPUT_UNSUPPORTED"
-        ? "The configured model cannot return the required structured output."
-        : code === "ERR_MODEL_RATE_LIMITED" || code === "ERR_MODEL_UNAVAILABLE"
-      ? "The configured model is temporarily unavailable."
-      : code === "ERR_MODEL_TIMEOUT"
-        ? "The model took too long to respond."
-        : code === "ERR_AGENT_MODEL_BUDGET_EXCEEDED"
-          ? "This request needed more from the model than is allowed at once."
-          : "The model could not be reached.";
-
-  return {
-    type: "decline",
-    reason,
-    reasoningSummary: "The configured model call did not succeed.",
-  };
-}
 
 /**
  * Calls the agent's configured model and turns its structured answer into an
@@ -414,7 +357,7 @@ function declineForModelFailure(code: string): AgentDecision {
 export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
   task,
   context,
-  manifest,
+  _manifest,
 ) => {
   if (!readyToDecide(task)) {
     return {
@@ -439,78 +382,21 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
       type: "run_workflow",
       workflowId: FIGMA_SPECIFICATION_WORKFLOW_ID,
       ...(task.input !== undefined ? { input: task.input } : {}),
-      reasoningSummary: "Real Figma MCP mode is enabled, so the MCP-backed specification workflow will be used.",
+      reasoningSummary: "A real Figma source is connected, so the design-specification journey will be used.",
     };
   }
 
-  // The same classifier the deterministic strategy uses, consulted first so
-  // its verdict can inform the model's prompt — "tool results may inform the
-  // model request," made concrete rather than aspirational.
-  const classification = await classify(task, context);
-
-  const inputSummary: Record<string, unknown> = {
-    ...(typeof task.input === "object" && task.input !== null && !Array.isArray(task.input)
-      ? (task.input as Record<string, unknown>)
-      : {}),
-    ...(classification !== null ? { classifierVerdict: classification.taskType } : {}),
-  };
-
-  const clarifications = readClarifications(task);
-  const projectFacts = readProjectFacts(task);
-  const memoryNotes = readMemoryNotes(task);
-
-  const { messages, responseSchema } = buildDecisionPrompt({
-    instructions: manifest.instructions,
-    request: describe(task),
-    inputSummary,
-    availableWorkflows: context.availableWorkflows,
-    availableTools: context.availableTools,
-    ...(clarifications.length > 0 ? { clarifications } : {}),
-    ...(projectFacts.length > 0 ? { projectFacts } : {}),
-    ...(memoryNotes.length > 0 ? { memoryNotes } : {}),
-  });
-
-  const result = await context.model.generate({
-    messages,
-    responseSchema,
-    maxOutputTokens: 300,
-  });
-
-  if (result.type === "failure") return declineForModelFailure(result.code);
-
-  const decision = modelDecisionFromTransport(result.output, context.availableWorkflows);
-
-  if (decision === undefined) {
-    return {
-      type: "decline",
-      reason: "The model's answer could not be used.",
-      reasoningSummary: "The model did not return a usable structured decision.",
-    };
-  }
-
-  if (decision.type === "run_workflow") {
-    return {
-      type: "run_workflow",
-      workflowId: decision.workflowId,
-      // The workflow's input is the task's own input, never anything the
-      // model produced — see the module docstring.
-      ...(task.input !== undefined ? { input: task.input } : {}),
-      reasoningSummary: decision.reasoningSummary,
-    };
-  }
-
-  if (decision.type === "request_clarification") {
-    return {
-      type: "request_clarification",
-      question: decision.question,
-      reasoningSummary: decision.reasoningSummary,
-    };
-  }
-
+  // MVP-3B: a model answer must never override a missing deterministic
+  // prerequisite. With neither supported route available there is no
+  // workflow the model would be permitted to choose (the legacy scaffold is
+  // compatibility-only), so the honest outcome is the same actionable
+  // clarification the deterministic strategy gives — not a model call whose
+  // only allowed answers were already determined here.
   return {
-    type: "decline",
-    reason: decision.reason,
-    reasoningSummary: decision.reasoningSummary,
+    type: "request_clarification",
+    question:
+      "I work from a connected Figma design. Connect Figma (run `designflow doctor` to check the setup), then tell me which design to build from.",
+    reasoningSummary: "No supported journey is available for this request: no real Figma source (and no consented project) was provided.",
   };
 };
 

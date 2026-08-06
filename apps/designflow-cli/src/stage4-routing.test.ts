@@ -96,21 +96,28 @@ describe("installed-CLI Stage 4 routing", () => {
     expect(created.resolve("design-to-code-implementation")).toBeNull();
   });
 
-  test("experimental mode without a project fails clearly before starting a session", async () => {
+  test("without a project the run continues as a specification-only journey (MVP-3B)", async () => {
+    // The old hard "a registered project must be selected" gate is gone: a
+    // project is where changes COULD go, and its absence now means the
+    // supported specification journey, not a refusal.
     const created = context({ implementation: true });
-    const terminal = new ScriptedTerminal([]);
+    const terminal = new ScriptedTerminal([
+      "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=432-2906",
+      "react",
+      "Header",
+    ]);
     const code = await dispatch(["run", "design-engineer"], created, terminal);
-    expect(code).toBe(1);
-    expect(terminal.transcript).toContain("A registered project must be selected");
-    expect(await created.runner.history()).toHaveLength(0);
-  });
+    expect(code).toBe(0);
+    const [run] = await created.runner.history();
+    expect(run?.workflowId).toBe("design-to-code-figma-specification");
+    expect(terminal.transcript).toContain("Design specification generated — no project files were written.");
+  }, 20_000);
 
-  test("the enabled bundle exposes the direct implementation workflow command", () => {
+  test("the direct implementation workflow id is no longer a public worker (MVP-3B)", () => {
+    // The synthetic-worker bypass is closed: gated pipeline stages are
+    // reachable only through coordinator routing, never by typing their id.
     const created = context({ implementation: true });
-    expect(created.resolve("design-to-code-implementation")).toMatchObject({
-      workflowId: "design-to-code-implementation",
-      workflowInstalled: true,
-    });
+    expect(created.resolve("design-to-code-implementation")).toBeNull();
   });
 
   test("selected project routes the CLI session to implementation and shows a pre-approval proposal", async () => {
@@ -121,6 +128,9 @@ describe("installed-CLI Stage 4 routing", () => {
       "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=432-2906",
       "react",
       "Header",
+      // MVP-3B journey consent: the project is only where changes COULD go;
+      // preparing an implementation proposal is an explicit yes.
+      "yes",
       "reject",
     ]);
 

@@ -128,7 +128,7 @@ describe("starting a workflow", () => {
     expect(withoutInputs).toEqual({
       workflowId: "design-to-code",
       name: "Design → Code",
-      description: "Convert design inputs into production-ready code artifacts",
+      description: "Legacy artifacts-only design scaffold (a structural prototype; writes no project files)",
       steps: [
         "analyze-design",
         "extract-design-tokens",

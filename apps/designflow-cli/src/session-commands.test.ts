@@ -273,8 +273,8 @@ describe("designflow answer", () => {
       },
       {
         type: "run_workflow",
-        workflowId: "design-to-code",
-        reasoningSummary: "The answer named a component.",
+        workflowId: "qa-review",
+        reasoningSummary: "The answer named a review target.",
       },
     ]);
     const created = modelContext(endpoint);
@@ -283,17 +283,20 @@ describe("designflow answer", () => {
     // consulted on both turns — a worker collecting nothing short-circuits to
     // a fixed clarification before either strategy reaches the model at all,
     // which would make the mocked decisions below beside the point.
+    // MVP-3B: the Design Engineer's model strategy no longer consults a
+    // model at all, so the two-turn mocked exchange is exercised through the
+    // QA Reviewer's still-model-backed coordinator instead.
     created.workers.registerWorker({
       id: "quiet-worker",
       name: "Quiet Worker",
-      description: "Collects a design file",
+      description: "Collects a review target",
       category: "testing",
-      workflows: ["design-to-code"],
-      inputs: [{ key: "designFile", label: "Design file", placeholder: "homepage.fig" }],
-      agentId: "design-engineer-agent",
+      workflows: ["qa-review"],
+      inputs: [{ key: "target", label: "Review target", placeholder: "src/components/Header.tsx" }],
+      agentId: "qa-reviewer-agent",
     });
 
-    const startTranscript = new ScriptedTerminal(["homepage.fig"]);
+    const startTranscript = new ScriptedTerminal(["src/components/Header.tsx"]);
     const startCode = await dispatch(["run", "quiet-worker"], created, startTranscript);
     expect(startCode).toBe(1);
 
@@ -301,7 +304,7 @@ describe("designflow answer", () => {
     const sessionId = match?.[1];
     if (sessionId === undefined) throw new Error("no session id in transcript");
 
-    const terminal = new ScriptedTerminal(["build the header"]);
+    const terminal = new ScriptedTerminal(["review the header for accessibility"]);
     const code = await dispatch(["answer", sessionId], created, terminal);
 
     expect(code).toBe(0);

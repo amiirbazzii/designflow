@@ -123,10 +123,15 @@ for id in design-engineer qa-reviewer research-analyst product-manager; do
 done
 echo "ok"
 
-step "designflow run design-engineer"
-RUN_DESIGN_ENGINEER="$(printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
-  | designflow run design-engineer)"
-grep -q "Complete" <<<"$RUN_DESIGN_ENGINEER" || fail "design-engineer run did not complete"
+step "designflow run design-engineer — setup guidance without a Figma connection (MVP-3B)"
+# The flagship no longer runs the legacy scaffold: without a configured
+# Figma MCP it explains the prerequisite, names a command (not an internal
+# flag), runs nothing, and exits 1.
+RUN_DESIGN_ENGINEER="$(designflow run design-engineer </dev/null 2>&1)" && fail "design-engineer should exit 1 without a Figma connection" || true
+grep -q "connected Figma design" <<<"$RUN_DESIGN_ENGINEER" || fail "no Figma setup guidance shown"
+grep -q "designflow doctor" <<<"$RUN_DESIGN_ENGINEER" || fail "guidance did not name designflow doctor"
+grep -q "Nothing was run and no files were changed." <<<"$RUN_DESIGN_ENGINEER" || fail "guidance did not state that nothing ran"
+grep -q "settings.experimental" <<<"$RUN_DESIGN_ENGINEER" && fail "guidance leaked an internal flag name"
 echo "ok"
 
 step "designflow run qa-reviewer"
@@ -147,11 +152,13 @@ RUN_PRODUCT_MANAGER="$(printf 'Let users export their history as CSV\nExisting C
 grep -q "Complete" <<<"$RUN_PRODUCT_MANAGER" || fail "product-manager run did not complete"
 echo "ok"
 
-step "designflow history (separate process) — all four workflows, worker vocabulary"
+step "designflow history (separate process) — completed workers, worker vocabulary"
 HISTORY="$(designflow history)"
-for name in "Design → Code" "QA Review" "Research Analysis" "Product Brief"; do
+for name in "QA Review" "Research Analysis" "Product Brief"; do
   grep -q "$name" <<<"$HISTORY" || fail "history did not list: $name"
 done
+# The design-engineer guidance ran nothing, so no Design → Code entry exists.
+grep -q "Design → Code" <<<"$HISTORY" && fail "a run appeared for the design-engineer guidance path"
 echo "ok"
 
 # ── Clarification / session resume ────────────────────────────────
@@ -227,9 +234,9 @@ designflow projects | grep -q "No projects registered yet." || fail "projects di
 designflow memory | grep -q "Nothing remembered yet." || fail "memory did not run"
 echo "ok"
 
-step "restart (new process): every worker's run survives"
+step "restart (new process): every completed worker's run survives"
 RESTARTED_HISTORY="$(designflow history)"
-for name in "Design → Code" "QA Review" "Research Analysis" "Product Brief"; do
+for name in "QA Review" "Research Analysis" "Product Brief"; do
   grep -q "$name" <<<"$RESTARTED_HISTORY" || fail "history lost a run across a restart: $name"
 done
 echo "ok"

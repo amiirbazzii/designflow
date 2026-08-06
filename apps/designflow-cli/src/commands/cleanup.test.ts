@@ -135,12 +135,14 @@ describe("designflow cleanup", () => {
     });
     contexts.push(context);
 
-    // "design-engineer" with a real request/input resolves deterministically
-    // to `run_workflow` rather than asking a clarifying question, so this
-    // session reaches `completed` on its first turn.
+    // "qa-reviewer" with a real request resolves deterministically to
+    // `run_workflow` rather than asking a clarifying question, so this session
+    // reaches `completed` on its first turn. (Design Engineer cannot: without
+    // a connected Figma design it always asks, which is a session that stays
+    // open — the opposite of what this test needs.)
     const started = await context.sessions.startSession({
-      workerId: "design-engineer",
-      request: "Build the login page header component.",
+      workerId: "qa-reviewer",
+      request: "Review src/components/Header.tsx for accessibility.",
     });
     expect(started.session.status).toBe("completed");
 

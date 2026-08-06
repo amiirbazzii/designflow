@@ -13,7 +13,7 @@ import { workerManifestSchema, type WorkerManifest } from "@designflow/sdk";
 export const designEngineer: WorkerManifest = workerManifestSchema.parse({
   id: "design-engineer",
   name: "Design Engineer",
-  description: "Transforms designs into production-ready applications",
+  description: "Turns a connected Figma design into reviewed code changes you approve before anything is written",
   category: "development",
   workflows: ["design-to-code", "design-to-code-implementation"],
   /**

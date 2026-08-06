@@ -18,16 +18,28 @@ import {
 } from "./design-engineer-agent";
 
 /**
- * The Design Engineer's two strategies, exercised through the real
- * `AgentRuntime` — the same path production traffic takes, with fake tool and
- * model layers standing in for `ToolRuntime` and `ModelRuntime`.
+ * The MVP-3B routing contract, exercised through the real `AgentRuntime`.
+ *
+ * The Design Engineer routes only to the supported journeys: the
+ * specification workflow when a real Figma source is present, the
+ * implementation workflow when a project AND explicit journey consent are
+ * present, and an actionable clarification otherwise. The legacy
+ * `design-to-code` scaffold is compatibility-only and is never selected;
+ * the model strategy consults no model for routing — deterministic
+ * prerequisites fully determine the permitted outcome.
  */
+
+const SUPPORTED = [
+  "design-to-code",
+  "design-to-code-figma-specification",
+  "design-to-code-implementation",
+] as const;
 
 const TASK: AgentTask = {
   workerId: "design-engineer",
   agentId: "design-engineer-agent",
   request: "build a login page",
-  input: { designFile: "homepage.fig" },
+  input: { designFile: "homepage.fig", figmaSourceMode: "mcp-stdio" },
 };
 
 function classifierTool(taskType: string): ToolInvoker & { readonly seen: ToolCall[] } {
@@ -50,51 +62,22 @@ function classifierTool(taskType: string): ToolInvoker & { readonly seen: ToolCa
   };
 }
 
-function modelAnswering(
-  output: unknown,
-): ModelInvoker & { readonly seen: ModelInvocationRequest[] } {
+function modelSpy(): ModelInvoker & { readonly seen: ModelInvocationRequest[] } {
   const seen: ModelInvocationRequest[] = [];
-
   return {
     seen,
     installedProfileIds: () => ["design-engineer-default"],
     generate: (request) => {
       seen.push(request);
-      // Keep legacy fixture literals concise while sending the exact flat
-      // transport shape that a strict provider receives in production.
-      const transportOutput =
-        typeof output === "object" && output !== null && "type" in output
-          ? {
-              ...(output as Record<string, unknown>),
-              workflowId: (output as Record<string, unknown>).workflowId ?? null,
-              question: (output as Record<string, unknown>).question ?? null,
-              reason: (output as Record<string, unknown>).reason ?? null,
-            }
-          : output;
       return Promise.resolve({
         type: "success",
         requestId: request.requestId,
         providerId: "openrouter",
         model: "openai/gpt-4o-mini",
-        output: transportOutput,
+        output: { type: "decline", workflowId: null, question: null, reason: "unused" },
         durationMs: 1,
       });
     },
-  };
-}
-
-function modelFailing(code: string): ModelInvoker {
-  return {
-    installedProfileIds: () => ["design-engineer-default"],
-    generate: (request) =>
-      Promise.resolve({
-        type: "failure",
-        requestId: request.requestId,
-        code,
-        message: "provider says no",
-        retryable: false,
-        durationMs: 1,
-      }),
   };
 }
 
@@ -106,48 +89,47 @@ function runtimeWith(options: {
 }): AgentRuntime {
   return new AgentRuntime({
     registry: new InMemoryAgentRegistry([createDesignEngineerAgent(options.strategy)]),
-    availableWorkflows: options.availableWorkflows ?? ["design-to-code"],
+    availableWorkflows: options.availableWorkflows ?? SUPPORTED,
     ...(options.tools !== undefined ? { tools: options.tools } : {}),
     ...(options.models !== undefined ? { models: options.models } : {}),
   });
 }
 
-// ── The deterministic strategy is unaffected by this stage ──────
-
 describe("the deterministic strategy", () => {
-  test("selects implementation only when the installed Stage 4 workflow and project context are both present", async () => {
-    const result = await runtimeWith({
+  test("a consented project selects implementation; a project alone does not", async () => {
+    const withConsent = await runtimeWith({
       tools: classifierTool("page"),
       strategy: deterministicDesignEngineerStrategy,
-      availableWorkflows: ["design-to-code", "design-to-code-implementation"],
-    }).decide({ ...TASK, input: { ...TASK.input, project: { id: "p1", name: "Fixture" } } });
+    }).decide({
+      ...TASK,
+      input: { ...(TASK.input as object), project: { id: "p1", name: "Fixture" }, projectWriteConsent: true },
+    });
 
-    expect(result.decision).toMatchObject({
+    const withoutConsent = await runtimeWith({
+      tools: classifierTool("page"),
+      strategy: deterministicDesignEngineerStrategy,
+    }).decide({
+      ...TASK,
+      input: { ...(TASK.input as object), project: { id: "p1", name: "Fixture" } },
+    });
+
+    expect(withConsent.decision).toMatchObject({
       type: "run_workflow",
       workflowId: "design-to-code-implementation",
     });
+    // Project presence is where changes COULD go, never permission: without
+    // the explicit journey consent the supported specification route runs.
+    expect(withoutConsent.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-figma-specification",
+    });
   });
 
-  test("still works explicitly, with no model layer installed at all", async () => {
-    const tools = classifierTool("page");
-
-    const result = await runtimeWith({
-      tools,
-      strategy: deterministicDesignEngineerStrategy,
-    }).decide(TASK);
-
-    expect(result.decision.type).toBe("run_workflow");
-  });
-
-  test("real Figma source mode selects the MCP-backed specification workflow", async () => {
+  test("a real Figma source selects the specification journey", async () => {
     const result = await runtimeWith({
       tools: classifierTool("page"),
       strategy: deterministicDesignEngineerStrategy,
-      availableWorkflows: ["design-to-code", "design-to-code-figma-specification"],
-    }).decide({
-      ...TASK,
-      input: { ...TASK.input, figmaSourceMode: "mcp-desktop", figmaAgentVersion: "0.1.0" },
-    });
+    }).decide(TASK);
 
     expect(result.decision).toMatchObject({
       type: "run_workflow",
@@ -155,364 +137,101 @@ describe("the deterministic strategy", () => {
     });
   });
 
+  test("the legacy scaffold is never selected: no Figma source clarifies with setup guidance", async () => {
+    const result = await runtimeWith({
+      tools: classifierTool("page"),
+      strategy: deterministicDesignEngineerStrategy,
+      availableWorkflows: ["design-to-code"],
+    }).decide({ ...TASK, input: { designFile: "homepage.fig" } });
+
+    expect(result.decision.type).toBe("request_clarification");
+    if (result.decision.type === "request_clarification") {
+      expect(result.decision.question).toContain("Figma");
+      // Actionable, never internal vocabulary.
+      expect(result.decision.question).not.toContain("design-to-code");
+      expect(result.decision.question).not.toContain("experimental");
+    }
+  });
+
+  test("a placeholder source mode is not a real Figma source", async () => {
+    const result = await runtimeWith({
+      tools: classifierTool("page"),
+      strategy: deterministicDesignEngineerStrategy,
+    }).decide({ ...TASK, input: { designFile: "homepage.fig", figmaSourceMode: "placeholder" } });
+
+    expect(result.decision.type).toBe("request_clarification");
+  });
+
+  test("an unrecognisable request on a supported route still asks instead of running", async () => {
+    const result = await runtimeWith({
+      tools: classifierTool("unknown"),
+      strategy: deterministicDesignEngineerStrategy,
+    }).decide(TASK);
+
+    expect(result.decision.type).toBe("request_clarification");
+  });
+
   test("the default export is still the deterministic agent", async () => {
     expect(designEngineerAgent.manifest.id).toBe("design-engineer-agent");
 
     const result = await new AgentRuntime({
       registry: new InMemoryAgentRegistry([designEngineerAgent]),
-      availableWorkflows: ["design-to-code"],
+      availableWorkflows: SUPPORTED,
       tools: classifierTool("new_component"),
     }).decide(TASK);
 
-    expect(result.decision.type).toBe("run_workflow");
+    expect(result.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-figma-specification",
+    });
   });
 });
 
-// ── 36. The model result is load-bearing ────────────────────────
-
-describe("the model strategy: load-bearing output", () => {
-  test("a recognised decision runs the workflow", async () => {
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "This is page work.",
-    });
-
+describe("the model strategy: prerequisites rule, the model does not", () => {
+  test("a real Figma source routes to specification without consulting the model", async () => {
+    const models = modelSpy();
     const result = await runtimeWith({
-      tools: classifierTool("page"),
       models,
       strategy: modelDesignEngineerStrategy,
     }).decide(TASK);
 
-    expect(result.decision.type).toBe("run_workflow");
-    expect(models.seen).toHaveLength(1);
+    expect(result.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-figma-specification",
+    });
+    expect(models.seen).toHaveLength(0);
   });
 
-  test("the same task with a different model answer produces a different decision", async () => {
-    // The only honest test of whether the model result matters: same task,
-    // same tool result, only the model's answer changes.
-    const asksQuestion = modelAnswering({
-      type: "request_clarification",
-      question: "What exactly should I build?",
-      reasoningSummary: "Not enough detail.",
-    });
-
-    const declines = modelAnswering({
-      type: "decline",
-      reason: "Out of scope for this worker.",
-      reasoningSummary: "Not design work.",
-    });
-
-    const runs = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "Clear design work.",
-    });
-
-    const [asked, declined, ran] = await Promise.all([
-      runtimeWith({ tools: classifierTool("page"), models: asksQuestion, strategy: modelDesignEngineerStrategy }).decide(TASK),
-      runtimeWith({ tools: classifierTool("page"), models: declines, strategy: modelDesignEngineerStrategy }).decide(TASK),
-      runtimeWith({ tools: classifierTool("page"), models: runs, strategy: modelDesignEngineerStrategy }).decide(TASK),
-    ]);
-
-    expect(asked.decision.type).toBe("request_clarification");
-    expect(declined.decision.type).toBe("decline");
-    expect(ran.decision.type).toBe("run_workflow");
-  });
-
-  test("the task's own input is used, never anything the model invents", async () => {
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-      // Even if a compromised model tried to smuggle input, the schema has no
-      // field for it — `modelDecisionSchema` would refuse this shape. Tested
-      // here via the strategy's own conversion, which never reads one even
-      // when present in the raw (unknown) output.
-    });
-
+  test("a consented project routes to implementation without consulting the model", async () => {
+    const models = modelSpy();
     const result = await runtimeWith({
-      tools: classifierTool("page"),
       models,
       strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-
-    expect(result.decision.type === "run_workflow" ? result.decision.input : undefined).toEqual(
-      TASK.input,
-    );
-  });
-});
-
-// ── 37. Tool results inform the model request ───────────────────
-
-describe("the model strategy: tool results inform the prompt", () => {
-  test("the classifier is consulted before the model", async () => {
-    const tools = classifierTool("new_component");
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(TASK);
-
-    expect(tools.seen).toHaveLength(1);
-    expect(models.seen).toHaveLength(1);
-  });
-
-  test("the classifier's verdict appears in what the model is shown", async () => {
-    const tools = classifierTool("modify_component");
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(TASK);
-
-    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
-    expect(prompt).toContain("modify_component");
-  });
-});
-
-// ── A resumed session's clarification reaches the model ─────────
-
-describe("the model strategy: a resumed session's answer reaches the model", () => {
-  test("task.context.clarifications appears in what the model is shown", async () => {
-    const tools = classifierTool("unknown");
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    const resumedTask: AgentTask = {
+    }).decide({
       ...TASK,
-      context: {
-        clarifications: [{ question: "Which component?", answer: "the header" }],
-      },
-    };
+      input: { ...(TASK.input as object), project: { id: "p1", name: "Fixture" }, projectWriteConsent: true },
+    });
 
-    await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(
-      resumedTask,
-    );
-
-    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
-    expect(prompt).toContain("Which component?");
-    expect(prompt).toContain("the header");
+    expect(result.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-implementation",
+    });
+    expect(models.seen).toHaveLength(0);
   });
 
-  test("a fresh task (no context) produces the same prompt as before context existed", async () => {
-    const tools = classifierTool("new_component");
-    const modelsFresh = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-    const modelsNoContext = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    await runtimeWith({
-      tools: classifierTool("new_component"),
-      models: modelsFresh,
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-    await runtimeWith({
-      tools,
-      models: modelsNoContext,
-      strategy: modelDesignEngineerStrategy,
-    }).decide({ ...TASK, context: {} });
-
-    expect(modelsFresh.seen[0]?.messages).toEqual(modelsNoContext.seen[0]?.messages);
-  });
-
-  test("a malformed context is ignored rather than breaking the decision", async () => {
-    const tools = classifierTool("new_component");
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    const malformed: AgentTask = {
-      ...TASK,
-      context: { clarifications: "not-an-array" },
-    };
-
+  test("missing prerequisites clarify — a model answer can never override them", async () => {
+    const models = modelSpy();
     const result = await runtimeWith({
-      tools,
       models,
       strategy: modelDesignEngineerStrategy,
-    }).decide(malformed);
+    }).decide({ ...TASK, input: { designFile: "homepage.fig" } });
 
-    expect(result.decision.type).toBe("run_workflow");
-  });
-});
-
-describe("the model strategy: Stage 40 project facts and memory reach the model", () => {
-  test("task.context.project and task.context.memory appear in what the model is shown", async () => {
-    const tools = classifierTool("new_component");
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    const taskWithKnowledge: AgentTask = {
-      ...TASK,
-      context: {
-        project: { id: "project-1", name: "Storefront", facts: [{ key: "project.framework", value: "react" }] },
-        memory: [{ scope: "agent", key: "prefer.existingComponents", value: true }],
-      },
-    };
-
-    await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(taskWithKnowledge);
-
-    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
-    expect(prompt).toContain("project.framework");
-    expect(prompt).toContain("prefer.existingComponents");
-  });
-
-  test("a task with no project/memory context produces the same prompt as before Stage 40", async () => {
-    const modelsWithout = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-    const modelsFresh = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    await runtimeWith({
-      tools: classifierTool("new_component"),
-      models: modelsFresh,
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-    await runtimeWith({
-      tools: classifierTool("new_component"),
-      models: modelsWithout,
-      strategy: modelDesignEngineerStrategy,
-    }).decide({ ...TASK, context: {} });
-
-    expect(modelsFresh.seen[0]?.messages).toEqual(modelsWithout.seen[0]?.messages);
-  });
-
-  test("memory cannot change the tools or workflows the model is offered", async () => {
-    const tools = classifierTool("new_component");
-    const models = modelAnswering({
-      type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "ok",
-    });
-
-    const rogueMemory: AgentTask = {
-      ...TASK,
-      context: {
-        memory: [
-          { scope: "agent", key: "allowedTools", value: ["shell-exec"] },
-          { scope: "agent", key: "modelProfileId", value: "some-other-profile" },
-        ],
-      },
-    };
-
-    const result = await runtimeWith({ tools, models, strategy: modelDesignEngineerStrategy }).decide(
-      rogueMemory,
-    );
-
-    // Memory content reaches the prompt as inert text — the model may *read*
-    // it, but nothing here widens what it may actually choose: the permitted
-    // list still names only the classifier, and the decision itself is still
-    // enforced against the manifest's real `allowedTools`/`allowedWorkflows`
-    // downstream in `AgentRuntime`, which this memory value never touches.
-    expect(result.decision.type).toBe("run_workflow");
-    const prompt = models.seen[0]?.messages.map((message) => message.content).join("\n") ?? "";
-    expect(prompt).toContain("Permitted tools already consulted: classify-design-task");
-  });
-});
-
-// ── No silent fallback on model failure ─────────────────────────
-
-describe("the model strategy: failure handling", () => {
-  test("a model failure declines rather than running the deterministic path", async () => {
-    const tools = classifierTool("page");
-
-    const result = await runtimeWith({
-      tools,
-      models: modelFailing("ERR_MODEL_TIMEOUT"),
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-
-    // Not `run_workflow` — a fallback to the classifier's own verdict would
-    // be exactly the silent mode-switch this stage forbids.
-    expect(result.decision.type).toBe("decline");
-  });
-
-  test("the decline never echoes the provider's raw message", async () => {
-    const result = await runtimeWith({
-      tools: classifierTool("page"),
-      models: modelFailing("ERR_MODEL_AUTHENTICATION"),
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-
-    expect(JSON.stringify(result.decision)).not.toContain("provider says no");
-  });
-
-  test("invalid structured output declines rather than throwing", async () => {
-    const malformed = modelAnswering({ type: "run_workflow" }); // missing required fields
-
-    const result = await runtimeWith({
-      tools: classifierTool("page"),
-      models: malformed,
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-
-    expect(result.decision.type).toBe("decline");
-  });
-
-  test("a workflow id outside the schema's enum is rejected before execution", async () => {
-    // The provider schema constrains the enum and the post-parse conversion
-    // remains authoritative when a provider ignores that constraint.
-    const rogue = modelAnswering({
-      type: "run_workflow",
-      workflowId: "not-a-real-workflow",
-      reasoningSummary: "ok",
-    });
-
-    const result = await runtimeWith({
-      tools: classifierTool("page"),
-      models: rogue,
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-
-    expect(result.decision).toMatchObject({ type: "decline" });
-  });
-
-  // 39/40. Clarification and decline start no workflow — proven at the
-  // decision level; `AgentRuntime` never calls a workflow regardless.
-  test("clarification and decline decisions never name a workflow", async () => {
-    const clarifying = modelAnswering({
-      type: "request_clarification",
-      question: "which design?",
-      reasoningSummary: "unclear",
-    });
-
-    const result = await runtimeWith({
-      tools: classifierTool("page"),
-      models: clarifying,
-      strategy: modelDesignEngineerStrategy,
-    }).decide(TASK);
-
-    expect(result.decision).not.toHaveProperty("workflowId");
+    expect(result.decision.type).toBe("request_clarification");
+    expect(models.seen).toHaveLength(0);
   });
 
   test("an empty request never reaches the model at all", async () => {
-    const models = modelAnswering({ type: "decline", reason: "x", reasoningSummary: "y" });
-
+    const models = modelSpy();
     const result = await runtimeWith({
       models,
       strategy: modelDesignEngineerStrategy,
@@ -520,5 +239,16 @@ describe("the model strategy: failure handling", () => {
 
     expect(result.decision.type).toBe("request_clarification");
     expect(models.seen).toHaveLength(0);
+  });
+
+  test("the task's own input is passed through unchanged on a routed run", async () => {
+    const result = await runtimeWith({
+      models: modelSpy(),
+      strategy: modelDesignEngineerStrategy,
+    }).decide(TASK);
+
+    expect(result.decision.type === "run_workflow" ? result.decision.input : undefined).toEqual(
+      TASK.input,
+    );
   });
 });

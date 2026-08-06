@@ -55,12 +55,23 @@ export async function runCommand(
 
   const selectedProjectId = options?.projectId;
   const isDesignEngineer = worker.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID);
-  const directImplementation = workflowIdOf(resolved) === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID;
-  if (context.experimentalImplementationEnabled && isDesignEngineer && selectedProjectId === undefined && !directImplementation) {
-    terminal.print("A registered project must be selected while experimental implementation mode is enabled.");
+
+  // Deterministic prerequisite: the supported Design Engineer journey works
+  // from a real, configured Figma source. Without one there is nothing
+  // honest to run — the legacy scaffold is no longer presented as the
+  // product — so this is setup guidance, not a session.
+  const figmaAvailable =
+    context.figmaSourceMode !== undefined && context.figmaSourceMode !== "placeholder";
+  if (isDesignEngineer && !figmaAvailable) {
+    terminal.print(heading(worker.name));
+    terminal.print(worker.description);
     terminal.print();
-    terminal.print("Use the interactive project picker, or run:");
-    terminal.print(`  designflow run ${worker.id} --project <project-id>`);
+    terminal.print("The Design Engineer works from a connected Figma design, and no");
+    terminal.print("Figma connection is configured (or the configured one is invalid).");
+    terminal.print();
+    terminal.print("To connect Figma, add a `figmaMcp` block to your DesignFlow");
+    terminal.print("configuration file and run  designflow doctor  to verify it.");
+    terminal.print("Nothing was run and no files were changed.");
     return 1;
   }
 
@@ -86,48 +97,45 @@ export async function runCommand(
 
   const input = await collectInput(terminal, resolved);
 
-  const useImplementation = workflowIdOf(resolved) === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID
-    || (context.experimentalImplementationEnabled && isDesignEngineer && selectedProjectId !== undefined);
-  if (useImplementation) {
-    const projectId = selectedProjectId ?? (typeof input.projectId === "string" ? input.projectId : undefined);
-    if (projectId === undefined) {
-      terminal.print("A registered project is required before DesignFlow can generate or modify files.");
+  if (isDesignEngineer && figmaAvailable) {
+    // Journey consent (distinct from proposal approval): a selected project
+    // is where changes COULD go, never permission to prepare them. Consent
+    // is explicit, per-run, and answered at the terminal — a piped
+    // invocation must supply it just as deliberately.
+    let consentedProject: { id: string; name: string; rootPath: string } | undefined;
+    if (selectedProjectId !== undefined) {
+      const project = await context.projects.getProject(selectedProjectId).catch(() => null);
+      if (project === null || project.rootPath === undefined) {
+        terminal.print("A registered project with an accessible root is required before implementation.");
+        return 1;
+      }
       terminal.print();
-      terminal.print("Run:  designflow projects add");
-      return 1;
+      terminal.print(`Prepare implementation changes for "${project.name}"?`);
+      terminal.print("DesignFlow will propose exact file changes; nothing is written");
+      terminal.print("until you approve that exact proposal.");
+      const consent = (await terminal.ask("Prepare changes for this project?", ["yes", "no"])).trim().toLowerCase();
+      if (consent.startsWith("y")) {
+        consentedProject = { id: project.id, name: project.name, rootPath: project.rootPath };
+      } else {
+        terminal.print("Continuing with a design specification only — no project changes will be proposed.");
+      }
     }
-    const project = await context.projects.getProject(projectId).catch(() => null);
-    if (project === null || project.rootPath === undefined) {
-      terminal.print("A registered project with an accessible root is required before implementation.");
-      return 1;
+
+    if (consentedProject !== undefined) {
+      input.enabled = true;
+      input.project = consentedProject;
+      input.projectWriteConsent = true;
+      input.stateDirectory = join(context.home.layout.home, "projects", consentedProject.id, "runs");
+      input.implementationAgentVersion = "0.1.0";
+      input.implementationAgentModelProfileId = "implementation-default";
     }
-    // The implementation workflow deliberately accepts only the stable
-    // project identity fields. Persistence metadata such as createdAt and
-    // updatedAt must not cross into its strict input schema.
-    const workflowProject = {
-      id: project.id,
-      name: project.name,
-      rootPath: project.rootPath,
-    };
-    input.enabled = true;
-    input.projectId = projectId;
-    input.project = workflowProject;
-    input.stateDirectory = join(context.home.layout.home, "projects", project.id, "runs");
-    input.figmaAgentVersion = "0.1.0";
-    input.implementationAgentVersion = "0.1.0";
-    input.implementationAgentModelProfileId = "implementation-default";
-    input.captureScreenshots = true;
-    input.refreshFigmaSource = options?.noCache === true || context.figmaSourceMode !== "placeholder";
-    if (options?.noCache === true) input.figmaCacheBypass = randomUUID();
-    input.figmaSourceMode = context.figmaSourceMode ?? "placeholder";
-    if (context.figmaServerIdentity !== undefined) input.figmaServerIdentity = context.figmaServerIdentity;
-    input.allowFixtureNames = false;
-    delete input.projectId;
-  } else if (context.figmaSourceMode !== undefined && context.figmaSourceMode !== "placeholder" && isDesignEngineer) {
-    // Real-Figma mode is explicitly routed to the MCP-backed specification
-    // workflow. The legacy Stage 1 path remains unchanged when MCP is off.
+
+    // Shared real-Figma facts for both the specification-only and the
+    // implementation journeys — always from the validated availability
+    // result, never from a raw flag.
     input.figmaSourceMode = context.figmaSourceMode;
-    input.refreshFigmaSource = true;
+    input.refreshFigmaSource = options?.noCache === true || consentedProject !== undefined;
+    if (consentedProject === undefined) input.refreshFigmaSource = true;
     if (options?.noCache === true) input.figmaCacheBypass = randomUUID();
     input.captureScreenshots = true;
     input.figmaAgentVersion = "0.1.0";
@@ -157,10 +165,6 @@ export async function runCommand(
   return finishSession(context, terminal, result, options?.interactive ?? false);
 }
 
-function workflowIdOf(resolved: ResolvedWorker): string {
-  return resolved.workflowId;
-}
-
 // ── Input ────────────────────────────────────────────────────────
 
 async function collectInput(
@@ -176,9 +180,12 @@ async function collectInput(
       field.choices,
     );
 
-    // An empty answer takes the placeholder, so pressing through the form
-    // still produces a working run.
-    const value = answer.trim().length > 0 ? answer.trim() : field.placeholder;
+    // An empty answer stays absent. The placeholder is a visual example,
+    // never data: fabricating it here used to hand the routing agent a
+    // fully-populated fake request, turning "pressed Enter three times"
+    // into a run instead of the clarification it deserves.
+    const value = answer.trim();
+    if (value.length === 0) continue;
 
     input[field.key] =
       field.list === true

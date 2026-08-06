@@ -28,7 +28,12 @@ import { explainError, formatError } from "./ui/errors";
 const workspaces: string[] = [];
 const contexts: CliContext[] = [];
 const servers: Server[] = [];
-const RUN_ANSWERS = ["homepage.fig", "react", "brand/Header"];
+// MVP-3B: the Design Engineer no longer consults a model for routing (its
+// prerequisites fully determine the outcome), so model-mode plumbing is
+// proven through the QA Reviewer's coordinator, which still routes via the
+// configured model. A dedicated test below pins the Design Engineer's
+// no-model-call behavior.
+const RUN_ANSWERS = ["src/components/Header.tsx", "accessibility", "major"];
 
 afterEach(() => {
   for (const created of contexts.splice(0)) created.close();
@@ -70,7 +75,12 @@ async function mockOpenRouter(decision: unknown, status = 200): Promise<MockOpen
       raw += chunk.toString();
     });
     req.on("end", () => {
-      requests.push({ headers: req.headers, body: raw.length > 0 ? JSON.parse(raw) : undefined });
+      const parsedBody: unknown = raw.length > 0 ? JSON.parse(raw) : undefined;
+      requests.push({ headers: req.headers, body: parsedBody });
+      const requestedModel =
+        typeof parsedBody === "object" && parsedBody !== null && typeof (parsedBody as { model?: unknown }).model === "string"
+          ? (parsedBody as { model: string }).model
+          : "openai/gpt-4o-mini";
 
       if (status !== 200) {
         res.writeHead(status, { "Content-Type": "application/json" });
@@ -82,7 +92,7 @@ async function mockOpenRouter(decision: unknown, status = 200): Promise<MockOpen
       res.end(
         JSON.stringify({
           id: "gen-mock",
-          model: "openai/gpt-4o-mini",
+          model: requestedModel,
           choices: [{ message: { role: "assistant", content: JSON.stringify(flatDecision(decision)) } }],
           usage: { prompt_tokens: 30, completion_tokens: 8, total_tokens: 38 },
         }),
@@ -119,18 +129,18 @@ function modelContext(options: {
 
 // ── 55. Model mode works against a deterministic mock server ────
 
-describe("designflow run design-engineer, in model mode", () => {
+describe("designflow run qa-reviewer, in model mode", () => {
   test("a real run completes end to end through the mock provider", async () => {
     const mock = await mockOpenRouter({
       type: "run_workflow",
-      workflowId: "design-to-code",
-      reasoningSummary: "This is page work.",
+      workflowId: "qa-review",
+      reasoningSummary: "This is review work.",
     });
 
     const created = modelContext({ endpoint: mock.endpoint });
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
-    const code = await dispatch(["run", "design-engineer"], created, terminal);
+    const code = await dispatch(["run", "qa-reviewer"], created, terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Complete");
@@ -148,7 +158,7 @@ describe("designflow run design-engineer, in model mode", () => {
     const created = modelContext({ endpoint: asksQuestion.endpoint });
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
-    const code = await dispatch(["run", "design-engineer"], created, terminal);
+    const code = await dispatch(["run", "qa-reviewer"], created, terminal);
 
     expect(code).toBe(1);
     expect(terminal.transcript).toContain("needs more information");
@@ -159,27 +169,27 @@ describe("designflow run design-engineer, in model mode", () => {
   test("the exact model slug and structured schema reach the mock server", async () => {
     const mock = await mockOpenRouter({
       type: "run_workflow",
-      workflowId: "design-to-code",
+      workflowId: "qa-review",
       reasoningSummary: "ok",
     });
 
     const created = modelContext({ endpoint: mock.endpoint });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     const body = mock.requests[0]?.body as { model?: string; response_format?: unknown };
-    expect(body.model).toBe("openai/gpt-4o-mini");
+    expect(body.model).toBe("anthropic/claude-3.5-haiku");
     expect(body.response_format).toBeDefined();
   });
 
   test("the authorization header carries the configured key and nothing else does", async () => {
     const mock = await mockOpenRouter({
       type: "run_workflow",
-      workflowId: "design-to-code",
+      workflowId: "qa-review",
       reasoningSummary: "ok",
     });
 
     const created = modelContext({ apiKey: "sk-distinctive-marker", endpoint: mock.endpoint });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     expect(mock.requests[0]?.headers.authorization).toBe("Bearer sk-distinctive-marker");
   });
@@ -187,18 +197,18 @@ describe("designflow run design-engineer, in model mode", () => {
   test("a trace records the model call, correlated with the run", async () => {
     const mock = await mockOpenRouter({
       type: "run_workflow",
-      workflowId: "design-to-code",
+      workflowId: "qa-review",
       reasoningSummary: "ok",
     });
 
     const created = modelContext({ endpoint: mock.endpoint });
-    await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     const [trace] = await created.traces.listTraces();
     const [run] = await created.runner.history();
 
     expect(trace?.modelCalls).toHaveLength(1);
-    expect(trace?.modelCalls[0]).toMatchObject({ providerId: "openrouter", model: "openai/gpt-4o-mini" });
+    expect(trace?.modelCalls[0]).toMatchObject({ providerId: "openrouter", model: "anthropic/claude-3.5-haiku" });
     expect(trace?.executionId).toBe(run?.executionId);
   });
 
@@ -206,7 +216,7 @@ describe("designflow run design-engineer, in model mode", () => {
     const mock = await mockOpenRouter({}, 500);
 
     const created = modelContext({ endpoint: mock.endpoint });
-    const code = await dispatch(["run", "design-engineer"], created, new ScriptedTerminal(RUN_ANSWERS));
+    const code = await dispatch(["run", "qa-reviewer"], created, new ScriptedTerminal(RUN_ANSWERS));
 
     expect(code).toBe(1);
     expect(await created.runner.history()).toHaveLength(0);
@@ -216,19 +226,38 @@ describe("designflow run design-engineer, in model mode", () => {
   test("the credential never appears anywhere on disk or in the transcript", async () => {
     const mock = await mockOpenRouter({
       type: "run_workflow",
-      workflowId: "design-to-code",
+      workflowId: "qa-review",
       reasoningSummary: "ok",
     });
 
     const created = modelContext({ apiKey: "sk-super-secret-marker", endpoint: mock.endpoint });
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
-    await dispatch(["run", "design-engineer"], created, terminal);
+    await dispatch(["run", "qa-reviewer"], created, terminal);
 
     expect(terminal.transcript).not.toContain("sk-super-secret-marker");
 
     const dbPath = created.databasePath;
     const onDisk = readFileSync(dbPath, "utf8");
     expect(onDisk).not.toContain("sk-super-secret-marker");
+  });
+
+  test("the Design Engineer performs no model call in model mode — prerequisites rule (MVP-3B)", async () => {
+    const mock = await mockOpenRouter({
+      type: "run_workflow",
+      workflowId: "qa-review",
+      reasoningSummary: "must never be requested",
+    });
+
+    const created = modelContext({ endpoint: mock.endpoint });
+    const terminal = new ScriptedTerminal([]);
+    const code = await dispatch(["run", "design-engineer"], created, terminal);
+
+    // Without a configured Figma source the run stops at setup guidance —
+    // and no model request is ever made: a model answer can never override
+    // a missing deterministic prerequisite.
+    expect(code).toBe(1);
+    expect(terminal.transcript).toContain("connected Figma design");
+    expect(mock.requests).toHaveLength(0);
   });
 });
 

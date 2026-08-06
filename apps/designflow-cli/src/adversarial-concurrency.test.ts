@@ -218,9 +218,10 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
     }
 
     // Confirm each agent's OWN marker DID reach its own request(s) — proves
-    // the plumbing is live, not merely silent.
-    const designReq = mock.requests.find((r) => r.body.model === "openai/gpt-4o-mini");
-    expect(JSON.stringify(designReq?.body.messages)).toContain(agentMarkers["design-engineer-coordinator"]);
+    // the plumbing is live, not merely silent. MVP-3B: the Design Engineer
+    // coordinator no longer performs model calls at all, so its slug must be
+    // absent from the wire entirely.
+    expect(mock.requests.find((r) => r.body.model === "openai/gpt-4o-mini")).toBeUndefined();
     const qaReqs = mock.requests.filter((r) => r.body.model === "anthropic/claude-3.5-haiku");
     for (const r of qaReqs) {
       expect(JSON.stringify(r.body.messages)).toContain(agentMarkers["qa-reviewer-agent"]);
@@ -259,6 +260,13 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
     // since two sessions from the same agent (design-engineer/alpha and
     // design-engineer/beta) share a model slug but must not share a request.
     for (const entry of plan) {
+      // MVP-3B: design-engineer sessions clarify deterministically and never
+      // reach the wire, so per-request isolation is checked for the three
+      // model-backed workers only.
+      if (entry.workerId === "design-engineer") {
+        expect(mock.requests.find((r) => JSON.stringify(r.body.messages ?? "").includes(`Please handle ${entry.label}`))).toBeUndefined();
+        continue;
+      }
       const req = mock.requests.find((r) => JSON.stringify(r.body.messages ?? "").includes(`Please handle ${entry.label}`));
       expect(req).toBeDefined();
       const text = JSON.stringify(req?.body.messages ?? "");
@@ -277,10 +285,11 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
       const m = r.body.model ?? "undefined";
       slugCounts[m] = (slugCounts[m] ?? 0) + 1;
     }
-    // design-engineer appears twice (alpha+beta), qa-reviewer twice (alpha+beta),
-    // research-analyst once, product-manager once => 6 total requests, 4 distinct slugs.
-    expect(mock.requests).toHaveLength(6);
-    expect(slugCounts["openai/gpt-4o-mini"]).toBe(2);
+    // MVP-3B: design-engineer never calls a model, so only qa-reviewer
+    // (alpha+beta), research-analyst, and product-manager reach the wire =>
+    // 4 requests, 3 distinct slugs.
+    expect(mock.requests).toHaveLength(4);
+    expect(slugCounts["openai/gpt-4o-mini"]).toBeUndefined();
     expect(slugCounts["anthropic/claude-3.5-haiku"]).toBe(2);
     expect(slugCounts["perplexity/sonar"]).toBe(1);
     expect(slugCounts["google/gemini-2.0-flash-001"]).toBe(1);
@@ -455,12 +464,14 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
       ),
     );
 
-    expect(mock.requests).toHaveLength(8);
+    // MVP-3B: the design-engineer coordinator performs no model calls, so
+    // only the other three workers (twice each) reach the wire.
+    expect(mock.requests).toHaveLength(6);
     const byModel: Record<string, number> = {};
     for (const r of mock.requests) {
       byModel[r.body.model ?? "?"] = (byModel[r.body.model ?? "?"] ?? 0) + 1;
     }
-    expect(byModel["openai/gpt-4o"]).toBe(2); // overridden design-engineer, twice
+    expect(byModel["openai/gpt-4o"]).toBeUndefined(); // design-engineer never calls a model at all
     expect(byModel["openai/gpt-4o-mini"]).toBeUndefined(); // old slug never sent
     expect(byModel["anthropic/claude-3.5-haiku"]).toBe(2);
     expect(byModel["perplexity/sonar"]).toBe(2);
@@ -495,7 +506,7 @@ describe("Part A + B: shared CliContext, real concurrency, real HTTP mock", () =
 
     const byWorker = Object.fromEntries(plan.map((w, i) => [w, results[i]!]));
     expect(byWorker["research-analyst"]!.session.decisionType).toBe("decline");
-    expect(byWorker["design-engineer"]!.session.decisionType).toBe("run_workflow");
+    expect(byWorker["design-engineer"]!.session.decisionType).toBe("request_clarification");
     expect(byWorker["qa-reviewer"]!.session.decisionType).toBe("run_workflow");
     expect(byWorker["product-manager"]!.session.decisionType).toBe("run_workflow");
   }, 30_000);

@@ -143,6 +143,12 @@ const DESIGN_INPUT = {
   frames: ["brand/Header", "brand/Footer", "layout/Dashboard"],
 };
 
+const QA_INPUT = {
+  target: "src/components/Header.tsx",
+  focus: "accessibility",
+  severity: "major",
+};
+
 const KNOWN_WORKER_KEYS = ["id", "name", "description", "category", "inputs", "evaluationCriteria", "projectContext", "metadata"];
 
 // ── 1. GET /workers strips internal vocabulary ───────────────────
@@ -418,9 +424,9 @@ describe("6. POST /sessions/:sessionId/answers on a non-waiting session", () => 
     // Enough request + structured input for the deterministic agent to
     // decide run_workflow immediately — this session never enters
     // waiting_for_user at all.
-    const started = await client.post("/workers/design-engineer/tasks", {
-      request: "build a new homepage component",
-      input: DESIGN_INPUT,
+    const started = await client.post("/workers/qa-reviewer/tasks", {
+      request: "review the header for accessibility",
+      input: QA_INPUT,
     });
     const session = started.body["session"] as Record<string, unknown>;
     const sessionId = session["id"] as string;
@@ -484,9 +490,9 @@ describe("7. GET /results, GET /results/:resultId", () => {
   test("two completed runs for two different workers each report their OWN workerId, no agentId/workflowId leak", async () => {
     const client = createClient({ requireApproval: false });
 
-    const design = await client.post("/workers/design-engineer/tasks", {
-      request: "build a new dashboard page",
-      input: DESIGN_INPUT,
+    const design = await client.post("/workers/qa-reviewer/tasks", {
+      request: "review the dashboard page",
+      input: QA_INPUT,
     });
     const product = await client.post("/workers/product-manager/tasks", {
       request: "build a new CSV export feature",
@@ -512,7 +518,7 @@ describe("7. GET /results, GET /results/:resultId", () => {
 
     expect(designResult.status).toBe(200);
     expect(productResult.status).toBe(200);
-    expect(pick(designResult.body, ["result", "workerId"])).toBe("design-engineer");
+    expect(pick(designResult.body, ["result", "workerId"])).toBe("qa-reviewer");
     expect(pick(productResult.body, ["result", "workerId"])).toBe("product-manager");
 
     for (const result of [designResult, productResult]) {
@@ -537,9 +543,9 @@ describe("7. GET /results, GET /results/:resultId", () => {
     // requireApproval defaults to true.
     const client = createClient();
 
-    const design = await client.post("/workers/design-engineer/tasks", {
-      request: "build a new dashboard page",
-      input: DESIGN_INPUT,
+    const design = await client.post("/workers/qa-reviewer/tasks", {
+      request: "review the dashboard page",
+      input: QA_INPUT,
     });
     record(design.raw);
 

@@ -32,10 +32,18 @@ function context(options?: { readonly requireApproval?: boolean }): CliContext {
   return created;
 }
 
+/**
+ * Answers for the QA Reviewer form.
+ *
+ * QA Reviewer is this suite's generic worker: it completes deterministically
+ * offline, so every assertion below is made against artifacts a real run
+ * produced. Design Engineer can no longer play that part — it requires a
+ * connected Figma design, which this suite does not configure.
+ */
 const RUN_ANSWERS = [
-  "homepage.fig",
-  "react",
-  "brand/Header, brand/Footer, layout/Dashboard",
+  "src/components/Header.tsx",
+  "accessibility",
+  "major",
 ];
 
 afterEach(() => {
@@ -44,9 +52,9 @@ afterEach(() => {
   delete process.env.DESIGNFLOW_HOME;
 });
 
-async function runDesignEngineer(cliContext: CliContext): Promise<string> {
+async function runQaReviewer(cliContext: CliContext): Promise<string> {
   const terminal = new ScriptedTerminal(RUN_ANSWERS);
-  const code = await dispatch(["run", "design-engineer"], cliContext, terminal);
+  const code = await dispatch(["run", "qa-reviewer"], cliContext, terminal);
   expect(code).toBe(0);
 
   const match = terminal.transcript.match(/Run id: (\S+)/);
@@ -57,54 +65,60 @@ async function runDesignEngineer(cliContext: CliContext): Promise<string> {
 describe("designflow artifacts", () => {
   test("lists the artifacts a run produced", async () => {
     const cliContext = context();
-    const runId = await runDesignEngineer(cliContext);
+    const runId = await runQaReviewer(cliContext);
 
     const terminal = new ScriptedTerminal([]);
     const code = await dispatch(["artifacts", runId], cliContext, terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain(`Run: ${runId}`);
-    expect(terminal.transcript).toContain("Design analysis");
-    expect(terminal.transcript).toContain("Generated source code");
+    expect(terminal.transcript).toContain("Review target summary");
+    expect(terminal.transcript).toContain("QA report");
     expect(terminal.transcript).toContain("(created)");
     expect(terminal.transcript).toContain(`designflow artifacts ${runId} <artifact-id>`);
   });
 
-  test("shows a source-code artifact's files and states no project files changed", async () => {
+  test("shows an artifact's contents and says where it is kept", async () => {
     const cliContext = context();
-    const runId = await runDesignEngineer(cliContext);
-
-    const terminal = new ScriptedTerminal([]);
-    const code = await dispatch(["artifacts", runId, "source-code"], cliContext, terminal);
-
-    expect(code).toBe(0);
-    expect(terminal.transcript).toContain("Stored internally by DesignFlow.");
-    expect(terminal.transcript).toContain("No project files were changed.");
-    expect(terminal.transcript).toContain("Framework: react");
-    expect(terminal.transcript).toContain("src/components/Header.tsx");
-    expect(terminal.transcript).toContain("export function Header()");
-  });
-
-  test("shows a validation-report artifact as readable JSON", async () => {
-    const cliContext = context();
-    const runId = await runDesignEngineer(cliContext);
+    const runId = await runQaReviewer(cliContext);
 
     const terminal = new ScriptedTerminal([]);
     const code = await dispatch(
-      ["artifacts", runId, "validation-report"],
+      ["artifacts", runId, "review-target-summary"],
       cliContext,
       terminal,
     );
 
     expect(code).toBe(0);
-    expect(terminal.transcript).toContain('"passed": true');
-    expect(terminal.transcript).toContain('"checked": 3');
+    // Where the artifact lives is the honest, unconditional fact. Whether a
+    // run touched the project is a claim only the run itself can make, so the
+    // detail view no longer asserts it on every artifact.
+    expect(terminal.transcript).toContain("Stored internally by DesignFlow.");
+    expect(terminal.transcript).not.toContain("No project files were changed.");
+    expect(terminal.transcript).toContain("Status: created");
+    expect(terminal.transcript).toContain("src/components/Header.tsx");
+  });
+
+  test("shows a report artifact as readable JSON", async () => {
+    const cliContext = context();
+    const runId = await runQaReviewer(cliContext);
+
+    const terminal = new ScriptedTerminal([]);
+    const code = await dispatch(
+      ["artifacts", runId, "qa-report"],
+      cliContext,
+      terminal,
+    );
+
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain('"verdict": "fail"');
+    expect(terminal.transcript).toContain('"issueCount": 1');
   });
 
   test("distinguishes a reused artifact from a created one on a second, identical run", async () => {
     const cliContext = context();
-    await runDesignEngineer(cliContext);
-    const secondRunId = await runDesignEngineer(cliContext);
+    await runQaReviewer(cliContext);
+    const secondRunId = await runQaReviewer(cliContext);
 
     const terminal = new ScriptedTerminal([]);
     await dispatch(["artifacts", secondRunId], cliContext, terminal);
@@ -112,7 +126,11 @@ describe("designflow artifacts", () => {
     expect(terminal.transcript).toContain("(reused)");
 
     const detailTerminal = new ScriptedTerminal([]);
-    await dispatch(["artifacts", secondRunId, "design-analysis"], cliContext, detailTerminal);
+    await dispatch(
+      ["artifacts", secondRunId, "review-target-summary"],
+      cliContext,
+      detailTerminal,
+    );
     expect(detailTerminal.transcript).toContain("Status: reused");
   });
 
@@ -128,7 +146,7 @@ describe("designflow artifacts", () => {
 
   test("reports an unknown artifact id on a real run", async () => {
     const cliContext = context();
-    const runId = await runDesignEngineer(cliContext);
+    const runId = await runQaReviewer(cliContext);
 
     const terminal = new ScriptedTerminal([]);
     const code = await dispatch(["artifacts", runId, "no-such-artifact"], cliContext, terminal);
@@ -149,13 +167,13 @@ describe("designflow artifacts", () => {
 
   test("does not disturb designflow history", async () => {
     const cliContext = context();
-    await runDesignEngineer(cliContext);
+    await runQaReviewer(cliContext);
 
     const terminal = new ScriptedTerminal([]);
     const code = await dispatch(["history"], cliContext, terminal);
 
     expect(code).toBe(0);
-    expect(terminal.transcript).toContain("Design → Code");
+    expect(terminal.transcript).toContain("QA Review");
   });
 });
 
@@ -164,10 +182,10 @@ describe("interactive artifact inspection", () => {
     const cliContext = context();
     const terminal = new ScriptedTerminal([
       "1",
-      "",
+      "2",
       ...RUN_ANSWERS,
       "yes",
-      "design-analysis",
+      "review-target-summary",
       "4",
     ]);
 
@@ -177,12 +195,11 @@ describe("interactive artifact inspection", () => {
     expect(terminal.transcript).toContain("View artifacts now?");
     expect(terminal.transcript).toContain("Show which artifact?");
     expect(terminal.transcript).toContain("Stored internally by DesignFlow.");
-    expect(terminal.transcript).toContain("No project files were changed.");
   });
 
   test("declining the offer leaves the completion screen exactly as before", async () => {
     const cliContext = context();
-    const terminal = new ScriptedTerminal(["1", "", ...RUN_ANSWERS, "no", "4"]);
+    const terminal = new ScriptedTerminal(["1", "2", ...RUN_ANSWERS, "no", "4"]);
 
     const code = await dispatch([], cliContext, terminal);
 
@@ -195,7 +212,7 @@ describe("interactive artifact inspection", () => {
     const cliContext = context();
     const terminal = new ScriptedTerminal(RUN_ANSWERS);
 
-    const code = await dispatch(["run", "design-engineer"], cliContext, terminal);
+    const code = await dispatch(["run", "qa-reviewer"], cliContext, terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).not.toContain("View artifacts now?");

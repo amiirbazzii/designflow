@@ -71,8 +71,14 @@ function context(
   return created;
 }
 
-/** Answers for the design-to-code form. */
-const RUN_ANSWERS = ["homepage.fig", "react", "brand/Header, brand/Footer"];
+/**
+ * Answers for the QA Reviewer form.
+ *
+ * QA Reviewer is the shell's generic worker: it completes deterministically
+ * offline, so a menu-driven run can be followed all the way to "Complete".
+ * Design Engineer needs a connected Figma design, which no test configures.
+ */
+const RUN_ANSWERS = ["src/components/Header.tsx", "accessibility", "major"];
 
 afterEach(() => {
   for (const created of contexts.splice(0)) created.close();
@@ -370,16 +376,35 @@ describe("main menu", () => {
 describe("the menu reads the worker registry", () => {
   test("lists the installed workers", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["1", "", ...RUN_ANSWERS, "no", "4"]);
+    const terminal = new ScriptedTerminal(["1", "2", ...RUN_ANSWERS, "no", "4"]);
 
     await dispatch([], context(home), terminal);
 
     expect(terminal.transcript).toContain("Who would you like to use?");
     expect(terminal.transcript).toContain("1. Design Engineer");
+    expect(terminal.transcript).toContain("2. QA Reviewer");
 
-    // A blank answer takes the first worker, so the only entry in a
-    // single-worker catalogue is still one keystroke away.
+    // The picker's answer chooses the worker, and that worker's job runs to
+    // completion without leaving the menu.
     expect(terminal.transcript).toContain("Complete");
+  });
+
+  test("picking the Design Engineer with no Figma connection explains the setup and returns to the menu", async () => {
+    const home = freshHome();
+    const terminal = new ScriptedTerminal(["1", "1", "4"]);
+
+    const code = await dispatch([], context(home), terminal);
+
+    // The interactive path reaches the same prerequisite as `designflow run`:
+    // no connected Figma design means setup guidance, not a legacy scaffold.
+    // A session is a place to work, so this returns to the menu rather than
+    // ending the process.
+    expect(code).toBe(0);
+    expect(terminal.transcript).toContain(
+      "The Design Engineer works from a connected Figma design",
+    );
+    expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
+    expect(terminal.transcript).toContain("Goodbye.");
   });
 
   test("a worker registered at runtime appears with no code change", async () => {
@@ -456,12 +481,22 @@ describe("the menu reads the worker registry", () => {
 
       const relative = path.split("/").slice(-2).join("/");
 
-      // No file may name a worker. The composition root may name the workflow
-      // package it installs — loading one is precisely its job — so the
-      // workflow id is checked everywhere else.
+      // No file may name a worker. Two deliberate exceptions:
+      //
+      // The composition root may name the workflow package it installs —
+      // loading one is precisely its job — so the workflow id is checked
+      // everywhere else.
+      //
+      // `run.ts` may say "Design Engineer" in prose, and only there: the
+      // Figma setup guidance is written *about* that worker's prerequisite,
+      // and a sentence assembled from `worker.name` would read as though any
+      // worker might need Figma. Its *id* is still forbidden, so nothing
+      // routes or branches on a name typed into the source.
       const forbidden = relative.endsWith("services/cli-runner.ts")
         ? ["design-engineer", "Design Engineer"]
-        : ["design-engineer", "Design Engineer", "design-to-code"];
+        : relative.endsWith("commands/run.ts")
+          ? ["design-engineer", "design-to-code"]
+          : ["design-engineer", "Design Engineer", "design-to-code"];
 
       for (const name of forbidden) {
         if (code.includes(name)) offenders.push(`${relative} → ${name}`);

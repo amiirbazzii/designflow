@@ -46,15 +46,17 @@ export async function interactiveCommand(
       const workerId = await chooseWorker(context, terminal);
       if (workerId !== null) {
         const isDesignEngineer = context.workers.getWorker(workerId)?.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) === true;
+        // A project is optional for the Design Engineer: skipping the picker
+        // continues with the specification-only journey. Selecting one still
+        // only says where changes COULD go — the run itself asks for
+        // explicit consent before any implementation is prepared.
         const projectId = context.experimentalImplementationEnabled && isDesignEngineer
           ? await chooseProject(context, terminal)
           : null;
-        if (projectId !== null || !(context.experimentalImplementationEnabled && isDesignEngineer)) {
-          await runCommand(context, terminal, workerId, {
-            interactive: true,
-            ...(projectId !== null ? { projectId } : {}),
-          });
-        }
+        await runCommand(context, terminal, workerId, {
+          interactive: true,
+          ...(projectId !== null ? { projectId } : {}),
+        });
       }
       continue;
     }
@@ -78,18 +80,20 @@ async function chooseProject(context: CliContext, terminal: Terminal): Promise<s
   const projects = await context.projects.listProjects();
   if (projects.length === 0) {
     terminal.print();
-    terminal.print("A registered project is required before experimental implementation can run.");
-    terminal.print("Run  designflow projects add --name <name> --path <path>");
+    terminal.print("No projects are registered — continuing with a design specification only.");
+    terminal.print("To let DesignFlow propose project changes later, run:");
+    terminal.print("  designflow projects add --name <name> --path <path>");
     return null;
   }
 
   terminal.print();
-  terminal.print("Registered projects");
+  terminal.print("Registered projects (press Enter to skip — specification only)");
   projects.forEach((project, index) => terminal.print(`  ${index + 1}. ${project.name} (${project.id})`));
   const answer = (await terminal.ask("Which project?")).trim();
+  if (answer.length === 0) return null;
   const chosen = projects[Number(answer) - 1] ?? projects.find((project) => project.id === answer);
   if (chosen === undefined) {
-    terminal.print(`Not a registered project: ${answer}`);
+    terminal.print(`Not a registered project: ${answer} — continuing with a specification only.`);
     return null;
   }
   return chosen.id;

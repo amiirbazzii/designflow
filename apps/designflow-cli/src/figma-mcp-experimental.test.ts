@@ -87,8 +87,10 @@ describe("the experimental Figma MCP path, wired through the real CLI compositio
     const context = createCliContext({ databasePath: join(home, "runs.json") });
     contexts.push(context);
 
-    const resolved = context.resolve("design-to-code-figma-specification");
-    expect(resolved).not.toBeNull();
+    // MVP-3B: the gated workflow id is no longer publicly resolvable — the
+    // pipeline is reached through coordinator routing. Internal harnesses
+    // (this test) start it directly through the runner.
+    expect(context.resolve("design-to-code-figma-specification")).toBeNull();
 
     const handle = await context.runner.start({
       workflowId: "design-to-code-figma-specification",

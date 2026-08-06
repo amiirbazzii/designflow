@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+// design-engineer-agent.ts is deliberately absent since MVP-3B: its model
+// strategy no longer routes via a model call at all — deterministic
+// prerequisites fully determine the permitted outcome, so there is no
+// provider transport to convert.
 const coordinatorFiles = [
-  "design-engineer-agent.ts",
   "product-manager-agent.ts",
   "qa-reviewer-agent.ts",
   "research-analyst-agent.ts",

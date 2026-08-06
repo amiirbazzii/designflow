@@ -20,7 +20,7 @@ export const designToCodeWorkflow: WorkflowDefinition = {
   id: "design-to-code",
   name: "Design → Code",
   description:
-    "Convert design inputs into production-ready code artifacts",
+    "Legacy artifacts-only design scaffold (a structural prototype; writes no project files)",
   nodes: [
     {
       id: "analyze-design",

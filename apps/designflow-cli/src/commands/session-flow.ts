@@ -197,20 +197,31 @@ async function report(
     if (overview.failureReason !== undefined) {
       terminal.print(`Reason: ${overview.failureReason}`);
     }
+    // Write-status honesty on the stopped path too: a rejected or otherwise
+    // unfinished implementation must say plainly whether the project was
+    // touched, derived from what actually ran — never from the workflow id.
+    const applied = artifacts.some((artifact) => artifact.artifactId === "file-application-result");
+    if (!applied) {
+      terminal.print("No changes were applied to your project.");
+    }
   }
 
   if (overview.durationLabel !== undefined) {
     terminal.print(`Took ${overview.durationLabel}.`);
   }
 
-  // Every workflow DesignFlow ships today only stores its output as an
-  // artifact — nothing here writes into the project this command was run
-  // from. Said plainly, every time, rather than left to be inferred from the
-  // absence of a file-write message: the two read the same either way, but
-  // only one of them cannot be mistaken for "and it also touched my repo".
+  // Write status is derived from what actually ran — the presence of the
+  // application-result artifact — never from the command or workflow name.
   if (overview.state === "ready") {
     const implementation = artifacts.some((artifact) => artifact.artifactId === "file-application-result");
-    terminal.print(implementation ? "Project files were updated after your approval." : "No files were written to your project.");
+    const specification = artifacts.some((artifact) => artifact.artifactId === "design-specification" || artifact.artifactId === "stage-3-summary");
+    if (implementation) {
+      terminal.print("Project files were updated after your approval.");
+    } else if (specification) {
+      terminal.print("Design specification generated — no project files were written.");
+    } else {
+      terminal.print("Output stored as DesignFlow artifacts — no files were written to your project.");
+    }
     const visual = artifacts.find((artifact) => artifact.artifactId === "stage-5-summary");
     if (visual !== undefined) {
       const detail = await context.artifactInspection.getPayload(visual);

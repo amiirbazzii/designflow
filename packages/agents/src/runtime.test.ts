@@ -425,41 +425,58 @@ describe("what the runtime does not do", () => {
 // ── The shipped agent ───────────────────────────────────────────
 
 describe("the Design Engineer agent", () => {
+  // MVP-3B: routing only serves the supported journeys. A real Figma source
+  // selects the specification workflow; without one, the agent clarifies
+  // with setup guidance instead of falling back to the legacy scaffold.
   const runtime = new AgentRuntime({
     registry: createAgentRegistry(),
-    availableWorkflows: ["design-to-code"],
+    availableWorkflows: ["design-to-code", "design-to-code-figma-specification"],
   });
 
   const task = (overrides: Partial<AgentTask> = {}): AgentTask => ({
     workerId: "design-engineer",
     agentId: "design-engineer-agent",
     request: "build the homepage",
+    input: { figmaSourceMode: "mcp-stdio" },
     ...overrides,
   });
 
-  test("resolves a real request to design-to-code", async () => {
+  test("resolves a real request to the design-specification journey", async () => {
     const result = await runtime.decide(task());
 
     expect(result.decision).toEqual({
       type: "run_workflow",
-      workflowId: "design-to-code",
+      workflowId: "design-to-code-figma-specification",
+      input: { figmaSourceMode: "mcp-stdio" },
       reasoningSummary: expect.any(String),
     });
   });
 
   test("passes the caller's input through", async () => {
     const result = await runtime.decide(
-      task({ request: "", input: { designFile: "homepage.fig" } }),
+      task({ request: "", input: { designFile: "homepage.fig", figmaSourceMode: "mcp-stdio" } }),
     );
 
     expect(result.decision).toMatchObject({
       type: "run_workflow",
-      input: { designFile: "homepage.fig" },
+      input: { designFile: "homepage.fig", figmaSourceMode: "mcp-stdio" },
     });
   });
 
+  test("never selects the legacy scaffold for a normal request", async () => {
+    // Only the legacy workflow installed: the canonical journey clarifies
+    // with setup guidance rather than running the compatibility-only
+    // prototype.
+    const result = await new AgentRuntime({
+      registry: createAgentRegistry(),
+      availableWorkflows: ["design-to-code"],
+    }).decide(task({ input: undefined }));
+
+    expect(result.decision.type).toBe("request_clarification");
+  });
+
   test("asks for detail when there is nothing to work from", async () => {
-    const result = await runtime.decide(task({ request: "   " }));
+    const result = await runtime.decide(task({ request: "   ", input: undefined }));
 
     expect(result.decision.type).toBe("request_clarification");
   });
@@ -470,15 +487,15 @@ describe("the Design Engineer agent", () => {
     expect(result.decision.type).toBe("request_clarification");
   });
 
-  test("declines when its permitted workflow is not installed", async () => {
+  test("clarifies when no supported workflow is installed", async () => {
     const result = await new AgentRuntime({
       registry: createAgentRegistry(),
       availableWorkflows: [],
     }).decide(task());
 
-    // Declining rather than throwing keeps a misconfigured install refusing
-    // work instead of failing from under the runtime.
-    expect(result.decision.type).toBe("decline");
+    // Asking with setup guidance rather than throwing keeps a misconfigured
+    // install steering the user instead of failing from under the runtime.
+    expect(result.decision.type).toBe("request_clarification");
   });
 
   test("its summary explains without exposing reasoning", async () => {
@@ -489,7 +506,7 @@ describe("the Design Engineer agent", () => {
     }
 
     expect(result.decision.reasoningSummary).toBe(
-      "The request describes design work, which design-to-code handles.",
+      "A real Figma source is connected, so the design-specification journey will be used.",
     );
   });
 });

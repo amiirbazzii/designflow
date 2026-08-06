@@ -132,8 +132,11 @@ export function renderDetail(
 ): void {
   terminal.print(heading(summary.name));
   terminal.print();
+  // The artifact record itself is always internal storage. Whether the run
+  // that produced it also changed project files is the run summary's fact
+  // to report — an unconditional "no files changed" line here misdescribed
+  // application-result artifacts whose entire purpose is recording writes.
   terminal.print("Stored internally by DesignFlow.");
-  terminal.print("No project files were changed.");
   terminal.print();
   terminal.print(`Status: ${summary.status}`);
 

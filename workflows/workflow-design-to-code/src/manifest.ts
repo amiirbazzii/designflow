@@ -14,7 +14,7 @@ export const designToCodeWorkflowPackage: WorkflowPackage = {
   id: "design-to-code",
   name: "Design → Code",
   version: "0.1.0",
-  description: "Convert design inputs into production-ready code artifacts",
+  description: "Legacy artifacts-only design scaffold (a structural prototype; writes no project files)",
   capabilities: designToCodeCapabilities.map((capability) => capability.id),
   metadata: {
     author: "DesignFlow Team",
