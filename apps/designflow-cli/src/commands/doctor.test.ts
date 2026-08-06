@@ -62,3 +62,62 @@ describe("designflow doctor", () => {
     expect(figma?.detail.toLowerCase()).not.toContain("mcp-session-id");
   });
 });
+
+describe("design engineer readiness", () => {
+  test("renders for a specification-only setup and states both implementation gates", async () => {
+    const created = context();
+    created.home.config.settings["figmaMcp"] = { command: "figma-server" };
+
+    const terminal = new ScriptedTerminal();
+    expect(await doctorCommand(created, terminal)).toBe(0);
+
+    expect(terminal.transcript).toContain("Design Engineer readiness");
+    expect(terminal.transcript).toContain("Specification: ready");
+    // No project registered, so a proposal cannot be prepared yet — and the
+    // two gates are stated regardless.
+    expect(terminal.transcript).toContain("Implementation proposal: blocked");
+    expect(terminal.transcript).toContain("designflow projects add --name <name> --path <path>");
+    expect(terminal.transcript).toContain("approve the exact proposed changes");
+    expect(terminal.transcript).toContain("Beta");
+    expect(terminal.transcript).toContain("Doctor is read-only");
+  });
+
+  test("distinguishes a missing Figma block from an unusable one", async () => {
+    const missing = context();
+    const missingTerminal = new ScriptedTerminal();
+    await doctorCommand(missing, missingTerminal);
+    expect(missingTerminal.transcript).toContain("No Figma connection is configured.");
+    expect(missingTerminal.transcript).toContain("Add a figmaMcp block");
+
+    const invalid = context();
+    invalid.home.config.settings["figmaMcp"] = { transport: "http" };
+    const invalidTerminal = new ScriptedTerminal();
+    await doctorCommand(invalid, invalidTerminal);
+    expect(invalidTerminal.transcript).toContain("does not describe a usable server");
+    expect(invalidTerminal.transcript).toContain("Fix the figmaMcp block");
+  });
+
+  test("reports deterministic mode without naming a credential value", async () => {
+    const created = context();
+    const terminal = new ScriptedTerminal();
+    await doctorCommand(created, terminal);
+
+    expect(terminal.transcript).toContain("Deterministic fallback");
+    expect(terminal.transcript).toContain(providerEnv);
+    expect(terminal.transcript).not.toContain("sk-or-");
+    // Internal vocabulary stays internal: no experimental keys, no workflow ids.
+    expect(terminal.transcript).not.toContain("settings.experimental");
+    expect(terminal.transcript).not.toContain("design-to-code");
+  });
+
+  test("an incomplete setup still exits 0; only a broken installation exits 1", async () => {
+    // Nothing configured at all — no credential, no Figma, no project, no
+    // Playwright in this environment's optional install.
+    const incomplete = context();
+    expect(await doctorCommand(incomplete, new ScriptedTerminal())).toBe(0);
+
+    const broken = context();
+    writeFileSync(join(broken.home.layout.home, "runs.json"), "{not-json");
+    expect(await doctorCommand(broken, new ScriptedTerminal())).toBe(1);
+  });
+});

@@ -165,6 +165,43 @@ describe("designflow artifacts", () => {
     expect(terminal.transcript).toContain("Usage: designflow artifacts <run-id> [artifact-id]");
   });
 
+  test("names the producer of each artifact without claiming an agent ran", async () => {
+    const cliContext = context();
+    const runId = await runQaReviewer(cliContext);
+
+    const terminal = new ScriptedTerminal([]);
+    await dispatch(["artifacts", runId], cliContext, terminal);
+
+    // Every step of this run is deterministic, so no line may read as a
+    // person's work, and no raw capability id may reach the terminal.
+    expect(terminal.transcript).toContain("(deterministic step)");
+    expect(terminal.transcript).not.toContain("Specialist");
+  });
+
+  test("shows no related executions for a run that composed none", async () => {
+    const cliContext = context();
+    const runId = await runQaReviewer(cliContext);
+
+    const terminal = new ScriptedTerminal([]);
+    await dispatch(["artifacts", runId], cliContext, terminal);
+
+    // Relationship comes from persisted lineage alone. A run that composed
+    // nothing must not borrow a neighbour from history.
+    expect(terminal.transcript).not.toContain("Related executions");
+  });
+
+  test("the detail view says how an artifact was produced, or that it was not recorded", async () => {
+    const cliContext = context();
+    const runId = await runQaReviewer(cliContext);
+
+    const terminal = new ScriptedTerminal([]);
+    await dispatch(["artifacts", runId, "qa-report"], cliContext, terminal);
+
+    expect(terminal.transcript).toMatch(
+      /Produced by: .+|Producer details: not recorded in this artifact version\./,
+    );
+  });
+
   test("does not disturb designflow history", async () => {
     const cliContext = context();
     await runQaReviewer(cliContext);

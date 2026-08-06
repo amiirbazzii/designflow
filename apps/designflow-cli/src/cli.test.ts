@@ -205,6 +205,8 @@ describe("designflow workers", () => {
     expect(terminal.transcript).toContain("designflow run qa-reviewer");
     expect(terminal.transcript).not.toContain("qa-reviewer-agent");
     expect(terminal.transcript).not.toContain("qa-review\n");
+    // A provider id is internal vocabulary too; the detail view showed it raw.
+    expect(terminal.transcript).not.toContain("openrouter");
   });
 
   test("workers <id> reports an unknown worker without a stack trace", async () => {
@@ -296,7 +298,11 @@ describe("designflow run", () => {
     const code = await dispatch(["run", "qa-reviewer"], context(), terminal);
 
     expect(code).toBe(1);
-    expect(terminal.transcript).toContain("Stopped. Nothing was written.");
+    // Rejecting says all three things a person needs: that they rejected it,
+    // that nothing reached their project, and that the work done before the
+    // gate is still inspectable.
+    expect(terminal.transcript).toContain("You rejected the proposed changes.");
+    expect(terminal.transcript).toContain("Nothing was written to your project.");
   });
 
   test("blank answers are left absent rather than filled with placeholders", async () => {
@@ -1053,9 +1059,9 @@ describe("running through a tool-backed agent", () => {
     // before collecting a single answer.
     expect(code).toBe(1);
     expect(terminal.questions).toEqual([]);
-    expect(terminal.transcript).toContain(
-      "The Design Engineer works from a connected Figma design",
-    );
+    // The shared readiness wording, identical to what doctor prints.
+    expect(terminal.transcript).toContain("This worker reads a connected Figma design.");
+    expect(terminal.transcript).toContain("No Figma connection is configured.");
     expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
 
     // Nothing was started: no execution, and no session left waiting.
@@ -1545,6 +1551,7 @@ describe("execution boundary", () => {
       "pendingApproval",
       "approve",
       "reject",
+      "children",
     ]);
 
     expect(calls.length).toBeGreaterThan(0);

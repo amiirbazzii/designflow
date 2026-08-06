@@ -117,6 +117,32 @@ export function displayProviderName(providerId: string): string {
     : providerId.charAt(0).toUpperCase() + providerId.slice(1);
 }
 
+/** One specialized role's effective model settings, with per-field provenance. */
+export interface SettingsRole {
+  readonly roleName: string;
+  readonly profileId: string;
+  readonly fields: readonly {
+    readonly label: string;
+    readonly value: string;
+    readonly source: "built-in" | "override";
+    readonly kind?: "provider" | undefined;
+  }[];
+}
+
+/** Figma connection metadata — never a URL, a command line or a credential. */
+export interface SettingsFigmaMcp {
+  readonly state: "missing" | "invalid" | "configured";
+  readonly transport?: "stdio" | "http";
+  readonly target?: string;
+  readonly envPassthroughNames: readonly string[];
+}
+
+export interface SettingsFeatureTier {
+  readonly name: string;
+  readonly tier: string;
+  readonly note: string;
+}
+
 export function settings(
   layout: HomeLayout,
   values: {
@@ -129,6 +155,24 @@ export function settings(
       readonly maxClarificationTurns: number;
       readonly expirationDays: number;
     };
+    readonly configuration?: {
+      readonly exists: boolean;
+      readonly parsed: boolean;
+    };
+    readonly modelMode?: {
+      readonly mode: "live" | "deterministic";
+      readonly credentialPresent: boolean;
+      readonly providerId?: string;
+    };
+    /**
+     * The specialized roles, already described. This file renders rows; it
+     * does not know a role's name, its profile id, or which of its fields a
+     * local override changed — all of which are decided one layer down, so
+     * the rendering cannot drift from what a run would use.
+     */
+    readonly roles?: readonly SettingsRole[];
+    readonly figmaMcp?: SettingsFigmaMcp;
+    readonly featureTiers?: readonly SettingsFeatureTier[];
   },
 ): string {
   const lines = [
@@ -144,6 +188,72 @@ export function settings(
     `  History       ${values.historyFile}`,
     `  Cache         ${layout.cache}`,
   ];
+
+  if (values.configuration !== undefined) {
+    lines.push(
+      "",
+      "  Configuration",
+      `    File:      ${layout.configFile}`,
+      `    Present:   ${values.configuration.exists ? "yes" : "no — defaults are in effect"}`,
+      `    Readable:  ${values.configuration.parsed ? "yes" : "no — fix it or move it aside"}`,
+    );
+  }
+
+  if (values.modelMode !== undefined) {
+    lines.push(
+      "",
+      "  Model mode",
+      `    Mode:        ${values.modelMode.mode === "live" ? "live reasoning" : "deterministic fallback"}`,
+      ...(values.modelMode.providerId !== undefined
+        ? [`    Provider:    ${displayProviderName(values.modelMode.providerId)}`]
+        : []),
+      `    Credential:  ${values.modelMode.credentialPresent ? "present in the environment (value never read or stored)" : "not set — deterministic runs need none"}`,
+    );
+  }
+
+  const roles = values.roles ?? [];
+
+  if (roles.length > 0) {
+    lines.push("", "  Specialized agents");
+
+    for (const role of roles) {
+      lines.push("", `    ${role.roleName}`, `      Profile:  ${role.profileId}`);
+      for (const field of role.fields) {
+        // A provider id is internal vocabulary. It stays canonical in the
+        // model and everywhere DesignFlow compares it; only this line shows
+        // the name a person would recognise.
+        const value =
+          field.kind === "provider" ? displayProviderName(field.value) : field.value;
+
+        lines.push(`      ${field.label}: ${value} (${field.source})`);
+      }
+    }
+  }
+
+  if (values.figmaMcp !== undefined) {
+    const figma = values.figmaMcp;
+    lines.push(
+      "",
+      "  Figma connection",
+      `    Status:     ${figma.state === "configured" ? "configured" : figma.state === "invalid" ? "present but not usable" : "not configured"}`,
+      ...(figma.transport !== undefined
+        ? [`    Transport:  ${figma.transport === "http" ? "local HTTP" : "stdio"}`]
+        : []),
+      ...(figma.target !== undefined ? [`    Server:     ${figma.target}`] : []),
+      ...(figma.envPassthroughNames.length > 0
+        ? [`    Forwarded environment variables (names only): ${figma.envPassthroughNames.join(", ")}`]
+        : []),
+    );
+  }
+
+  const tiers = values.featureTiers ?? [];
+
+  if (tiers.length > 0) {
+    lines.push("", "  Feature status");
+    for (const tier of tiers) {
+      lines.push("", `    ${tier.name}: ${tier.tier}`, `      ${tier.note}`);
+    }
+  }
 
   const assignments = values.modelAssignments ?? [];
 
@@ -205,23 +315,31 @@ export function usage(): string {
   return [
     "designflow — your AI workforce in the terminal",
     "",
+    "Package designflow-ai; command designflow. Without installing:",
+    "  npx --yes designflow-ai --help",
+    "",
     "Usage:",
     "  designflow                 Interactive mode",
+    "  designflow doctor [--json]  Check setup and see what is ready to run",
+    "  designflow settings        Show configuration, agents and feature status",
+    "  designflow projects        Register and inspect your own projects",
     "  designflow workers         Show available AI workers (alias: list)",
     "  designflow workers <id>    Show one worker's detail",
     "  designflow run <worker>    Put a worker to work",
+    "    The design worker works from a connected Figma design. A",
+    "    specification reads the design and writes nothing; proposed",
+    "    implementation changes need per-run consent, and each exact",
+    "    proposal needs your approval before anything is written.",
     "  designflow feedback-loop --input <path>  Run an approved Stage 6 correction iteration",
     "  designflow feedback-loop show <parent-id>  Inspect durable loop state",
     "  designflow feedback-loop resume <parent-id>  Resume a durable loop",
     "  designflow feedback-loop stop <parent-id>  Stop without new writes",
-    "  designflow doctor [--json]  Check local runtime and state health",
     "  designflow history         Show previous runs",
     "  designflow artifacts <id>  Inspect what a run produced or reused",
     "  designflow traces          Show what past AI decisions did",
     "  designflow sessions        Show conversations waiting on you",
     "  designflow answer <id>     Answer a worker's question",
     "  designflow cancel <id>     Cancel a waiting conversation",
-    "  designflow settings        Show where things are kept",
     "  designflow cleanup         Mark expired conversations and approvals",
     "",
     "Options:",

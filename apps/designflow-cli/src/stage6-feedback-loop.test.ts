@@ -1176,7 +1176,12 @@ describe("installed CLI Stage 6 boundary", () => {
             [],
           );
           expect(artifacts.status).toBe(0);
-          expect(artifacts.output).toContain("Feedback Loop Parent Artifacts");
+          // The parent listing is real now, not a stub: the loop's own
+          // outcome, and one entry per persisted iteration with the child run
+          // id a reader can inspect next.
+          expect(artifacts.output).toContain("Correction loop");
+          expect(artifacts.output).toContain("Related executions");
+          expect(artifacts.output).toContain("Iteration 1");
         }
         void crashedParent;
       }

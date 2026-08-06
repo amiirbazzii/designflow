@@ -9,6 +9,13 @@ import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext } from "../ser
 import type { SessionResult } from "@designflow/sdk";
 import type { ArtifactSummary } from "@designflow/product";
 import { renderDetail, renderList } from "./artifacts";
+import {
+  classifyVisualOutcome,
+  describeProvenance,
+  describeVisualOutcome,
+  progressLabel,
+  readProvenanceFacts,
+} from "../services/presentation";
 
 /**
  * What `designflow run` and `designflow answer` share once a session exists.
@@ -126,7 +133,15 @@ export async function finishSession(
 
   if (approved === false) {
     terminal.print();
-    terminal.print("Stopped. Nothing was written.");
+    terminal.print(heading("Rejected"));
+    terminal.print("You rejected the proposed changes.");
+    terminal.print("Nothing was written to your project.");
+    terminal.print("Everything produced before the approval is still stored as artifacts.");
+    terminal.print();
+    terminal.print(`Inspect the result: designflow artifacts ${executionId}`);
+    terminal.print();
+    terminal.print(`Run id: ${executionId}`);
+    terminal.print();
     return 1;
   }
 
@@ -180,8 +195,20 @@ async function report(
   const { overview, artifacts } = result;
 
   terminal.print();
-  terminal.print(heading(overview.state === "ready" ? "Complete" : "Stopped"));
+  terminal.print(
+    heading(
+      overview.state === "ready"
+        ? "Complete"
+        : overview.status === "cancelled"
+          ? "Cancelled"
+          : "Stopped",
+    ),
+  );
   terminal.print(overview.summary);
+
+  if (overview.status === "cancelled") {
+    terminal.print("The run was cancelled before it finished.");
+  }
 
   if (overview.state !== "ready") {
     const validation = artifacts.find((artifact) => artifact.artifactId === "implementation-validation");
@@ -214,11 +241,24 @@ async function report(
   // application-result artifact — never from the command or workflow name.
   if (overview.state === "ready") {
     const implementation = artifacts.some((artifact) => artifact.artifactId === "file-application-result");
-    const specification = artifacts.some((artifact) => artifact.artifactId === "design-specification" || artifact.artifactId === "stage-3-summary");
+    const specificationArtifact = artifacts.find(
+      (artifact) =>
+        artifact.artifactId === "design-specification" ||
+        artifact.artifactId === "stage-3-summary",
+    );
     if (implementation) {
       terminal.print("Project files were updated after your approval.");
-    } else if (specification) {
+    } else if (specificationArtifact !== undefined) {
       terminal.print("Design specification generated — no project files were written.");
+      // Who produced it, from the artifact's own provenance — a run that
+      // fell back to a deterministic path must not read as an agent's work.
+      const detail = await context.artifactInspection.getPayload(specificationArtifact);
+      for (const line of describeProvenance(
+        specificationArtifact.createdBy,
+        readProvenanceFacts(detail.payload),
+      )) {
+        terminal.print(line);
+      }
     } else {
       terminal.print("Output stored as DesignFlow artifacts — no files were written to your project.");
     }
@@ -227,7 +267,7 @@ async function report(
       const detail = await context.artifactInspection.getPayload(visual);
       const payload = detail.payload as { overallStatus?: string; viewportCount?: number; critical?: number; major?: number; minor?: number; referenceMode?: string };
       terminal.print();
-      terminal.print("Visual validation finished.");
+      terminal.print(describeVisualOutcome(classifyVisualOutcome(payload.overallStatus)));
       terminal.print(`Status: ${payload.overallStatus ?? "unknown"}`);
       terminal.print(`Viewports: ${payload.viewportCount ?? 0}`);
       terminal.print(`Critical: ${payload.critical ?? 0}`);
@@ -372,9 +412,24 @@ async function offerArtifactView(
 export function renderProgress(progress: {
   readonly completed: number;
   readonly total: number;
-  readonly steps: readonly { readonly label: string; readonly status: string }[];
+  readonly steps: readonly {
+    readonly label: string;
+    readonly status: string;
+    readonly capabilityId?: string | undefined;
+  }[];
 }): string {
-  const lines = progress.steps.map((step) => `  ${stepMarker(step.status)} ${step.label}`);
+  // A step that invoked a specialized agent says who is working; every other
+  // step says what is happening. A capability this shell does not recognise
+  // keeps the product layer's de-slugged label, so a raw id never reaches a
+  // terminal.
+  const lines = progress.steps.map((step) => {
+    const label =
+      step.capabilityId === undefined
+        ? step.label
+        : progressLabel(step.capabilityId, step.label);
+
+    return `  ${stepMarker(step.status)} ${label}`;
+  });
 
   lines.push("", `  ${progress.completed} of ${progress.total} steps`);
 

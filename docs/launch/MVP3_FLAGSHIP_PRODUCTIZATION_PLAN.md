@@ -384,6 +384,148 @@ autonomy theater.
 
 ---
 
+# Implementation status — MVP-3D: role progress, artifact visibility, provenance (2026-08-07)
+
+**MVP-3D is implemented.** MVP-3E remains open; MVP-3 is NOT complete.
+
+- **Presentation view-model** (`apps/designflow-cli/src/services/presentation.ts`,
+  pure/typed): capability→{agent role | deterministic stage} mapping (roles
+  only for the four real agent-invoking capabilities; everything else uses
+  deterministic-stage language; unmapped ids fall back to the existing
+  de-slug — raw ids never print by default), artifact stage-grouping,
+  evidence marking, provenance join, related-execution projection, and
+  run/visual outcome classification. Role vocabulary stays in
+  `readiness.ts` (`designRoleName`), so the source-vocabulary scan needed
+  no new exceptions — pinned by a test.
+- **Progress & summaries** (`session-flow.ts`): progress lines render
+  role/stage labels; final summaries now cover specification-only (with
+  the producing role from the artifact's own provenance), applied +
+  validated, rolled back with reason, rejected, and cancelled — all
+  artifact/state-derived; visual outcome sentence derives from the
+  stage-5 summary's `overallStatus` (passed / inconclusive / unavailable
+  never conflated).
+- **Artifacts command:** stage-grouped default listing for design runs
+  (plain list preserved for other workers), a producer line per artifact
+  (role vs "(deterministic step)"), provenance lines in the detail view
+  with "Producer details: not recorded in this artifact version" for
+  historical gaps, evidence payload bodies suppressed (screenshot bytes
+  never print), redaction + 20k truncation untouched. The feedback-loop
+  parent stub is replaced by a real listing (outcome, stop reason,
+  iteration count, final report) plus a **Related executions** section.
+- **Parent/child visibility:** persisted relations only — new additive
+  `ProductExecutionService.listChildOverviews` /
+  `WorkflowRunner.children()` read execution-lineage metadata; feedback
+  iterations come from the parent store's own records. Each related run
+  shows status/outcome lines and its `designflow artifacts <child-id>`
+  inspect command. No timestamp/name inference; no artifact duplication
+  or identity change.
+- **Provenance correction:** the hardcoded
+  `agentVersion "0.1.0"` / `modelProfileId "implementation-default"`
+  literals in `store-generated-implementation` are gone — the workflow
+  node now maps `implementationAgentVersion` /
+  `implementationAgentModelProfileId` through its (previously empty)
+  inputMap and the capability threads them. **Hash-safety verified:** the
+  generated-implementation payload participates in no approval hash,
+  reuse fingerprint, or staleness objectHash (approval binds proposal
+  hash + project fingerprint; staleness hashes visual reports and
+  project files). The input-identity change intentionally invalidates
+  reuse of the mis-provenanced node. Historical artifacts are not
+  rewritten. Limitation (recorded): strategy mode (model-backed vs
+  deterministic fallback) is not displayed — joining a traced model call
+  to a specific invocation isn't cleanly available without a trace-store
+  redesign; provenance shows only what artifacts recorded.
+- **Provider display:** every user-facing surface (workers detail,
+  settings summary, settings specialists) routes through
+  `displayProviderName` (openrouter → OpenRouter; unknown ids pass
+  through); canonical ids retained in structured output. The installed
+  smoke's raw-provider check was **promoted from warning to hard
+  failure** after a zero-occurrence run.
+- **Traces command:** role/stage labels replace raw
+  `Specialized agent: <id>` / `Step: <capabilityId>`; model calls show
+  provider display name, profile, status, and only usage fields actually
+  reported (no zero-filled tokens or invented cost).
+- **Tests:** 30 new (24 presentation-projection, 3 artifacts-grouping,
+  1 settings, 2 workflow provenance incl. a source-level
+  no-hardcoded-literal assertion) plus strengthened cli/stage6
+  assertions. Suites: CLI 368/1 skip/0, workflow-design-to-code 94/0,
+  product 221/0.
+- **Smoke hardening en route:** fixed a latent stdin-drain hang in the
+  smoke's gating step (`run <workflow-id>` without `</dev/null>` blocks
+  when the harness stdin is a held-open pipe) — same class as the
+  MVP-3B fix.
+- **Validation (serial):** smoke PASS (exit 0, zero provider warnings,
+  hard check active); freshness verifier PASS; full forced suite build
+  26/26, typecheck 44/44, lint 26/26, tests **2,408 pass / 1 skip /
+  0 fail**. No live services contacted.
+- **Remaining:** MVP-3E (reachable beta correction loop from the
+  canonical journey, generated input, per-iteration approval, beta
+  labeling), then MVP-4 real-environment evidence.
+
+---
+
+# Implementation status — MVP-3C: onboarding, readiness, and discoverability (2026-08-06)
+
+**MVP-3C is implemented.** MVP-3D/3E remain open; MVP-3 is NOT complete.
+
+- **Shared readiness model** (`apps/designflow-cli/src/services/readiness.ts`):
+  one typed, side-effect-free model — pure
+  `buildDesignEngineerReadiness(facts)` plus a CLI assembler — deriving
+  model mode (live vs deterministic fallback), Figma connection
+  (missing vs invalid vs configured, transport; discriminated on top of
+  the existing `readFigmaMcpConfig` result with no second parser),
+  project counts, Playwright package vs browser runtime, journey
+  readiness with reasons and real next-step commands, and the beta
+  status of visual correction. It is the single source for `doctor`,
+  `settings`, and `run design-engineer` guidance — the same sentence
+  appears in all three (test-pinned), so the surfaces cannot drift.
+  No credential value is read, printed, or persisted.
+- **Doctor:** new "Design Engineer readiness" section (model mode with
+  the env-var name, Figma status/transport/next step with the real
+  config path, projects, Playwright package vs browser distinguished,
+  journeys — implementation explicitly noted as still requiring per-run
+  journey consent AND later exact-proposal approval; visual correction
+  labeled beta, not yet connected). Exit rules unchanged and documented:
+  incomplete-but-usable setups exit 0; only genuinely broken setups fail.
+  Readiness also appears in `doctor --json`.
+- **Settings:** configuration path/exists/parsed; model mode; the five
+  Design Engineer roles (Coordinator + Figma Specification /
+  Implementation / Visual Validation / Visual Correction (beta)
+  specialists) each with its own profile id, provider, model, and
+  numeric settings, per-field `built-in` vs `override` provenance from
+  the same merged registry a run resolves against; safe Figma metadata
+  (transport, host:port or command basename, envPassthrough NAMES only);
+  feature tiers (supported-pending-MVP-4 / beta / compatibility-only).
+  Other workers' assignments retained; profile independence visible.
+- **Onboarding:** package README gained a quick start (install/npx →
+  doctor → optional `OPENROUTER_API_KEY` → real `figmaMcp` stdio and
+  http examples → `projects add` → run; consent vs approval
+  distinguished) plus a supported-fields model-override example, tier
+  table, and limitations; root README's stale claims ("does not yet read
+  a real design file", "no worker writes files") replaced. README
+  examples are parse-verified against the actual schema by a test.
+  usage() now lists doctor/settings/projects and the package/npx names.
+  The hidden `settings.experimental.*` keys appear nowhere in the setup
+  path (compatibility reads remain).
+- **Smoke:** new onboarding-discoverability step (doctor readiness
+  section + deterministic-fallback line + no experimental keys; settings
+  role names + no credential patterns; help names doctor) — PASS. One
+  non-fatal pre-existing-class warning: the specialists section prints
+  the raw provider id `openrouter` (display-name mapping is an MVP-3D/5
+  cosmetic item, deliberately kept loud by the smoke script).
+- **Tests:** 43 new/updated (26 readiness-matrix, 7 settings, 4 doctor,
+  3 run-guidance, 3 README-example). Two scoped deviations, both forced
+  by the existing source-vocabulary scan: `services/readiness.ts` is now
+  the one sanctioned home for the human role vocabulary, and help says
+  `designflow run <worker>` rather than embedding the worker id literal.
+- **Validation:** smoke exit 0; freshness verifier PASSED; full forced
+  suite build 26/26, typecheck 44/44, lint 26/26, tests 2,378 pass /
+  1 skip / 0 fail. No live services contacted.
+- **Remaining:** MVP-3D (role-named progress, feedback-loop/child
+  artifact rendering, provenance-literal fix, provider display names),
+  MVP-3E (reachable beta correction loop), then MVP-4 evidence.
+
+---
+
 # Implementation status — MVP-3B reconciliation: genuine coordinator intent routing (2026-08-06)
 
 **The reconciliation is implemented.** MVP-3C/3D/3E remain open.

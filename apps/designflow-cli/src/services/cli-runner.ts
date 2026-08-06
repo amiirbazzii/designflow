@@ -130,6 +130,7 @@ import { resolveDatabasePath } from "./config";
 import { initializeHome, type HomeState } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
+import type { DesignRoleId, ModelProfileFields, RoleModelProfile } from "./readiness";
 
 /** Internal Stage 6 routing stays in the composition root, not in CLI copy. */
 export const FEEDBACK_LOOP_WORKFLOW_ID = "design-to-code-feedback-loop";
@@ -247,6 +248,34 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   visualValidationDefaultModelProfile,
   visualCorrectionDefaultModelProfile,
 ];
+
+/**
+ * The specialized roles behind the primary worker, paired with the profile
+ * each one ships with.
+ *
+ * Role *names* are not here: this file may not name a worker (see
+ * `shell.test.ts`), and the display vocabulary belongs to
+ * `services/readiness.ts` anyway. What the composition root contributes is
+ * the one fact only it holds — which imported profile each role uses — so
+ * no profile id is ever spelled out as a literal.
+ */
+const ROLE_MODEL_PROFILES: readonly { readonly roleId: DesignRoleId; readonly profile: ModelProfile }[] = [
+  { roleId: "coordinator", profile: designEngineerCoordinatorDefaultModelProfile },
+  { roleId: "specification", profile: figmaSpecificationDefaultModelProfile },
+  { roleId: "implementation", profile: implementationDefaultModelProfile },
+  { roleId: "visual-validation", profile: visualValidationDefaultModelProfile },
+  { roleId: "visual-correction", profile: visualCorrectionDefaultModelProfile },
+];
+
+function profileFields(profile: ModelProfile): ModelProfileFields {
+  return {
+    providerId: profile.providerId,
+    model: profile.model,
+    ...(profile.temperature !== undefined ? { temperature: profile.temperature } : {}),
+    ...(profile.maxOutputTokens !== undefined ? { maxOutputTokens: profile.maxOutputTokens } : {}),
+    ...(profile.timeoutMs !== undefined ? { timeoutMs: profile.timeoutMs } : {}),
+  };
+}
 
 export interface WorkflowInfo {
   readonly workflowId: string;
@@ -407,6 +436,14 @@ export interface CliContext {
    * could.
    */
   readonly modelAssignments: readonly ModelAssignment[];
+  /**
+   * The specialized roles' model profiles, effective and built-in.
+   *
+   * Read from the same merged registry a run resolves against, so what
+   * `designflow settings` shows as an override is an override that would
+   * really apply.
+   */
+  readonly roleModelProfiles: readonly RoleModelProfile[];
   /** Installed workflows. Still needed by `resolve`; no longer user-facing. */
   listWorkflows(): readonly WorkflowInfo[];
   /** Redraws while a run is in flight. */
@@ -792,6 +829,13 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     });
   }
 
+  const roleModelProfiles: RoleModelProfile[] = ROLE_MODEL_PROFILES.map(({ roleId, profile }) => ({
+    roleId,
+    profileId: profile.id,
+    effective: profileFields(modelProfiles.get(profile.id) ?? profile),
+    builtIn: profileFields(profile),
+  }));
+
   // A worker that advertises work its agent may never choose is a
   // configuration mistake. Caught here, at wiring time, rather than on the
   // first run that happens to hit the offending workflow.
@@ -979,6 +1023,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     sessions,
     sessionConfig,
     modelAssignments,
+    roleModelProfiles,
     projects,
     projectContext,
     memory,

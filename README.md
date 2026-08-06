@@ -10,12 +10,12 @@ code sample — that you can inspect and use right away.
 
 DesignFlow currently ships four workers:
 
-- **Design Engineer** (development) — Turns a design description (a file
-  name, a framework, and a list of frames) into a generated component
-  structure and source-code artifact. This does not yet read a real design
-  file or connect to Figma, and it does not write into your project — see
-  [Artifacts, reuse and current limitations](#artifacts-reuse-and-current-limitations)
-  below before relying on its output as-is.
+- **Design Engineer** (development) — Works from a Figma design you connect,
+  produces a design specification from it, and — only when you point it at a
+  registered project and approve the exact changes it proposes — writes those
+  changes into that project. Connecting Figma is a prerequisite: without it
+  the worker explains the setup instead of running. See
+  [Working from a Figma design](#working-from-a-figma-design) below.
 - **QA Reviewer** (quality) — Reviews implementation artifacts for
   correctness, accessibility and consistency. Point it at a file and it comes
   back with a severity-rated list of findings.
@@ -35,10 +35,18 @@ npm install -g designflow-ai
 ## Quick start
 
 ```bash
+designflow doctor                  # what is configured, and what is ready to run
 designflow workers                 # see what's available
 designflow workers design-engineer # see detail on one worker
 designflow run design-engineer     # put a worker to work
+designflow settings                # configuration, agents, feature status
 ```
+
+Start with `designflow doctor`. It is read-only, and its **Design Engineer
+readiness** section is the one place that says plainly whether a design
+specification or an implementation proposal can run right now, and what to
+do about it if not. An incomplete setup is reported, not treated as a
+failure.
 
 Running `designflow` with no arguments drops you into an interactive menu
 that walks you through the same things. Each worker asks for a small set of
@@ -107,10 +115,11 @@ proposals, and revoke anything at any time.
 ## Results
 
 When a worker finishes, it hands back whatever the job called for — a written
-report, a structured summary, or (for the Design Engineer) a generated code
-sample — stored internally as a DesignFlow artifact. **No worker writes to
-files in your project today** — see the section below. Past runs are kept so
-you can revisit them later:
+report, a structured summary, or a design specification — stored as a
+DesignFlow artifact. The one thing that reaches your own files is an
+implementation change you explicitly consented to and then approved, in a
+project you registered yourself. Past runs are kept so you can revisit them
+later:
 
 ```bash
 designflow history             # see previous runs
@@ -118,11 +127,12 @@ designflow history <worker>    # previous runs for one worker
 designflow doctor              # check local runtime and state health
 ```
 
-## Artifacts, reuse and current limitations
+## Artifacts and reuse
 
 Every run's output — analysis, tokens, generated code, reports — is stored as
-a DesignFlow artifact, not written into your project. `designflow run` says so
-explicitly when a run completes, and you can inspect exactly what was
+a DesignFlow artifact. Nothing reaches your own files except an
+implementation change you consented to and then approved. `designflow run`
+says what happened when a run completes, and you can inspect exactly what was
 produced:
 
 ```bash
@@ -145,44 +155,48 @@ reusable — they are safely regenerated the first time you run against them
 again, rather than silently reused under new rules they were never checked
 against. Your existing run history remains fully readable either way.
 
-**Current limitations, ahead of real Figma integration.** The Design Engineer
-does not yet connect to the Figma API: `designFile` and `frames` are plain
-text you supply, not something fetched or verified against a real design
-file, and the generated "source code" is a structural placeholder rather than
-a rendering of real design layout or styling. Treat its output today as a
-scaffold of the pipeline (analysis → tokens → component tree → code →
-validation) rather than production-ready code. Real Figma connectivity and
-real project file writes are planned for a later stage, behind the same
-approval gate and artifact lineage this stage already enforces.
+## Working from a Figma design
 
-Internally, the Design Engineer worker now has the infrastructure for
-multiple specialized agents (a Figma Specification agent, an Implementation
-agent, and a Visual Validation agent) behind its single coordinator — but
-none of that is user-facing yet: you still see one worker, one workflow, and
-the same output described above. See
-[`docs/adr/20260803-design-engineer-specialized-agent-foundation.md`](docs/adr/20260803-design-engineer-specialized-agent-foundation.md)
-for what exists today and what remains unimplemented.
+The Design Engineer reads a Figma design you connect. Connect one by adding a
+`figmaMcp` block to `~/.designflow/config.json` — either a server command you
+launch, or a Figma Desktop local endpoint. The exact schema, with working
+examples for both, is in
+[`apps/designflow-cli/README.md`](apps/designflow-cli/README.md#quick-start-working-from-a-figma-design);
+`designflow doctor` tells you which state you are in, and distinguishes "no
+`figmaMcp` block" from "a block that is present but unusable".
 
-For production-readiness status, local diagnostics, Git-aware write safety,
-state compatibility, and the remaining real-integration release gates, see
+Optionally set `OPENROUTER_API_KEY` in your environment for live model
+reasoning. Without it DesignFlow runs a deterministic fallback, which is a
+supported mode rather than a stub. The value is never written to
+configuration, printed, or stored.
+
+Two independent gates protect your files:
+
+- **Journey consent.** Passing `--project <id>` asks, per run, whether to
+  prepare changes for that project. Declining continues as a specification.
+- **Proposal approval.** Nothing is written until you approve the exact
+  proposed changes.
+
+`designflow settings` shows the five specialized agents behind the worker,
+which model profile each uses, and which fields you have overridden locally.
+
+**What is supported today.** A design specification, and implementation
+proposal and apply, are supported and consent- and approval-gated. Visual
+correction is beta and not yet reachable from `designflow run`. The legacy
+scaffold workflow is kept for compatibility with older runs and is no longer
+the product path. "Supported" here means implemented and covered by this
+repository's tests — it has not yet been verified against a real Figma
+workspace and a live model provider, which is the next milestone's work.
+Visual validation additionally needs the optional Playwright package and an
+installed Chromium; `doctor` reports those two separately.
+
+For local diagnostics, Git-aware write safety, state compatibility and the
+remaining release gates, see
 [`docs/STAGE_7_PRODUCTION_READINESS.md`](docs/STAGE_7_PRODUCTION_READINESS.md).
-
-**Experimental: real Figma retrieval (opt-in, off by default).** A separate,
-internal path can connect to a real, configured Figma MCP server, retrieve
-and normalize an actual design (structure, tokens, variables, styles,
-components, a reference screenshot), and produce a design specification from
-it — nothing beyond that: no code generation, no project file writes, and it
-is not the workflow the Design Engineer worker uses by default. It requires
-setting `settings.experimental.designEngineerFigmaMcp: true` and a
-`settings.figmaMcp` block (server command, arguments, and which environment
-variables to forward for credentials — never the credential value itself) in
-`config.json`. See
-[`docs/adr/20260810-figma-mcp-integration.md`](docs/adr/20260810-figma-mcp-integration.md)
-for the exact configuration shape, supported Figma URL forms, and — because no
-real Figma MCP server was available to verify this against during
-development — a transparent account of what was verified against a
-protocol-faithful fake server versus what still needs manual verification
-against a real one.
+Design decisions behind the Figma integration and the specialized agents are
+in [`docs/adr/20260810-figma-mcp-integration.md`](docs/adr/20260810-figma-mcp-integration.md)
+and
+[`docs/adr/20260803-design-engineer-specialized-agent-foundation.md`](docs/adr/20260803-design-engineer-specialized-agent-foundation.md).
 
 ## For developers
 

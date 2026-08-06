@@ -342,16 +342,13 @@ for ((i = 0; i < ${#NAMED_OUTPUTS[@]}; i += 2)); do
     fi
   done
 
-  # `openrouter` (lowercase, the raw provider id) is checked separately, as a
-  # warning rather than a hard failure: `designflow settings` capitalizes it
-  # ("Provider: OpenRouter" — ui/terminal.ts's displayProviderName), so that
-  # command genuinely never leaks the raw id. `designflow workers <id>`
-  # (commands/workers.ts, workerDetailCommand) prints
-  # `Provider   ${assignment.providerId}` directly, with no such translation —
-  # a real, reproducible inconsistency this run finds every time, not
-  # something to quietly exclude from the check.
+  # `openrouter` (lowercase, the raw provider id) must never reach a user's
+  # terminal: every user-facing surface routes provider ids through
+  # displayProviderName ("OpenRouter") since MVP-3D. A hard failure, not a
+  # warning — a regression here is a real product leak.
   if grep -q "openrouter" <<<"$OUTPUT"; then
-    warn "$LABEL printed the raw provider id 'openrouter' verbatim (unlike \`designflow settings\`, which shows 'OpenRouter')"
+    printf '\033[31mFAIL: %s printed the raw provider id 'openrouter' verbatim (should be the display name 'OpenRouter')\033[0m\n' "$LABEL"
+    LEAK_FOUND=1
   fi
 done
 
@@ -433,6 +430,21 @@ lcli cleanup | grep -q "Nothing to clean up." || fail "cleanup empty state"
 echo "ok — 12 commands, exit 0, stable empty-state semantics"
 mark "CLI commands (local consumer)" "PASS"
 
+step "onboarding surfaces are discoverable and honest (MVP-3C)"
+# Readiness is reported, never fatal: this environment has no credential, no
+# Figma configuration and no registered project, and doctor still exits 0
+# above.
+grep -q "Design Engineer readiness" <<<"$DOCTOR" || fail "doctor is missing the readiness section"
+grep -q "Deterministic fallback" <<<"$DOCTOR" || fail "doctor did not name the deterministic fallback"
+grep -q "settings.experimental" <<<"$DOCTOR" && fail "doctor leaked experimental configuration vocabulary"
+SETTINGS_OUT="$(lcli settings)"
+grep -q "Design Engineer Coordinator" <<<"$SETTINGS_OUT" || fail "settings does not list the coordinator role"
+grep -q "Figma Specification Specialist" <<<"$SETTINGS_OUT" || fail "settings does not list the specification role"
+grep -q "sk-or-" <<<"$SETTINGS_OUT" && fail "settings printed a credential-shaped value"
+lcli --help | grep -q "designflow doctor" || fail "help does not mention doctor"
+echo "ok — readiness, agent roster and help are discoverable; no secrets or internal keys"
+mark "onboarding discoverability" "PASS"
+
 step "no-credential and no-Figma honesty (doctor, env-isolated)"
 grep -q "No model-provider credential is configured; deterministic execution remains available." <<<"$DOCTOR" \
   || fail "doctor did not report the missing model credential honestly"
@@ -449,7 +461,7 @@ echo "ok — renderer absence reported, never a false visual pass"
 mark "Playwright absent" "PASS"
 
 step "experimental Design Engineer implementation path stays gated"
-GATED="$(lcli run design-to-code-figma-specification 2>&1 || true)"
+GATED="$(lcli run design-to-code-figma-specification </dev/null 2>&1 || true)"
 grep -qi "no such worker" <<<"$GATED" || fail "the experimental workflow id resolved without the experimental flag"
 echo "ok — experimental workflow unreachable without explicit configuration"
 mark "registrations & gating" "PASS"

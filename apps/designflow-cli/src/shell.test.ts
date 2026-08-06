@@ -400,9 +400,7 @@ describe("the menu reads the worker registry", () => {
     // A session is a place to work, so this returns to the menu rather than
     // ending the process.
     expect(code).toBe(0);
-    expect(terminal.transcript).toContain(
-      "The Design Engineer works from a connected Figma design",
-    );
+    expect(terminal.transcript).toContain("This worker reads a connected Figma design.");
     expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
     expect(terminal.transcript).toContain("Goodbye.");
   });
@@ -481,7 +479,7 @@ describe("the menu reads the worker registry", () => {
 
       const relative = path.split("/").slice(-2).join("/");
 
-      // No file may name a worker. Two deliberate exceptions:
+      // No file may name a worker. Three deliberate exceptions:
       //
       // The composition root may name the workflow package it installs —
       // loading one is precisely its job — so the workflow id is checked
@@ -492,9 +490,15 @@ describe("the menu reads the worker registry", () => {
       // and a sentence assembled from `worker.name` would read as though any
       // worker might need Figma. Its *id* is still forbidden, so nothing
       // routes or branches on a name typed into the source.
+      // `services/readiness.ts` may say "Design Engineer" in prose, and it
+      // is the only file that may: it is where the onboarding vocabulary
+      // lives, so doctor, settings and run all render one wording rather
+      // than three. Its *ids* stay forbidden — the profile ids and workflow
+      // ids it reports come from the composition root, never from a literal
+      // typed here.
       const forbidden = relative.endsWith("services/cli-runner.ts")
         ? ["design-engineer", "Design Engineer"]
-        : relative.endsWith("commands/run.ts")
+        : relative.endsWith("commands/run.ts") || relative.endsWith("services/readiness.ts")
           ? ["design-engineer", "design-to-code"]
           : ["design-engineer", "Design Engineer", "design-to-code"];
 

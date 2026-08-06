@@ -1,10 +1,12 @@
 // apps/designflow-cli/src/commands/traces.ts
 import {
+  displayProviderName,
   formatWhen,
   heading,
   type Terminal,
 } from "../ui/terminal";
 
+import { describeCapability } from "../services/presentation";
 import type { CliContext } from "../services/cli-runner";
 import type { AgentTrace, WorkerManifest } from "@designflow/sdk";
 
@@ -91,17 +93,59 @@ function printDetail(
   terminal.print(`    Model calls: ${trace.modelCalls.length}`);
 
   if (trace.metadata?.["invocationKind"] === "specialized-agent") {
-    terminal.print(`    Specialized agent: ${trace.agentId}`);
     const capabilityId = trace.metadata["capabilityId"];
-    if (typeof capabilityId === "string") terminal.print(`    Step: ${capabilityId}`);
+
+    // The role, not the agent id — and only for the capabilities that really
+    // invoke one. A deterministic step reads as the stage it is.
+    if (typeof capabilityId === "string") {
+      const producer = describeCapability(capabilityId, capabilityId);
+      terminal.print(
+        producer.kind === "role"
+          ? `    Role: ${producer.label}`
+          : `    Step: ${producer.label}`,
+      );
+    }
+
     if (trace.errorCode !== undefined) terminal.print(`    Error code: ${trace.errorCode}`);
   }
+
+  printModelUsage(terminal, trace);
 
   if (trace.executionId !== undefined) {
     terminal.print(`    Run: ${trace.executionId}`);
   }
 
   terminal.print(`    ${trace.id}`);
+}
+
+/**
+ * The model calls a trace recorded, and only what it recorded.
+ *
+ * A deterministic decision has no model calls and prints no model lines. Token
+ * counts appear only when the provider reported them — an unreported usage
+ * must not render as `0`, which would read as "this call cost nothing".
+ */
+function printModelUsage(terminal: Terminal, trace: AgentTrace): void {
+  for (const call of trace.modelCalls) {
+    const provider =
+      call.providerId !== undefined ? displayProviderName(call.providerId) : undefined;
+
+    terminal.print(
+      `    Model: ${[provider, call.model].filter((part) => part !== undefined).join(" ") || "not recorded"}` +
+        `  ·  profile ${call.profileId}  ·  ${call.status}`,
+    );
+
+    const usage = call.usage;
+    if (usage === undefined) continue;
+
+    const reported: string[] = [];
+    if (usage.inputTokens !== undefined) reported.push(`${usage.inputTokens} in`);
+    if (usage.outputTokens !== undefined) reported.push(`${usage.outputTokens} out`);
+    if (usage.totalTokens !== undefined) reported.push(`${usage.totalTokens} total`);
+
+    if (reported.length > 0) terminal.print(`      Tokens: ${reported.join(", ")}`);
+    if (usage.cost !== undefined) terminal.print(`      Cost: ${usage.cost}`);
+  }
 }
 
 /**

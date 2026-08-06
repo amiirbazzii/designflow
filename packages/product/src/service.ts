@@ -17,11 +17,12 @@ import { narrateEvents } from "./narration";
 import { buildTimeline } from "./timeline";
 import { summarizeArtifacts } from "./artifacts";
 import { ExecutionNotFoundError } from "./errors";
-import type {
-  ArtifactRegistry,
-  ExecutionEvent,
-  ExecutionRecord,
-  ExecutionRepository,
+import {
+  readExecutionLineage,
+  type ArtifactRegistry,
+  type ExecutionEvent,
+  type ExecutionRecord,
+  type ExecutionRepository,
 } from "@designflow/sdk";
 
 /** Resolves a workflow's display name. Falls back to the id when absent. */
@@ -180,6 +181,43 @@ export class ProductExecutionService {
 
     const sorted = [...records].sort(
       (left, right) => right.startedAt - left.startedAt,
+    );
+
+    const overviews: ExecutionOverview[] = [];
+    for (const record of sorted) {
+      overviews.push(await this.getOverview(record.executionId));
+    }
+
+    return overviews;
+  }
+
+  /**
+   * The executions that name `parentExecutionId` as their parent.
+   *
+   * Read from the lineage the composition executor already persisted on each
+   * child's execution metadata — never from naming, ordering or start times.
+   * Two runs that merely happened at the same moment are not related, and
+   * this returns nothing for a run that composed no children.
+   *
+   * A repository without `listAll` cannot answer the question, so this reports
+   * an empty list rather than guessing.
+   */
+  public async listChildOverviews(
+    parentExecutionId: string,
+  ): Promise<readonly ExecutionOverview[]> {
+    const listAll = this.executionRepository.listAll;
+    if (listAll === undefined) return [];
+
+    const records = await listAll.call(this.executionRepository);
+
+    const children = records.filter(
+      (record) =>
+        readExecutionLineage(record.metadata).parentExecutionId ===
+        parentExecutionId,
+    );
+
+    const sorted = [...children].sort(
+      (left, right) => left.startedAt - right.startedAt,
     );
 
     const overviews: ExecutionOverview[] = [];

@@ -6,6 +6,7 @@ import {
   workflowLaunchRequestSchema,
   type ApprovalOutcome,
   type ExecutionHandle,
+  type ExecutionOverview,
   type ExecutionProgress,
   type ExecutionReport,
   type ExecutionState,
@@ -230,6 +231,17 @@ export class WorkflowRunner {
   /** The full Stage 27 report: overview, narration, timeline, artifacts. */
   public async explain(executionId: string): Promise<ExecutionReport> {
     return this.product.getReport(executionId);
+  }
+
+  /**
+   * The runs this one composed, oldest first, from persisted lineage alone.
+   *
+   * Empty for a run that composed nothing, which is most of them.
+   */
+  public async children(
+    executionId: string,
+  ): Promise<readonly ExecutionOverview[]> {
+    return this.product.listChildOverviews(executionId);
   }
 
   // ── Approve ───────────────────────────────────────────────────

@@ -87,6 +87,126 @@ printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
 
 Blank answers take the placeholder, so you can press through the form.
 
+## Quick start: working from a Figma design
+
+```bash
+npm install -g designflow-ai      # or: npx --yes designflow-ai doctor
+designflow doctor                 # what is configured, and what is ready to run
+```
+
+`doctor` ends with a **Design Engineer readiness** section: model mode, Figma
+connection, registered projects, visual validation, and whether a
+specification or an implementation proposal can run. It is read-only, and an
+incomplete setup is reported rather than treated as a failure — it still
+exits 0. Work through what it names:
+
+**1. Optional — live model reasoning.** Without a credential DesignFlow runs
+in a deterministic fallback; that mode is real and supported, not a stub. For
+live reasoning, set the variable in your shell environment only:
+
+```bash
+export OPENROUTER_API_KEY=…
+```
+
+It is never written to `config.json`, never printed, and never stored.
+
+**2. Connect Figma.** Add a `figmaMcp` block to `~/.designflow/config.json`.
+A server you launch yourself:
+
+```json
+{
+  "settings": {
+    "figmaMcp": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "your-figma-mcp-server"],
+      "envPassthrough": ["FIGMA_ACCESS_TOKEN"]
+    }
+  }
+}
+```
+
+`envPassthrough` lists environment variable *names* to forward to that
+server. It never holds a value. For a Figma Desktop local endpoint instead:
+
+```json
+{
+  "settings": {
+    "figmaMcp": {
+      "transport": "http",
+      "url": "http://127.0.0.1:3845/mcp"
+    }
+  }
+}
+```
+
+Run `designflow doctor` again — a block that is present but unusable is
+reported differently from one that is absent, so you can tell "not set up
+yet" from "set up wrong".
+
+**3. Register a project, if you want proposed code changes.**
+
+```bash
+designflow projects add --name my-app --path ./my-app
+```
+
+A specification runs without one. An implementation proposal needs one.
+
+**4. Run it.**
+
+```bash
+designflow run design-engineer                 # specification only
+designflow run design-engineer --project <id>  # may propose changes
+```
+
+Two separate gates, and neither implies the other: passing `--project` asks
+for **journey consent** ("prepare changes for this project?"), and any actual
+write then needs **approval of the exact proposed changes**. Declining
+consent continues as a specification.
+
+### Model profiles
+
+`designflow settings` lists the five specialized agents behind the worker,
+each with its profile id and whether a field is built-in or overridden.
+Override any of them in `config.json`:
+
+```json
+{
+  "settings": {
+    "models": {
+      "profiles": {
+        "figma-specification-default": {
+          "providerId": "openrouter",
+          "model": "some/model-slug",
+          "temperature": 0.2,
+          "maxOutputTokens": 4096,
+          "timeoutMs": 60000
+        }
+      }
+    }
+  }
+}
+```
+
+Those five fields are the only ones an override may set; anything else is
+ignored.
+
+### What is supported today
+
+| Capability | Status |
+| --- | --- |
+| Design specification from a connected Figma design | supported |
+| Implementation proposal and apply | supported, always consent- and approval-gated |
+| Visual correction | beta — not yet connected to `run` |
+| Legacy scaffold workflow | compatibility only |
+
+Known limitations of this milestone: "supported" means implemented and
+covered by this repository's tests, not verified against a real Figma
+workspace and a live model provider — that verification is the next
+milestone's work. Visual validation needs the optional Playwright package
+*and* an installed Chromium; `doctor` distinguishes those two. Visual
+correction cannot be reached from `designflow run` yet.
+
 ## Configuration
 
 `~/.designflow/config.json`, written on first run:

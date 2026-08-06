@@ -94,3 +94,42 @@ describe("Stage 4 implementation workflow", () => {
     await rm(state, { recursive: true, force: true });
   });
 });
+
+/**
+ * The generated-implementation record must describe the run that produced it.
+ *
+ * It used to spell out an agent version and a model profile as literals, so it
+ * reported "0.1.0" and "implementation-default" for every run regardless of
+ * what actually ran — a provenance record that was right only by coincidence.
+ * Both tests below use values that differ from those old literals, so a
+ * regression to a hardcoded string fails rather than passing by accident.
+ */
+describe("generated-implementation provenance", () => {
+  test("records the agent version and model profile the run was given", async () => {
+    const root = await fixture();
+    const state = await mkdtemp(join(tmpdir(), "designflow-stage4-state-"));
+    const host = await createFigmaSpecificationHost({ fixtures: SAMPLE_FIGMA_MCP_FIXTURES, policy: designToCodeImplementationApprovalPolicy, implementation: true });
+    hosts.push(host);
+    const handle = await host.runner.start({
+      workflowId: "design-to-code-implementation",
+      input: { ...input(root, state), implementationAgentVersion: "9.9.9", implementationAgentModelProfileId: "implementation-alternate" },
+    });
+    expect((await host.runner.approve(handle.executionId, "Approved for provenance.")).state).toBe("ready");
+
+    const generated = await host.artifactStore.getArtifact(IMPLEMENTATION_ARTIFACT_IDS.generated);
+    const payload = await host.artifactStore.get(String(generated?.metadata["payloadId"]));
+
+    expect(payload?.data).toMatchObject({ agentVersion: "9.9.9", modelProfileId: "implementation-alternate" });
+
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  });
+
+  test("the capability carries no hardcoded provenance literals", async () => {
+    const source = await readFile(new URL("./implementation-side-effect-capabilities.ts", import.meta.url), "utf8");
+    const body = source.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(body).not.toContain('agentVersion: "0.1.0"');
+    expect(body).not.toContain('modelProfileId: "implementation-default"');
+  });
+});

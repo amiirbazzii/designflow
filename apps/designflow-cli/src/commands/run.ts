@@ -9,6 +9,8 @@ import { randomUUID } from "node:crypto";
 import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
 import type { WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";
+import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
+import { CLI_VERSION } from "../version";
 
 /**
  * `designflow run <worker>` — hire a worker and see the job through.
@@ -63,14 +65,33 @@ export async function runCommand(
   const figmaAvailable =
     context.figmaSourceMode !== undefined && context.figmaSourceMode !== "placeholder";
   if (isDesignEngineer && !figmaAvailable) {
+    // The same readiness model doctor renders, so the sentence a person
+    // reads here is the sentence they will read there — including the
+    // difference between a configuration that is missing and one that is
+    // present but unusable. Progressive on purpose: only the prerequisite
+    // actually in the way, not the whole diagnostic.
+    const figma = readFigmaConnection(context.home.config);
+    const readiness = buildDesignEngineerReadiness({
+      credentialPresent: context.modelProviderConfigured,
+      figma,
+      projectCount: 0,
+      playwrightPackageAvailable: false,
+      browserAvailable: "not_checked",
+      configPath: context.home.layout.configFile,
+      configExists: true,
+      configParsed: true,
+      version: CLI_VERSION,
+    });
+
     terminal.print(heading(worker.name));
     terminal.print(worker.description);
     terminal.print();
-    terminal.print("The Design Engineer works from a connected Figma design, and no");
-    terminal.print("Figma connection is configured (or the configured one is invalid).");
-    terminal.print();
-    terminal.print("To connect Figma, add a `figmaMcp` block to your DesignFlow");
-    terminal.print("configuration file and run  designflow doctor  to verify it.");
+    terminal.print("This worker reads a connected Figma design.");
+    terminal.print(readiness.figma.detail);
+    if (readiness.figma.nextStep !== undefined) {
+      terminal.print();
+      terminal.print(readiness.figma.nextStep);
+    }
     terminal.print("Nothing was run and no files were changed.");
     return 1;
   }

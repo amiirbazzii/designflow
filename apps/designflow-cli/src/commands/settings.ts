@@ -4,8 +4,25 @@ import {
   type Terminal,
 } from "../ui/terminal";
 
+import { existsSync, readFileSync } from "node:fs";
+
 import type { CliContext } from "../services/cli-runner";
+import {
+  describeFigmaMcp,
+  describeRoleModelProfiles,
+  FEATURE_TIERS,
+} from "../services/readiness";
 import { CLI_VERSION } from "../version";
+
+/** Whether the file on disk still parses — the one fact `loadConfig` hides by recovering from it. */
+function configReadable(path: string): boolean {
+  try {
+    JSON.parse(readFileSync(path, "utf8"));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * `designflow settings`, and option 3 in the interactive menu.
@@ -24,6 +41,8 @@ export async function settingsCommand(
   context: CliContext,
   terminal: Terminal,
 ): Promise<number> {
+  const roles = describeRoleModelProfiles(context.roleModelProfiles);
+
   terminal.print(
     settings(context.home.layout, {
       version: CLI_VERSION,
@@ -32,6 +51,20 @@ export async function settingsCommand(
       workerCount: context.workers.listWorkers().length,
       modelAssignments: context.modelAssignments,
       sessionConfig: context.sessionConfig,
+      configuration: {
+        exists: existsSync(context.home.layout.configFile),
+        parsed: configReadable(context.home.layout.configFile),
+      },
+      modelMode: {
+        mode: context.modelProviderConfigured ? "live" : "deterministic",
+        credentialPresent: context.modelProviderConfigured,
+        ...(context.roleModelProfiles[0] !== undefined
+          ? { providerId: context.roleModelProfiles[0].effective.providerId }
+          : {}),
+      },
+      roles,
+      figmaMcp: describeFigmaMcp(context.home.config),
+      featureTiers: FEATURE_TIERS,
     }),
   );
 

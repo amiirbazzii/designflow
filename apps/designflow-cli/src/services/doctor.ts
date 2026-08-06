@@ -5,6 +5,7 @@ import type { CliContext } from "./cli-runner";
 import { configSchema } from "./config";
 import { readFigmaMcpConfig } from "./figma-mcp-config";
 import { inspectProjectGit } from "./git-diagnostics";
+import { assembleDesignEngineerReadiness, type DesignEngineerReadiness } from "./readiness";
 import { CLI_VERSION } from "../version";
 
 export type DoctorStatus = "healthy" | "warning" | "unavailable" | "failed";
@@ -20,6 +21,19 @@ export interface DoctorReport {
   readonly schemaVersion: "1";
   readonly status: DoctorStatus;
   readonly checks: readonly DoctorCheck[];
+  /**
+   * The setup summary, derived from the checks' own facts.
+   *
+   * Deliberately not a check, because the exit code is derived from checks
+   * alone: a missing credential, an unconfigured Figma connection, no
+   * registered project and an absent Playwright are all *unavailable*
+   * setup states, not faults, and doctor still exits 0 for them. Only a
+   * genuinely broken installation — unreadable config, unwritable home, a
+   * corrupt state file, a project whose registered path is gone — reaches
+   * `failed` and exits 1. Adding readiness here could not change that even
+   * by accident.
+   */
+  readonly readiness: DesignEngineerReadiness;
 }
 
 function statusRank(status: DoctorStatus): number {
@@ -66,20 +80,37 @@ function state(context: CliContext): DoctorCheck {
   return check("state-store", report.status, report.detail, report.status === "failed" ? "Preserve the state file and restore a compatible backup before resuming." : "The next durable write will add compatibility defaults.");
 }
 
-async function browser(): Promise<DoctorCheck> {
+/**
+ * One browser inspection, reported twice.
+ *
+ * The rendering check and the readiness summary distinguish different
+ * things — "the package is missing" versus "the package is here but
+ * Chromium will not launch" — and both come from this single attempt.
+ * Launching a second headless browser to answer the same question would
+ * double the slowest thing doctor does.
+ */
+interface BrowserInspection {
+  readonly check: DoctorCheck;
+  readonly packageAvailable: boolean;
+  readonly browserAvailable: boolean;
+}
+
+async function browser(): Promise<BrowserInspection> {
+  let packageAvailable = false;
   try {
     const require = createRequire(import.meta.url);
     const playwrightPath = require.resolve("playwright") as string;
     const playwright = require("playwright") as { chromium?: { executablePath: () => string; launch: (options: { headless: boolean }) => Promise<{ close: () => Promise<void> }> } };
+    packageAvailable = true;
     const chromium = playwright.chromium;
-    if (chromium === undefined) return check("browser", "unavailable", "Playwright is installed but Chromium is not exposed by the runtime.", "Install the supported Playwright package and Chromium browser.");
+    if (chromium === undefined) return { packageAvailable, browserAvailable: false, check: check("browser", "unavailable", "Playwright is installed but Chromium is not exposed by the runtime.", "Install the supported Playwright package and Chromium browser.") };
     const executable = chromium.executablePath();
-    if (!existsSync(executable)) return check("browser", "unavailable", `Playwright resolved at ${playwrightPath}, but Chromium is not installed.`, "Run bunx playwright install chromium or npx playwright install chromium.");
+    if (!existsSync(executable)) return { packageAvailable, browserAvailable: false, check: check("browser", "unavailable", `Playwright resolved at ${playwrightPath}, but Chromium is not installed.`, "Run bunx playwright install chromium or npx playwright install chromium.") };
     const instance = await chromium.launch({ headless: true });
     await instance.close();
-    return check("browser", "healthy", `Playwright and Chromium are available (${basename(executable)}).`);
+    return { packageAvailable, browserAvailable: true, check: check("browser", "healthy", `Playwright and Chromium are available (${basename(executable)}).`) };
   } catch {
-    return check("browser", "unavailable", "Playwright or Chromium could not be resolved or launched.", "Install Chromium for the installed CLI and rerun doctor.");
+    return { packageAvailable, browserAvailable: false, check: check("browser", "unavailable", "Playwright or Chromium could not be resolved or launched.", "Install Chromium for the installed CLI and rerun doctor.") };
   }
 }
 
@@ -99,8 +130,9 @@ function figma(context: CliContext): DoctorCheck {
   return check("figma", "warning", `Figma MCP stdio command is configured (${configured.command}) but doctor does not launch external MCP commands.`, "Run a bounded Figma acceptance workflow to verify authentication and permissions.");
 }
 
-async function projects(context: CliContext): Promise<DoctorCheck[]> {
-  const registered = await context.projects.listProjects();
+type RegisteredProject = Awaited<ReturnType<CliContext["projects"]["listProjects"]>>[number];
+
+function projects(registered: readonly RegisteredProject[]): DoctorCheck[] {
   if (registered.length === 0) return [check("projects", "warning", "No registered projects were found.", "Register a project with designflow projects add --name … --path ….")];
   return registered.map((project) => {
     if (project.rootPath === undefined || !existsSync(project.rootPath)) return check(`project:${project.id}`, "failed", `${project.name} is not accessible at its registered path.`, "Restore the project path or register it again.");
@@ -114,11 +146,34 @@ async function projects(context: CliContext): Promise<DoctorCheck[]> {
   });
 }
 
+/**
+ * Every check, plus the readiness summary derived from the same facts.
+ *
+ * Readiness adds no check and therefore cannot change the exit code — see
+ * the rule stated on `DoctorReport.readiness`.
+ */
 export async function runDoctor(context: CliContext): Promise<DoctorReport> {
+  const registered = await context.projects.listProjects();
+  const inspected = await browser();
+  const configurationCheck = configuration(context);
+
   const checks = [
     check("runtime", "healthy", `DesignFlow ${CLI_VERSION} on Node ${process.version}${process.versions.bun !== undefined ? ` / Bun ${process.versions.bun}` : ""}.`),
-    configuration(context), filesystem(context), state(context), provider(context), figma(context),
-    ...(await projects(context)), await browser(),
+    configurationCheck, filesystem(context), state(context), provider(context), figma(context),
+    ...projects(registered), inspected.check,
   ];
-  return { schemaVersion: "1", status: overallStatus(checks), checks };
+
+  const readiness = assembleDesignEngineerReadiness({
+    config: context.home.config,
+    configPath: context.home.layout.configFile,
+    configExists: existsSync(context.home.layout.configFile),
+    configParsed: configurationCheck.status !== "failed",
+    credentialPresent: context.modelProviderConfigured,
+    projectCount: registered.length,
+    playwrightPackageAvailable: inspected.packageAvailable,
+    browserAvailable: inspected.browserAvailable,
+    version: CLI_VERSION,
+  });
+
+  return { schemaVersion: "1", status: overallStatus(checks), checks, readiness };
 }
