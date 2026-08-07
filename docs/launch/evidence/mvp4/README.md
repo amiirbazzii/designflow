@@ -45,3 +45,15 @@ prompt in a TTY. Both narrow regressions are fixed. Forced validation now
 passes (52/52 Turbo test tasks; 2,414 pass, 1 skip), as do smoke and freshness.
 No live acceptance journey ran; the current process lacks the OpenRouter
 credential required for a truthful Journey 2 rerun.
+
+With `OPENROUTER_API_KEY` present, Journey 2 was rerun against a freshly
+rebuilt and reinstalled CLI. Canonical dispatch, live coordinator, live
+Figma Specification Specialist, typed artifact production, and the no-write
+guarantee all passed with real OpenRouter provenance. The run still fails
+acceptance: the normalized Figma evidence persisted by the deterministic
+source-parsing step collapses to URL/node identity only — empty
+`childIds`/`fills`/`variables`/`components`/design tokens — even though a
+manual `get_design_context` call against the same live MCP session for the
+same node returns substantial real hierarchy, styling, and component detail.
+Journey 2 is classified `FAIL_BLOCKING`; Journeys 3–9 remain unexercised. See
+`specification-run.md` for the full record.

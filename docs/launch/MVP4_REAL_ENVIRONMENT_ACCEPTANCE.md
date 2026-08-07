@@ -295,3 +295,110 @@ Final forced validation: build 26/26, typecheck 44/44, lint 26/26, and tests
 Installed smoke and freshness passed. Smoke rebuilt and isolatedly installed a
 fresh `designflow-ai@0.1.1` tarball. The active process still lacks a non-empty
 `OPENROUTER_API_KEY`; Journey 2 was not rerun and Journey 3 remains prohibited.
+
+## 15. MVP-4 Journey 2 — live rerun with credential present
+
+**Result: `FAIL_BLOCKING`**
+
+`OPENROUTER_API_KEY` was confirmed non-empty (value not inspected). The stale
+globally installed CLI (built 2026-08-05, predating source HEAD) was rebuilt:
+`npm run build` (26/26 cached full turbo), `apps/designflow-cli` rebuilt with
+`bun build` and `scripts/prepare-cli-package.sh` (force rebuild, 25/25 tasks),
+packed with `npm pack`, and reinstalled with `npm install -g
+/tmp/designflow-ai-0.1.1.tgz --prefix /Users/wallex/.local`. Resolved
+executable: `/Users/wallex/.local/bin/designflow` → real path
+`/Users/wallex/.local/lib/node_modules/designflow-ai/dist/main.js`
+(reinstalled 2026-08-07 16:02, superseding the stale copy). `designflow
+--version` reports `DesignFlow 0.1.1`.
+
+The disposable project fixture was verified clean at baseline
+`84e182895c156098bf8a046ef5cbd7eaa8075423` before the run (empty diff, no
+untracked changes).
+
+A bounded local MCP handshake against `http://127.0.0.1:3845/mcp` confirmed
+`Figma Dev Mode MCP Server` `1.0.0`, protocol `2025-03-26`; `tools/list`
+returned six tools including `get_metadata` and `get_design_context`; a
+`get_metadata` call for node `1026:6098` returned the real nested Spendly
+hierarchy (`Back Button`, `Tab`, `Add Expense Form` with six text fields and a
+submit button, `Expense History` with five list items, `Navigation menu v3`).
+
+The isolated home's `config.json` was populated with a `settings.figmaMcp`
+HTTP block pointing at the live local server (`captureScreenshots: true`);
+`designflow doctor` reported configuration valid, model-provider credential
+present, Figma configured, and Design Engineer specification readiness
+`ready`.
+
+`designflow run design-engineer` was run non-interactively with the
+specification-only request text and the Spendly URL
+(`https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098`),
+no frames, no project registered, no implementation consent, no workflow ID,
+and no experimental flags. Dispatch went through the canonical product path —
+"Design Engineer" → "Design → Code (Figma Specification)" — not the generic
+`design-to-code` compatibility form; no generic Framework/Node prompt and no
+five-artifact scaffold appeared. Run id `2db9a81c-6034-4751-9ce0-274cbff69b42`
+completed in 39s with 4 created artifacts (0 reused): Parsed Figma source,
+Figma source snapshot, Design specification, Stage 3 summary. No project
+files were written; no consent was requested or granted.
+
+Trace inspection (`designflow traces`) confirms two independent live
+OpenRouter calls, both `success`:
+
+- Design Engineer Coordinator: `OpenRouter openai/gpt-4o-mini`, profile
+  `design-engineer-coordinator-default`, 615 total tokens, cost 0.00011115.
+- Figma Specification Specialist: `OpenRouter openai/gpt-4o-mini`, profile
+  `figma-specification-default`, 1347 total tokens, cost 0.0002889 (agent
+  version `0.2.0`).
+
+Each stage used its own configured profile; no deterministic fallback was
+used despite the credential being present.
+
+**Defect — normalized Figma evidence collapses to identity-only.** The
+`figma-source-snapshot` artifact's single `nodes[0]` entry for
+`1026:6098` has empty `childIds`, `fills`, `strokes`, `effects`, and
+`properties`; `variables`, `styles`, `components`, and `assets` are all empty
+arrays; `capabilities.componentsAvailable` and `capabilities.stylesAvailable`
+are `false`. Two warnings are recorded: `DESKTOP_MCP_SELECTION_SCOPE` ("The
+official Desktop MCP server supplied the current selection, not a full file
+document") and `VARIABLES_SHAPE_UNRECOGNIZED` ("Desktop MCP returned variable
+definitions in a non-normalized text format"). The downstream
+`design-specification` artifact mirrors this: `hierarchy` contains only the
+single root node's `id`/`name`, and every other field —
+`designTokens.colors/spacing/typography/radii/borders/shadows`, `components`,
+`layoutBehavior`, `content`, `interactions`, `states` — is an empty array or
+list. `frames` is empty even though `resolvedFrames` in the snapshot names
+the frame.
+
+This is not a source-access limitation: a manual `get_design_context` call
+against the same live MCP session for the same node, made during this
+acceptance run, returned substantial real design detail — generated
+React/JSX with per-node `data-node-id` attributes, CSS custom properties for
+colors and spacing (e.g. `--stroke/neutral/stroke,rgba(0,0,0,0.02)`), and
+named child components (`NavigationMenuV`, `lucide/circle-plus`) — none of
+which reached the persisted specification. The deterministic parsing/mapping
+step between the MCP tool response and the normalized snapshot fails to
+extract hierarchy, fills, or tokens from the real response shape, so the
+persisted evidence is effectively URL/node identity only, contrary to
+requirement 7 ("If it again stores only URL/node identity, fail Journey 2").
+Per requirement 9, a specification this generic does not clearly describe the
+Spendly frame and is independently `FAIL_BLOCKING`.
+
+No-write proof after the run: `git rev-parse HEAD` still
+`84e182895c156098bf8a046ef5cbd7eaa8075423`, `git status --short` empty, `git
+diff --stat` empty, no untracked implementation output. `designflow history`
+shows one `failed` run (`4e298c28…`, input-validation failure from a first
+attempt where the URL was mistakenly entered in the wrong prompt field) and
+one `completed` run (`2db9a81c…`); no stale running execution and no pending
+approval. No credentials, raw prompts, or provider responses were captured in
+this record — only role, profile ID, model ID, provider display name
+(`OpenRouter`), status, and token/cost usage fields.
+
+**Journey 2 classification: `FAIL_BLOCKING`.** Fresh CLI, live Figma access,
+canonical dispatch, live coordinator, live specification specialist, typed
+artifact production, and the no-write guarantee all passed. The run fails on
+requirements 7 and 9: the workflow's normalized Figma evidence does not carry
+real design facts beyond URL/node identity into the persisted specification,
+even though the underlying MCP source clearly has that detail available.
+Journey 3 must not begin. The defect is in the deterministic Figma
+source-parsing/normalization step (between MCP tool response and
+`figma-source-snapshot`/`design-specification`), not in credential handling,
+dispatch routing, or model connectivity.
