@@ -151,3 +151,13 @@ specialist calls. The original `FAIL_BLOCKING` classification remains in force
 until the Journey 2 rerun is made with a freshly installed package and the
 credential available. The project baseline has not been altered and Journey 3
 remains unstarted.
+
+## MVP-4B.1 validation reconciliation — 2026-08-07
+
+The prior test record was corrected rather than assumed green. The doctor test
+now configures Figma before runtime composition; direct runs no longer inherit
+the interactive menu's artifact viewer. Final validation: build 26/26,
+typecheck 44/44, lint 26/26, tests 52/52 (2,414 pass, 1 skip, 0 fail; exit 0),
+smoke PASS, freshness PASS. Smoke rebuilt an isolated `designflow-ai@0.1.1`
+package. No live Figma/OpenRouter call occurred; `OPENROUTER_API_KEY` is absent,
+so Journey 2 remains unrun and Journey 3 prohibited.

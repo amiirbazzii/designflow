@@ -55,6 +55,7 @@ export async function interactiveCommand(
           : null;
         await runCommand(context, terminal, workerId, {
           interactive: true,
+          offerArtifactView: true,
           ...(projectId !== null ? { projectId } : {}),
         });
       }

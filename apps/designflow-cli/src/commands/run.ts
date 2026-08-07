@@ -45,6 +45,8 @@ export async function runCommand(
   options?: {
     readonly projectId?: string;
     readonly interactive?: boolean;
+    /** The menu shell, not direct `run`, may offer immediate artifact viewing. */
+    readonly offerArtifactView?: boolean;
     readonly noCache?: boolean;
     readonly visualCorrection?: "off" | "once";
   },
@@ -192,6 +194,7 @@ export async function runCommand(
 
   return finishSession(context, terminal, result, {
     interactive: options?.interactive ?? false,
+    offerArtifactView: options?.offerArtifactView ?? false,
     ...(options?.visualCorrection !== undefined
       ? { visualCorrection: options.visualCorrection }
       : {}),

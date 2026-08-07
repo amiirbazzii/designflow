@@ -280,3 +280,18 @@ the current execution environment does not contain a non-empty
 cannot satisfy the live-coordinator criterion. The initial Journey 2 result
 remains `FAIL_BLOCKING` until a fresh installed package is run with the
 credential available; Journey 3 remains prohibited.
+
+## 14. MVP-4B.1 — regression reconciliation
+
+The prior MVP-4B test claim was incomplete. `designflow-ai#test` failed because
+`doctor.test.ts` changed Figma configuration after `createCliContext` had
+already registered workflows. The fixture now writes configuration before
+composition, matching real startup. TTY reproduction also found direct
+`designflow run` could offer the menu-only artifact viewer; that viewer is now
+an explicit interactive-menu option while direct runs retain correction consent.
+
+Final forced validation: build 26/26, typecheck 44/44, lint 26/26, and tests
+52/52 Turbo tasks (2,414 pass, 1 skip, 0 fail; exit 0), all cache-bypassed.
+Installed smoke and freshness passed. Smoke rebuilt and isolatedly installed a
+fresh `designflow-ai@0.1.1` tarball. The active process still lacks a non-empty
+`OPENROUTER_API_KEY`; Journey 2 was not rerun and Journey 3 remains prohibited.

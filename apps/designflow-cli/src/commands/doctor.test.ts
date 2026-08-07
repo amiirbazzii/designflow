@@ -10,10 +10,17 @@ const homes: string[] = [];
 const contexts: CliContext[] = [];
 const providerEnv = ["OPENROUTER", "API", "KEY"].join("_");
 
-function context(): CliContext {
+/** A home whose configuration exists before workflow registration is derived. */
+function context(settings: Record<string, unknown> = {}): CliContext {
   const home = mkdtempSync(join(tmpdir(), "designflow-doctor-"));
   homes.push(home);
   process.env.DESIGNFLOW_HOME = home;
+
+  writeFileSync(
+    join(home, "config.json"),
+    `${JSON.stringify({ version: 1, firstRunCompleted: true, environment: "local", databasePath: "history/runs.json", settings }, null, 2)}\n`,
+  );
+
   const created = createCliContext({ databasePath: join(home, "runs.json") });
   contexts.push(created);
   return created;
@@ -49,12 +56,12 @@ describe("designflow doctor", () => {
   });
 
   test("reports the configured Desktop HTTP MCP endpoint without exposing a session", async () => {
-    const created = context();
-    created.home.config.settings["experimental"] = { designEngineerFigmaMcp: true };
-    created.home.config.settings["figmaMcp"] = {
-      transport: "http",
-      url: "http://127.0.0.1:3845/mcp",
-    };
+    const created = context({
+      figmaMcp: {
+        transport: "http",
+        url: "http://127.0.0.1:3845/mcp",
+      },
+    });
 
     const report = await runDoctor(created);
     const figma = report.checks.find((item) => item.id === "figma");
@@ -65,8 +72,7 @@ describe("designflow doctor", () => {
 
 describe("design engineer readiness", () => {
   test("renders for a specification-only setup and states both implementation gates", async () => {
-    const created = context();
-    created.home.config.settings["figmaMcp"] = { command: "figma-server" };
+    const created = context({ figmaMcp: { command: "figma-server" } });
 
     const terminal = new ScriptedTerminal();
     expect(await doctorCommand(created, terminal)).toBe(0);
@@ -89,8 +95,7 @@ describe("design engineer readiness", () => {
     expect(missingTerminal.transcript).toContain("No Figma connection is configured.");
     expect(missingTerminal.transcript).toContain("Add a figmaMcp block");
 
-    const invalid = context();
-    invalid.home.config.settings["figmaMcp"] = { transport: "http" };
+    const invalid = context({ figmaMcp: { transport: "http" } });
     const invalidTerminal = new ScriptedTerminal();
     await doctorCommand(invalid, invalidTerminal);
     expect(invalidTerminal.transcript).toContain("does not describe a usable server");

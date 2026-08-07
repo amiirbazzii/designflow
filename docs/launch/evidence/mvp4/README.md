@@ -38,3 +38,10 @@ configuration was copied or stored.
 
 Secrets, environment dumps, raw provider responses, and private screenshots
 must not be stored here.
+
+MVP-4B.1 reconciled the full-test record: a doctor-test fixture changed Figma
+settings after composition, and direct `run` could receive a menu-only artifact
+prompt in a TTY. Both narrow regressions are fixed. Forced validation now
+passes (52/52 Turbo test tasks; 2,414 pass, 1 skip), as do smoke and freshness.
+No live acceptance journey ran; the current process lacks the OpenRouter
+credential required for a truthful Journey 2 rerun.

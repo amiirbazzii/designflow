@@ -113,10 +113,9 @@ function saveAndStop(terminal: Terminal, sessionId: string): null {
  * closed.
  *
  * `offerArtifactView` — the interactive "view artifacts now?" follow-up —
- * only runs when `interactive` is true. `designflow run <worker>` is a single
- * command whose scripted answers are exactly its declared input fields; the
- * interactive shell, which loops back to its own menu afterwards, is the only
- * caller that opts in.
+ * is an explicit menu-shell opt-in. `designflow run <worker>` can still be an
+ * interactive terminal journey (for example, beta correction consent), but
+ * its scripted answers remain exactly its declared input fields.
  */
 export async function finishSession(
   context: CliContext,
@@ -124,6 +123,7 @@ export async function finishSession(
   result: SessionResult,
   options: {
     readonly interactive?: boolean;
+    readonly offerArtifactView?: boolean;
     readonly visualCorrection?: "off" | "once";
   } = {},
 ): Promise<number> {
@@ -207,6 +207,7 @@ async function report(
   originalInput: unknown,
   options: {
     readonly interactive?: boolean;
+    readonly offerArtifactView?: boolean;
     readonly visualCorrection?: "off" | "once";
   },
 ): Promise<number> {
@@ -333,7 +334,7 @@ async function report(
     terminal.print();
     terminal.print(`Inspect the result: designflow artifacts ${executionId}`);
 
-    if (options.interactive === true) {
+    if (options.offerArtifactView === true) {
       await offerArtifactView(context, terminal, executionId, artifacts);
     }
   }
