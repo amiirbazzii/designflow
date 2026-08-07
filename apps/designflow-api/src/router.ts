@@ -35,6 +35,33 @@ const json = (body: unknown, status = 200): Response =>
 const notFound = (message: string): Response =>
   json({ error: { code: "ERR_NOT_FOUND", message } }, 404);
 
+// The deprecated workflow endpoint still exposes the original generic
+// workflow form for compatibility. The public Design Engineer worker owns a
+// different product form, so borrowing its inputs here would corrupt legacy
+// clients' requests.
+const compatibilityDesignToCodeInputs = [
+  { key: "designFile", label: "Design file", placeholder: "homepage.fig" },
+  {
+    key: "framework",
+    label: "Framework",
+    placeholder: "react",
+    choices: ["react", "vue", "svelte"],
+  },
+  {
+    key: "frames",
+    label: "Frames (comma separated)",
+    placeholder: "brand/Header, brand/Footer, layout/Dashboard",
+    list: true,
+  },
+] as const;
+
+function inputsForDeprecatedWorkflow(
+  workflowId: string,
+  inputs: readonly unknown[],
+): readonly unknown[] {
+  return workflowId === "design-to-code" ? compatibilityDesignToCodeInputs : inputs;
+}
+
 /**
  * Strips fields a normal client must never see from a session.
  *
@@ -215,7 +242,7 @@ async function route(
           name: workflow.name,
           description: workflow.description ?? "",
           steps: workflow.definition.nodes.map((node) => node.id),
-          inputs: worker?.inputs ?? [],
+          inputs: inputsForDeprecatedWorkflow(workflow.id, worker?.inputs ?? []),
         };
       }),
     });

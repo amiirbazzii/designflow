@@ -172,6 +172,11 @@ export async function runDoctor(context: CliContext): Promise<DoctorReport> {
     projectCount: registered.length,
     playwrightPackageAvailable: inspected.packageAvailable,
     browserAvailable: inspected.browserAvailable,
+    // The same composition-root registrations that canonical `run` resolves.
+    // A readiness claim therefore cannot survive a missing public dispatch
+    // path or a missing consent-gated implementation journey.
+    specificationDispatchAvailable: context.specificationWorkflowAvailable,
+    implementationDispatchAvailable: context.implementationWorkflowAvailable,
     version: CLI_VERSION,
   });
 

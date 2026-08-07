@@ -367,6 +367,10 @@ export interface CliContext {
   readonly inspectState: () => StateHealthReport;
   /** True when an explicit project can select the experimental implementation path. */
   readonly experimentalImplementationEnabled: boolean;
+  /** True only when the public worker's canonical specification workflow is registered. */
+  readonly specificationWorkflowAvailable: boolean;
+  /** True only when the consent-gated implementation journey is registered. */
+  readonly implementationWorkflowAvailable: boolean;
   /** Safe Figma source mode selected by the composition root. */
   readonly figmaSourceMode?: "placeholder" | "rest" | "mcp-stdio" | "mcp-desktop";
   readonly figmaServerIdentity?: string;
@@ -958,6 +962,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // Design Engineer pipeline stages (reachable only through coordinator
   // routing) and the internal foundation workflow.
   const INTERNAL_WORKFLOW_IDS = new Set([
+    // Compatibility-only legacy scaffold. Historical executions and internal
+    // harnesses may still read or run it directly, but public `run` must not
+    // bypass the Design Engineer coordinator through this old form.
+    "design-to-code",
     "design-to-code-figma-specification",
     "design-to-code-implementation",
     "design-to-code-feedback-loop",
@@ -1012,6 +1020,13 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     };
   };
 
+  const designEngineerWorker = workers.findByWorkflow(
+    designToCodeFigmaSpecificationWorkflowPackage.id,
+  );
+  const specificationWorkflowAvailable =
+    designEngineerWorker !== undefined
+    && workflows.has(primaryWorkflowOf(designEngineerWorker));
+
   return {
     runner,
     workers,
@@ -1021,6 +1036,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     modelProviderConfigured: modelModeRequested && openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0,
     inspectState: () => inspectStateFile(databasePath),
     experimentalImplementationEnabled: implementationEnabled,
+    specificationWorkflowAvailable,
+    implementationWorkflowAvailable: workflows.has(
+      designToCodeImplementationWorkflowPackage.id,
+    ),
     figmaSourceMode: figmaMcpEnabled
       ? (figmaMcpConfig?.transport === "http" ? "mcp-desktop" : "mcp-stdio")
       : "placeholder",

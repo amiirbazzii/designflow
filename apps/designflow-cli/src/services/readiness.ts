@@ -54,6 +54,10 @@ export interface ReadinessFacts {
   readonly projectCount: number;
   readonly playwrightPackageAvailable: boolean;
   readonly browserAvailable: BrowserAvailability;
+  /** The public worker resolves to its canonical specification workflow. */
+  readonly specificationDispatchAvailable: boolean;
+  /** The consent-gated implementation workflow is registered. */
+  readonly implementationDispatchAvailable: boolean;
   readonly configPath: string;
   readonly configExists: boolean;
   readonly configParsed: boolean;
@@ -212,8 +216,18 @@ export function buildDesignEngineerReadiness(facts: ReadinessFacts): DesignEngin
 
   const specificationReasons: string[] = [];
   if (facts.figma.state !== "configured") specificationReasons.push(figma.detail);
+  if (!facts.specificationDispatchAvailable) {
+    specificationReasons.push(
+      "The Design Engineer specification journey is unavailable in this installation.",
+    );
+  }
 
   const implementationReasons = [...specificationReasons];
+  if (!facts.implementationDispatchAvailable) {
+    implementationReasons.push(
+      "The Design Engineer implementation journey is unavailable in this installation.",
+    );
+  }
   if (facts.projectCount === 0) {
     implementationReasons.push(
       `No registered project to propose changes for — ${PROJECTS_ADD_COMMAND}.`,
@@ -274,6 +288,8 @@ export interface ReadinessContextFacts {
   readonly projectCount: number;
   readonly playwrightPackageAvailable: boolean;
   readonly browserAvailable: BrowserAvailability;
+  readonly specificationDispatchAvailable: boolean;
+  readonly implementationDispatchAvailable: boolean;
   readonly version: string;
 }
 
@@ -286,6 +302,8 @@ export function assembleDesignEngineerReadiness(
     projectCount: facts.projectCount,
     playwrightPackageAvailable: facts.playwrightPackageAvailable,
     browserAvailable: facts.browserAvailable,
+    specificationDispatchAvailable: facts.specificationDispatchAvailable,
+    implementationDispatchAvailable: facts.implementationDispatchAvailable,
     configPath: facts.configPath,
     configExists: facts.configExists,
     configParsed: facts.configParsed,

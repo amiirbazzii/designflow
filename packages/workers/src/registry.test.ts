@@ -117,7 +117,11 @@ describe("worker manifest validation", () => {
 
   test("the shipped Design Engineer manifest is valid", () => {
     expect(() => workerManifestSchema.parse(designEngineer)).not.toThrow();
-    expect(designEngineer.workflows).toEqual(["design-to-code", "design-to-code-implementation"]);
+    expect(designEngineer.workflows).toEqual([
+      "design-to-code-figma-specification",
+      "design-to-code-implementation",
+      "design-to-code",
+    ]);
     expect(designEngineer.inputs).toHaveLength(3);
   });
 });
@@ -210,15 +214,16 @@ describe("resolving a worker", () => {
     const registry = createWorkerRegistry();
     const found = registry.requireWorker("design-engineer");
 
-    expect(primaryWorkflowOf(found)).toBe("design-to-code");
+    expect(primaryWorkflowOf(found)).toBe("design-to-code-figma-specification");
   });
 
   test("finds the worker that owns a workflow", () => {
     const registry = createWorkerRegistry();
 
-    expect(registry.findByWorkflow("design-to-code")?.id).toBe(
+    expect(registry.findByWorkflow("design-to-code-figma-specification")?.id).toBe(
       "design-engineer",
     );
+    expect(registry.findByWorkflow("design-to-code")?.id).toBe("design-engineer");
     expect(registry.findByWorkflow("unowned-workflow")).toBeUndefined();
   });
 });
@@ -358,8 +363,16 @@ describe("stage 41 worker catalogue", () => {
     }
   });
 
-  test("design-engineer keeps its Stage 33 workflow/input shape unchanged", () => {
-    expect(designEngineer.workflows).toEqual(["design-to-code", "design-to-code-implementation"]);
-    expect(designEngineer.inputs).toHaveLength(3);
+  test("design-engineer exposes its product input form and not the compatibility scaffold", () => {
+    expect(designEngineer.workflows).toEqual([
+      "design-to-code-figma-specification",
+      "design-to-code-implementation",
+      "design-to-code",
+    ]);
+    expect(designEngineer.inputs.map((input) => input.key)).toEqual([
+      "request",
+      "designFile",
+      "frames",
+    ]);
   });
 });

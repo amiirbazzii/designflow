@@ -82,6 +82,8 @@ export async function runCommand(
       projectCount: 0,
       playwrightPackageAvailable: false,
       browserAvailable: "not_checked",
+      specificationDispatchAvailable: resolved.workflowInstalled,
+      implementationDispatchAvailable: context.implementationWorkflowAvailable,
       configPath: context.home.layout.configFile,
       configExists: true,
       configParsed: true,

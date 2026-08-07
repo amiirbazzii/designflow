@@ -45,16 +45,12 @@ function fakeServerPath(): string {
   return `${packageDir}test/fixtures/fake-server/fake-server-entry.ts`;
 }
 
-function context(flags: { implementation: boolean }): CliContext {
+function context(): CliContext {
   const home = mkdtempSync(join(tmpdir(), "designflow-stage4-routing-home-"));
   homes.push(home);
   writeFileSync(join(home, "config.json"), JSON.stringify({
-    firstRunCompleted: true,
-    settings: {
-      experimental: {
-        designEngineerFigmaMcp: flags.implementation,
-        designEngineerImplementation: flags.implementation,
-      },
+      firstRunCompleted: true,
+      settings: {
       figmaMcp: {
         command: "bun",
         args: ["run", fakeServerPath()],
@@ -90,20 +86,23 @@ afterEach(() => {
 });
 
 describe("installed-CLI Stage 4 routing", () => {
-  test("experimental mode disabled keeps Design Engineer on design-to-code", () => {
-    const created = context({ implementation: false });
-    expect(created.resolve("design-engineer")?.workflowId).toBe("design-to-code");
+  test("a valid Figma configuration makes the canonical specification journey primary without legacy flags", () => {
+    const created = context();
+    expect(created.resolve("design-engineer")?.workflowId).toBe("design-to-code-figma-specification");
+    expect(created.resolve("design-engineer")?.workflowInstalled).toBe(true);
+    expect(created.resolve("design-to-code")).toBeNull();
     expect(created.resolve("design-to-code-implementation")).toBeNull();
+    expect(created.listWorkflows().some((workflow) => workflow.workflowId === "design-to-code")).toBe(true);
   });
 
   test("without a project the run continues as a specification-only journey (MVP-3B)", async () => {
     // The old hard "a registered project must be selected" gate is gone: a
     // project is where changes COULD go, and its absence now means the
     // supported specification journey, not a refusal.
-    const created = context({ implementation: true });
+    const created = context();
     const terminal = new ScriptedTerminal([
+      "Create an engineering specification for this design. Do not modify the project.",
       "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=432-2906",
-      "react",
       "Header",
     ]);
     const code = await dispatch(["run", "design-engineer"], created, terminal);
@@ -111,22 +110,29 @@ describe("installed-CLI Stage 4 routing", () => {
     const [run] = await created.runner.history();
     expect(run?.workflowId).toBe("design-to-code-figma-specification");
     expect(terminal.transcript).toContain("Design specification generated — no project files were written.");
+    expect(terminal.questions).toEqual([
+      "What would you like from this design? (Create an engineering specification. Do not modify the project.)",
+      "Figma design URL or file (https://www.figma.com/design/...)",
+      "Frames (optional, comma separated) (brand/Header, brand/Footer, layout/Dashboard)",
+    ]);
+    expect(terminal.transcript).not.toContain("Framework");
+    expect(terminal.transcript).not.toContain("Store the generated result as a DesignFlow artifact");
   }, 20_000);
 
   test("the direct implementation workflow id is no longer a public worker (MVP-3B)", () => {
     // The synthetic-worker bypass is closed: gated pipeline stages are
     // reachable only through coordinator routing, never by typing their id.
-    const created = context({ implementation: true });
+    const created = context();
     expect(created.resolve("design-to-code-implementation")).toBeNull();
   });
 
   test("selected project routes the CLI session to implementation and shows a pre-approval proposal", async () => {
-    const created = context({ implementation: true });
+    const created = context();
     const projectId = await registeredProject(created);
     await dispatch(["projects", "inspect", projectId], created, new ScriptedTerminal([]));
     const terminal = new ScriptedTerminal([
+      "Prepare implementation changes for this design.",
       "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=432-2906",
-      "react",
       "Header",
       // MVP-3B journey consent: the project is only where changes COULD go;
       // preparing an implementation proposal is an explicit yes.

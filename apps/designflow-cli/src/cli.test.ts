@@ -150,7 +150,7 @@ describe("designflow list", () => {
     expect(terminal.transcript).toContain("Available AI Workers");
     expect(terminal.transcript).toContain("Design Engineer");
     expect(terminal.transcript).toContain(
-      "Turns a connected Figma design into reviewed code changes you approve before anything is written",
+      "Turns a connected Figma design into an engineering specification or reviewed code changes you approve before anything is written",
     );
   });
 
@@ -751,25 +751,23 @@ describe("configuration on first use", () => {
 // ── Worker resolution ───────────────────────────────────────────
 
 describe("worker resolution", () => {
-  test("a worker resolves to the workflow it wraps", () => {
+  test("a worker resolves to its canonical workflow even when its prerequisite is absent", () => {
     const resolved = context().resolve("design-engineer");
 
     expect(resolved?.worker.id).toBe("design-engineer");
-    expect(resolved?.workflowId).toBe("design-to-code");
-    expect(resolved?.steps).toBe(5);
+    expect(resolved?.workflowId).toBe("design-to-code-figma-specification");
+    expect(resolved?.workflowInstalled).toBe(false);
+    expect(resolved?.steps).toBe(0);
   });
 
   test("an unknown name resolves to nothing", () => {
     expect(context().resolve("nobody")).toBeNull();
   });
 
-  test("a workflow id still resolves, so nothing is unreachable", () => {
-    const resolved = context().resolve("design-to-code");
-
-    // Workflow ids are no longer *shown*, but a workflow with no worker
-    // wrapping it would otherwise be impossible to run.
-    expect(resolved?.workflowId).toBe("design-to-code");
-    expect(resolved?.worker.id).toBe("design-engineer");
+  test("the compatibility workflow stays unavailable through public resolution", () => {
+    // Historical artifacts and internal harnesses retain the workflow, but a
+    // person cannot bypass coordinator routing with its legacy form.
+    expect(context().resolve("design-to-code")).toBeNull();
   });
 
   test("running by workflow id teaches the worker's name", async () => {

@@ -1,6 +1,5 @@
 // apps/designflow-demo/src/catalog.ts
 import {
-  designEngineer,
   productManager,
   qaReviewer,
   researchAnalyst,
@@ -15,8 +14,10 @@ import {
  * table's own display text. `fields` do not: they come straight from each
  * worker's `inputs` in `@designflow/workers` — the same manifest the CLI and
  * API read — rather than a second, hand-typed copy that could drift from it.
- * All four built-in workers are wired into `host.ts`'s engine, so all four
- * have an entry here.
+ * The exception is the compatibility `design-to-code` workflow: it is not a
+ * worker-facing product form, so its native input fields are owned here next
+ * to the workflow-level demo entry. All four built-in workflow packages are
+ * wired into `host.ts`'s engine, so all four have an entry here.
  *
  * A worker's `inputs` are written in worker vocabulary (e.g. `reviewTarget`,
  * `researchQuestion`), because that is what the Worker Task Boundary the
@@ -28,8 +29,8 @@ import {
  * bridges that gap the same mechanical way the real agents do (see e.g.
  * `packages/agents/src/catalog/qa-reviewer-agent.ts`'s `shapeWorkflowInput`),
  * just inlined here since the demo does not depend on `@designflow/agents`.
- * `design-to-code`'s field keys already match its native input, so it needs
- * no bridging and `toInput` is omitted.
+ * `design-to-code` is compatibility-only and has its own native input form,
+ * so it needs no bridging and `toInput` is omitted.
  */
 export interface DemoField {
   readonly key: string;
@@ -58,12 +59,28 @@ function asList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+const compatibilityDesignToCodeFields: readonly DemoField[] = [
+  { key: "designFile", label: "Design file", placeholder: "homepage.fig" },
+  {
+    key: "framework",
+    label: "Framework",
+    placeholder: "react",
+    choices: ["react", "vue", "svelte"],
+  },
+  {
+    key: "frames",
+    label: "Frames (comma separated)",
+    placeholder: "brand/Header, brand/Footer, layout/Dashboard",
+    list: true,
+  },
+];
+
 export const DEMO_WORKFLOWS: readonly DemoWorkflow[] = [
   {
     workflowId: "design-to-code",
     name: "Design → Code",
     tagline: "Turn a design file into reviewed, production-ready components",
-    fields: designEngineer.inputs,
+    fields: compatibilityDesignToCodeFields,
   },
   {
     workflowId: "qa-review",

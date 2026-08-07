@@ -1,6 +1,6 @@
 MVP-4A.1 flag-free readiness evidence
 Audit date: 2026-08-07
-Commit: ae1e6909e86f04f3debc9d751d76d5a103b325f9
+Commit: 2c03812f729788992bc753318429cf829ddd5e58
 Package version: 0.1.1
 Acceptance home: /tmp/designflow-mvp4-acceptance-home
 Fixture: /tmp/designflow-mvp4-acceptance-project
@@ -91,12 +91,47 @@ Final classification:
   The acceptance home is intentionally retained without the legacy keys.
   The disposable project remains clean at the recorded baseline.
 
-No live Journey 2–9 activity occurred. No deliberate OpenRouter request, Figma
-protocol session, browser acceptance, project write, approval, or workflow run
-was started.
+MVP-4 Journey 2 source-access result:
+  - FAIL_BLOCKING — the configured Figma Dev Mode MCP Server initialized with
+    protocol 2025-03-26, but tools/list reported that the active tab is not a
+    design or FigJam file.
+  - The canonical CLI reached its design-file prompt and was aborted before
+    input, so no workflow run, model request, consent, project write, or
+    specification artifact was created.
+  - The bounded MCP discovery session was closed successfully (HTTP 200).
+  - Disposable project remained clean at the recorded baseline; isolated run
+    history remains empty.
+
+Journeys 3–9 must not begin until a real Figma design/FigJam tab is active and
+Journey 2 source access passes.
+
+Journey 2 retry:
+  - FAIL_BLOCKING — bounded preflight again accepted protocol 2025-03-26 and
+    identified Figma Dev Mode MCP Server 1.0.0, but tools/list returned the
+    same active-tab error.
+  - Diagnostic MCP session closed with HTTP 200.
+  - Canonical DesignFlow CLI was not started after the preflight failure.
+  - Project HEAD and clean status are unchanged; isolated history remains
+    empty.
+
+Provided Spendly URL retry:
+  - MCP preflight PASS — tools/list exposed six tools, including
+    get_design_context and get_metadata.
+  - Read-only Figma retrieval PASS — node 1026:6098, "iPhone 16 Pro Max -
+    14", dimensions 440x1092; child frames included Back Button and Frame 1.
+  - MCP session closed with HTTP 200.
+  - Canonical run completed as generic Design -> Code, run ID
+    2d457c60-8b54-4a00-a851-f5620b8953cc.
+  - Trace 239425ee-cb64-4e92-b5fc-45b8c1fab3dc recorded Model calls: 0.
+  - FAIL_BLOCKING — no live coordinator call, no OpenRouter provenance, no
+    Figma Specification Specialist call, and no normalized live Figma evidence
+    in the stored design-analysis artifact.
+  - Project remained clean; no snapshot, apply, rollback, or project write.
 
 The acceptance home contains no copied history, artifacts, approvals, caches,
 or stale project registrations. The OpenRouter key remains process-provided.
 
-No live model request, Figma protocol session, browser run, project write, or
-approval was attempted. Journeys 2–9 remain unexercised.
+No live model request, DesignFlow workflow Figma session, browser run, project
+write, or approval was attempted. Journey 2 was stopped before workflow
+execution; Journeys 3–9 remain unexercised. The bounded diagnostic MCP session
+was closed successfully.

@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { createCliContext, type CliContext } from "./services/cli-runner";
 
 /**
- * Proves the Stage 3 experimental path end to end through the *real* CLI
+ * Proves the Figma specification path end to end through the *real* CLI
  * composition root — `createCliContext`, exactly as `apps/designflow-cli/src/main.ts`
  * builds it — not just the workflow package's own test harness. Verified
  * against the protocol-faithful fake MCP server; no real Figma access was
@@ -48,8 +48,8 @@ const FIXTURES = {
   },
 };
 
-describe("the experimental Figma MCP path, wired through the real CLI composition root", () => {
-  test("is not reachable at all unless the config flag is explicitly enabled", () => {
+describe("the Figma MCP path, wired through the real CLI composition root", () => {
+  test("requires a valid Figma connection rather than a legacy experimental flag", () => {
     const home = workspace();
     process.env.DESIGNFLOW_HOME = home;
 
@@ -60,7 +60,7 @@ describe("the experimental Figma MCP path, wired through the real CLI compositio
     expect(resolved).toBeNull();
   });
 
-  test("becomes reachable by workflow id once enabled, and runs against the fake server", async () => {
+  test("runs internally against the fake server with no legacy experimental flag", async () => {
     process.env.FAKE_MCP_FIXTURES = JSON.stringify(FIXTURES);
 
     const home = workspace();
@@ -69,7 +69,6 @@ describe("the experimental Figma MCP path, wired through the real CLI compositio
       join(home, "config.json"),
       JSON.stringify({
         settings: {
-          experimental: { designEngineerFigmaMcp: true },
           figmaMcp: {
             command: "bun",
             args: ["run", fakeServerPath()],
@@ -120,7 +119,6 @@ describe("the experimental Figma MCP path, wired through the real CLI compositio
       join(home, "config.json"),
       JSON.stringify({
         settings: {
-          experimental: { designEngineerFigmaMcp: true },
           figmaMcp: {
             command: "bun",
             args: ["run", fakeServerPath()],

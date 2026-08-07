@@ -19,6 +19,8 @@ const BASE: ReadinessFacts = {
   projectCount: 0,
   playwrightPackageAvailable: false,
   browserAvailable: "not_checked",
+  specificationDispatchAvailable: true,
+  implementationDispatchAvailable: true,
   configPath: "/tmp/designflow-home/config.json",
   configExists: true,
   configParsed: true,
@@ -122,6 +124,27 @@ describe("visual validation", () => {
 });
 
 describe("journeys", () => {
+  test("does not report a journey ready unless its canonical dispatch path is registered", () => {
+    const specificationBlocked = buildDesignEngineerReadiness(
+      facts({
+        figma: { state: "configured", transport: "http" },
+        specificationDispatchAvailable: false,
+      }),
+    );
+    expect(specificationBlocked.specification.ready).toBe(false);
+    expect(specificationBlocked.specification.reasons.join(" ")).toContain("unavailable");
+
+    const implementationBlocked = buildDesignEngineerReadiness(
+      facts({
+        figma: { state: "configured", transport: "http" },
+        projectCount: 1,
+        implementationDispatchAvailable: false,
+      }),
+    );
+    expect(implementationBlocked.implementationProposal.ready).toBe(false);
+    expect(implementationBlocked.implementationProposal.reasons.join(" ")).toContain("unavailable");
+  });
+
   test("specification is blocked by figma alone", () => {
     const blocked = buildDesignEngineerReadiness(facts({ figma: { state: "invalid" } }));
     expect(blocked.specification.ready).toBe(false);
@@ -228,6 +251,8 @@ describe("assembleDesignEngineerReadiness", () => {
       projectCount: 0,
       playwrightPackageAvailable: false,
       browserAvailable: "not_checked",
+      specificationDispatchAvailable: false,
+      implementationDispatchAvailable: false,
       version: "0.1.1",
     });
 
