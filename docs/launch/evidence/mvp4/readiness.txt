@@ -1,0 +1,60 @@
+MVP-4A readiness evidence
+Audit date: 2026-08-07
+Commit: b2caf90e8ab625c0724a37e3b0192dd1a27777c5
+Package version: 0.1.1
+Acceptance home: /tmp/designflow-mvp4-acceptance-home
+Fixture: /tmp/designflow-mvp4-acceptance-project
+Fixture stack: React 18.3.1 + Vite 6.0.0, npm
+Fixture baseline: 84e182895c156098bf8a046ef5cbd7eaa8075423
+
+Commands:
+  designflow --version
+  designflow doctor
+  designflow settings
+  designflow projects
+
+Results:
+  designflow --version: PASS — DesignFlow 0.1.1
+  designflow settings: PASS — isolated home, OpenRouter assignments, and
+    credential presence reported; no credential values were printed.
+  designflow projects: PASS — exactly one acceptance registration was listed.
+  designflow doctor: PASS_WITH_WARNING — no project blockers; Figma protocol
+    session intentionally not started by doctor.
+
+Doctor findings:
+  - runtime: healthy
+  - configuration: healthy
+  - filesystem: healthy
+  - state-store: healthy
+  - model-provider: healthy; credential presence only
+  - figma: warning; configured localhost HTTP MCP endpoint, protocol session
+    not started during readiness
+  - browser: healthy; Playwright and Chromium available
+  - project mvp4-acceptance: healthy; accessible on main
+
+Project inspection:
+  - framework: react
+  - source root: src
+  - components: FeatureCard, PrimaryButton
+  - styling: css with CSS custom properties
+  - commands: build, dev, preview, test
+
+Fixture checks:
+  - npm install --ignore-scripts: PASS — 62 packages installed in the
+    disposable fixture; no DesignFlow package or lockfile changed
+  - npm test: PASS — deterministic validation
+  - npm run build: PASS — Vite production build
+  - npm run preview -- --help: PASS — preview command recognized
+  - git status --short: clean
+
+Journey readiness:
+  - specification journey: READY
+  - implementation journey: READY to request per-run consent; no consent
+    was requested or granted
+  - visual correction: BETA and not started
+
+The acceptance home contains no copied history, artifacts, approvals, caches,
+or stale project registrations. The OpenRouter key remains process-provided.
+
+No live model request, Figma protocol session, browser run, project write, or
+approval was attempted. Journeys 2–9 remain unexercised.
