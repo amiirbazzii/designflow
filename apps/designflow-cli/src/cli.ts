@@ -214,16 +214,50 @@ export async function dispatch(
       const projectFlagIndex = rest.indexOf("--project");
       const projectId =
         projectFlagIndex >= 0 ? rest[projectFlagIndex + 1] : undefined;
+      const visualCorrectionFlags = rest.filter((value) =>
+        value.startsWith("--visual-correction="),
+      );
+      if (visualCorrectionFlags.length > 1) {
+        terminal.print("Use --visual-correction=off or --visual-correction=once once.");
+        return 1;
+      }
+      const visualCorrectionValue = visualCorrectionFlags[0]?.split("=", 2)[1];
+      if (
+        visualCorrectionValue !== undefined &&
+        visualCorrectionValue !== "off" &&
+        visualCorrectionValue !== "once"
+      ) {
+        terminal.print("Visual correction must be off or once.");
+        return 1;
+      }
 
       return runCommand(
         context,
         terminal,
         name,
         rest.includes("--no-cache")
-          ? { ...(projectId !== undefined ? { projectId } : {}), noCache: true }
+          ? {
+              ...(projectId !== undefined ? { projectId } : {}),
+              noCache: true,
+              interactive: process.stdin.isTTY === true,
+              ...(visualCorrectionValue !== undefined
+                ? { visualCorrection: visualCorrectionValue }
+                : {}),
+            }
           : projectId !== undefined
-            ? { projectId }
-            : undefined,
+            ? {
+                projectId,
+                interactive: process.stdin.isTTY === true,
+                ...(visualCorrectionValue !== undefined
+                  ? { visualCorrection: visualCorrectionValue }
+                  : {}),
+              }
+            : visualCorrectionValue !== undefined
+              ? {
+                  interactive: process.stdin.isTTY === true,
+                  visualCorrection: visualCorrectionValue,
+                }
+              : { interactive: process.stdin.isTTY === true },
       );
     }
 

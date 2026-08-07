@@ -132,6 +132,28 @@ export class ArtifactInspectionService {
     return { summary, payload: redactSensitive(stored.data) };
   }
 
+  /** Reads the immutable artifact version explicitly recorded by a run. */
+  public async getPayloadAtVersion(
+    summary: ArtifactSummary,
+    versionNumber: number,
+  ): Promise<ArtifactDetail> {
+    const artifact = await this.artifactRegistry.getArtifact(summary.artifactId);
+    if (artifact === null) return { summary, payload: undefined };
+
+    const version = await this.artifactRegistry.getVersion(
+      artifact.id,
+      versionNumber,
+    );
+    const payloadId = (version?.metadata ?? {})[PAYLOAD_ID_KEY];
+    if (typeof payloadId !== "string" || payloadId.length === 0)
+      return { summary, payload: undefined };
+
+    const stored = await this.artifactStore.get(payloadId);
+    return stored === null
+      ? { summary, payload: undefined }
+      : { summary, payload: redactSensitive(stored.data) };
+  }
+
   /**
    * Loads a payload by its stable logical artifact id for an internal workflow
    * handoff. The caller must already possess the artifact id; this method does

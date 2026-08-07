@@ -5,7 +5,12 @@ import {
   type Terminal,
 } from "../ui/terminal";
 
-import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext } from "../services/cli-runner";
+import {
+  EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
+  FEEDBACK_LOOP_WORKFLOW_ID,
+  inspectRegisteredProject,
+  type CliContext,
+} from "../services/cli-runner";
 import type { SessionResult } from "@designflow/sdk";
 import type { ArtifactSummary } from "@designflow/product";
 import { renderDetail, renderList } from "./artifacts";
@@ -16,6 +21,13 @@ import {
   progressLabel,
   readProvenanceFacts,
 } from "../services/presentation";
+import {
+  prepareVisualCorrection,
+  projectParentId,
+  readImplementationInput,
+  VISUAL_CORRECTION_BETA_LABEL,
+} from "../services/visual-correction";
+import { createOrLoadParent, runParentLoop } from "./feedback-loop";
 
 /**
  * What `designflow run` and `designflow answer` share once a session exists.
@@ -110,7 +122,10 @@ export async function finishSession(
   context: CliContext,
   terminal: Terminal,
   result: SessionResult,
-  interactive = false,
+  options: {
+    readonly interactive?: boolean;
+    readonly visualCorrection?: "off" | "once";
+  } = {},
 ): Promise<number> {
   if (result.session.status === "declined") {
     terminal.print();
@@ -145,7 +160,7 @@ export async function finishSession(
     return 1;
   }
 
-  return report(context, terminal, executionId, interactive);
+  return report(context, terminal, executionId, result.session.originalInput, options);
 }
 
 /** Returns undefined when no approval was required. */
@@ -189,7 +204,11 @@ async function report(
   context: CliContext,
   terminal: Terminal,
   executionId: string,
-  interactive: boolean,
+  originalInput: unknown,
+  options: {
+    readonly interactive?: boolean;
+    readonly visualCorrection?: "off" | "once";
+  },
 ): Promise<number> {
   const result = await context.runner.explain(executionId);
   const { overview, artifacts } = result;
@@ -314,7 +333,7 @@ async function report(
     terminal.print();
     terminal.print(`Inspect the result: designflow artifacts ${executionId}`);
 
-    if (interactive) {
+    if (options.interactive === true) {
       await offerArtifactView(context, terminal, executionId, artifacts);
     }
   }
@@ -323,7 +342,96 @@ async function report(
   terminal.print(`Run id: ${executionId}`);
   terminal.print();
 
-  return overview.state === "ready" ? 0 : 1;
+  const baseCode = overview.state === "ready" ? 0 : 1;
+  if (baseCode !== 0 || options.visualCorrection === "off") return baseCode;
+  return offerVisualCorrection(
+    context,
+    terminal,
+    executionId,
+    originalInput,
+    options,
+  );
+}
+
+async function offerVisualCorrection(
+  context: CliContext,
+  terminal: Terminal,
+  executionId: string,
+  originalInput: unknown,
+  options: {
+    readonly interactive?: boolean;
+    readonly visualCorrection?: "off" | "once";
+  },
+): Promise<number> {
+  const implementation = readImplementationInput(originalInput);
+  if (implementation === undefined) return 0;
+
+  let currentProjectFingerprint: string | undefined;
+  let currentProjectRootIdentity: string | undefined;
+  try {
+    const inspected = inspectRegisteredProject(implementation.project);
+    currentProjectFingerprint = inspected.project.contextFingerprint;
+    currentProjectRootIdentity = inspected.project.rootIdentity;
+  } catch {
+    currentProjectFingerprint = undefined;
+  }
+
+  const parent =
+    (await context.feedbackLoopParents.get(projectParentId(executionId))) ?? null;
+  const visualCorrectionProfileId = context.roleModelProfiles.find(
+    (profile) => profile.roleId === "visual-correction",
+  )?.profileId;
+  const preparation = await prepareVisualCorrection({
+    executionId,
+    originalInput,
+    run: await context.runner.explain(executionId),
+    inspection: context.artifactInspection,
+    artifactStore: context.artifactStore,
+    parent,
+    ...(currentProjectFingerprint !== undefined
+      ? { currentProjectFingerprint }
+      : {}),
+    ...(currentProjectRootIdentity !== undefined
+      ? { currentProjectRootIdentity }
+      : {}),
+    ...(visualCorrectionProfileId !== undefined
+      ? { modelProfileId: visualCorrectionProfileId }
+      : {}),
+    correctionWorkflowRegistered: context
+      .listWorkflows()
+      .some((workflow) => workflow.workflowId === FEEDBACK_LOOP_WORKFLOW_ID),
+    pendingApproval: (await context.runner.pendingApproval(executionId)) !== null,
+  });
+
+  if (preparation.eligibility.status !== "eligible") {
+    if (options.visualCorrection === "once") {
+      terminal.print();
+      terminal.print(`${VISUAL_CORRECTION_BETA_LABEL} unavailable`);
+      terminal.print(preparation.eligibility.reason);
+    }
+    return 0;
+  }
+
+  const explicit = options.visualCorrection === "once";
+  if (!explicit && options.interactive !== true) return 0;
+
+  if (!explicit) {
+    terminal.print();
+    terminal.print(VISUAL_CORRECTION_BETA_LABEL);
+    terminal.print("The Visual Correction Specialist can prepare a correction proposal.");
+    terminal.print("Each iteration requires approval of the exact proposed changes.");
+    terminal.print(`Maximum iterations for this continuation: ${preparation.eligibility.maximumIterations}`);
+    const answer = await terminal.ask("Start a correction iteration?", ["yes", "no"]);
+    if (!answer.trim().toLowerCase().startsWith("y")) {
+      terminal.print("Visual correction was not started. Your existing artifacts remain available.");
+      return 0;
+    }
+  }
+
+  if (preparation.input === undefined) return 0;
+  const correctionParent =
+    parent ?? (await createOrLoadParent(context, preparation.input));
+  return runParentLoop(context, terminal, correctionParent);
 }
 
 async function renderImplementationPreview(context: CliContext, terminal: Terminal, executionId: string): Promise<void> {

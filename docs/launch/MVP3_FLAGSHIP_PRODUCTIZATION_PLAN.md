@@ -588,7 +588,7 @@ autonomy theater.
 
 # Implementation status — MVP-3B: canonical routing, gating, and honesty (2026-08-06)
 
-**MVP-3B is implemented.** MVP-3C/3D/3E remain open; MVP-3 is NOT complete.
+**MVP-3B is implemented.** MVP-3C/3D are accepted; MVP-3E is documented below.
 
 **Canonical routing contract (as shipped):**
 - Route A (specification): real Figma source (validated availability) →
@@ -680,3 +680,52 @@ documentation were modified. This file is the only change.
 Investigation was performed by four parallel read-only audits plus
 direct CLI verification (`workers`, `settings`, gating probe) against
 the built package.
+## 19. MVP-3E — reachable, bounded beta visual-correction journey (2026-08-07)
+
+MVP-3E connects the existing experimental correction workflow to the canonical
+Design Engineer journey without moving deterministic authority into the
+specialist agent.
+
+The typed eligibility projection is derived from recorded execution state,
+exact artifact versions, project validation, visual evidence, report status,
+staleness, approval state, workflow registration, parent/child state, and the
+hard iteration bound. It returns `eligible`, `not_needed`, `unavailable`,
+`inconclusive`, `blocked`, `already_active`, `completed`, or
+`iteration_limit_reached` with product-facing reasons.
+
+The host builds the existing strict correction input from persisted project,
+implementation, design-system, visual-evidence, and visual-report artifacts.
+It computes trusted project/object fingerprints and deterministic finding
+selection. Users provide no hashes, artifact references, execution ids,
+workflow ids, node ids, agent ids, or internal JSON. Direct internal workflow
+input remains available for existing tests.
+
+Visual correction is **Visual correction (Beta)**, off by default. The
+interactive shell offers it only after actionable findings and defaults to No;
+declining changes no files and creates no correction iteration.
+`--visual-correction=once` is the non-interactive product option. One opt-in
+authorizes one iteration (`maxIterations: 1`); no automatic mode exists, and
+the workflow hard maximum remains authoritative for internal resumptions.
+
+Every iteration retains proposal validation, exact hash-bound approval,
+snapshot, atomic apply, project validation, rollback, evidence recapture,
+deterministic comparison, and fresh visual interpretation. The specialist
+cannot write, execute, approve, validate, roll back, fingerprint, or change
+the bound.
+
+The existing persisted parent store records child ids, iteration number,
+approval outcome, artifacts, and stop reason. `designflow artifacts <run-id>`
+and `designflow traces <run-id>` expose the continuation milestone without
+dumping child internals. Resume and cancellation preserve completed artifacts,
+reuse proposal bindings, and stop further iterations safely. No historical
+trace or artifact schema was redesigned for strategy-mode provenance.
+
+Focused eligibility tests cover specification-only, cancelled,
+pending-approval, missing-artifact, and canonical-bound cases. Existing
+approval, staleness, snapshot/apply/rollback, visual-validation, lineage,
+EPIPE, SIGINT, installed-smoke, and freshness suites remain regression gates.
+
+**MVP-3 flagship productization: COMPLETE**
+
+Live-provider, real-Figma, real-browser, and real-project apply/rollback
+evidence remain MVP-4 gates.

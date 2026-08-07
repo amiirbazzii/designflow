@@ -32,6 +32,21 @@ export async function tracesCommand(
   const workers = context.workers.listWorkers();
 
   if (options?.traceId !== undefined) {
+    const continuation = await findContinuationParent(context, options.traceId);
+    if (continuation !== null) {
+      terminal.print(heading("Visual correction (Beta)"));
+      terminal.print(`Continuation for run: ${options.traceId}`);
+      terminal.print(`Iterations: ${continuation.iterations.length} of at most ${continuation.maxIterations}`);
+      if (continuation.iterations.length === 0) {
+        terminal.print("Status: no correction iteration started");
+      } else {
+        for (const iteration of continuation.iterations) {
+          terminal.print(`Iteration ${iteration.iterationNumber}: ${iteration.status.replace(/_/g, " ")}`);
+        }
+      }
+      if (continuation.stopReason !== undefined) terminal.print(`Stop reason: ${continuation.stopReason}`);
+      return 0;
+    }
     const trace = await context.traces.getTrace(options.traceId);
 
     if (trace === null) {
@@ -67,6 +82,16 @@ export async function tracesCommand(
 
   terminal.print();
   return 0;
+}
+
+async function findContinuationParent(
+  context: CliContext,
+  executionId: string,
+): Promise<Awaited<ReturnType<CliContext["feedbackLoopParents"]["get"]>>> {
+  const direct = await context.feedbackLoopParents.get(executionId);
+  if (direct !== null) return direct;
+  const parents = await context.feedbackLoopParents.list();
+  return parents.find((candidate) => candidate.input["executionId"] === executionId) ?? null;
 }
 
 /**

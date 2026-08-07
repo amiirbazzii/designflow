@@ -195,3 +195,21 @@ ones in this refactor:
 
 No persisted artifact schema, CLI command name, approval gate, security check,
 provenance rule, or package version is changed by this reorganization.
+
+## Visual correction (Beta)
+
+The canonical Design Engineer journey may offer a bounded visual-correction
+continuation after a valid visual-validation result with actionable findings.
+The host owns eligibility, artifact selection, fingerprints, approval binding,
+snapshot/apply/validate/rollback, visual recapture, comparison, lineage, and
+iteration limits. The Visual Correction Specialist only interprets findings
+and prepares a typed proposal.
+
+The continuation is off by default. One explicit beta opt-in authorizes at most
+one correction iteration, and every exact proposal requires a separate,
+hash-bound approval. Internal workflow ids, correction JSON, artifact ids, and
+trusted hashes are not user-facing. Pending or completed child executions are
+visible through the parent artifact and trace inspection commands.
+
+Live-provider, real-Figma, real-browser, and real-project apply/rollback
+evidence remain MVP-4 gates.

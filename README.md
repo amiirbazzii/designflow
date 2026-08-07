@@ -182,7 +182,8 @@ which model profile each uses, and which fields you have overridden locally.
 
 **What is supported today.** A design specification, and implementation
 proposal and apply, are supported and consent- and approval-gated. Visual
-correction is beta and not yet reachable from `designflow run`. The legacy
+correction is a bounded beta continuation from eligible Design Engineer runs,
+off by default and one iteration per explicit opt-in. The legacy
 scaffold workflow is kept for compatibility with older runs and is no longer
 the product path. "Supported" here means implemented and covered by this
 repository's tests — it has not yet been verified against a real Figma

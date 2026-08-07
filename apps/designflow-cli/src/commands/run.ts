@@ -42,7 +42,12 @@ export async function runCommand(
   context: CliContext,
   terminal: Terminal,
   name: string,
-  options?: { readonly projectId?: string; readonly interactive?: boolean; readonly noCache?: boolean },
+  options?: {
+    readonly projectId?: string;
+    readonly interactive?: boolean;
+    readonly noCache?: boolean;
+    readonly visualCorrection?: "off" | "once";
+  },
 ): Promise<number> {
   const resolved = context.resolve(name);
 
@@ -183,7 +188,12 @@ export async function runCommand(
   const result = await clarify(context, terminal, worker.name, started);
   if (result === null) return 1;
 
-  return finishSession(context, terminal, result, options?.interactive ?? false);
+  return finishSession(context, terminal, result, {
+    interactive: options?.interactive ?? false,
+    ...(options?.visualCorrection !== undefined
+      ? { visualCorrection: options.visualCorrection }
+      : {}),
+  });
 }
 
 // ── Input ────────────────────────────────────────────────────────

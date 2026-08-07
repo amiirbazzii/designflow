@@ -51,6 +51,7 @@ It then continues straight into the application. Later runs skip the welcome.
 designflow                        # interactive
 designflow list                   # available AI workers
 designflow run design-engineer    # put a worker to work
+designflow run design-engineer --visual-correction=once  # one beta iteration
 designflow history                # previous runs
 designflow artifacts <run-id>     # what a run produced or reused
 designflow settings               # where things are kept
@@ -85,7 +86,7 @@ printf 'homepage.fig\nreact\nbrand/Header, brand/Footer\napprove\n' \
   | designflow run design-engineer
 ```
 
-Blank answers take the placeholder, so you can press through the form.
+Blank answers stay absent, so the coordinator can ask for missing information.
 
 ## Quick start: working from a Figma design
 
@@ -197,15 +198,26 @@ ignored.
 | --- | --- |
 | Design specification from a connected Figma design | supported |
 | Implementation proposal and apply | supported, always consent- and approval-gated |
-| Visual correction | beta — not yet connected to `run` |
+| Visual correction (Beta) | off by default; offered only after actionable findings |
 | Legacy scaffold workflow | compatibility only |
 
 Known limitations of this milestone: "supported" means implemented and
 covered by this repository's tests, not verified against a real Figma
 workspace and a live model provider — that verification is the next
 milestone's work. Visual validation needs the optional Playwright package
-*and* an installed Chromium; `doctor` distinguishes those two. Visual
-correction cannot be reached from `designflow run` yet.
+*and* an installed Chromium; `doctor` distinguishes those two.
+
+Visual correction is a bounded beta continuation. It is offered only when the
+completed implementation run has a valid applied baseline, visual evidence,
+and actionable findings. It is off by default; `--visual-correction=once` or
+one explicit interactive confirmation authorizes one iteration. The host
+computes artifact references and hashes. Each exact correction proposal needs
+its own approval, and a correction may stop as unavailable, inconclusive,
+rejected, cancelled, stale, or rolled back. The internal correction JSON is
+not a user input.
+
+Live-provider, real-Figma, real-browser, and real-project apply/rollback proof
+remain MVP-4 gates.
 
 ## Configuration
 

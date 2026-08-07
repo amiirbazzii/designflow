@@ -532,7 +532,7 @@ function parentArtifact(artifactId: string, artifactHash: string) {
   return { artifactId, artifactHash, version: "1" };
 }
 
-async function createOrLoadParent(
+export async function createOrLoadParent(
   context: CliContext,
   input: FeedbackInput,
 ): Promise<FeedbackLoopParentRecordV1> {
@@ -912,21 +912,25 @@ export async function feedbackLoopCommand(
   );
 }
 
-async function runParentLoop(
+export async function runParentLoop(
   context: CliContext,
   terminal: Terminal,
   initialParent: FeedbackLoopParentRecordV1,
 ): Promise<number> {
   let parent = initialParent;
   let current = parseFeedbackLoopInput(parent.input);
-  terminal.print("Visual correction");
+  terminal.print("Visual correction (Beta)");
   terminal.print("──────────────────────────────────────────────");
   while (true) {
     // Root cancellation: an interrupted loop starts no further iteration.
     // The parent record already persists the state the active child reached
     // (the runner recorded the child as cancelled), so the loop simply stops
     // here and the existing resume path picks up from durable state later.
-    if (context.signal?.aborted === true) {
+    if (isRootCancellationRequested(context)) {
+      if (parent.finalReport === undefined) {
+        parent = await finalizeParent(context, parent, "stopped", "aborted");
+        printCorrectionSummary(terminal, parent);
+      }
       terminal.print("Correction loop interrupted — no further iteration will start.");
       terminal.print(`Parent run: ${parent.parentExecutionId}`);
       return 1;
@@ -949,6 +953,7 @@ async function runParentLoop(
         parent.finalStatus,
         parent.stopReason ?? "aborted",
       );
+      printCorrectionSummary(terminal, parent);
       return parent.finalStatus === "pass" ||
         parent.finalStatus === "pass_with_findings"
         ? 0
@@ -963,7 +968,8 @@ async function runParentLoop(
       parent.state !== "evaluating_iteration" &&
       observed.project.contextFingerprint !== parent.currentProjectFingerprint
     ) {
-      await finalizeParent(context, parent, "stopped", "stale_state");
+      parent = await finalizeParent(context, parent, "stopped", "stale_state");
+      printCorrectionSummary(terminal, parent);
       terminal.print("Feedback loop stopped.");
       terminal.print("Status: stale_state");
       terminal.print("No further files were changed.");
@@ -1008,6 +1014,7 @@ async function runParentLoop(
       );
       if (!answer.trim().toLowerCase().startsWith("y")) {
         parent = await finalizeParent(context, parent, "stopped", "aborted");
+        printCorrectionSummary(terminal, parent);
         terminal.print("Feedback loop stopped.");
         terminal.print("Status: aborted");
         terminal.print("No further files were changed.");
@@ -1154,6 +1161,12 @@ async function runParentLoop(
         sideEffects: appendCompletedSideEffects(parent, current, iteration),
       });
       parent = await finalizeParent(context, parent, "stopped", "rejected");
+      printCorrectionSummary(terminal, parent);
+      return 1;
+    }
+    if (isRootCancellationRequested(context)) {
+      parent = await finalizeParent(context, parent, "stopped", "aborted");
+      printCorrectionSummary(terminal, parent);
       return 1;
     }
     const payload = result.reportPayload;
@@ -1164,6 +1177,7 @@ async function runParentLoop(
         "stopped",
         "visual_validation_inconclusive",
       );
+      printCorrectionSummary(terminal, parent);
       return 1;
     }
     const iteration = await buildParentIteration(
@@ -1243,8 +1257,63 @@ async function runParentLoop(
       finalStatus,
       typeof payload.stopReason === "string" ? payload.stopReason : "aborted",
     );
+    printCorrectionSummary(terminal, parent);
     return finalStatus === "pass" || finalStatus === "pass_with_findings"
       ? 0
       : 1;
+  }
+}
+
+function isRootCancellationRequested(context: CliContext): boolean {
+  return context.signal?.aborted === true;
+}
+
+function printCorrectionSummary(
+  terminal: Terminal,
+  parent: FeedbackLoopParentRecordV1,
+): void {
+  const iteration = parent.iterations.at(-1);
+  terminal.print();
+  terminal.print(
+    parent.finalStatus === "pass" || parent.finalStatus === "pass_with_findings"
+      ? "Visual correction beta"
+      : "Visual correction stopped",
+  );
+  if (iteration === undefined) {
+    terminal.print("No correction iteration was started.");
+    return;
+  }
+  terminal.print(`Iteration ${iteration.iterationNumber}`);
+  terminal.print(
+    `  Proposal: ${iteration.status === "rejected" ? "rejected" : iteration.approvalIds.length > 0 ? "approved" : "not completed"}`,
+  );
+  terminal.print(
+    `  Project changes: ${iteration.applicationArtifactIds.length > 0 ? "applied" : "No"}`,
+  );
+  terminal.print(
+    `  Validation: ${iteration.validationArtifactIds.length > 0 ? "completed" : "not completed"}`,
+  );
+  if (iteration.rollbackArtifactIds.length > 0)
+    terminal.print("  Project changes: rolled back");
+  terminal.print(`  Visual result: ${visualResultFor(iteration, parent)}`);
+  if (parent.stopReason !== undefined)
+    terminal.print(`  Stop reason: ${parent.stopReason.replace(/_/g, " ")}`);
+  terminal.print("Another correction iteration was not started.");
+  terminal.print(`Inspect: designflow artifacts ${iteration.childExecutionId}`);
+}
+
+function visualResultFor(
+  iteration: FeedbackLoopParentRecordV1["iterations"][number],
+  parent: FeedbackLoopParentRecordV1,
+): string {
+  switch (parent.stopReason) {
+    case "passed": return "passed";
+    case "regression_detected": return "regressed";
+    case "no_improvement": return "unchanged";
+    case "project_validation_failed": return "inconclusive";
+    case "visual_validation_inconclusive": return "inconclusive";
+    case "renderer_unavailable": return "unavailable";
+    default:
+      return iteration.resolvedFindings.length > 0 ? "improved" : "unchanged";
   }
 }

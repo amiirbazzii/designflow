@@ -112,6 +112,10 @@ import {
   designToCodeFeedbackLoopWorkflowPackage,
   designToCodeFeedbackLoopApprovalPolicy,
   feedbackLoopWorkflowInputSchema,
+  implementationWorkflowInputSchema,
+  selectActionableFindings,
+  type FeedbackLoopWorkflowInput,
+  type ImplementationWorkflowInput,
   inspectRegisteredProject,
 } from "@designflow/workflow-design-to-code";
 import {
@@ -139,7 +143,13 @@ export function parseFeedbackLoopInput(input: unknown) {
   return feedbackLoopWorkflowInputSchema.parse(input);
 }
 
-export { inspectRegisteredProject };
+export {
+  feedbackLoopWorkflowInputSchema,
+  implementationWorkflowInputSchema,
+  inspectRegisteredProject,
+  selectActionableFindings,
+};
+export type { FeedbackLoopWorkflowInput, ImplementationWorkflowInput };
 import {
   readExperimentalFigmaMcpEnabled,
   readExperimentalImplementationEnabled,

@@ -45,7 +45,7 @@ export async function artifactsCommand(
     return 1;
   }
 
-  const parent = await context.feedbackLoopParents.get(executionId);
+  const parent = await findParent(context, executionId);
   const artifacts = await resolveArtifacts(context, executionId);
 
   if (artifacts === null && parent === null) {
@@ -101,6 +101,19 @@ export async function artifactsCommand(
   if (related.length > 0) renderRelated(terminal, related);
 
   return 0;
+}
+
+async function findParent(
+  context: CliContext,
+  executionId: string,
+): Promise<Awaited<ReturnType<CliContext["feedbackLoopParents"]["get"]>>> {
+  const direct = await context.feedbackLoopParents.get(executionId);
+  if (direct !== null) return direct;
+  const parents = await context.feedbackLoopParents.list();
+  return parents.find((candidate) => {
+    const input = candidate.input["executionId"];
+    return input === executionId;
+  }) ?? null;
 }
 
 /** Resolves a run's artifacts, or `null` when there is no such run. */
