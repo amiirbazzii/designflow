@@ -325,7 +325,17 @@ export function projectParentId(executionId: string): string {
 export function readImplementationInput(
   value: unknown,
 ): ImplementationWorkflowInput | undefined {
-  const parsed = implementationWorkflowInputSchema.safeParse(value);
+  // The session's original input is a superset of the workflow input (it also
+  // carries CLI-journey fields such as the free-text request and the journey
+  // consent marker). The workflow schema is strict, so parse only its own
+  // keys — otherwise an implementation run with correction authorized would
+  // silently fail this read and the correction offer would never happen.
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const known = new Set(Object.keys(implementationWorkflowInputSchema.shape));
+  const candidate = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([key]) => known.has(key)),
+  );
+  const parsed = implementationWorkflowInputSchema.safeParse(candidate);
   return parsed.success ? parsed.data : undefined;
 }
 

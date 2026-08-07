@@ -117,3 +117,19 @@ the implemented state is preserved for later correction acceptance.
 **Journey 4 is `PASS`; the run is `CORRECTION_ELIGIBLE`.** See
 `implementation-run.md` and `visual-run.md`. Journeys 5–9 remain
 unexercised; no correction run was started.
+
+Journey 6 (bounded visual correction) could not be truthfully passed. Two
+product defects surfaced: `--visual-correction=once` silently no-oped
+because the correction-offer path strict-parsed a superset session input
+(fixed, full regression green, fresh package installed), and the pinned
+`openai/gpt-4o-mini` Implementation Specialist repeatedly produced
+operation-invalid proposals against the now non-empty fixture (phantom
+modify targets, creates colliding with existing files) — every one
+deterministically blocked before approval with zero writes, across five
+live attempts. One attempt produced a valid proposal and applied three
+more (still unmounted) components, but its correction offer hit the
+then-unfixed no-op bug. The correction iteration itself — child lineage,
+Visual Correction Specialist, correction approval/snapshot/apply — was
+therefore never exercised. **Journey 6 is `FAIL` (safety held; objective
+unmet).** See `correction-run.md` for the defect analysis and the
+recommended path to a rerun.

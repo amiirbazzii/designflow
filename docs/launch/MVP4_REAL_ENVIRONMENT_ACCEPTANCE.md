@@ -639,3 +639,45 @@ label; sparse specialist trace rows — the implementation/visual
 specialist rows again omit Role/Run-id display fields). New measurement
 debt recorded: with mismatched dimensions the pixel diff is skipped, so
 deterministic metrics alone would not catch content-level divergence.
+
+## 20. MVP-4 Journey 6 — bounded live visual correction
+
+**Result: `FAIL` — correction loop unreachable; all safety gates held.**
+
+Two product defects were exposed and analyzed (full detail in
+`evidence/mvp4/correction-run.md`):
+
+1. **Correction offer silently no-oped.** `readImplementationInput`
+   strict-parsed the session's superset input, so
+   `--visual-correction=once` returned before the offer even after a
+   completed implementation with a failing visual verdict (run
+   `74d74e75-…`). Fixed in
+   `apps/designflow-cli/src/services/visual-correction.ts` (filter to the
+   workflow schema's own keys). Full forced regression after the fix:
+   build 26/26, typecheck 44/44, lint 26/26, tests 52/52 tasks (2,434
+   pass, 1 skip, 0 fail), smoke PASS, freshness PASS; fresh package
+   `ed1209d7…` installed.
+2. **Implementation Specialist proposal validity on non-empty projects.**
+   Across five live attempts, the pinned `openai/gpt-4o-mini` specialist
+   produced four operation-invalid proposals (a phantom
+   `modify Button.jsx`, and three `create TextField.js` collisions with
+   existing files) — every one deterministically blocked BEFORE the
+   approval prompt by the MVP-4D gate with zero project writes and
+   accurate typed diagnostics. A strengthened agent instruction did not
+   change the behavior; model profiles were out of scope. Retries were
+   stopped rather than mined for a convenient pass.
+
+Positive acceptance evidence retained: explicit-only authorization
+(default-off proven by Journey 4's flag-less run), host-derived
+correction eligibility from persisted state, five live demonstrations of
+the pre-approval validation gate, byte-identical fixture fingerprints
+after every blocked attempt, clean process/no-leak checks. The correction
+child, Visual Correction Specialist, correction approval/snapshot/apply,
+and one-iteration runtime bound remain unexercised. The fixture retains
+the Journey 4 files plus one additional approved set of three `.jsx`
+components (final fingerprint `e6b053b2…`; build/test green); the Journey
+4 major finding stands and the run remains correction-eligible.
+
+Journey 6 must be rerun after the proposal-validity defect is addressed
+(stronger implementation profile, a bounded regenerate-on-invalid loop,
+or an explicitly contracted host-side create→modify reconciliation).

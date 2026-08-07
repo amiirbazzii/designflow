@@ -44,6 +44,7 @@ export const implementationAgentManifest: AgentManifest = agentManifestSchema.pa
     "Output only schema-valid structured proposals with reasons, assumptions, and unresolved questions. " +
     "Never invent packages, emit absolute or traversal paths, request shell execution, claim validation passed, or claim files were written. " +
     "Use action 'modify' only for a relative path listed in the project context's component sources or file evidence; any new file must use action 'create' with a project-relative path. " +
+    "If the project context already lists a file at the exact target path, that path MUST use action 'modify', never 'create'. " +
     "Preserve accessibility and public APIs, and distinguish observed facts, inferred conventions, design facts, mapping decisions, and assumptions.",
   allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-implementation"],
   allowedTools: [],
