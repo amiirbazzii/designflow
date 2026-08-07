@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { designSpecificationSchema, generatedImplementationSchema, type Capability, implementationPlanV1Schema, proposedFileChangesSchema } from "@designflow/sdk";
+import { DesignFlowError, designSpecificationSchema, generatedImplementationSchema, type Capability, implementationPlanV1Schema, proposedFileChangesSchema } from "@designflow/sdk";
 import { inspectRegisteredProject, mapDesignSystem, projectFileHash, validateProposedFileChanges } from "@designflow/capability-implementation";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readArtifact, writeArtifact } from "./artifact-io";
 import { capabilityOutputSchema, type CapabilityOutput } from "./types";
@@ -9,7 +10,101 @@ function requireAgents(context: import("@designflow/sdk").CapabilityContext): No
 
 export const inspectRegisteredProjectCapability: Capability<unknown, CapabilityOutput> = { id: "inspect-registered-project", name: "Inspect registered project", description: "Builds a bounded implementation context from a registered project", type: "pure", version: "1", inputSchema: implementationWorkflowInputSchema, outputSchema: capabilityOutputSchema, async execute(context, input) { const requested = implementationWorkflowInputSchema.parse(input); const value = inspectRegisteredProject(requested.project, undefined, context.signal); return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.projectContext, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.projectContext, name: "Project Implementation Context", payload: value, summary: { projectId: value.project.id, fingerprint: value.project.contextFingerprint, warningCount: value.warnings.length } }); } };
 export const mapDesignSystemCapability: Capability<unknown, CapabilityOutput> = { id: "map-design-system", name: "Map design system", description: "Maps design tokens and components to bounded project facts", type: "pure", version: "1", inputSchema: z.unknown(), outputSchema: capabilityOutputSchema, async execute(context) { const spec = await readArtifact(context, "design-specification", designSpecificationSchema); const project = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.projectContext, projectImplementationContextV1Schema); const value = mapDesignSystem(spec, project); return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.mapping, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.mapping, name: "Design System Mapping", payload: value, summary: { unresolved: value.unresolved.length } }); } };
-export const invokeImplementationAgentStage4Capability: Capability<unknown, CapabilityOutput> = { id: "invoke-implementation-agent", name: "Invoke Implementation Agent", description: "Produces a schema-validated implementation output from bounded context", type: "pure", version: "1", inputSchema: z.object({ agentVersion: z.string().min(1), modelProfileId: z.string().min(1) }).strict(), outputSchema: capabilityOutputSchema, async execute(context, input) { const requested = z.object({ agentVersion: z.string().min(1), modelProfileId: z.string().min(1) }).parse(input); const spec = await readArtifact(context, "design-specification", designSpecificationSchema); const project = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.projectContext, projectImplementationContextV1Schema); const mapping = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.mapping, designSystemMappingSchema); const outcome = await requireAgents(context).invoke({ agentId: "implementation-agent", objective: "Produce a structured implementation proposal for the registered project", input: { designSpecification: spec, projectContext: project, designSystemMapping: mapping }, attempt: 1 }, context.signal); if (outcome.type === "failure") throw new Error(`Implementation Agent failed: ${outcome.code}`); const value = generatedImplementationSchema.parse(outcome.output); return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.agentOutput, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.agentOutput, name: "Implementation Agent output", payload: value, summary: { agentVersion: requested.agentVersion, modelProfileId: requested.modelProfileId, fileCount: value.files.length } }); } };
+/**
+ * Bounded proposal regeneration: one implementation/correction iteration may
+ * consume at most this many model proposal attempts (the initial proposal
+ * plus up to two regenerations). Regeneration never increments any iteration
+ * counter and never reaches an approval prompt — only a proposal that passes
+ * deterministic validation continues.
+ */
+export const MAX_CORRECTION_PROPOSAL_ATTEMPTS = 3;
+
+/**
+ * Deterministic validation failures that are safe to repair by regenerating
+ * the proposal: all are shape/path facts about the model's own output.
+ * Anything else (inaccessible root, staleness, provider failure,
+ * cancellation) terminates honestly without a retry.
+ */
+export const REPAIRABLE_PROPOSAL_ERROR_CODES: ReadonlySet<string> = new Set([
+  "ERR_PROPOSAL_TARGET_MISSING",
+  "ERR_PROPOSAL_TARGET_EXISTS",
+  "ERR_DUPLICATE_PROPOSAL_ACTION",
+  "ERR_UNSAFE_PATH",
+  "ERR_PATH_TRAVERSAL",
+  "ERR_UNSUPPORTED_FILE_TYPE",
+  "ERR_PROPOSAL_INVALID",
+  "ERR_PROPOSAL_TOO_LARGE",
+]);
+
+interface ProposalAttemptFailure { readonly attempt: number; readonly code: string; readonly path?: string; readonly operation?: string; }
+
+/** Typed, fact-only feedback for a regeneration attempt — never a rewritten operation. */
+function buildProposalRepairFeedback(options: {
+  readonly attempt: number;
+  readonly failures: readonly ProposalAttemptFailure[];
+  readonly project: {
+    readonly designSystem: { readonly componentSources: readonly { readonly path: string }[]; readonly tokenSources: readonly { readonly path: string }[] };
+    readonly structure: { readonly sourceRoots: readonly string[] };
+  };
+  readonly root: string;
+}): Record<string, unknown> {
+  return {
+    attempt: options.attempt,
+    maxAttempts: MAX_CORRECTION_PROPOSAL_ATTEMPTS,
+    validationErrors: options.failures.map((failure) => ({
+      code: failure.code,
+      ...(failure.operation !== undefined ? { operation: failure.operation } : {}),
+      ...(failure.path !== undefined
+        ? {
+            path: failure.path,
+            fact: existsSync(join(options.root, failure.path))
+              ? "target already exists as a regular file"
+              : "target does not exist",
+          }
+        : {}),
+    })),
+    relevantProjectFacts: {
+      existingComponentSourcePaths: options.project.designSystem.componentSources.map((source) => source.path),
+      existingTokenSourcePaths: options.project.designSystem.tokenSources.map((source) => source.path),
+      sourceRoots: options.project.structure.sourceRoots,
+      rule: "use action 'modify' only for a path that exists; use action 'create' only for a vacant relative path",
+    },
+  };
+}
+
+export const invokeImplementationAgentStage4Capability: Capability<unknown, CapabilityOutput> = { id: "invoke-implementation-agent", name: "Invoke Implementation Agent", description: "Produces a schema-validated implementation output from bounded context", type: "pure", version: "1", inputSchema: implementationWorkflowInputSchema, outputSchema: capabilityOutputSchema, async execute(context, input) { const requested = implementationWorkflowInputSchema.parse(input); const spec = await readArtifact(context, "design-specification", designSpecificationSchema); const project = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.projectContext, projectImplementationContextV1Schema); const mapping = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.mapping, designSystemMappingSchema); const root = requested.project.rootPath;
+    const failures: ProposalAttemptFailure[] = [];
+    let repairFeedback: Record<string, unknown> | undefined;
+    for (let attempt = 1; attempt <= MAX_CORRECTION_PROPOSAL_ATTEMPTS; attempt += 1) {
+      if (context.signal?.aborted === true) throw new DesignFlowError("ERR_PROPOSAL_ATTEMPT_CANCELLED", "Proposal generation was cancelled; no further attempt will start.", { attempt });
+      const outcome = await requireAgents(context).invoke({ agentId: "implementation-agent", objective: "Produce a structured implementation proposal for the registered project", input: { designSpecification: spec, projectContext: project, designSystemMapping: mapping, ...(repairFeedback !== undefined ? { proposalRepairFeedback: repairFeedback } : {}) }, attempt }, context.signal);
+      if (outcome.type === "failure") throw new Error(`Implementation Agent failed: ${outcome.code}`);
+      const value = generatedImplementationSchema.parse(outcome.output);
+      // Deterministic pre-validation of the exact proposal this output would
+      // become — the same rules the proposal step enforces — so an invalid
+      // shape triggers bounded regeneration instead of terminating the run.
+      try {
+        validateProposedFileChanges(proposedFileChangesSchema.parse({ schemaVersion: "1", projectId: project.project.id, baseProjectFingerprint: project.project.contextFingerprint, files: value.files.map((file) => { const baseHash = file.action === "modify" ? projectFileHash(join(root, file.path)) : undefined; return { path: file.path, action: file.action, content: file.content, ...(baseHash !== undefined ? { expectedBaseHash: baseHash } : {}), reason: file.reason, relatedDesignNodeIds: [] }; }), packageChanges: [], commandsRequested: [], assumptions: value.assumptions, unresolvedItems: value.unresolvedItems }), root);
+      } catch (error) {
+        const code = error instanceof DesignFlowError ? error.code : "ERR_PROPOSAL_INVALID";
+        const failedPath = error instanceof DesignFlowError && typeof (error.metadata as Record<string, unknown> | undefined)?.path === "string" ? String((error.metadata as Record<string, unknown>).path) : /:\s*(\S+)$/.exec(error instanceof Error ? error.message : "")?.[1];
+        failures.push({ attempt, code, ...(failedPath !== undefined ? { path: failedPath } : {}) });
+        if (!REPAIRABLE_PROPOSAL_ERROR_CODES.has(code) || attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS) {
+          throw new DesignFlowError(
+            attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS && REPAIRABLE_PROPOSAL_ERROR_CODES.has(code) ? "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" : code,
+            attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS && REPAIRABLE_PROPOSAL_ERROR_CODES.has(code)
+              ? `The proposal remained invalid after ${MAX_CORRECTION_PROPOSAL_ATTEMPTS} bounded attempts; no approval was requested and no files were changed.`
+              : (error instanceof Error ? error.message : String(error)),
+            { attempts: attempt, attemptsExhausted: attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS, failures: failures.map((f) => ({ attempt: f.attempt, code: f.code, ...(f.path !== undefined ? { path: f.path } : {}) })) },
+          );
+        }
+        repairFeedback = buildProposalRepairFeedback({ attempt, failures, project, root });
+        continue;
+      }
+      return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.agentOutput, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.agentOutput, name: "Implementation Agent output", payload: value, summary: { agentVersion: requested.implementationAgentVersion, modelProfileId: requested.implementationAgentModelProfileId, fileCount: value.files.length, proposalAttempts: attempt, ...(failures.length > 0 ? { failedAttempts: failures.map((f) => ({ attempt: f.attempt, code: f.code, ...(f.path !== undefined ? { path: f.path } : {}) })) } : {}) } });
+    }
+    throw new DesignFlowError("ERR_PROPOSAL_ATTEMPTS_EXHAUSTED", "Proposal attempts exhausted.", { attempts: MAX_CORRECTION_PROPOSAL_ATTEMPTS });
+  } };
 export const createImplementationPlanCapability: Capability<unknown, CapabilityOutput> = { id: "store-implementation-plan", name: "Store implementation plan", description: "Creates a structured implementation plan from specification, mapping, and agent output", type: "pure", version: "1", inputSchema: z.object({ agentVersion: z.string().min(1), modelProfileId: z.string().min(1) }).strict(), outputSchema: capabilityOutputSchema, async execute(context, input) { const requested = z.object({ agentVersion: z.string().min(1), modelProfileId: z.string().min(1) }).parse(input); const spec = await readArtifact(context, "design-specification", designSpecificationSchema); const mapping = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.mapping, designSystemMappingSchema); const project = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.projectContext, projectImplementationContextV1Schema); const agentOutput = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.agentOutput, generatedImplementationSchema); const plan = implementationPlanV1Schema.parse({ schemaVersion: "1", objective: `Implement ${spec.frames.join(", ") || "the selected design"} in the registered project.`, selectedNodeIds: spec.hierarchy.map((node) => node.id), targetRoute: project.structure.routeRoots[0], reuseComponents: mapping.componentMappings.filter((m) => m.action === "reuse").map((m) => m.projectComponentReference!), extendComponents: mapping.componentMappings.filter((m) => m.action === "extend").map((m) => m.projectComponentReference!), createComponents: agentOutput.files.filter((file) => file.action === "create").map((file) => file.path), reuseTokens: mapping.tokenMappings.filter((m) => m.action === "reuse").map((m) => m.projectTokenReference!), addTokens: mapping.tokenMappings.filter((m) => m.action === "create").map((m) => m.designTokenId), assets: spec.assets.map((a) => a.id), statePlan: spec.states, responsivePlan: spec.responsiveAssumptions, accessibilityPlan: spec.accessibilityNotes, proposedFileActions: agentOutput.files.map((file) => ({ path: file.path, action: file.action })), dependencyChanges: [], validationPlan: Object.keys(project.commands), assumptions: [...spec.ambiguities.map((a) => a.description), ...agentOutput.assumptions], unresolvedQuestions: [...mapping.unresolved.map((u) => u.description), ...agentOutput.unresolvedItems], agent: { id: "implementation-agent", version: requested.agentVersion, modelProfileId: requested.modelProfileId, schemaVersion: "1" } }); return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.plan, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.plan, name: "Implementation Plan", payload: plan, summary: { componentCount: plan.createComponents.length + plan.reuseComponents.length } }); } };
 export const createProposalCapability: Capability<unknown, CapabilityOutput> = { id: "store-proposed-file-changes", name: "Store proposed file changes", description: "Stores bounded, reviewable file proposals without writing files", type: "pure", version: "1", inputSchema: implementationWorkflowInputSchema, outputSchema: capabilityOutputSchema, async execute(context, input) { const requested = implementationWorkflowInputSchema.parse(input); const project = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.projectContext, projectImplementationContextV1Schema); const plan = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.plan, implementationPlanV1Schema); const agentOutput = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.agentOutput, generatedImplementationSchema); const outputByPath = new Map(agentOutput.files.map((file) => [file.path, file])); const root = requested.project.rootPath; if (root === undefined) throw new Error("A registered project root is required to validate the proposal."); const proposal = proposedFileChangesSchema.parse({ schemaVersion: "1", projectId: project.project.id, baseProjectFingerprint: project.project.contextFingerprint, files: plan.proposedFileActions.map((action) => { const file = outputByPath.get(action.path); const baseHash = action.action === "modify" ? projectFileHash(join(root, action.path)) : undefined; return { path: action.path, action: action.action, content: file?.content, ...(baseHash !== undefined ? { expectedBaseHash: baseHash } : {}), reason: file?.reason ?? "Implementation Agent proposal.", relatedDesignNodeIds: plan.selectedNodeIds }; }), packageChanges: [], commandsRequested: Object.values(project.commands).filter(Boolean).map((command) => ({ name: command!.name, required: command!.required })), assumptions: plan.assumptions, unresolvedItems: plan.unresolvedQuestions }); // Deterministic host validation BEFORE the approval prompt: operation
     // semantics (modify/delete target must exist, create must not), path

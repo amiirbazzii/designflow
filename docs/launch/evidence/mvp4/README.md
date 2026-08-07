@@ -133,3 +133,18 @@ Visual Correction Specialist, correction approval/snapshot/apply — was
 therefore never exercised. **Journey 6 is `FAIL` (safety held; objective
 unmet).** See `correction-run.md` for the defect analysis and the
 recommended path to a rerun.
+
+MVP-4E then implemented bounded proposal regeneration: up to 3 model
+attempts inside one iteration, deterministic MVP-4D validation after each,
+typed fact-only repair feedback between attempts (never a rewritten
+operation), a strict repairable-error allow-list, cancellation-aware, with
+typed exhaustion (`ERR_PROPOSAL_ATTEMPTS_EXHAUSTED`) and attempt
+provenance. Five new tests; full regression 2,439 pass / 1 skip / 0 fail;
+fresh package `56b25932…`. The single authorized Journey 6 rerun proved
+the mechanism live — three OpenRouter attempts with feedback demonstrably
+delivered (growing input tokens), honest exhaustion before any approval,
+zero writes — but the pinned `openai/gpt-4o-mini` profile still produced
+no valid proposal. **MVP-4E is `PASS`; Journey 6 remains
+`FAIL — CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED`.** A stronger
+implementation model profile (deferred) or a contracted host-side
+reconciliation is required before the correction loop can be exercised.

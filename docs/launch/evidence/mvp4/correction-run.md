@@ -107,3 +107,99 @@ loop (bounded, with truthful provenance), or a host-side reconciliation
 contract that is explicitly allowed to map existing-path creates to
 modifies. That is product work requiring its own regression, after which
 Journey 6 should be rerun.
+
+## MVP-4E — bounded proposal regeneration — 2026-08-07
+
+### Design implemented
+
+The proposal owner was verified from code: implementation-stage file
+operations come from the Implementation Agent
+(`invoke-implementation-agent` → `store-proposed-file-changes` →
+approval); the correction child's own proposals come from the Visual
+Correction Agent, whose `validateCorrectionAgentOutput` is already
+scope- and base-hash-bound to existing in-scope files (the invalid-
+operation class cannot arise there). Bounded regeneration was therefore
+implemented at the stage that actually blocked Journey 6.
+
+`invoke-implementation-agent` now runs up to
+`MAX_CORRECTION_PROPOSAL_ATTEMPTS = 3` model attempts inside one
+capability execution (one iteration — no iteration counter is touched,
+no new child per attempt). After each attempt the exact would-be
+proposal (with deterministically stamped base hashes) is validated with
+the MVP-4D rules. On a repairable failure — allow-list
+`ERR_PROPOSAL_TARGET_MISSING`, `ERR_PROPOSAL_TARGET_EXISTS`,
+`ERR_DUPLICATE_PROPOSAL_ACTION`, `ERR_UNSAFE_PATH`,
+`ERR_PATH_TRAVERSAL`, `ERR_UNSUPPORTED_FILE_TYPE`,
+`ERR_PROPOSAL_INVALID`, `ERR_PROPOSAL_TOO_LARGE` — a typed, fact-only
+repair feedback object (attempt, maxAttempts, validation errors with
+code/path/existence fact, current component/token source paths, the
+modify-vs-create rule) is passed to a full re-invocation of the same
+agent. The feedback never rewrites an operation. Non-allow-listed
+failures (inaccessible root, staleness, provider failure) terminate
+immediately; cancellation checks precede every attempt. Exhaustion
+throws typed `ERR_PROPOSAL_ATTEMPTS_EXHAUSTED`
+(`attempts: 3, attemptsExhausted: true` with per-attempt codes) — no
+approval prompt, no snapshot, no writes. A successful attempt records
+`proposalAttempts` and `failedAttempts` provenance on the agent-output
+artifact. Approval binding continues to use only the final valid
+proposal's hash and the current fingerprint.
+
+Files: `workflows/workflow-design-to-code/src/implementation-capabilities.ts`
+(retry loop, feedback builder, constants),
+`…/implementation-workflow.ts` (invoke node now receives the project
+input), `packages/agents/src/catalog/implementation-agent.ts`
+(`proposalRepairFeedback` plumbed into the model message; the existing
+instruction lines were reviewed and kept — they restate the contract but
+are not the safety mechanism).
+
+### Tests and regression
+
+New `proposal-regeneration.test.ts` (5 tests): invalid→valid at attempt
+2 with feedback content assertions (including no-operation-rewrite),
+invalid×2→valid at attempt 3, three-invalid exhaustion with exactly 3
+invocations and no fourth, cancellation after attempt 1 prevents attempt
+2, and non-repairable immediate termination. Full forced regression:
+build 26/26, typecheck 44/44, lint 26/26, tests 52/52 tasks — 2,439
+pass, 1 skip, 0 fail, exit 0; smoke PASS; freshness PASS. Fresh package
+shasum `56b25932b99615898c5aae775a22444f36d92ed6` installed.
+
+### Parent/fingerprint reconciliation
+
+Current fixture fingerprint `e6b053b2…` corresponds to run
+`74d74e75-…`'s applied state. No persisted feedback-loop parent exists
+for any run (parents are only created when a correction starts), and the
+only non-hand-authored surfaces are `feedback-loop resume <parent>` and
+the end-of-run offer — so the canonical rerun necessarily flows through
+a fresh `run … --visual-correction=once` whose correction attaches to
+its own completed implementation. This deviation from "attach to the
+prior parent" is a product-surface fact, recorded here.
+
+### Live rerun (exactly once)
+
+Run `6fad96d3-cf0e-4cbf-acfd-6c04911bbe69`: the Implementation Agent
+made three live OpenRouter calls on `implementation-default` (input
+tokens 1,643 → 1,771 → 1,800 — the repair feedback demonstrably reached
+attempts 2 and 3). All three proposals remained invalid, and the run
+terminated honestly BEFORE any approval prompt:
+
+> "The proposal remained invalid after 3 bounded attempts; no approval
+> was requested and no files were changed."
+
+No fourth call, no approval, no snapshot, no apply. Fixture unchanged
+(fingerprint `e6b053b2…`, build/test green), no pending approvals, no
+orphan processes, no credential leak.
+
+### Outcome
+
+**MVP-4E: `PASS`** — the bounded-regeneration contract works end to end
+(structured feedback delivery proven, hard 3-attempt bound proven live,
+honest exhaustion, zero writes).
+**Journey 6: `FAIL — CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED`.** The
+pinned `openai/gpt-4o-mini` implementation profile cannot reliably
+produce operation-valid proposals for this fixture even with
+deterministic repair feedback (6 invalid proposals across 8 lifetime
+attempts). The remaining remediation options are a stronger
+implementation model profile (explicitly deferred by task scope) or a
+host-side reconciliation contract. Correction-stage machinery (child
+lineage, Visual Correction Specialist, correction approval/snapshot/
+apply, runtime one-iteration bound) remains unexercised.

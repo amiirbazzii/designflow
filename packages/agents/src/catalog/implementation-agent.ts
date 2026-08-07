@@ -62,6 +62,12 @@ interface ImplementationInput {
   readonly designSpecification: DesignSpecification;
   readonly projectContext: ProjectImplementationContext;
   readonly designSystemMapping?: unknown;
+  /**
+   * Deterministic validation feedback from a rejected previous proposal in
+   * the same bounded attempt sequence. Facts only (codes, paths, existence)
+   * — never a rewritten operation; the agent regenerates its own proposal.
+   */
+  readonly proposalRepairFeedback?: unknown;
 }
 
 export type ImplementationStrategy = (
@@ -83,12 +89,13 @@ function readInput(request: AgentInvocationRequest): ImplementationInput {
     ]);
   }
 
-  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping };
+  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping, proposalRepairFeedback: raw?.proposalRepairFeedback };
   if (!stage4Project.success) throw new SpecializedAgentOutputInvalidError("implementation-agent", ["project context could not be normalized"]);
   const context = stage4Project.data;
   return {
     designSpecification: spec.data,
     designSystemMapping: raw?.designSystemMapping,
+    proposalRepairFeedback: raw?.proposalRepairFeedback,
     projectContext: {
       schemaVersion: context.schemaVersion,
       projectId: context.project.id,
@@ -196,7 +203,7 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
   context,
   manifest,
 ) => {
-  const { designSpecification, projectContext, designSystemMapping } = readInput(request);
+  const { designSpecification, projectContext, designSystemMapping, proposalRepairFeedback } = readInput(request);
 
   return generateValidatedModelOutput({
     agentId: "implementation-agent",
@@ -209,7 +216,10 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
           `Objective: ${request.objective}\n\n` +
           `Design specification:\n${JSON.stringify(designSpecification)}\n\n` +
           `Project context:\n${JSON.stringify(projectContext)}` +
-          `\n\nDesign-system mapping:\n${JSON.stringify(designSystemMapping ?? null)}`,
+          `\n\nDesign-system mapping:\n${JSON.stringify(designSystemMapping ?? null)}` +
+          (proposalRepairFeedback !== undefined
+            ? `\n\nYour previous proposal failed deterministic validation. Regenerate a complete corrected proposal using these facts:\n${JSON.stringify(proposalRepairFeedback)}`
+            : ""),
       },
     ],
     responseSchema: implementationResponseSchema,

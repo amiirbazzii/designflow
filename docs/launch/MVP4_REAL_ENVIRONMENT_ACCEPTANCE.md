@@ -681,3 +681,34 @@ components (final fingerprint `e6b053b2…`; build/test green); the Journey
 Journey 6 must be rerun after the proposal-validity defect is addressed
 (stronger implementation profile, a bounded regenerate-on-invalid loop,
 or an explicitly contracted host-side create→modify reconciliation).
+
+## 21. MVP-4E — bounded correction proposal regeneration
+
+**MVP-4E result: `PASS`. Journey 6 final:
+`FAIL — CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED`.**
+
+The regenerate-on-invalid loop was implemented at the verified proposal
+owner (the Implementation Agent's invoke stage — the correction child's
+own Visual Correction Agent is already scope/hash-bound and cannot emit
+this failure class): at most 3 attempts per iteration, MVP-4D validation
+after each, typed fact-only repair feedback between attempts, a strict
+repairable-code allow-list, cancellation-aware, typed
+`ERR_PROPOSAL_ATTEMPTS_EXHAUSTED` on exhaustion, attempt provenance on
+the output artifact, and approval bound only to a final valid proposal.
+Five focused tests cover invalid→valid, double-invalid→valid,
+exhaustion-with-no-fourth-call, cancellation, and non-repairable
+termination. Full forced regression: build 26/26, typecheck 44/44, lint
+26/26, tests 52/52 tasks (2,439 pass, 1 skip, 0 fail); smoke and
+freshness PASS; fresh package `56b25932…` installed.
+
+The single authorized live rerun (`6fad96d3-…`) exercised the mechanism
+end to end: three live `implementation-default` OpenRouter calls with
+repair feedback demonstrably delivered (input tokens 1,643→1,771→1,800),
+all three proposals still invalid, honest pre-approval termination with
+zero writes, fixture byte-identical (`e6b053b2…`), no pending state, no
+orphans, no leaks. The pinned `openai/gpt-4o-mini` profile is the
+remaining obstacle (6 invalid proposals across 8 lifetime attempts on
+this fixture); model-profile changes were explicitly out of scope. The
+correction-stage machinery itself remains unexercised and Journey 6
+stays failed until a stronger profile or a contracted host-side
+reconciliation is adopted.
