@@ -69,3 +69,16 @@ pass, 1 skip), a freshly packed and installed CLI reran Journey 2 live: the
 snapshot now carries 40 nodes, 7 real text nodes, 14 styled nodes, 16
 component references, and 5 variables, and the live specialist consumed the
 rich evidence. **Journey 2 is now `PASS`.** Journeys 3–9 remain unexercised.
+
+Journey 3 (live implementation proposal rejection) then ran against the
+registered `mvp4-acceptance` fixture: live coordinator selected the
+implementation route, the workflow consumed the rich Figma evidence,
+deterministic project inspection and design-system mapping ran read-only,
+the live Implementation Specialist produced a concrete 4-file proposal
+confined to the fixture's `src/components/`, the exact-approval prompt
+(hash- and fingerprint-bound, distinct from journey consent) was answered
+`reject`, and independent Git/fingerprint/build/test checks proved zero
+project mutation. **Journey 3 is `PASS`** with non-blocking quality notes
+(component inventory missed the fixture's `.jsx` components; history labels
+the rejected run `failed`). See `rejection-run.md`. Journeys 4–9 remain
+unexercised.

@@ -520,3 +520,45 @@ prompts, or raw provider responses.
 
 **Journey 2 is reclassified `PASS`.** Journey 3 remains unstarted and
 requires separate authorization.
+
+## 17. MVP-4 Journey 3 — live implementation proposal rejection
+
+**Result: `PASS`** (run `1642b74a-a0ae-48b4-9cda-c5caef5165b5`,
+commit `837fa9c6725b9d0c6817d74af29e0ae5edbee796`)
+
+Preconditions held: credential present, Figma MCP live, fresh MVP-4B/4C CLI
+resolved. The fixture was verified clean at
+`84e182895c156098bf8a046ef5cbd7eaa8075423` with passing `npm test` /
+`npm run build` before the run, and an independent content fingerprint
+(`c2ad656d…`) was recorded.
+
+The canonical command ran with explicit implementation intent against the
+registered `mvp4-acceptance` project. Journey consent ("Prepare changes for
+this project?") was answered yes — preparation only. The live coordinator
+(OpenRouter `openai/gpt-4o-mini`, `design-engineer-coordinator-default`)
+routed to the 23-step implementation workflow; the corrected rich Figma
+evidence was retrieved in-workflow; deterministic project inspection found
+react 18.3.1/npm/`src`/CSS tokens; deterministic mapping recorded honest
+token/component decisions; the live Implementation Specialist
+(`implementation-default`, OpenRouter, 1,955 tokens) produced a typed
+proposal: modify `src/components/Button.js`, create `TextField.js`,
+`ExpenseHistoryItem.js`, `NavigationMenu.js` — all inside the fixture, no
+deletes, no package changes.
+
+The exact-approval prompt was presented separately, bound via
+`implementation-approval` to proposal hash `75ba4ae1…` and project
+fingerprint `8ba11902…`. It was answered **reject**: the workflow stopped,
+artifacts remain inspectable, and the summary truthfully stated nothing was
+written. Post-rejection: HEAD, status, diff, and the independent
+fingerprint all unchanged; `npm test`/`npm run build` still pass; no apply,
+rollback, preview, or correction artifacts exist; no pending approval or
+running execution remains; no credential material in stored state.
+
+Non-blocking discrepancies recorded: project inspection missed the
+fixture's `.jsx` reusable components (so the proposal's Button "modify"
+targets a non-existent `Button.js` and reuse was limited), and history
+labels the rejected run `failed · did not finish` rather than a distinct
+rejected outcome. Neither is unsafe; both are quality follow-ups.
+
+Journey 4 was not started; no proposal was approved and no changes were
+applied. Journey 4 may begin when separately authorized.
