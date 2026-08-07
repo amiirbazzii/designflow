@@ -99,3 +99,21 @@ instruction correction a third run produced a valid creates-only proposal
 that was rejected at the exact-approval prompt. Project remained
 byte-for-byte unchanged throughout. **MVP-4D is `PASS`.** Journeys 4–9
 remain unexercised.
+
+Journey 4 then exercised the full approved-write path against the committed
+MVP-4D baseline (`e65777e1…`): live coordinator → rich Figma evidence →
+inspection/mapping → live Implementation Specialist → deterministically
+validated 4-create proposal → hash/fingerprint-bound exact approval →
+pre-write snapshot → apply (exactly the approved files) → deterministic
+project validation (build/test pass) + independent build/test pass → real
+preview + Playwright captures (3 viewports) → deterministic pixel-diff
+comparison (real-reference) → live Visual Validation Specialist → typed
+report with an honest **fail** verdict (1 major: mobile dimension
+mismatch). Manual review found the deeper actionable gap: the created
+components were never mounted in `App.jsx`, so the page still renders the
+original fixture app — DesignFlow truthfully reported fail, so there is no
+false clean pass. No orphan processes, no secrets, no unauthorized paths;
+the implemented state is preserved for later correction acceptance.
+**Journey 4 is `PASS`; the run is `CORRECTION_ELIGIBLE`.** See
+`implementation-run.md` and `visual-run.md`. Journeys 5–9 remain
+unexercised; no correction run was started.

@@ -597,3 +597,45 @@ creates-only proposal (TextField, ExpenseHistoryItem, NavigationMenu —
 all vacant fixture paths, hash/fingerprint-bound) that was rejected at the
 exact-approval prompt. Fixture HEAD, tree, independent fingerprint, and
 build/test all unchanged after every run. Journey 4 remains unstarted.
+
+## 19. MVP-4 Journey 4 — live approved application + validation + visual acceptance
+
+**Result: `PASS`** (run `fb0366d5-b6d1-49ba-9104-9b2b48897608`,
+baseline commit `e65777e159e6502a1217665872efe98d47908677`, fresh package
+shasum `945fa2c2…`)
+
+The first intentionally-authorized write journey completed end to end:
+live coordinator routed to implementation; the workflow retrieved rich
+Figma evidence and the specification specialist ran live; deterministic
+inspection saw both `.jsx` components and CSS tokens; mapping recorded
+honest decisions (Button → 0.6 manual-review); the live Implementation
+Specialist produced a 4-create proposal (`TextField.js`,
+`ExpenseHistoryItem.js`, `NavigationMenu.js`, `src/styles/tokens.css`)
+that passed the MVP-4D deterministic validation gate before the approval
+prompt. Exact approval (bound to proposal hash `f2cd8a13…` and fingerprint
+`8ba11902…`, distinct from journey consent) was granted; snapshot
+`976e9076…` was taken before mutation covering exactly the 4 paths; apply
+created exactly the approved files and nothing else; deterministic
+validation ran the project's own build/test (both passed, others
+truthfully `unavailable`); independent `npm test`/`npm run build` passed.
+The preview (`npm run preview` on 127.0.0.1:51324) served the real
+fixture; Playwright captured 3 real viewports; the deterministic
+`png-rgba-pixel-diff-v1` comparison against the real Figma reference
+(413×1024, `real-figma` authenticity) reported mobile **fail**
+(dimension mismatch 390×844) and desktop/tablet truthfully
+`inconclusive`; the live Visual Validation Specialist
+(`visual-validation-default`) confirmed and the typed report records
+status fail, 1 major finding.
+
+Manual assessment found the deeper actionable gap: the created components
+were never mounted in `App.jsx`, so the page still renders the original
+fixture app — an implementation-quality issue that DesignFlow itself
+truthfully flagged as a visual fail (no false clean pass, which is the
+blocking condition). The run is `CORRECTION_ELIGIBLE`; no correction was
+started, and the implemented state is preserved. No orphan processes, no
+secret leakage, no unauthorized paths; history shows a completed run with
+no pending approvals. Deferred UX debt unchanged (rejected-run history
+label; sparse specialist trace rows — the implementation/visual
+specialist rows again omit Role/Run-id display fields). New measurement
+debt recorded: with mismatched dimensions the pixel diff is skipped, so
+deterministic metrics alone would not catch content-level divergence.
