@@ -298,3 +298,74 @@ evidence does not carry real design facts beyond URL/node identity into the
 persisted specification, and the resulting document does not clearly
 describe the Spendly frame. The defect is isolated to the deterministic
 Figma source-parsing/normalization step. Journey 3 must not begin.
+
+## MVP-4C normalization fix and Journey 2 PASS — 2026-08-07
+
+Root cause (exact): in
+`packages/capabilities/figma-mcp/src/figma-desktop-adapter.ts` the adapter
+(1) reduced the `get_metadata` XML-like outline — which carries the full
+selected subtree with ids, names, tag types, geometry, and `hidden` flags —
+to a single `{id, name, type}` literal before normalization; (2) awaited
+`get_design_context` and discarded its result (six text blocks whose first
+is generated React+Tailwind code with per-element `data-node-id`, visible
+text, colors, radii, gaps, and font tokens); and (3) rejected the real
+`get_variable_defs` shape (one JSON object of name → value in a text block)
+as unrecognized. Fixture tests encoded the sparse behavior, so they passed.
+
+Fix (files): new `parse-desktop-metadata.ts` (outline grammar → raw nested
+tree → existing `normalizeFigmaNodeTree`), new
+`parse-desktop-design-context.ts` (closed Tailwind token forms →
+per-node-id facts; nested-element text not attributed to containers; nothing
+evaluated), and `figma-desktop-adapter.ts` rewired: metadata tree is the
+structural source of truth, design-context facts only fill absent fields and
+never overwrite non-empty evidence with empty values, variables parse from
+JSON (hex values typed `COLOR`, non-JSON still warns honestly), `INSTANCE`
+nodes become component references, identity-only snapshots fail with
+`ERR_FIGMA_EVIDENCE_INSUFFICIENT`, and a failed design-context retrieval
+records its classified error code. The typed `figma-source-snapshot` schema
+is unchanged.
+
+Tests: 2 new test files (metadata outline, design-context facts) plus
+adapter tests for hierarchy+enrichment, sparse-context non-destruction, and
+insufficient-evidence failure — `@designflow/capability-figma-mcp` 78/78 —
+and an agents-package integration test proving a Desktop-shaped rich
+snapshot yields real hierarchy, text, spacing, and radius facts in the
+specification. Full forced regression on final source: build 26/26,
+typecheck 44/44, lint 26/26, test 52/52 tasks (2,430 pass, 1 skip, 0 fail,
+exit 0), smoke PASS, freshness PASS.
+
+Environment finding: two intermediate live reruns lost design context to
+`ERR_MCP_TIMEOUT` — cold Desktop generation for this frame exceeds 30s (and
+once 120s); warm calls take ~15s. The acceptance home's
+`requestTimeoutMs` was raised to 300000.
+
+Fresh CLI: repacked (`shasum 21e9bd793a0cb8700395e9615e724dccdb601443`) and
+reinstalled to `/Users/wallex/.local/bin/designflow` →
+`…/node_modules/designflow-ai/dist/main.js`; `DesignFlow 0.1.1`.
+
+Live rerun `7578ff95-17f8-4009-aaa0-f9e56d4f5743` (55s, 4 created
+artifacts): corrected snapshot has 40 nodes (root children `1026:6099`,
+`1026:6104`, `1026:6137`; geometry on all), 7 text nodes ("Add
+Transaction", "Expense", "Income", "Add New Expense", "Fill in the details
+below to track your expense", "May 2024", "Expense History"), 14 nodes with
+solid fills, radii 10/12/16, 27 layout-direction nodes, gaps 8/2/15/4, 7
+Poppins typography nodes, 16 component references, 5 variables, and only
+the expected `DESKTOP_MCP_SELECTION_SCOPE` warning. Coordinator: live
+OpenRouter `openai/gpt-4o-mini`, profile
+`design-engineer-coordinator-default`, `create_specification`, success.
+Specialist: live OpenRouter `openai/gpt-4o-mini`, profile
+`figma-specification-default`, success, 5,783 tokens (5,306 in — vs 1,347
+pre-fix, proving rich-evidence consumption). The typed specification names
+the real components with roles (Button; Text field → "Input Field"; Expense
+History Item → "List Item"; Navigation menu v3 → "Navigation"), the real
+palette (white, #ececec, #f9f9f9, #e4e4e4, #707070, #0000001a, #00000005),
+Poppins, and all five variable names. Minor (non-blocking): the model-side
+`content` list and deep-hierarchy entries summarize more tersely than the
+snapshot evidence.
+
+No-write proof: fixture HEAD `84e182895c156098bf8a046ef5cbd7eaa8075423`,
+clean tree, empty diff, no untracked output, no consent/apply/rollback.
+History/traces show a completed run, no stale execution, no pending
+approval, provider `OpenRouter`, and no credentials/prompts/raw responses.
+
+**Journey 2: `PASS`.** Journey 3 remains unstarted.

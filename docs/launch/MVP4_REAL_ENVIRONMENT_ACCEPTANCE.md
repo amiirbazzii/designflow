@@ -402,3 +402,121 @@ Journey 3 must not begin. The defect is in the deterministic Figma
 source-parsing/normalization step (between MCP tool response and
 `figma-source-snapshot`/`design-specification`), not in credential handling,
 dispatch routing, or model connectivity.
+
+## 16. MVP-4C — real Figma MCP response normalization fix
+
+**Journey 2 result after fix: `PASS`**
+
+### Exact root cause
+
+The Desktop adapter (`packages/capabilities/figma-mcp/src/figma-desktop-adapter.ts`)
+made the right MCP calls but destroyed their evidence deterministically:
+
+1. `get_metadata` returns the full selected subtree as an XML-like outline in
+   a text content block (`<frame id … x y width height>` nested tags, with
+   `hidden="true"` for invisible nodes). The adapter's `parseDesktopSelection`
+   extracted only the selection line's id/name (plus a tag-name type probe)
+   and passed a bare `{ id, name, type }` literal to `normalizeFigmaNodeTree`
+   — the entire outline tree, geometry, and child structure were discarded at
+   that call site.
+2. `get_design_context` returns six text blocks; the first is generated
+   React+Tailwind code carrying one `data-node-id` per element plus utility
+   tokens emitted from real node properties (colors, radii, gaps, font
+   family/style/size) and the nodes' visible text. The adapter awaited the
+   call **and dropped the result** — the success path bound nothing.
+3. `get_variable_defs` returns one JSON object of name → value in a text
+   block (e.g. `{"Font":"Poppins","Stroke/Neutral/stroke":"#00000005"}`).
+   The adapter treated any non-empty text as unrecognized and always emitted
+   `VARIABLES_SHAPE_UNRECOGNIZED` with an empty variables list.
+
+Fixture tests never caught this because they asserted exactly the sparse
+behavior: the metadata fixture was a single unclosed tag with no children and
+the assertions accepted a single-node snapshot with empty collections.
+
+### Fix
+
+- New `parse-desktop-metadata.ts`: parses the outline grammar (tags,
+  attributes, self-closing forms, `hidden`) into a nested raw tree fed to the
+  existing `normalizeFigmaNodeTree` — hierarchy, parent/child links, node
+  types, and per-node geometry survive.
+- New `parse-desktop-design-context.ts`: extracts per-`data-node-id` facts
+  from the generated code using only its closed token forms — visible text
+  (including template-literal wrapping; text belonging to nested elements is
+  not attributed to the container), solid background/text/border colors,
+  corner radius, gap, flex direction, opacity, and font family/style/size.
+  Nothing is evaluated; unrecognized tokens are ignored, not guessed.
+- Adapter merge semantics: the metadata outline is the structural source of
+  truth; design-context facts only fill fields the outline could not provide
+  and never overwrite non-empty values with empty ones. Variables are parsed
+  from the real JSON-in-text shape (hex values typed `COLOR`); non-JSON
+  payloads still produce `VARIABLES_SHAPE_UNRECOGNIZED` honestly. `INSTANCE`
+  nodes are recorded as real component references and
+  `capabilities.componentsAvailable` reflects them.
+- Loss detection: a snapshot whose only content is node identity (no
+  structure, geometry, text, or fills) now fails the workflow with
+  `ERR_FIGMA_EVIDENCE_INSUFFICIENT` instead of producing a misleading
+  "valid" empty specification. A failed design-context retrieval records its
+  classified error code in the warning. The typed
+  `figma-source-snapshot` contract is unchanged — no schema migration.
+
+### Secondary environment finding
+
+With the parser fixed, two live reruns still lost design context to
+`ERR_MCP_TIMEOUT`: cold `get_design_context` generation for this frame
+exceeds the configured 30s/120s request timeout (a warm call completes in
+~15s). The acceptance home's `settings.figmaMcp.requestTimeoutMs` was raised
+to 300000; no product code change was needed for this.
+
+### Validation
+
+Focused: `@designflow/capability-figma-mcp` 78/78; agents integration test
+proves a Desktop-shaped rich snapshot yields real hierarchy, text, and style
+facts in the deterministic specification path. Full forced regression on the
+final source: build 26/26, typecheck 44/44, lint 26/26, test 52/52 Turbo
+tasks (2,430 pass, 1 skip, 0 fail, exit 0), smoke PASS, freshness PASS. The
+corrected package (`npm pack` shasum `21e9bd793a0cb8700395e9615e724dccdb601443`)
+was reinstalled to `/Users/wallex/.local`; `designflow --version` reports
+`DesignFlow 0.1.1` from the reinstalled `dist/main.js`.
+
+### Live Journey 2 rerun (run `7578ff95-17f8-4009-aaa0-f9e56d4f5743`)
+
+Same canonical command, request, and Spendly source; no consent, workflow ID,
+or flags. Completed in 55s with 4 created artifacts. Corrected snapshot for
+node `1026:6098`:
+
+- 40 normalized nodes; root children `1026:6099`, `1026:6104`, `1026:6137`;
+  geometry on all 40;
+- 7 text nodes: "Add Transaction", "Expense", "Income", "Add New Expense",
+  "Fill in the details below to track your expense", "May 2024",
+  "Expense History";
+- 14 nodes with solid fills; radii (Text field 10, Button 12, container 16);
+  27 nodes with layout direction; real gaps (8/2/15/4); 7 nodes with
+  Poppins typography facts;
+- 16 component references (Button ×4, Text field ×6, Expense History Item
+  ×5, Navigation menu v3); 5 variables (Font, spacingNone, two stroke
+  colors typed `COLOR`, bgBlur2);
+- warnings: only the expected `DESKTOP_MCP_SELECTION_SCOPE`.
+
+Coordinator: live OpenRouter `openai/gpt-4o-mini`, profile
+`design-engineer-coordinator-default`, success, 612 tokens,
+`create_specification`. Specialist: live OpenRouter `openai/gpt-4o-mini`,
+profile `figma-specification-default`, success, **5,783 tokens (5,306 in)**
+— versus 1,347 before the fix, direct evidence the specialist consumed the
+rich normalized snapshot. The typed specification now names the real
+components with sensible roles (Button, Text field → "Input Field", Expense
+History Item → "List Item", Navigation menu v3 → "Navigation"), carries the
+real palette (white, #ececec, #f9f9f9, #e4e4e4, #707070, #0000001a,
+#00000005), Poppins typography, and all five real variable names. Remaining
+minor gaps (model-side summarization, not retrieval loss): the spec's
+`content` list and deep hierarchy entries are thinner than the snapshot
+evidence.
+
+No-write proof after the rerun: fixture HEAD still
+`84e182895c156098bf8a046ef5cbd7eaa8075423`, clean tree, empty diff, no
+untracked output, no consent/apply/rollback. History shows the completed run
+with no stale execution or pending approval; traces record only role,
+profile, model, provider (`OpenRouter`), status, and usage — no credentials,
+prompts, or raw provider responses.
+
+**Journey 2 is reclassified `PASS`.** Journey 3 remains unstarted and
+requires separate authorization.

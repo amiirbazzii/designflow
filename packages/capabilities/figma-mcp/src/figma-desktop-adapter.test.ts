@@ -50,7 +50,7 @@ describe("Figma Desktop MCP adapter", () => {
       results: {
         get_metadata: [
           { type: "text", text: "Currently selected nodes:\n- 32148:21075: Header" },
-          { type: "text", text: '<instance id="32148:21075" name="Header">' },
+          { type: "text", text: '<instance id="32148:21075" name="Header" x="0" y="0" width="440" height="64">' },
         ],
         get_design_context: [{ type: "text", text: "Detailed design context" }],
         get_variable_defs: [{ type: "text", text: "No variables selected" }],
@@ -96,6 +96,130 @@ describe("Figma Desktop MCP adapter", () => {
     expect(client.calls[2]?.arguments).toEqual(client.calls[1]?.arguments);
     expect(client.calls[3]?.arguments).toEqual({ nodeId: "32148:21075", contentsOnly: true });
     expect(client.calls.every((call) => !("fileKey" in call.arguments))).toBe(true);
+  });
+
+  test("preserves the full outline hierarchy and enriches nodes with design-context facts", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools,
+      results: {
+        get_metadata: [
+          { type: "text", text: "Currently selected nodes:\n- 10:1: Screen A" },
+          {
+            type: "text",
+            text: [
+              '<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="1092">',
+              '  <frame id="10:2" name="Header" x="0" y="0" width="440" height="64">',
+              '    <text id="10:4" name="Title" x="56" y="17" width="171" height="30" />',
+              '  </frame>',
+              '  <instance id="10:8" name="Nav" x="0" y="1020" width="440" height="72" />',
+              '</frame>',
+            ].join("\n"),
+          },
+        ],
+        get_design_context: [
+          {
+            type: "text",
+            text: [
+              '<div className="bg-white relative" data-node-id="10:1">',
+              '  <div className="bg-[#f9f9f9] flex gap-[8px] rounded-[16px]" data-node-id="10:2">',
+              "    <p className=\"font-['Poppins:Bold'] text-[20px] text-black\" data-node-id=\"10:4\">Add Transaction</p>",
+              "  </div>",
+              "</div>",
+            ].join("\n"),
+          },
+        ],
+        get_variable_defs: [
+          { type: "text", text: '{"Font":"Poppins","Stroke/Neutral/stroke":"#00000005","spacingNone":"0"}' },
+        ],
+        get_screenshot: [{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" }],
+      },
+    });
+
+    const snapshot = await buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      captureScreenshots: true,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+
+    // Hierarchy: all outline nodes survive with parent/child links and geometry.
+    expect(snapshot.nodes.map((node) => node.id)).toEqual(["10:1", "10:2", "10:4", "10:8"]);
+    expect(snapshot.nodes[0]?.childIds).toEqual(["10:2", "10:8"]);
+    expect(snapshot.nodes.find((node) => node.id === "10:4")).toMatchObject({
+      parentId: "10:2",
+      type: "TEXT",
+      absoluteBoundingBox: { x: 56, y: 17, width: 171, height: 30 },
+    });
+
+    // Design-context enrichment: text, fills, radius, gap, layout, typography.
+    const header = snapshot.nodes.find((node) => node.id === "10:2")!;
+    expect(header.fills).toEqual([{ type: "SOLID", color: "#f9f9f9" }]);
+    expect(header.cornerRadius).toBe(16);
+    expect(header.itemSpacing).toBe(8);
+    expect(header.layoutMode).toBe("HORIZONTAL");
+
+    const title = snapshot.nodes.find((node) => node.id === "10:4")!;
+    expect(title.characters).toBe("Add Transaction");
+    expect(title.fills).toEqual([{ type: "SOLID", color: "black" }]);
+    expect(title.properties.typography).toEqual({ fontFamily: "Poppins", fontStyle: "Bold", fontSize: 20 });
+
+    // Variables: the real JSON-in-text shape is parsed, colors typed.
+    expect(snapshot.variables).toEqual([
+      { name: "Font", value: "Poppins" },
+      { name: "Stroke/Neutral/stroke", value: "#00000005", type: "COLOR" },
+      { name: "spacingNone", value: "0" },
+    ]);
+    expect(snapshot.warnings.map((warning) => warning.code)).not.toContain("VARIABLES_SHAPE_UNRECOGNIZED");
+
+    // Components: instance nodes are recorded as real component references.
+    expect(snapshot.components).toEqual([{ id: "10:8", name: "Nav" }]);
+    expect(snapshot.capabilities.componentsAvailable).toBe(true);
+  });
+
+  test("sparse design context does not erase metadata-derived evidence", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }, { name: "get_design_context" }],
+      results: {
+        get_metadata: [
+          { type: "text", text: "- 10:1: Screen A" },
+          {
+            type: "text",
+            text: '<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="100"><text id="10:2" name="T" x="0" y="0" width="50" height="20" /></frame>',
+          },
+        ],
+        get_design_context: [{ type: "text", text: "no recognizable markup at all" }],
+      },
+    });
+
+    const snapshot = await buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+
+    expect(snapshot.nodes).toHaveLength(2);
+    expect(snapshot.nodes[0]?.childIds).toEqual(["10:2"]);
+    expect(snapshot.nodes[0]?.absoluteBoundingBox).toEqual({ x: 0, y: 0, width: 440, height: 100 });
+  });
+
+  test("fails honestly when no evidence beyond node identity is retrievable", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }],
+      results: {
+        get_metadata: [{ type: "text", text: "- 10:1: Screen A" }],
+      },
+    });
+
+    await expect(buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    })).rejects.toMatchObject({ code: "ERR_FIGMA_EVIDENCE_INSUFFICIENT" });
   });
 
   test("does not claim a requested node when Desktop MCP returns another selection", async () => {

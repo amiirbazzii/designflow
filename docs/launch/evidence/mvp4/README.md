@@ -57,3 +57,15 @@ manual `get_design_context` call against the same live MCP session for the
 same node returns substantial real hierarchy, styling, and component detail.
 Journey 2 is classified `FAIL_BLOCKING`; Journeys 3–9 remain unexercised. See
 `specification-run.md` for the full record.
+
+MVP-4C located and fixed the normalization defect: the Desktop adapter
+discarded the `get_metadata` outline tree, dropped the `get_design_context`
+result entirely, and never parsed the JSON-in-text variable definitions. New
+deterministic parsers for both real response shapes, honest merge semantics,
+JSON variable parsing, component references from instance nodes, and an
+`ERR_FIGMA_EVIDENCE_INSUFFICIENT` floor were added; the typed snapshot
+contract is unchanged. After full forced regression (52/52 test tasks; 2,430
+pass, 1 skip), a freshly packed and installed CLI reran Journey 2 live: the
+snapshot now carries 40 nodes, 7 real text nodes, 14 styled nodes, 16
+component references, and 5 variables, and the live specialist consumed the
+rich evidence. **Journey 2 is now `PASS`.** Journeys 3–9 remain unexercised.

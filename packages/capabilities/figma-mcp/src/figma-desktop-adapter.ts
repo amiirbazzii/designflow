@@ -2,15 +2,19 @@ import {
   DesignFlowError,
   figmaSourceSnapshotSchema,
   type CapabilityContext,
+  type FigmaNodeSnapshot,
   type FigmaScreenshotSnapshot,
   type FigmaSnapshotWarning,
   type FigmaSourceSnapshot,
+  type FigmaVariableSnapshot,
   type McpClient,
 } from "@designflow/sdk";
 
 import type { ParsedFigmaSource } from "./parse-figma-source";
 import { discoverFigmaMcpCapabilities } from "./discover-capabilities";
 import { normalizeFigmaNodeTree } from "./normalize-nodes";
+import { parseDesktopMetadataOutline } from "./parse-desktop-metadata";
+import { parseDesignContextFacts, type DesignContextNodeFacts } from "./parse-desktop-design-context";
 import { storeFigmaScreenshotArtifact } from "./screenshot-artifact";
 import type { CapturedScreenshot } from "./figma-mcp-tools";
 import { FigmaFrameSemanticMismatchError } from "./errors";
@@ -88,8 +92,20 @@ export async function buildFigmaDesktopSourceSnapshot(
     throw new FigmaFrameSemanticMismatchError(options.parsedSource.requestedFrames, selection.name, selection.id);
   }
 
-  const normalized = normalizeFigmaNodeTree({ id: selection.id, name: selection.name, type: selection.type });
+  // The metadata outline carries the full selected subtree — parse it into a
+  // real node tree rather than reducing the selection to a single identity node.
+  const outlineRoot = parseDesktopMetadataOutline(textFromContent(metadata), selection.id);
+  const normalized = normalizeFigmaNodeTree(
+    outlineRoot ?? { id: selection.id, name: selection.name, type: selection.type },
+  );
   warnings.push(...normalized.warnings);
+  if (outlineRoot === undefined) {
+    warnings.push({
+      code: "METADATA_OUTLINE_UNPARSED",
+      message: "Figma Desktop MCP metadata did not contain a parseable node outline; only the selection identity was retained",
+      nodeId: selection.id,
+    });
+  }
   warnings.push({
     code: "DESKTOP_MCP_SELECTION_SCOPE",
     message: "The official Desktop MCP server supplied the current selection, not a full file document",
@@ -101,22 +117,34 @@ export async function buildFigmaDesktopSourceSnapshot(
     clientLanguages: "typescript",
     clientFrameworks: "react",
   };
+  let contextFacts: ReadonlyMap<string, DesignContextNodeFacts> = new Map();
   if (capabilities.inspectNodes) {
     try {
-      await callDesktopTool(client, DESKTOP_TOOLS.designContext, desktopNodeArgs, context.signal);
-    } catch {
+      const content = await callDesktopTool(client, DESKTOP_TOOLS.designContext, desktopNodeArgs, context.signal);
+      contextFacts = parseDesignContextFacts(textFromContent(content));
+    } catch (error) {
+      const cause = error instanceof DesignFlowError ? ` (${error.code})` : "";
       warnings.push({
         code: "DESIGN_CONTEXT_RETRIEVAL_FAILED",
-        message: "Figma Desktop MCP did not return detailed design context for the selected node",
+        message: `Figma Desktop MCP did not return detailed design context for the selected node${cause}`,
         nodeId: selection.id,
       });
     }
   }
+  const nodes = enrichNodesWithContextFacts(normalized.nodes, contextFacts);
 
   const variables = capabilities.inspectVariables
     ? await readDesktopVariables(client, desktopNodeArgs, context.signal)
-    : { variables: [], warnings: [] as FigmaSnapshotWarning[] };
+    : { variables: [] as FigmaVariableSnapshot[], warnings: [] as FigmaSnapshotWarning[] };
   warnings.push(...variables.warnings);
+
+  // Component identity: instance nodes in the outline are real component
+  // references — record them rather than reporting components as absent.
+  const components = nodes
+    .filter((node) => node.type === "INSTANCE")
+    .map((node) => ({ id: node.id, name: node.name }));
+
+  ensureMeaningfulEvidence(nodes, selection.id);
 
   const resolvedFrame = { id: selection.id, name: selection.name, path: [selection.name] };
   const screenshots: FigmaScreenshotSnapshot[] = [];
@@ -183,14 +211,14 @@ export async function buildFigmaDesktopSourceSnapshot(
     capabilities: {
       variablesAvailable: capabilities.inspectVariables,
       stylesAvailable: false,
-      componentsAvailable: false,
+      componentsAvailable: components.length > 0,
       assetsAvailable: false,
       screenshotsAvailable: capabilities.captureScreenshot,
     },
-    nodes: normalized.nodes,
+    nodes,
     variables: variables.variables,
     styles: [],
-    components: [],
+    components,
     assets: [],
     screenshots,
     warnings,
@@ -262,14 +290,16 @@ async function readDesktopVariables(
   client: McpClient,
   arguments_: Record<string, unknown>,
   signal: AbortSignal | undefined,
-): Promise<{ readonly variables: readonly []; readonly warnings: FigmaSnapshotWarning[] }> {
+): Promise<{ readonly variables: FigmaVariableSnapshot[]; readonly warnings: FigmaSnapshotWarning[] }> {
   try {
     const content = await callDesktopTool(client, DESKTOP_TOOLS.variables, arguments_, signal);
     const text = textFromContent(content);
-    // Desktop MCP currently returns a human-readable variable definition
-    // block, not the generic `{ variables: [...] }` envelope. Do not invent
-    // typed values from prose; retain truthful availability and a warning.
+    // Desktop MCP returns variable definitions as one JSON object of
+    // name → value inside a text block. Only that exact shape is read; any
+    // other payload is reported as unrecognized rather than guessed at.
     if (text.length > 0) {
+      const parsed = parseVariableDefinitions(text);
+      if (parsed !== undefined) return { variables: parsed, warnings: [] };
       return {
         variables: [],
         warnings: [{ code: "VARIABLES_SHAPE_UNRECOGNIZED", message: "Desktop MCP returned variable definitions in a non-normalized text format" }],
@@ -280,6 +310,98 @@ async function readDesktopVariables(
     // optional and is reported without leaking the server's response.
   }
   return { variables: [], warnings: [{ code: "VARIABLES_RETRIEVAL_FAILED", message: "Desktop MCP variable definitions could not be retrieved" }] };
+}
+
+function parseVariableDefinitions(text: string): FigmaVariableSnapshot[] | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+
+  const variables: FigmaVariableSnapshot[] = [];
+  for (const [name, value] of Object.entries(raw)) {
+    if (name.length === 0) continue;
+    variables.push({
+      name,
+      value,
+      ...(typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value) ? { type: "COLOR" } : {}),
+    });
+  }
+  return variables;
+}
+
+/**
+ * Supplements metadata-derived nodes with facts extracted from the design
+ * context. The metadata outline is the structural source of truth; context
+ * facts only fill fields the outline could not provide and never overwrite a
+ * non-empty value with an empty one.
+ */
+function enrichNodesWithContextFacts(
+  nodes: readonly FigmaNodeSnapshot[],
+  facts: ReadonlyMap<string, DesignContextNodeFacts>,
+): FigmaNodeSnapshot[] {
+  return nodes.map((node) => {
+    const fact = facts.get(node.id);
+    if (fact === undefined) return node;
+
+    const fills = [...node.fills];
+    if (fills.length === 0) {
+      if (fact.backgroundColor !== undefined) fills.push({ type: "SOLID", color: fact.backgroundColor });
+      if (node.type === "TEXT" && fact.textColor !== undefined) fills.push({ type: "SOLID", color: fact.textColor });
+    }
+    const strokes = [...node.strokes];
+    if (strokes.length === 0 && fact.borderColor !== undefined) {
+      strokes.push({ type: "SOLID", color: fact.borderColor });
+    }
+
+    const typography: Record<string, unknown> = {};
+    if (fact.fontFamily !== undefined) typography.fontFamily = fact.fontFamily;
+    if (fact.fontStyle !== undefined) typography.fontStyle = fact.fontStyle;
+    if (fact.fontSizePx !== undefined) typography.fontSize = fact.fontSizePx;
+
+    return {
+      ...node,
+      fills,
+      strokes,
+      ...(node.characters === undefined && fact.characters !== undefined ? { characters: fact.characters } : {}),
+      ...(node.cornerRadius === undefined && fact.cornerRadius !== undefined ? { cornerRadius: fact.cornerRadius } : {}),
+      ...(node.itemSpacing === undefined && fact.itemSpacing !== undefined ? { itemSpacing: fact.itemSpacing } : {}),
+      ...(node.layoutMode === undefined && fact.layoutMode !== undefined ? { layoutMode: fact.layoutMode } : {}),
+      ...(node.opacity === undefined && fact.opacity !== undefined ? { opacity: fact.opacity } : {}),
+      properties:
+        Object.keys(typography).length > 0 && node.properties.typography === undefined
+          ? { ...node.properties, typography }
+          : node.properties,
+    };
+  });
+}
+
+/**
+ * The minimum evidence bar for a usable snapshot: at least one signal beyond
+ * bare URL/node identity (structure, geometry, text, or styling). A snapshot
+ * below this bar would produce a misleading, effectively empty specification,
+ * so the workflow fails honestly instead.
+ */
+function ensureMeaningfulEvidence(nodes: readonly FigmaNodeSnapshot[], selectionId: string): void {
+  const meaningful =
+    nodes.length > 1 ||
+    nodes.some(
+      (node) =>
+        node.absoluteBoundingBox !== undefined ||
+        node.characters !== undefined ||
+        node.fills.length > 0 ||
+        node.childIds.length > 0,
+    );
+  if (!meaningful) {
+    throw new DesignFlowError(
+      "ERR_FIGMA_EVIDENCE_INSUFFICIENT",
+      "Figma MCP returned no design evidence beyond the node's identity; a specification from this snapshot would be empty",
+      { nodeId: selectionId },
+    );
+  }
 }
 
 function parseDesktopScreenshot(content: unknown): CapturedScreenshot {
