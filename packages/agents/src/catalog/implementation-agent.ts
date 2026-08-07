@@ -43,6 +43,7 @@ export const implementationAgentManifest: AgentManifest = agentManifestSchema.pa
     "Follow observed framework and conventions; prefer existing components and tokens only when confidence is sufficient. " +
     "Output only schema-valid structured proposals with reasons, assumptions, and unresolved questions. " +
     "Never invent packages, emit absolute or traversal paths, request shell execution, claim validation passed, or claim files were written. " +
+    "Use action 'modify' only for a relative path listed in the project context's component sources or file evidence; any new file must use action 'create' with a project-relative path. " +
     "Preserve accessibility and public APIs, and distinguish observed facts, inferred conventions, design facts, mapping decisions, and assumptions.",
   allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-implementation"],
   allowedTools: [],

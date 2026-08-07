@@ -82,3 +82,20 @@ project mutation. **Journey 3 is `PASS`** with non-blocking quality notes
 (component inventory missed the fixture's `.jsx` components; history labels
 the rejected run `failed`). See `rejection-run.md`. Journeys 4–9 remain
 unexercised.
+
+MVP-4D corrected the record and the real defect. The "empty `.jsx`
+inventory" was an evidence-reading error — the Journey 3 artifact already
+contained FeatureCard and PrimaryButton, and the mapper saw them; pinning
+tests were added anyway. The real defect was proposal integrity: the host
+stored and presented model proposals without validating operation
+semantics. `validateProposedFileChanges` now enforces modify/delete-must-
+exist and create-must-not-exist with typed errors, and the deterministic
+`store-proposed-file-changes` step stamps real base hashes and validates
+BEFORE the approval prompt; apply-time revalidation stays resume-tolerant
+without weakening hashes. Live rechecks proved both sides: two runs with
+invalid model output (phantom relative and absolute `Button.js` modifies)
+were stopped before approval with zero writes, and after a one-line agent
+instruction correction a third run produced a valid creates-only proposal
+that was rejected at the exact-approval prompt. Project remained
+byte-for-byte unchanged throughout. **MVP-4D is `PASS`.** Journeys 4–9
+remain unexercised.

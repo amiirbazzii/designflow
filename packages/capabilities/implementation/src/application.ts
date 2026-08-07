@@ -43,7 +43,11 @@ export async function createProjectSnapshot(projectId: string, root: string, pro
 }
 
 export async function applyProjectFileChanges(projectId: string, root: string, proposal: ProposedFileChanges, rootIdentity: string, stateDirectory: string, existingSnapshot?: ProjectSnapshot): Promise<ApplicationResult> {
-  const validated = validateProposedFileChanges(proposedFileChangesSchema.parse(proposal), root); const proposalHash = hash(validated); const lock = await acquireProjectWriteLock(projectId, rootIdentity, stateDirectory); let snapshot: ProjectSnapshot | undefined;
+  // Existence semantics were already enforced at proposal time; apply-time
+  // re-validation skips them so a resumed partial apply (own files already
+  // written) is not misread as a conflict — per-file staleness is enforced
+  // against the snapshot below.
+  const validated = validateProposedFileChanges(proposedFileChangesSchema.parse(proposal), root, undefined, { checkTargetExistence: false }); const proposalHash = hash(validated); const lock = await acquireProjectWriteLock(projectId, rootIdentity, stateDirectory); let snapshot: ProjectSnapshot | undefined;
   try {
     const persistedSnapshot = await findResumableSnapshot(projectId, rootIdentity, proposalHash, stateDirectory); snapshot = persistedSnapshot ?? existingSnapshot ?? await createProjectSnapshot(projectId, root, validated, rootIdentity, stateDirectory); if (snapshot.projectId !== projectId || snapshot.rootIdentity !== rootIdentity || snapshot.proposalHash !== proposalHash) throw new ImplementationError("ERR_SNAPSHOT_PROJECT_MISMATCH", "The snapshot does not belong to this project and proposal.");
     try {

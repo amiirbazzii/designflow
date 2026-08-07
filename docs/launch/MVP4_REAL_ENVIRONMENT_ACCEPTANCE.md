@@ -562,3 +562,38 @@ rejected outcome. Neither is unsafe; both are quality follow-ups.
 
 Journey 4 was not started; no proposal was approved and no changes were
 applied. Journey 4 may begin when separately authorized.
+
+## 18. MVP-4D — project inspection and proposal path integrity
+
+**Result: `PASS`** (commit under review; final valid-proposal run
+`ca9cdfed-3499-4618-ac22-0228a326be1c`)
+
+Evidence correction: §17's "empty component inventory" claim was an
+evidence-reading error in the acceptance tooling — the Journey 3
+`project-implementation-context` artifact already listed `FeatureCard` and
+`PrimaryButton` under `designSystem.components`, the inspector's filter has
+always accepted `.js/.jsx/.ts/.tsx`, and the mapper's "Button → 0.6
+manual-review" was a real below-threshold match against `PrimaryButton`.
+Pinning regression tests for `.jsx`/`.js`/`.tsx` discovery and mapper
+visibility were added regardless.
+
+Real defect fixed: the deterministic proposal step stored and presented
+model output without host validation. `validateProposedFileChanges` gained
+existence semantics (`ERR_PROPOSAL_TARGET_MISSING` /
+`ERR_PROPOSAL_TARGET_EXISTS`, checked before the base-hash rule), the
+`store-proposed-file-changes` capability now stamps deterministic
+`expectedBaseHash` values and validates before the approval prompt, and
+apply-time revalidation is resume-tolerant without weakening approval
+hashes or fingerprints. One instruction line was added to the
+Implementation Agent (modify only listed paths; new files are creates).
+
+Validation: focused suites 30/94/229 all green; full forced regression
+build 26/26, typecheck 44/44, lint 26/26, tests 52/52 tasks (2,434 pass,
+1 skip, 0 fail); smoke and freshness PASS; fresh package shasum
+`945fa2c2…` installed. Live rechecks: two invalid model proposals (phantom
+and absolute `Button.js` modifies) were deterministically stopped before
+the approval prompt with zero writes; the third run produced a valid
+creates-only proposal (TextField, ExpenseHistoryItem, NavigationMenu —
+all vacant fixture paths, hash/fingerprint-bound) that was rejected at the
+exact-approval prompt. Fixture HEAD, tree, independent fingerprint, and
+build/test all unchanged after every run. Journey 4 remains unstarted.

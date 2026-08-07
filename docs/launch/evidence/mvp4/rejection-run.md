@@ -167,3 +167,94 @@ Figma payloads beyond the selected frame's evidence.
 
 All 14 PASS criteria hold. Journey 3: `PASS`. Journey 4 (approved
 application) was not started, and no second proposal was approved.
+
+## MVP-4D — inspection and proposal path integrity — 2026-08-07
+
+### Evidence correction
+
+The Journey 3 record above claimed the component inventory was empty. That
+was an evidence-reading error in this document, not a product defect: the
+components live under `designSystem.components` in the
+`project-implementation-context` artifact, and the Journey 3 run's stored
+artifact already contained both `FeatureCard`
+(`src/components/FeatureCard.jsx`) and `PrimaryButton`
+(`src/components/PrimaryButton.jsx`). The inspector's source filter always
+accepted `.js/.jsx/.ts/.tsx`, and the mapper did see the inventory — its
+"Button → 0.6 manual-review" decision was precisely a below-threshold match
+against `PrimaryButton`. Regression tests were still added to pin `.jsx`,
+`.js`, and `.tsx` discovery and mapper visibility
+(`packages/capabilities/implementation/src/implementation.test.ts`).
+
+### Real defect and fix — proposal operation/path integrity
+
+Confirmed root cause: the deterministic `store-proposed-file-changes`
+capability assembled the proposal artifact from the Implementation Agent's
+plan without host validation and without stamping `expectedBaseHash`, and
+`validateProposedFileChanges` had no existence semantics — so
+`modify src/components/Button.js` (nonexistent) was presented for approval.
+Validation previously ran only at post-approval snapshot/apply time.
+
+Fix:
+
+- `packages/capabilities/implementation/src/proposal.ts`: existence
+  invariants — `modify`/`delete` targets must exist as regular files,
+  `create` targets must not (typed `ERR_PROPOSAL_TARGET_MISSING` /
+  `ERR_PROPOSAL_TARGET_EXISTS`), checked before the base-hash requirement
+  so the diagnostic names the real problem; existing path-safety,
+  traversal, duplicate, and size rules unchanged. Apply-time revalidation
+  passes `checkTargetExistence: false` because a resumed partial apply
+  legitimately finds its own written files — apply keeps its per-file
+  snapshot/staleness guards, so hashes are not weakened.
+- `workflows/workflow-design-to-code/src/implementation-capabilities.ts`
+  (`store-proposed-file-changes`): now receives the workflow's project
+  input, stamps `expectedBaseHash` deterministically via `projectFileHash`
+  for real modify targets, and calls `validateProposedFileChanges` BEFORE
+  the approval step — an invalid proposal fails the run with a typed error
+  and is never presented as approvable. No silent modify→create rewriting.
+- `packages/agents/src/catalog/implementation-agent.ts`: one instruction
+  line added (proven contract mismatch): `modify` only for paths listed in
+  the project context; new files must be `create` with a relative path.
+
+Tests added: full create/modify/delete existence matrix, duplicate
+conflicting operations, `.jsx`/`.js` inventory, mapper visibility (exact
+`PrimaryButton` design name → `reuse` at confidence 1), and apply-resume
+tolerance. Focused: capability-implementation 30/30, workflow-design-to-code
+94/94, agents 229/229.
+
+### Full regression (final source)
+
+build 26/26, typecheck 44/44, lint 26/26, test 52/52 tasks — 2,434 pass,
+1 skip, 0 fail, exit 0 (all forced); smoke PASS; freshness PASS. Fresh
+package `designflow-ai@0.1.1` shasum
+`945fa2c23f2578ba86b689345718971308fb0772` installed to
+`/Users/wallex/.local`.
+
+### Live proposal/rejection recheck
+
+Three live runs against Spendly `1026:6098` with project
+`mvp4-acceptance`, journey consent yes, no approval:
+
+1. `abf7f877-…`: agent again proposed `modify src/components/Button.js`;
+   the new gate stopped the run BEFORE the approval prompt ("Modified file
+   lacks an expected base hash") with zero writes — proving criterion 4.
+2. `455d07b1-…`: agent proposed absolute `/src/components/Button.js`;
+   blocked pre-approval by the path gate (`ERR_UNSAFE_PATH`), zero writes.
+3. `ca9cdfed-3499-4618-ac22-0228a326be1c` (after the one-line agent
+   instruction fix): structurally valid proposal — creates only
+   (`src/components/TextField.js`, `ExpenseHistoryItem.js`,
+   `NavigationMenu.js`), no modifies, every create target vacant, all
+   paths inside the fixture, bound to fingerprint `8ba11902…` and proposal
+   hash `bfb2274d…`; inspection inventory contained `FeatureCard` and
+   `PrimaryButton`; mapping again recorded Button → 0.6 manual-review
+   (mapper sees the inventory; the agent honestly did not modify a file it
+   could not match above threshold). The exact proposal was **rejected**;
+   the run stopped with "Nothing was written to your project."
+
+### No-write proof
+
+After all three runs: HEAD `84e182895c156098bf8a046ef5cbd7eaa8075423`,
+clean status, empty diff; independent content fingerprint `c2ad656d…`
+identical to baseline; fixture `npm test` and `npm run build` exit 0. No
+pending approvals; no credential material in the stored home.
+
+**MVP-4D: `PASS`.** Journey 4 remains unstarted.

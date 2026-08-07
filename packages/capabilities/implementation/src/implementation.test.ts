@@ -25,5 +25,69 @@ describe("Stage 4 implementation capability", () => {
   test("fails rollback when an applied file was externally modified", async () => { const root = await fixture(); const state = await mkdtemp(join(tmpdir(), "designflow-state-")); const proposal = { schemaVersion: "1" as const, projectId: "p1", baseProjectFingerprint: "fp", files: [{ path: "src/New.ts", action: "create" as const, content: "export const value = 1;\n", reason: "test", relatedDesignNodeIds: [] }], packageChanges: [], commandsRequested: [], assumptions: [], unresolvedItems: [] }; const result = await applyProjectFileChanges("p1", root, proposal, projectRootIdentity(root), state); await writeFile(join(root, "src/New.ts"), "external mutation\n"); await expect(rollbackProjectSnapshot(root, result.snapshot)).rejects.toThrow(); expect(projectFileHash(join(root, "src/New.ts"))).toBeDefined(); await rm(root, { recursive: true, force: true }); await rm(state, { recursive: true, force: true }); });
   test("rejects overlapping project writes before snapshot creation", async () => { const root = await fixture(); const state = await mkdtemp(join(tmpdir(), "designflow-state-")); const identity = projectRootIdentity(root); const owner = await acquireProjectWriteLock("p1", identity, state); await expect(acquireProjectWriteLock("p1", identity, state)).rejects.toMatchObject({ code: "ERR_PROJECT_WRITE_LOCKED" }); await owner.release(); const second = await acquireProjectWriteLock("p1", identity, state); await second.release(); await rm(root, { recursive: true, force: true }); await rm(state, { recursive: true, force: true }); });
   test("rejects unsupported and private targets", async () => { const root = await fixture(); const base = { schemaVersion: "1" as const, projectId: "p1", baseProjectFingerprint: "fp", packageChanges: [], commandsRequested: [], assumptions: [], unresolvedItems: [] }; expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/run.sh", action: "create", content: "echo unsafe", reason: "bad", relatedDesignNodeIds: [] }] }, root)).toThrow(); expect(() => validateProposedFileChanges({ ...base, files: [{ path: ".env", action: "create", content: "secret", reason: "bad", relatedDesignNodeIds: [] }] }, root)).toThrow(); await rm(root, { recursive: true, force: true }); });
+  test("discovers .jsx and .js components alongside .tsx in the inventory", async () => {
+    const root = await fixture();
+    await writeFile(join(root, "src/components/FeatureCard.jsx"), "export default function FeatureCard({ eyebrow, title }) { return <article>{title}</article>; }\n");
+    await writeFile(join(root, "src/components/PrimaryButton.jsx"), "export default function PrimaryButton({ children }) { return <button>{children}</button>; }\n");
+    await writeFile(join(root, "src/components/Legacy.js"), "export function Legacy() { return null; }\n");
+    const context = inspectRegisteredProject({ id: "p1", name: "Fixture", rootPath: root });
+    const names = context.designSystem.components.map((component) => component.name);
+    expect(names).toContain("FeatureCard");
+    expect(names).toContain("PrimaryButton");
+    expect(names).toContain("Legacy");
+    expect(names).toContain("Button");
+    const card = context.designSystem.components.find((component) => component.name === "FeatureCard")!;
+    expect(card.sourcePath).toBe("src/components/FeatureCard.jsx");
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("discovered .jsx components are visible to design-system mapping", async () => {
+    const root = await fixture();
+    await writeFile(join(root, "src/components/PrimaryButton.jsx"), "export default function PrimaryButton({ children }) { return <button>{children}</button>; }\n");
+    const context = inspectRegisteredProject({ id: "p1", name: "Fixture", rootPath: root });
+    const jsxSpec = { ...spec, components: [{ name: "PrimaryButton", role: "button", sourceNodeIds: ["node-1"], variants: [], requiredAssets: [], implementationNotes: [] }] };
+    const mapping = mapDesignSystem(jsxSpec, context);
+    const entry = mapping.componentMappings.find((m) => m.designComponentId === "PrimaryButton")!;
+    expect(entry.action).toBe("reuse");
+    expect(entry.projectComponentReference).toBe("PrimaryButton");
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("proposal operation semantics are validated against the real baseline", async () => {
+    const root = await fixture();
+    const base = { schemaVersion: "1" as const, projectId: "p1", baseProjectFingerprint: "fp", packageChanges: [], commandsRequested: [], assumptions: [], unresolvedItems: [] };
+    const buttonHash = projectFileHash(join(root, "src/components/Button.tsx"))!;
+    // modify existing → valid
+    expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/components/Button.tsx", action: "modify", content: "x", expectedBaseHash: buttonHash, reason: "ok", relatedDesignNodeIds: [] }] }, root)).not.toThrow();
+    // modify nonexistent (with a hash the model made up) → invalid
+    expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/components/Button.js", action: "modify", content: "x", expectedBaseHash: buttonHash, reason: "bad", relatedDesignNodeIds: [] }] }, root)).toThrow(expect.objectContaining({ code: "ERR_PROPOSAL_TARGET_MISSING" }));
+    // create nonexistent → valid
+    expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/components/New.tsx", action: "create", content: "x", reason: "ok", relatedDesignNodeIds: [] }] }, root)).not.toThrow();
+    // create existing → invalid
+    expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/components/Button.tsx", action: "create", content: "x", reason: "bad", relatedDesignNodeIds: [] }] }, root)).toThrow(expect.objectContaining({ code: "ERR_PROPOSAL_TARGET_EXISTS" }));
+    // delete existing → valid
+    expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/components/Button.tsx", action: "delete", reason: "ok", relatedDesignNodeIds: [] }] }, root)).not.toThrow();
+    // delete nonexistent → invalid
+    expect(() => validateProposedFileChanges({ ...base, files: [{ path: "src/components/Gone.tsx", action: "delete", reason: "bad", relatedDesignNodeIds: [] }] }, root)).toThrow(expect.objectContaining({ code: "ERR_PROPOSAL_TARGET_MISSING" }));
+    // duplicate conflicting operations on one path → invalid
+    expect(() => validateProposedFileChanges({ ...base, files: [
+      { path: "src/components/New.tsx", action: "create", content: "x", reason: "a", relatedDesignNodeIds: [] },
+      { path: "src/components/New.tsx", action: "modify", content: "y", expectedBaseHash: buttonHash, reason: "b", relatedDesignNodeIds: [] },
+    ] }, root)).toThrow(expect.objectContaining({ code: "ERR_DUPLICATE_PROPOSAL_ACTION" }));
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("apply-time validation tolerates a resumed partial apply without weakening hashes", async () => {
+    const root = await fixture();
+    const state = await mkdtemp(join(tmpdir(), "designflow-state-"));
+    const proposal = { schemaVersion: "1" as const, projectId: "p1", baseProjectFingerprint: "fp", files: [{ path: "src/Resumed.ts", action: "create" as const, content: "export const value = 1;\n", reason: "test", relatedDesignNodeIds: [] }], packageChanges: [], commandsRequested: [], assumptions: [], unresolvedItems: [] };
+    const first = await applyProjectFileChanges("p1", root, proposal, projectRootIdentity(root), state);
+    // A second apply of the same proposal (resume) finds its own file and succeeds.
+    const second = await applyProjectFileChanges("p1", root, proposal, projectRootIdentity(root), state);
+    expect(second.proposalHash).toBe(first.proposalHash);
+    await rm(root, { recursive: true, force: true });
+    await rm(state, { recursive: true, force: true });
+  });
+
   test("marks missing checks unavailable and never runs model-requested commands", async () => { const root = await fixture(); const context = inspectRegisteredProject({ id: "p1", name: "Fixture", rootPath: root }); const checks = await validateProject({ ...context, commands: { ...context.commands, lint: undefined, test: undefined } }, root); expect(checks.find((check) => check.name === "lint")?.status).toBe("unavailable"); expect(checks.find((check) => check.name === "build")?.status).toBe("passed"); await rm(root, { recursive: true, force: true }); });
 });
