@@ -1,25 +1,58 @@
-MVP-4A readiness evidence
+MVP-4A.1 flag-free readiness evidence
 Audit date: 2026-08-07
-Commit: b2caf90e8ab625c0724a37e3b0192dd1a27777c5
+Commit: ae1e6909e86f04f3debc9d751d76d5a103b325f9
 Package version: 0.1.1
 Acceptance home: /tmp/designflow-mvp4-acceptance-home
 Fixture: /tmp/designflow-mvp4-acceptance-project
 Fixture stack: React 18.3.1 + Vite 6.0.0, npm
 Fixture baseline: 84e182895c156098bf8a046ef5cbd7eaa8075423
 
+Previous readiness blocker:
+  - The MVP-4A config copied two legacy Design Engineer experimental names.
+    MVP-4A.1 verified they are not required by the canonical product.
+
+Legacy keys found under settings.experimental:
+  - designEngineerFigmaMcp
+  - designEngineerImplementation
+
+Config change:
+  - backup: /tmp/designflow-mvp4-acceptance-home/config.mvp4a1.backup.json
+  - removed: both legacy names above
+  - preserved: settings.figmaMcp, project registration/state, and normal
+    non-experimental configuration
+  - resulting settings keys: figmaMcp
+  - resulting experimental key names: none
+
+Source classification:
+  - apps/designflow-cli/src/services/figma-mcp-config.ts:79-90 reads both
+    names through compatibility helpers.
+  - apps/designflow-cli/src/services/cli-runner.ts:572-581 invokes those
+    helpers for compatibility but derives availability from parsed figmaMcp.
+  - apps/designflow-cli/src/services/cli-runner.ts:166-203 registers the
+    Figma/specification, implementation, visual-validation, and correction
+    workflows from parsed figmaMcp availability.
+  - apps/designflow-cli/src/commands/interactive.ts:53 consumes derived
+    implementation availability, not a legacy key.
+  - Classification: both legacy names are compatibility-only in canonical
+    runtime; test fixtures and historical docs retain backward-compatibility
+    references.
+
 Commands:
-  designflow --version
+  designflow workers
   designflow doctor
   designflow settings
   designflow projects
+  designflow workers design-engineer
 
 Results:
-  designflow --version: PASS — DesignFlow 0.1.1
+  designflow workers: PASS — Design Engineer remains publicly registered.
   designflow settings: PASS — isolated home, OpenRouter assignments, and
     credential presence reported; no credential values were printed.
   designflow projects: PASS — exactly one acceptance registration was listed.
   designflow doctor: PASS_WITH_WARNING — no project blockers; Figma protocol
     session intentionally not started by doctor.
+  designflow workers design-engineer: PASS — public worker surface remains
+    available and shows its configured OpenRouter profile.
 
 Doctor findings:
   - runtime: healthy
@@ -52,6 +85,15 @@ Journey readiness:
   - implementation journey: READY to request per-run consent; no consent
     was requested or granted
   - visual correction: BETA and not started
+
+Final classification:
+  PASS — flag-free flagship readiness verified.
+  The acceptance home is intentionally retained without the legacy keys.
+  The disposable project remains clean at the recorded baseline.
+
+No live Journey 2–9 activity occurred. No deliberate OpenRouter request, Figma
+protocol session, browser acceptance, project write, approval, or workflow run
+was started.
 
 The acceptance home contains no copied history, artifacts, approvals, caches,
 or stale project registrations. The OpenRouter key remains process-provided.
