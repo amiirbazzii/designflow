@@ -9,5 +9,7 @@ export { assertGitSafeForWrite, inspectGitSafety, type GitSafetyReport } from ".
 export { acquireProjectWriteLock, type ProjectWriteLock, type ProjectWriteLockRecord } from "./project-write-lock";
 export type { SnapshotEntry, ProjectSnapshot, ApplicationResult } from "./application";
 export { validateProject, makeValidationReport } from "./validation";
+export { validateProposedModules, changedExecutableFiles, PROPOSED_STATE_ENTRY_FILE } from "./proposed-state-validation";
+export type { ProposedModuleValidationResult, ProposedModuleValidationOptions, ProposedModuleDiagnostic } from "./proposed-state-validation";
 export type { ValidationOptions } from "./validation";
 export { applyAndValidateProject } from "./run";

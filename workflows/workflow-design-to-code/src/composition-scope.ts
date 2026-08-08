@@ -71,6 +71,46 @@ function staticImportSpecifiers(content: string): string[] {
  * the render path cannot be resolved deterministically. The model never
  * chooses or extends this set.
  */
+export interface RenderReachability {
+  /** Present when the preview entry could be resolved deterministically. */
+  readonly previewEntry?: string;
+  readonly reachableChangedFiles: readonly string[];
+  readonly unreachableChangedFiles: readonly string[];
+}
+
+const MAX_REACHABILITY_MODULES = 500;
+
+/**
+ * Determines, by bounded static-import traversal from the preview entry,
+ * which changed executable files are currently part of the rendered module
+ * graph. Unreachability is evidence for the correction stage, never an
+ * error by itself; with no resolvable entry every changed file is honestly
+ * reported unreachable.
+ */
+export function analyzeRenderReachability(root: string, changedFiles: readonly string[]): RenderReachability {
+  const entry = previewEntryPath(root);
+  if (entry === undefined) return { reachableChangedFiles: [], unreachableChangedFiles: [...changedFiles] };
+  const visited = new Set<string>([entry]);
+  const queue = [entry];
+  while (queue.length > 0 && visited.size < MAX_REACHABILITY_MODULES) {
+    const current = queue.shift()!;
+    const content = readProjectText(root, current);
+    if (content === undefined) continue;
+    for (const specifier of staticImportSpecifiers(content)) {
+      const resolved = resolveRelativeImport(root, current, specifier);
+      if (resolved !== undefined && !visited.has(resolved)) {
+        visited.add(resolved);
+        queue.push(resolved);
+      }
+    }
+  }
+  return {
+    previewEntry: entry,
+    reachableChangedFiles: changedFiles.filter((file) => visited.has(file)),
+    unreachableChangedFiles: changedFiles.filter((file) => !visited.has(file)),
+  };
+}
+
 export function deriveCompositionScope(root: string): CompositionScopeEntry[] {
   const entry = previewEntryPath(root);
   if (entry === undefined) return [];

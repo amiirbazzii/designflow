@@ -1,5 +1,6 @@
 // workflows/workflow-design-to-code/src/proposal-regeneration.test.ts
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -172,5 +173,58 @@ describe("bounded proposal regeneration", () => {
       invokeImplementationAgentStage4Capability.execute(context, workflowInput(root)),
     ).rejects.toMatchObject({ code: "ERR_PROJECT_ROOT_INACCESSIBLE" });
     expect(invocations.length).toBe(1);
+  });
+});
+
+describe("MVP-4L proposed-module compile validation in the bounded loop", () => {
+  const DEFAULT_IMPORT = `import TextField from "./components/TextField.tsx";\nexport default function GeneratedScreen() { return TextField; }\n`;
+  const NAMED_IMPORT = `import { TextField } from "./components/TextField.tsx";\nexport default function GeneratedScreen() { return TextField; }\n`;
+
+  async function compileFixtureRoot(): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "designflow-regen-compile-"));
+    await mkdir(join(root, "src/components"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "regen-compile-fixture", scripts: { build: "bun build ./designflow-proposed-entry.js --outdir=dist" } }));
+    await writeFile(join(root, "index.html"), `<script type="module" src="/src/main.jsx"></script>`);
+    await writeFile(join(root, "src/main.jsx"), `import App from "./App.jsx";\nexport default App;\n`);
+    await writeFile(join(root, "src/App.jsx"), "export default function App() { return null; }\n");
+    await writeFile(join(root, "src/components/TextField.tsx"), "export const TextField = () => null;\n");
+    return root;
+  }
+
+  test("a compile-invalid attempt regenerates with module diagnostics and the repaired attempt succeeds", async () => {
+    const root = await compileFixtureRoot();
+    const invocations: unknown[] = [];
+    try {
+      const context = await contextFor(root, invocations, [
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: DEFAULT_IMPORT }]),
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: NAMED_IMPORT }]),
+      ]);
+      const output = await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
+      expect(invocations.length).toBe(2);
+      const feedback = (invocations[1] as { input: { proposalRepairFeedback?: { validationErrors: Array<{ code: string; moduleDiagnostics?: Array<{ message: string }> }> } } }).input.proposalRepairFeedback;
+      expect(feedback?.validationErrors[0]?.code).toBe("ERR_PROPOSAL_MODULE_COMPILE_FAILED");
+      expect((feedback?.validationErrors[0]?.moduleDiagnostics ?? []).map((d) => d.message).join("\n")).toContain("No matching export");
+      expect(output.artifactRef.metadata.proposalAttempts).toBe(2);
+      expect(existsSync(join(root, "src/GeneratedScreen.jsx"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("three compile-invalid attempts exhaust honestly with zero project writes", async () => {
+    const root = await compileFixtureRoot();
+    const invocations: unknown[] = [];
+    try {
+      const context = await contextFor(root, invocations, [
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: DEFAULT_IMPORT }]),
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: DEFAULT_IMPORT }]),
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: DEFAULT_IMPORT }]),
+      ]);
+      await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
+      expect(invocations.length).toBe(3);
+      expect(existsSync(join(root, "src/GeneratedScreen.jsx"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

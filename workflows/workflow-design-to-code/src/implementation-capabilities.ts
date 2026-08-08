@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DesignFlowError, designSpecificationSchema, generatedImplementationSchema, type Capability, implementationPlanV1Schema, proposedFileChangesSchema } from "@designflow/sdk";
-import { inspectRegisteredProject, mapDesignSystem, projectFileHash, validateProposedFileChanges } from "@designflow/capability-implementation";
+import { changedExecutableFiles, inspectRegisteredProject, mapDesignSystem, projectFileHash, validateProposedFileChanges, validateProposedModules, type ProposedModuleDiagnostic } from "@designflow/capability-implementation";
+import { analyzeRenderReachability } from "./composition-scope";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readArtifact, writeArtifact } from "./artifact-io";
@@ -34,9 +35,10 @@ export const REPAIRABLE_PROPOSAL_ERROR_CODES: ReadonlySet<string> = new Set([
   "ERR_UNSUPPORTED_FILE_TYPE",
   "ERR_PROPOSAL_INVALID",
   "ERR_PROPOSAL_TOO_LARGE",
+  "ERR_PROPOSAL_MODULE_COMPILE_FAILED",
 ]);
 
-interface ProposalAttemptFailure { readonly attempt: number; readonly code: string; readonly path?: string; readonly operation?: string; }
+interface ProposalAttemptFailure { readonly attempt: number; readonly code: string; readonly path?: string; readonly operation?: string; readonly diagnostics?: readonly ProposedModuleDiagnostic[]; }
 
 /** Typed, fact-only feedback for a regeneration attempt — never a rewritten operation. */
 function buildProposalRepairFeedback(options: {
@@ -53,6 +55,7 @@ function buildProposalRepairFeedback(options: {
     maxAttempts: MAX_CORRECTION_PROPOSAL_ATTEMPTS,
     validationErrors: options.failures.map((failure) => ({
       code: failure.code,
+      ...(failure.diagnostics !== undefined ? { moduleDiagnostics: failure.diagnostics } : {}),
       ...(failure.operation !== undefined ? { operation: failure.operation } : {}),
       ...(failure.path !== undefined
         ? {
@@ -84,11 +87,21 @@ export const invokeImplementationAgentStage4Capability: Capability<unknown, Capa
       // become — the same rules the proposal step enforces — so an invalid
       // shape triggers bounded regeneration instead of terminating the run.
       try {
-        validateProposedFileChanges(proposedFileChangesSchema.parse({ schemaVersion: "1", projectId: project.project.id, baseProjectFingerprint: project.project.contextFingerprint, files: value.files.map((file) => { const baseHash = file.action === "modify" ? projectFileHash(join(root, file.path)) : undefined; return { path: file.path, action: file.action, content: file.content, ...(baseHash !== undefined ? { expectedBaseHash: baseHash } : {}), reason: file.reason, relatedDesignNodeIds: [] }; }), packageChanges: [], commandsRequested: [], assumptions: value.assumptions, unresolvedItems: value.unresolvedItems }), root);
+        const attemptProposal = proposedFileChangesSchema.parse({ schemaVersion: "1", projectId: project.project.id, baseProjectFingerprint: project.project.contextFingerprint, files: value.files.map((file) => { const baseHash = file.action === "modify" ? projectFileHash(join(root, file.path)) : undefined; return { path: file.path, action: file.action, content: file.content, ...(baseHash !== undefined ? { expectedBaseHash: baseHash } : {}), reason: file.reason, relatedDesignNodeIds: [] }; }), packageChanges: [], commandsRequested: [], assumptions: value.assumptions, unresolvedItems: value.unresolvedItems });
+        validateProposedFileChanges(attemptProposal, root);
+        // Proposed-state module validation: every changed executable module
+        // must compile under the project's real build tooling in a temporary
+        // workspace, even when nothing currently imports it. A latent
+        // import/export defect is repairable model output, so it feeds the
+        // same bounded regeneration loop instead of surviving to approval.
+        const moduleValidation = await validateProposedModules(root, attemptProposal, { ...(project.commands.build !== undefined ? { buildCommand: { executable: project.commands.build.executable, args: project.commands.build.args ?? [] } } : {}), ...(context.signal !== undefined ? { signal: context.signal } : {}) });
+        if (moduleValidation.status === "failed")
+          throw new DesignFlowError("ERR_PROPOSAL_MODULE_COMPILE_FAILED", `A changed executable module in the proposal does not compile in the project context.`, { diagnostics: moduleValidation.diagnostics, validatedFiles: moduleValidation.validatedFiles });
       } catch (error) {
         const code = error instanceof DesignFlowError ? error.code : "ERR_PROPOSAL_INVALID";
         const failedPath = error instanceof DesignFlowError && typeof (error.metadata as Record<string, unknown> | undefined)?.path === "string" ? String((error.metadata as Record<string, unknown>).path) : /:\s*(\S+)$/.exec(error instanceof Error ? error.message : "")?.[1];
-        failures.push({ attempt, code, ...(failedPath !== undefined ? { path: failedPath } : {}) });
+        const diagnostics = error instanceof DesignFlowError && Array.isArray((error.metadata as Record<string, unknown> | undefined)?.diagnostics) ? ((error.metadata as Record<string, unknown>).diagnostics as ProposedModuleDiagnostic[]) : undefined;
+        failures.push({ attempt, code, ...(failedPath !== undefined ? { path: failedPath } : {}), ...(diagnostics !== undefined ? { diagnostics } : {}) });
         if (!REPAIRABLE_PROPOSAL_ERROR_CODES.has(code) || attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS) {
           throw new DesignFlowError(
             attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS && REPAIRABLE_PROPOSAL_ERROR_CODES.has(code) ? "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" : code,
@@ -110,5 +123,15 @@ export const createProposalCapability: Capability<unknown, CapabilityOutput> = {
     // semantics (modify/delete target must exist, create must not), path
     // safety, and size bounds. An invalid proposal fails here with a typed
     // error instead of being presented for approval.
-    validateProposedFileChanges(proposal, root); return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.proposal, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.proposal, name: "Proposed File Changes", payload: proposal, summary: { createCount: proposal.files.filter((f) => f.action === "create").length, modifyCount: proposal.files.filter((f) => f.action === "modify").length } }); } };
+    validateProposedFileChanges(proposal, root);
+    // Compile-validate the EXACT proposal that approval will bind to, in a
+    // temporary workspace (the registered project is never mutated), and
+    // record the result hash-bound to this proposal. Rendered reachability
+    // is measured separately: an unreachable-but-valid module is trusted
+    // evidence for the correction stage, never a failure by itself.
+    const moduleValidation = await validateProposedModules(root, proposal, { ...(project.commands.build !== undefined ? { buildCommand: { executable: project.commands.build.executable, args: project.commands.build.args ?? [] } } : {}), ...(context.signal !== undefined ? { signal: context.signal } : {}) });
+    if (moduleValidation.status === "failed") throw new DesignFlowError("ERR_PROPOSAL_MODULE_COMPILE_FAILED", "A changed executable module in the stored proposal does not compile in the project context; no approval will be requested.", { diagnostics: moduleValidation.diagnostics, validatedFiles: moduleValidation.validatedFiles });
+    const renderReachability = analyzeRenderReachability(root, changedExecutableFiles(proposal));
+    await writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.moduleValidation, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.moduleValidation, name: "Proposed Module Validation", payload: { schemaVersion: "1", status: moduleValidation.status, validatedFiles: moduleValidation.validatedFiles, diagnostics: moduleValidation.diagnostics, proposalHash: moduleValidation.proposalHash, ...(moduleValidation.command !== undefined ? { command: moduleValidation.command } : {}), ...(moduleValidation.durationMs !== undefined ? { durationMs: moduleValidation.durationMs } : {}), renderReachability }, summary: { status: moduleValidation.status, validatedFiles: moduleValidation.validatedFiles.length, proposalHash: moduleValidation.proposalHash, reachableChangedFiles: renderReachability.reachableChangedFiles, unreachableChangedFiles: renderReachability.unreachableChangedFiles } });
+    return writeArtifact(context, { artifactId: IMPLEMENTATION_ARTIFACT_IDS.proposal, artifactType: IMPLEMENTATION_ARTIFACT_TYPES.proposal, name: "Proposed File Changes", payload: proposal, summary: { createCount: proposal.files.filter((f) => f.action === "create").length, modifyCount: proposal.files.filter((f) => f.action === "modify").length, moduleValidation: moduleValidation.status, moduleValidationProposalHash: moduleValidation.proposalHash } }); } };
 export const implementationCapabilities: readonly Capability<unknown, CapabilityOutput>[] = [inspectRegisteredProjectCapability, mapDesignSystemCapability, invokeImplementationAgentStage4Capability, createImplementationPlanCapability, createProposalCapability];

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createProjectSnapshot } from "@designflow/capability-implementation";
 import { correctionContextV1Schema, MAX_CORRECTION_COMPOSITION_FILES, type CorrectionContextV1 } from "@designflow/sdk";
-import { deriveCompositionScope } from "./composition-scope";
+import { analyzeRenderReachability, deriveCompositionScope } from "./composition-scope";
 import { readBoundedExcerpt, sha256, validateCorrectionAgentOutput } from "./feedback-loop-utils";
 import { type FeedbackLoopWorkflowInput } from "./feedback-loop-types";
 
@@ -200,6 +200,42 @@ describe("composition files and dirty-target safety", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(state, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("render reachability analysis", () => {
+  test("an unmounted generated screen is unreachable while App stays reachable", () => {
+    const root = fixture(REACT_FIXTURE);
+    try {
+      const result = analyzeRenderReachability(root, ["src/App.jsx", "src/components/GeneratedScreen.jsx"]);
+      expect(result.previewEntry).toBe("src/main.jsx");
+      expect(result.reachableChangedFiles).toEqual(["src/App.jsx"]);
+      expect(result.unreachableChangedFiles).toEqual(["src/components/GeneratedScreen.jsx"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a transitively mounted module is reachable", () => {
+    const root = fixture({ ...REACT_FIXTURE, "src/App.jsx": `import GeneratedScreen from "./components/GeneratedScreen.jsx";\nexport default function App() { return <GeneratedScreen />; }\n` });
+    try {
+      const result = analyzeRenderReachability(root, ["src/components/GeneratedScreen.jsx"]);
+      expect(result.reachableChangedFiles).toEqual(["src/components/GeneratedScreen.jsx"]);
+      expect(result.unreachableChangedFiles).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("with no resolvable preview entry everything is honestly unreachable", () => {
+    const root = fixture({ "src/main.jsx": REACT_FIXTURE["src/main.jsx"] });
+    try {
+      const result = analyzeRenderReachability(root, ["src/main.jsx"]);
+      expect(result.previewEntry).toBeUndefined();
+      expect(result.unreachableChangedFiles).toEqual(["src/main.jsx"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });
