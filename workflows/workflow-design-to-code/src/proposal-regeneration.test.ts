@@ -74,7 +74,8 @@ function workflowInput(root: string) {
 }
 
 function agentOutput(files: Array<{ path: string; action: "create" | "modify"; content?: string }>): Record<string, unknown> {
-  return { files: files.map((file) => ({ path: file.path, action: file.action, content: file.content ?? "export const x = 1;\n", reason: "test" })), assumptions: [], unresolvedItems: [], implementationVersion: "0.1.0" };
+  const executable = files.map((file) => file.path).filter((path) => /\.(jsx|tsx|js|ts|mjs)$/i.test(path));
+  return { files: files.map((file) => ({ path: file.path, action: file.action, content: file.content ?? "export const x = 1;\n", reason: "test" })), assumptions: [], unresolvedItems: [], implementationVersion: "0.1.0", coverageClaims: executable.length > 0 ? [{ targetId: "frame:n1", mode: "proposed_change", paths: executable, supportingPaths: [] }] : [] };
 }
 
 describe("bounded proposal regeneration", () => {
@@ -280,5 +281,35 @@ describe("MVP-4N content-integrity in the bounded loop", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("MVP-4O coverage in the bounded loop", () => {
+  test("a CSS-only attempt fails coverage before any compile workspace and a covered attempt 2 succeeds", async () => {
+    const root = await fixtureRoot();
+    const invocations: unknown[] = [];
+    const context = await contextFor(root, invocations, [
+      agentOutput([{ path: "src/components/NavMenu/NavMenu.module.css", action: "create", content: ".menu { display: flex; }\n" }]),
+      agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: "export default function GeneratedScreen() { return null; }\n" }]),
+    ]);
+    const output = await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
+    expect(invocations.length).toBe(2);
+    const feedback = (invocations[1] as { input: { proposalRepairFeedback?: { validationErrors: Array<{ code: string; targetId?: string; fact?: string }> } } }).input.proposalRepairFeedback;
+    expect(feedback?.validationErrors[0]?.code).toBe("ERR_PROPOSAL_COVERAGE_INCOMPLETE");
+    expect(feedback?.validationErrors[0]?.targetId).toBe("frame:n1");
+    expect(feedback?.validationErrors[0]?.fact).toBe("the selected design root requires executable implementation coverage");
+    expect(output.artifactRef.metadata.proposalAttempts).toBe(2);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("three uncovered attempts exhaust honestly with zero writes", async () => {
+    const root = await fixtureRoot();
+    const invocations: unknown[] = [];
+    const css = { path: "src/only.css", action: "create" as const, content: ".a { color: red; }\n" };
+    const context = await contextFor(root, invocations, [agentOutput([css]), agentOutput([css]), agentOutput([css])]);
+    await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
+    expect(invocations.length).toBe(3);
+    expect(existsSync(join(root, "src/only.css"))).toBe(false);
+    await rm(root, { recursive: true, force: true });
   });
 });

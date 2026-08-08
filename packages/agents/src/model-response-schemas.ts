@@ -43,8 +43,9 @@ export const implementationResponseSchema: JsonSchemaObject = {
     assumptions: strings,
     unresolvedItems: strings,
     implementationVersion: text,
+    coverageClaims: { type: "array", items: { type: "object", additionalProperties: false, properties: { targetId: text, mode: { type: "string", enum: ["proposed_change", "existing_reuse"] }, paths: strings, supportingPaths: strings }, required: ["targetId", "mode", "paths", "supportingPaths"] } },
   },
-  required: ["files", "assumptions", "unresolvedItems", "implementationVersion"],
+  required: ["files", "assumptions", "unresolvedItems", "implementationVersion", "coverageClaims"],
 };
 
 const visualFindingResponseSchema = {

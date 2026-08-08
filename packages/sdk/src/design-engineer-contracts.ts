@@ -465,6 +465,51 @@ export type ImplementationPlan = z.infer<typeof implementationPlanSchema>;
  * exactly like Stage 1's `generate-code` output. Nothing here is written to
  * the project's own filesystem; that remains a later stage's work.
  */
+/** Hard bound on host-derived required implementation coverage targets. */
+export const MAX_IMPLEMENTATION_COVERAGE_TARGETS = 8 as const;
+
+/**
+ * A model claim about how its proposal satisfies one host-required design
+ * target: either files inside the exact proposal (`proposed_change`) or
+ * trusted already-existing mapped implementation (`existing_reuse`). The
+ * host, never the model, defines the required targets and the trusted
+ * reuse paths.
+ */
+export const implementationCoverageClaimSchema = z
+  .object({
+    targetId: z.string().min(1),
+    mode: z.enum(["proposed_change", "existing_reuse"]),
+    paths: z.array(z.string().min(1)).min(1).max(8),
+    supportingPaths: z.array(z.string().min(1)).max(16).default([]),
+  })
+  .strict();
+export type ImplementationCoverageClaim = z.infer<typeof implementationCoverageClaimSchema>;
+
+/** Host-derived required design surface for an implementation proposal. */
+export const implementationCoveragePlanV1Schema = z
+  .object({
+    schemaVersion: z.literal("1"),
+    targetFrame: z.object({ nodeId: z.string().min(1), name: z.string().min(1) }).strict(),
+    requiredTargets: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            kind: z.enum(["root_frame", "component"]),
+            requirement: z.literal("required"),
+            source: z.string().min(1),
+            name: z.string().min(1).optional(),
+            mappedProjectPaths: z.array(z.string().min(1)).max(8).default([]),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(MAX_IMPLEMENTATION_COVERAGE_TARGETS),
+    trustedReusePaths: z.array(z.string().min(1)).max(128).default([]),
+  })
+  .strict();
+export type ImplementationCoveragePlanV1 = z.infer<typeof implementationCoveragePlanV1Schema>;
+
 export const generatedImplementationSchema = z
   .object({
     sourceProvenanceDigest: z.string().min(1).optional(),
@@ -481,6 +526,8 @@ export const generatedImplementationSchema = z
     assumptions: z.array(z.string().min(1)),
     unresolvedItems: z.array(z.string().min(1)),
     implementationVersion: z.string().min(1),
+    /** Optional for backward compatibility: old artifacts carry no claims and are never reinterpreted as covered. */
+    coverageClaims: z.array(implementationCoverageClaimSchema).max(16).default([]),
   })
   .strict();
 

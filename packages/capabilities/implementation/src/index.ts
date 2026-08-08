@@ -9,6 +9,8 @@ export { assertGitSafeForWrite, inspectGitSafety, type GitSafetyReport } from ".
 export { acquireProjectWriteLock, type ProjectWriteLock, type ProjectWriteLockRecord } from "./project-write-lock";
 export type { SnapshotEntry, ProjectSnapshot, ApplicationResult } from "./application";
 export { validateProject, makeValidationReport } from "./validation";
+export { deriveImplementationCoveragePlan, validateImplementationCoverage } from "./coverage";
+export type { CoverageValidationResult } from "./coverage";
 export { validateProposedModules, changedExecutableFiles, isExecutableSourcePath, PROPOSED_STATE_ENTRY_FILE } from "./proposed-state-validation";
 export type { ProposedModuleValidationResult, ProposedModuleValidationOptions, ProposedModuleDiagnostic } from "./proposed-state-validation";
 export type { ValidationOptions } from "./validation";

@@ -102,7 +102,7 @@ export { selectActionableFindings, selectedFindingRecords } from "./feedback-loo
 export { validateCorrectionAgentOutput, correctionToImplementationProposal } from "./feedback-loop-utils";
 export { FEEDBACK_LOOP_ARTIFACT_IDS, FEEDBACK_LOOP_ARTIFACT_TYPES, feedbackLoopWorkflowInputSchema, actionableFindingSelectionSchema, proposedCorrectionChangesSchema } from "./feedback-loop-types";
 export type { FeedbackLoopWorkflowInput, FeedbackLoopInput, ActionableFindingSelection, ProposedCorrectionChanges } from "./feedback-loop-types";
-export { inspectRegisteredProject, projectRootIdentity } from "@designflow/capability-implementation";
+export { inspectRegisteredProject, projectRootIdentity, deriveImplementationCoveragePlan } from "@designflow/capability-implementation";
 export { visualValidationCapabilities } from "./visual-validation-capabilities";
 export { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, visualValidationWorkflowInputSchema, visualValidationSummarySchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema } from "./visual-validation-types";
 export type { VisualValidationWorkflowInput, VisualValidationSummaryV1, PreviewRuntimeRecordV1, VisualValidationInput, VisualValidationReport, VisualComparisonMetricsV1 } from "./visual-validation-types";

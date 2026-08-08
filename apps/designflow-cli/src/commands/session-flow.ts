@@ -8,10 +8,11 @@ import {
 import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
   FEEDBACK_LOOP_WORKFLOW_ID,
+  deriveImplementationCoveragePlan,
   inspectRegisteredProject,
   type CliContext,
 } from "../services/cli-runner";
-import type { SessionResult } from "@designflow/sdk";
+import { generatedImplementationSchema, type SessionResult } from "@designflow/sdk";
 import type { ArtifactSummary } from "@designflow/product";
 import { renderDetail, renderList } from "./artifacts";
 import {
@@ -30,6 +31,7 @@ import {
 import { createOrLoadParent, runParentLoop } from "./feedback-loop";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
 
 /**
@@ -439,6 +441,40 @@ async function offerVisualCorrection(
   return runParentLoop(context, terminal, correctionParent);
 }
 
+interface CoverageDisplay {
+  readonly targets: readonly { readonly id: string; readonly kind?: string; readonly name?: string | undefined }[];
+  readonly result: readonly { readonly targetId: string; readonly mode: string; readonly paths: readonly string[] }[];
+}
+
+/**
+ * Rebuilds the host-derived coverage view for display from the run's own
+ * persisted evidence (specification, mapping, project context, agent
+ * claims) using the same derivation the validator used. Returns undefined
+ * for older runs without coverage claims.
+ */
+async function readCoverageArtifact(context: CliContext, report: Awaited<ReturnType<CliContext["runner"]["explain"]>>): Promise<CoverageDisplay | undefined> {
+  try {
+    const payloadFor = async (artifactId: string): Promise<unknown> => {
+      const summary = report.artifacts.find((artifact) => artifact.artifactId === artifactId);
+      if (summary === undefined) throw new Error(`missing ${artifactId}`);
+      return (await context.artifactInspection.getPayload(summary)).payload;
+    };
+    const plan = deriveImplementationCoveragePlan(
+      await payloadFor("design-specification"),
+      await payloadFor("design-system-mapping"),
+      await payloadFor("project-implementation-context"),
+    );
+    const agentOutput = generatedImplementationSchema.parse(await payloadFor("implementation-agent-output"));
+    if (agentOutput.coverageClaims.length === 0) return undefined;
+    return {
+      targets: plan.requiredTargets,
+      result: agentOutput.coverageClaims.map((claim) => ({ targetId: claim.targetId, mode: claim.mode, paths: claim.paths })),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function renderImplementationPreview(context: CliContext, terminal: Terminal, executionId: string, originalInput?: unknown): Promise<void> {
   const report = await context.runner.explain(executionId);
   const proposal = report.artifacts.find((artifact) => artifact.artifactId === "proposed-file-changes");
@@ -457,6 +493,22 @@ async function renderImplementationPreview(context: CliContext, terminal: Termin
     terminal.print();
     for (const file of files.slice(0, 50)) terminal.print(`  ${file.action}  ${file.path} — ${file.reason}`);
     if (files.length > 50) terminal.print(`  … ${files.length - 50} more files omitted`);
+    // Compact host-validated design-coverage summary: what the proposal
+    // claims to cover, before what the code actually changes. The persisted
+    // implementation-coverage artifact is written in the same capability
+    // that stores the proposal this approval binds to; a proposal with
+    // failed coverage never reaches this prompt.
+    const coverage = await readCoverageArtifact(context, report);
+    if (coverage !== undefined) {
+      const satisfied = new Map(coverage.result.map((entry) => [entry.targetId, entry]));
+      terminal.print();
+      terminal.print("Design coverage:");
+      for (const target of coverage.targets) {
+        const claim = satisfied.get(target.id);
+        terminal.print(`  ${claim !== undefined ? "✓" : "✗"} ${target.kind === "root_frame" ? "Root frame" : "Component"} · ${target.name ?? target.id}${claim !== undefined ? "" : " · missing"}`);
+        if (claim !== undefined) terminal.print(`    ${claim.mode} → ${claim.paths.join(", ")}`);
+      }
+    }
     // The bounded review below is rendered from the exact proposal payload
     // the approval binds to. Current-file content comes from the registered
     // root when the session input can resolve it; a modify diff must show

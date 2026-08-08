@@ -45,7 +45,8 @@ export const implementationAgentManifest: AgentManifest = agentManifestSchema.pa
     "Never invent packages, emit absolute or traversal paths, request shell execution, claim validation passed, or claim files were written. " +
     "Use action 'modify' only for a relative path listed in the project context's component sources or file evidence; any new file must use action 'create' with a project-relative path. " +
     "If the project context already lists a file at the exact target path, that path MUST use action 'modify', never 'create'. " +
-    "Preserve accessibility and public APIs, and distinguish observed facts, inferred conventions, design facts, mapping decisions, and assumptions.",
+    "Preserve accessibility and public APIs, and distinguish observed facts, inferred conventions, design facts, mapping decisions, and assumptions. " +
+    "When a coveragePlan is supplied, every requiredTargets entry MUST have a coverageClaims entry: use mode 'proposed_change' with paths that are files in your own proposal, or mode 'existing_reuse' only with paths listed in trustedReusePaths. The root_frame target (and each component target) needs at least one executable source path (.jsx/.tsx/.js/.ts) as a primary path — a stylesheet alone never satisfies it. List stylesheets and assets in supportingPaths.",
   allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-implementation"],
   allowedTools: [],
   modelProfileId: MODEL_PROFILE_ID,
@@ -68,6 +69,8 @@ interface ImplementationInput {
    * — never a rewritten operation; the agent regenerates its own proposal.
    */
   readonly proposalRepairFeedback?: unknown;
+  /** Host-derived required design surface (MVP-4O); passed through verbatim. */
+  readonly coveragePlan?: unknown;
 }
 
 export type ImplementationStrategy = (
@@ -89,13 +92,14 @@ function readInput(request: AgentInvocationRequest): ImplementationInput {
     ]);
   }
 
-  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping, proposalRepairFeedback: raw?.proposalRepairFeedback };
+  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping, proposalRepairFeedback: raw?.proposalRepairFeedback, coveragePlan: raw?.coveragePlan };
   if (!stage4Project.success) throw new SpecializedAgentOutputInvalidError("implementation-agent", ["project context could not be normalized"]);
   const context = stage4Project.data;
   return {
     designSpecification: spec.data,
     designSystemMapping: raw?.designSystemMapping,
     proposalRepairFeedback: raw?.proposalRepairFeedback,
+    coveragePlan: raw?.coveragePlan,
     projectContext: {
       schemaVersion: context.schemaVersion,
       projectId: context.project.id,
@@ -186,6 +190,10 @@ export const deterministicImplementationStrategy: ImplementationStrategy = async
     reason: `Realizes the "${component.name}" component from the design specification.`,
   }));
 
+  // Coverage claims for the host-derived plan: the deterministic strategy
+  // claims the selected root frame with its first executable proposed file.
+  const rootNode = designSpecification.hierarchy.find((node) => node.parentId === undefined) ?? designSpecification.hierarchy[0];
+  const executablePaths = files.map((file) => file.path).filter((path) => /\.(jsx|tsx|js|ts|mjs|vue|svelte)$/i.test(path));
   return validate(manifest.version, {
     files,
     assumptions: [
@@ -195,6 +203,9 @@ export const deterministicImplementationStrategy: ImplementationStrategy = async
         : []),
     ],
     unresolvedItems: designSpecification.ambiguities.map((ambiguity) => ambiguity.description),
+    coverageClaims: rootNode !== undefined && executablePaths.length > 0
+      ? [{ targetId: `frame:${rootNode.id}`, mode: "proposed_change" as const, paths: executablePaths.slice(0, 8), supportingPaths: [] }]
+      : [],
   });
 };
 
@@ -203,7 +214,7 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
   context,
   manifest,
 ) => {
-  const { designSpecification, projectContext, designSystemMapping, proposalRepairFeedback } = readInput(request);
+  const { designSpecification, projectContext, designSystemMapping, proposalRepairFeedback, coveragePlan } = readInput(request);
 
   return generateValidatedModelOutput({
     agentId: "implementation-agent",
@@ -217,6 +228,9 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
           `Design specification:\n${JSON.stringify(designSpecification)}\n\n` +
           `Project context:\n${JSON.stringify(projectContext)}` +
           `\n\nDesign-system mapping:\n${JSON.stringify(designSystemMapping ?? null)}` +
+          (coveragePlan !== undefined
+            ? `\n\nRequired design coverage plan (every requiredTargets entry must be satisfied by coverageClaims):\n${JSON.stringify(coveragePlan)}`
+            : "") +
           (proposalRepairFeedback !== undefined
             ? `\n\nYour previous proposal failed deterministic validation. Regenerate a complete corrected proposal using these facts:\n${JSON.stringify(proposalRepairFeedback)}`
             : ""),

@@ -117,6 +117,7 @@ import {
   type FeedbackLoopWorkflowInput,
   type ImplementationWorkflowInput,
   inspectRegisteredProject,
+  deriveImplementationCoveragePlan,
 } from "@designflow/workflow-design-to-code";
 import {
   qaReviewApprovalPolicy,
@@ -144,6 +145,7 @@ export function parseFeedbackLoopInput(input: unknown) {
 }
 
 export {
+  deriveImplementationCoveragePlan,
   feedbackLoopWorkflowInputSchema,
   implementationWorkflowInputSchema,
   inspectRegisteredProject,

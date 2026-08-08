@@ -144,7 +144,10 @@ describe("installed-CLI Stage 4 routing", () => {
     expect(code).toBe(1);
     const [run] = await created.runner.history();
     expect(run?.workflowId).toBe("design-to-code-implementation");
-    expect(terminal.transcript).toContain("Files to create: 1");
+    expect(terminal.transcript).toMatch(/Files to create: [1-9]/);
+    expect(terminal.transcript).toContain("Design coverage:");
+    expect(terminal.transcript).toContain("✓ Root frame");
+    expect(terminal.transcript).toContain("Proposed changes (bounded review):");
     expect(terminal.transcript).toContain("No files have been changed yet");
     expect(terminal.transcript).not.toContain("Store the generated result as a DesignFlow artifact");
   }, 20_000);
