@@ -108,6 +108,8 @@ export interface ExecutionServiceConfig {
   readonly agentInvoker?: AgentInvocationService;
   /** Lets a capability reach a connected MCP server. Omitted by default. */
   readonly mcpClient?: McpClient;
+  /** Host-owned, non-persisted capability collaborators used by composition roots and tests. */
+  readonly capabilityConfig?: Readonly<Record<string, unknown>>;
 }
 
 interface StartExecutionParams {
@@ -137,6 +139,7 @@ export class ExecutionService
   private readonly executionReconciler: ExecutionReconciler | undefined;
   private readonly agentInvoker: AgentInvocationService | undefined;
   private readonly mcpClient: McpClient | undefined;
+  private readonly capabilityConfig: Readonly<Record<string, unknown>>;
 
   public constructor(config: ExecutionServiceConfig) {
     this.workflowResolver = config.workflowResolver;
@@ -159,6 +162,7 @@ export class ExecutionService
     this.executionReconciler = config.executionReconciler;
     this.agentInvoker = config.agentInvoker;
     this.mcpClient = config.mcpClient;
+    this.capabilityConfig = config.capabilityConfig ?? {};
   }
 
   public async execute(
@@ -710,6 +714,7 @@ export class ExecutionService
       executionReconciler: this.executionReconciler,
       agentInvoker: this.agentInvoker,
       mcpClient: this.mcpClient,
+      capabilityConfig: this.capabilityConfig,
       policyEvaluator: this.policyEvaluator,
       policy: this.policy,
     });

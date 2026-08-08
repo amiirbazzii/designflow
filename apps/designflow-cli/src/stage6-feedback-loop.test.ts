@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test as bunTest } from "bun:test";
 import {
   lstatSync,
   mkdirSync,
@@ -55,6 +55,21 @@ const contexts: CliContext[] = [];
 const homes: string[] = [];
 const roots: string[] = [];
 const repoRoot = resolve(import.meta.dir, "..", "..", "..");
+
+// The correction runtime preflight still launches the bounded fixture preview
+// here, while the renderer is injected as a deterministic host seam. Live
+// Chromium coverage belongs to MVP-4 acceptance, not this synthetic suite.
+function test(name: string, callback: () => void | Promise<void>): void;
+function test(name: string, options: { readonly timeout?: number }, callback: () => void | Promise<void>): void;
+function test(
+  name: string,
+  callbackOrOptions: (() => void | Promise<void>) | { readonly timeout?: number },
+  maybeCallback?: () => void | Promise<void>,
+): void {
+  const callback = typeof callbackOrOptions === "function" ? callbackOrOptions : maybeCallback;
+  if (callback === undefined) throw new Error("test callback is required");
+  bunTest(name, { timeout: typeof callbackOrOptions === "function" ? 30_000 : callbackOrOptions.timeout ?? 30_000 }, callback);
+}
 
 function installedCli(): string {
   const packdir = mkdtempSync(join(tmpdir(), "designflow-stage6-pack-"));
@@ -360,15 +375,14 @@ async function fixture(
         typecheck: "bun --version",
         lint: "bun --version",
         build: options.buildFails ? "false" : "bun --version",
-        ...(directStage5 ? { preview: "node preview.mjs" } : {}),
+        preview: "node preview.mjs",
       },
     }),
   );
-  if (directStage5)
-    writeFileSync(
-      join(root, "preview.mjs"),
-      "import http from 'node:http'; const port = Number(process.argv.at(-1)); http.createServer((_, res) => { res.writeHead(200, {'content-type':'text/html'}); res.end('<!doctype html><style>body{margin:0;background:#fff}header{height:64px;background:#111827;color:#fff;display:flex;align-items:center;padding:0 24px}nav{margin-left:auto}</style><header data-designflow-element=\"Header\">Header<nav>Navigation</nav></header>'); }).listen(port, '127.0.0.1');\n",
-    );
+  writeFileSync(
+    join(root, "preview.mjs"),
+    "import http from 'node:http'; const port = Number(process.argv.at(-1)); http.createServer((_, res) => { res.writeHead(200, {'content-type':'text/html'}); res.end('<!doctype html><style>body{margin:0;background:#fff}header{height:64px;background:#111827;color:#fff;display:flex;align-items:center;padding:0 24px}nav{margin-left:auto}</style><header data-designflow-element=\"Header\">Header<nav>Navigation</nav></header>'); }).listen(port, '127.0.0.1');\n",
+  );
   const source =
     "export const Header = () => <header style={{ height: '64px' }}>Header</header>; export const HeaderFallback = '64px';\n";
   writeFileSync(join(root, "src", "Header.tsx"), source);
@@ -391,9 +405,28 @@ async function fixture(
     }),
   );
   process.env.DESIGNFLOW_HOME = home;
+  const fixtureRenderer = {
+    async capture(
+      _url: string,
+      viewport: { readonly width: number; readonly height: number },
+    ) {
+      const bytes = png(viewport.width, viewport.height);
+      return {
+        bytes,
+        width: viewport.width,
+        height: viewport.height,
+        consoleErrors: [],
+        runtimeErrors: [],
+        failedResources: [],
+        warnings: ["test renderer: deterministic fixture"],
+      };
+    },
+    async close() {},
+  };
   const context = createCliContext({
     databasePath: join(home, "runs.json"),
     requireApproval: true,
+    capabilityConfig: { visualRenderer: fixtureRenderer },
   });
   contexts.push(context);
   const project = await context.projects.createProject({
@@ -734,7 +767,7 @@ describe("installed CLI Stage 6 boundary", () => {
     expect(terminal.transcript).toContain("Status:");
   });
 
-  test("Scenario C: required build failure rolls back and does not revalidate", async () => {
+  test("Scenario C: required build failure blocks approval before snapshot or revalidation", async () => {
     const fixtureData = await fixture(false, false, { buildFails: true });
     const baseline = projectHash(fixtureData.root);
     const terminal = new ScriptedTerminal(["approve"]);
@@ -748,7 +781,8 @@ describe("installed CLI Stage 6 boundary", () => {
     expect(
       await Bun.file(join(fixtureData.root, "src", "Header.tsx")).text(),
     ).toContain("64px");
-    expect(terminal.transcript).toContain("Status: stopped");
+    expect(terminal.transcript).toContain("Status: failed");
+    expect(terminal.transcript).toContain("no approval was requested");
     const history = await contexts[0]!.runner.history(
       "design-to-code-feedback-loop",
     );
@@ -759,16 +793,11 @@ describe("installed CLI Stage 6 boundary", () => {
           artifact.artifactId === "revalidated-visual-validation-report",
       ),
     ).toBe(false);
-    const reportArtifact = run.artifacts.find(
-      (artifact) => artifact.artifactId === "feedback-loop-report",
-    );
-    expect(reportArtifact).toBeDefined();
-    const payload = await contexts[0]!.artifactInspection.getPayload(
-      reportArtifact!,
-    );
-    expect((payload.payload as { stopReason?: string }).stopReason).toBe(
-      "project_validation_failed",
-    );
+    expect(
+      run.artifacts.some(
+        (artifact) => artifact.artifactId === "correction-snapshot",
+      ),
+    ).toBe(false);
   });
 
   test("Scenario D: unchanged deterministic metrics stop with no_improvement", async () => {

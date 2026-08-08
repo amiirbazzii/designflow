@@ -729,3 +729,17 @@ unmounted screen that does not build when mounted. The fix path is the
 deferred implementation rendered-reachability validation (build/bundle
 the proposal with the module actually reachable from the entry), after
 which this exact correction would have succeeded or been unnecessary.
+
+## MVP-4P — runtime preflight and resilient visual revalidation — 2026-08-08
+
+MVP-4O's deepest live run ended after correction apply/build because the mounted page was blank: `NavigationMenu` was invoked without its required `items` prop, producing a browser runtime exception that bundler-level build validation cannot detect. The child also crashed when post-correction Stage 5 attempted a fresh Figma Desktop MCP reference fetch and received `ERR_MCP_TIMEOUT`.
+
+MVP-4P changes the correction ordering to: Visual Correction Specialist → structural/hash/scope validation → exact proposed-state build → bounded preview/browser runtime preflight → manual exact approval → snapshot → apply → required validation → visual recapture. Runtime preflight runs in the accepted temporary proposed-state workspace with the exact proposal later shown for approval. It captures bounded `pageerror` diagnostics, detects the NavigationMenu class of crash, cleans workspace/preview/browser resources in `finally`, and never changes the registered project. A compile failure short-circuits runtime preview; runtime preflight is not a visual-similarity gate.
+
+The same correction iteration may invoke at most three proposal attempts. Attempt evidence records attempt number, proposal hash, validation outcome, compile/runtime result, and sanitized diagnostics; raw model responses are not stored. Runtime failure sends deterministic fact-only repair feedback to the same Visual Correction Specialist. Exhaustion is typed `ERR_CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED` and leaves approval, snapshot, apply, and project mutation absent. The persisted correction iteration stays `1 of 1`; there is no iteration 2.
+
+For post-correction comparison, a persisted trusted Figma reference is reused only when file key, node/frame identity, screenshot artifact identity, and trusted provenance all match. Otherwise normal refresh is attempted. A fresh reference timeout or post-apply capture failure persists an honest `visual_validation_inconclusive`/bounded infrastructure reason and terminates the child cleanly as an applied/project-validated but visually inconclusive result. It is never reported as improvement and never starts another iteration.
+
+Focused tests and the full Stage-6 boundary suite passed. Forced totals: build 26/26, typecheck 44/44, lint 26/26, tests 2,509 passed / 1 skipped / 0 failed across 52 successful Turbo tasks. Smoke and freshness passed. The fixture was restored to commit `992d7d5` after recording the applied blank-page state. The current project inspector reports `97ce9bb0…`; historical accepted evidence's `23c36efd…` remains preserved.
+
+No new live Journey 6 run was started because the current process had no `OPENROUTER_API_KEY`; no SIGINT acceptance was started. MVP-4K rollback acceptance remains PASS. **MVP-4P: PASS for the implemented safety/revalidation scope. Journey 6: BLOCKED — credential not present.** Deferred debts remain the terminal attempt-failure observability detail, historical/cosmetic artifact rows, and the fixture's Northstar-specific self-test.

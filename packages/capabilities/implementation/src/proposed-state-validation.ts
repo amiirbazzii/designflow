@@ -41,12 +41,21 @@ export interface ProposedModuleValidationResult {
   readonly command?: readonly string[];
   readonly exitCode?: number;
   readonly durationMs?: number;
+  /** Optional deterministic validation performed after the compile gate in the same workspace. */
+  readonly postBuild?: ProposedStatePostBuildResult;
+}
+
+export interface ProposedStatePostBuildResult {
+  readonly status: "passed" | "failed" | "unavailable";
+  readonly diagnostics: readonly ProposedModuleDiagnostic[];
 }
 
 export interface ProposedModuleValidationOptions {
   readonly buildCommand?: { readonly executable: string; readonly args: readonly string[] };
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
+  /** Runs only after the exact proposed state has compiled, before cleanup. */
+  readonly postBuild?: (workspace: string) => Promise<ProposedStatePostBuildResult>;
 }
 
 export function changedExecutableFiles(proposal: ProposedFileChanges): string[] {
@@ -160,7 +169,7 @@ export async function validateProposedModules(root: string, rawProposal: unknown
   const proposal = proposedFileChangesSchema.parse(rawProposal);
   const proposalHash = hashProposal(proposal);
   const modules = changedExecutableFiles(proposal);
-  if (modules.length === 0) return { status: "passed", validatedFiles: [], diagnostics: [], proposalHash };
+  if (modules.length === 0 && options.postBuild === undefined) return { status: "passed", validatedFiles: [], diagnostics: [], proposalHash };
   const command = options.buildCommand;
   if (command === undefined)
     return { status: "unavailable", validatedFiles: modules, diagnostics: [{ message: "The project declares no safe build command, so proposed modules could not be compile-validated." }], proposalHash };
@@ -175,8 +184,10 @@ export async function validateProposedModules(root: string, rawProposal: unknown
     throwIfCancelled();
     const result = await runBuild(command.executable, command.args, workspace, options);
     throwIfCancelled();
-    if (result.code === 0 && result.timedOut === false)
-      return { status: "passed", validatedFiles: modules, diagnostics: [], proposalHash, command: [command.executable, ...command.args], exitCode: result.code, durationMs: result.durationMs };
+    if (result.code === 0 && result.timedOut === false) {
+      const postBuild = options.postBuild === undefined ? undefined : await options.postBuild(workspace);
+      return { status: "passed", validatedFiles: modules, diagnostics: [], proposalHash, command: [command.executable, ...command.args], exitCode: result.code, durationMs: result.durationMs, ...(postBuild === undefined ? {} : { postBuild }) };
+    }
     const diagnostics = result.timedOut
       ? [{ message: "The proposed-state build timed out." }]
       : boundedDiagnostics(result.output, workspace, modules);

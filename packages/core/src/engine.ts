@@ -156,6 +156,8 @@ export interface ExecutionEngineConfig {
    * this stage, and every capability that never reads it, is unaffected.
    */
   readonly mcpClient?: McpClient | undefined;
+  /** Host-owned, non-persisted capability collaborators (primarily test seams). */
+  readonly capabilityConfig?: Readonly<Record<string, unknown>> | undefined;
   readonly policyEvaluator?: PolicyEvaluator | undefined;
   readonly policy?: ExecutionPolicy | undefined;
 }
@@ -203,6 +205,7 @@ export class ExecutionEngine {
   private readonly executionReconciler: ExecutionReconciler | undefined;
   private readonly agentInvoker: AgentInvocationService | undefined;
   private readonly mcpClient: McpClient | undefined;
+  private readonly capabilityConfig: Readonly<Record<string, unknown>>;
   private readonly policyEvaluator: PolicyEvaluator | undefined;
   private readonly policy: ExecutionPolicy | undefined;
 
@@ -231,6 +234,7 @@ export class ExecutionEngine {
     this.executionReconciler = config.executionReconciler;
     this.agentInvoker = config.agentInvoker;
     this.mcpClient = config.mcpClient;
+    this.capabilityConfig = config.capabilityConfig ?? {};
     this.policyEvaluator = config.policyEvaluator;
     this.policy = config.policy;
   }
@@ -1074,7 +1078,7 @@ export class ExecutionEngine {
       artifactRefs: snapshot,
       parentArtifacts: snapshot,
       artifactStore: lineageStore,
-      config: context.metadata,
+      config: { ...this.capabilityConfig, ...(context.metadata ?? {}) },
       signal: context.signal,
       ...(this.agentInvoker !== undefined ? { agents: this.agentInvoker } : {}),
       ...(this.mcpClient !== undefined ? { mcp: this.mcpClient } : {}),

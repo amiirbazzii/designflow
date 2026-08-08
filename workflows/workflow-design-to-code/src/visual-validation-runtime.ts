@@ -37,6 +37,8 @@ export interface BrowserCapture {
   readonly width: number;
   readonly height: number;
   readonly consoleErrors: readonly string[];
+  /** Unhandled page exceptions observed before the screenshot was taken. */
+  readonly runtimeErrors?: readonly string[];
   readonly failedResources: readonly string[];
   readonly warnings: readonly string[];
   readonly dom?: DomEvidence;
@@ -73,6 +75,20 @@ export interface DomEvidence {
 export interface BrowserRenderer {
   capture(url: string, viewport: VisualViewportV1, options: { fullPage: boolean; waitForFontsMs: number; timeoutMs: number; maxImageBytes: number; maxImagePixels: number }, signal: AbortSignal): Promise<BrowserCapture>;
   close(): Promise<void>;
+}
+
+/** Composition-root seam used by deterministic tests; production uses Playwright below. */
+export function configuredBrowserRenderer(value: unknown): BrowserRenderer | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const renderer = value as {
+    capture?: BrowserRenderer["capture"];
+    close?: BrowserRenderer["close"];
+  };
+  if (renderer.capture === undefined || renderer.close === undefined) return undefined;
+  return {
+    capture: renderer.capture.bind(value),
+    close: renderer.close.bind(value),
+  };
 }
 
 export type CaptureProgressCallback = (
@@ -342,6 +358,7 @@ export class PreviewRuntime {
         try {
           const response = await fetch(target.readinessUrl, { signal: AbortSignal.timeout(500) });
           if (response.ok) {
+            signal.removeEventListener("abort", abort);
             return { status: "ready", target, startedAt, endedAt: new Date().toISOString(), stdout: this.stdout, stderr: this.stderr, warnings: [] };
           }
         } catch { /* the server is still starting */ }
@@ -358,6 +375,7 @@ export class PreviewRuntime {
         warnings: [exited ? "The preview process exited before readiness." : "The preview server did not become ready before the startup timeout."],
       };
       await this.close();
+      signal.removeEventListener("abort", abort);
       return record;
     } catch (error) {
       signal.removeEventListener("abort", abort);
@@ -390,15 +408,21 @@ export async function loadOptionalPlaywrightRenderer(): Promise<BrowserRenderer 
   const moduleValue = loaded as Record<string, unknown> & { default?: Record<string, unknown> };
   const chromium = moduleValue.chromium ?? moduleValue.default?.chromium;
   if (typeof chromium !== "object" || chromium === null) return undefined;
-  const launch = (chromium as { launch?: (options: { headless: boolean }) => Promise<unknown> }).launch;
+  const launch = (chromium as { launch?: (options: { headless: boolean; channel?: string }) => Promise<unknown> }).launch;
   if (launch === undefined) return undefined;
-  try {
-    return createPlaywrightRenderer(await launch.call(chromium, { headless: true }));
-  } catch {
-    // A package can be installed without its Chromium payload. Keep this
-    // boundary honest: callers must report unavailable, never pass.
-    return undefined;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return createPlaywrightRenderer(
+        await launch.call(chromium, { headless: true, channel: "chromium" }),
+      );
+    } catch {
+      if (attempt === 2) return undefined;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
+  // A package can be installed without its Chromium payload. Keep this
+  // boundary honest: callers must report unavailable, never pass.
+  return undefined;
 }
 
 function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
@@ -411,17 +435,22 @@ function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
       const page = await (context as { newPage: () => Promise<unknown> }).newPage();
       try {
         const pageValue = page as {
-          on?: (event: "console" | "requestfailed", listener: (value: unknown) => void) => void;
+          on?: (event: "console" | "requestfailed" | "pageerror", listener: (value: unknown) => void) => void;
           goto: (target: string, options: { waitUntil: string; timeout: number }) => Promise<unknown>;
           evaluate: (expression: string) => Promise<unknown>;
           screenshot: (options: { fullPage: boolean; type: "png" }) => Promise<Uint8Array>;
           close?: () => Promise<void>;
         };
         const consoleErrors: string[] = [];
+        const runtimeErrors: string[] = [];
         const failedResources: string[] = [];
         pageValue.on?.("console", (value) => {
           const consoleValue = value as { type?: () => string; text?: () => string };
           if (consoleValue.type?.() === "error") consoleErrors.push((consoleValue.text?.() ?? "console error").slice(0, 500));
+        });
+        pageValue.on?.("pageerror", (value) => {
+          const message = value instanceof Error ? value.message : String(value);
+          runtimeErrors.push(message.slice(0, 500));
         });
         pageValue.on?.("requestfailed", (value) => {
           const request = value as { url?: () => string };
@@ -458,7 +487,7 @@ function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
           return { elements, overflow };
         })()`);
         const decoded = decodePng(bytes, options.maxImageBytes, options.maxImagePixels);
-        return { bytes, width: decoded.width, height: decoded.height, consoleErrors, failedResources, warnings: ["browser context: isolated", "source: browser-rendered"], dom: dom as DomEvidence };
+        return { bytes, width: decoded.width, height: decoded.height, consoleErrors, runtimeErrors, failedResources, warnings: ["browser context: isolated", "source: browser-rendered"], dom: dom as DomEvidence };
       } finally {
         await pageValueClose(page);
         await (context as { close: () => Promise<void> }).close();
@@ -490,7 +519,7 @@ export async function storeImplementationEvidence(
       image: { width: item.capture.width, height: item.capture.height, contentHash: hashBytes(item.capture.bytes), artifactId: stored.id },
       capturedAt: new Date().toISOString(),
       captureMethod: "browser",
-      warnings: [...item.capture.warnings, ...item.capture.consoleErrors.map((error) => `console: ${error}`), ...item.capture.failedResources.map((url) => `resource failed: ${url}`)],
+      warnings: [...item.capture.warnings, ...item.capture.consoleErrors.map((error) => `console: ${error}`), ...(item.capture.runtimeErrors ?? []).map((error) => `pageerror: ${error}`), ...item.capture.failedResources.map((url) => `resource failed: ${url}`)],
       authenticity: "browser-rendered",
       sourceLabel: "browser-rendered",
     }));

@@ -199,3 +199,20 @@ the dimension mismatch skips the pixel diff. **MVP-4G is `PASS`; Journey 6
 remains `FAIL`**, with the deferred dimension-normalization comparator
 debt now the single remaining prerequisite. DeepSeek is recommended as the
 low-cost testing profile for `implementation-default`.
+
+## MVP-4P — correction runtime preflight and resilient visual revalidation — 2026-08-08
+
+MVP-4O's live correction applied successfully and passed mounted-project build validation, but the mounted page crashed at browser runtime because `NavigationMenu` was called without its required `items` prop. Its follow-up visual recapture also hit `ERR_MCP_TIMEOUT` while attempting an unnecessary fresh Figma Desktop reference fetch. MVP-4P closes those infrastructure and runtime-validity gaps without changing model profiles or the one-iteration policy.
+
+- The exact correction proposal is validated in the existing bounded temporary workspace only: structural/hash/scope checks, required project build, then bounded localhost preview and browser runtime preflight.
+- `pageerror`, unhandled browser exceptions, preview readiness/navigation failure, and missing capture are bounded diagnostics; console warnings are not blanket-fatal.
+- Runtime failure feedback contains only attempt number, finite bound, typed code, and sanitized diagnostics. The Visual Correction Specialist owns repair.
+- Maximum correction proposal attempts is 3; applied correction iterations retain the existing hard bound and canonical beta rule of one opt-in → one applied iteration (`1 of 1`).
+- The preflight proposal hash is carried through proposal artifact, approval, snapshot, and apply checks. A changed proposal cannot reuse the old result.
+- Each attempt cleans temporary workspace, preview, browser, and bounded ports in `finally`.
+
+Post-correction Stage 5 reuses a persisted reference only when Figma file key, node/frame identity, screenshot artifact identity, and trusted provenance match. Dimensions alone never authorize reuse. If no valid reference exists, normal refresh remains the fallback. MCP timeout or post-apply capture failure becomes an honest inconclusive result; a successfully applied/project-validated correction is not falsely marked improved, and no iteration 2 starts.
+
+Focused tests and the full Stage-6 boundary suite passed. Full forced validation: build 26/26, typecheck 44/44, lint 26/26, 52/52 Turbo test tasks; 2,509 passed, 1 skipped, 0 failed. Installed smoke and freshness verification passed. The disposable project was restored to commit `992d7d5`; independent validation covered 7 files and Vite build passed. The current inspector fingerprint is `97ce9bb0…`; prior `23c36efd…` remains historical evidence.
+
+The current process had no `OPENROUTER_API_KEY`, so the final live Journey 6 rerun was not started. SIGINT acceptance remains unstarted. No secret, raw model response, auth header, or unrelated state was added. **MVP-4P: PASS for the implementation/regression gate. Journey 6: BLOCKED — credential not present.**

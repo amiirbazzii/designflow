@@ -522,6 +522,8 @@ export interface CliContextOptions {
    * function directly, with no config file or env var able to reach it.
    */
   readonly sessionClockOverride?: SessionClock;
+  /** Non-persisted capability collaborators for deterministic host tests. */
+  readonly capabilityConfig?: Readonly<Record<string, unknown>>;
 }
 
 export function createCliContext(options?: CliContextOptions): CliContext {
@@ -760,6 +762,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     }),
     executionReconciler: new ArtifactSetReconciler({ registry: artifactStore }),
     ...(mcpClient !== undefined ? { mcpClient } : {}),
+    ...(options?.capabilityConfig !== undefined
+      ? { capabilityConfig: options.capabilityConfig }
+      : {}),
     ...(figmaAgentInvocationRuntime !== undefined
       ? { agentInvoker: figmaAgentInvocationRuntime }
       : {}),

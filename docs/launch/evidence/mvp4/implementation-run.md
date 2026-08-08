@@ -419,3 +419,11 @@ validation contract passed live, correction reached and mounted the
 implementation, and the two closers are now (a) the revalidation
 robustness debt above and (b) runtime component-contract quality, which
 belongs to the visual/correction loop that the environment cut short.
+
+## MVP-4P follow-up — runtime-valid correction proposals — 2026-08-08
+
+The MVP-4O runtime defect is represented by a deterministic proposed-state test: a NavigationMenu-style exception occurs after the exact proposed files compile successfully. The new correction gate runs that exact state in the existing temporary workspace, starts the registered preview command, captures with the bounded browser renderer, and rejects `pageerror` before approval. The registered fixture remains unchanged during this phase.
+
+Attempts 1–3 are bounded retries inside correction iteration 1, not additional children or applied iterations. Only a runtime-valid proposal reaches the existing manual interactive approval gate. The approved proposal hash is the same hash preflighted, displayed, bound, snapshotted, and applied. Compile failure prevents runtime preview entirely.
+
+No implementation or correction acceptance run was performed in MVP-4P because the current process lacked `OPENROUTER_API_KEY`. The fixture's applied blank state was recorded and restored to committed `992d7d5`; its independent 7-file validation and Vite build passed. The current inspector returned `97ce9bb0…`; the earlier accepted evidence's `23c36efd…` is retained as historical data.

@@ -94,6 +94,7 @@ export const correctionAgentOutputV1Schema = z.object({ schemaVersion: z.literal
 export type CorrectionAgentOutputV1 = z.infer<typeof correctionAgentOutputV1Schema>;
 
 export const correctionApprovalBindingV1Schema = z.object({ schemaVersion: z.literal(VISUAL_CORRECTION_SCHEMA_VERSION), workflowId: text(256), executionId: text(256), iterationId: text(256), iterationNumber: z.number().int().positive(), correctionPlanArtifactId: text(256), correctionPlanHash: sha256, proposedCorrectionArtifactId: text(256), proposedCorrectionHash: sha256, selectedFindingIds: z.array(findingId).min(1).max(20), projectId: text(256), canonicalRootIdentity: sha256, currentProjectFingerprint: sha256, currentImplementationHash: sha256, previousVisualReportHash: sha256, fileCount: z.number().int().nonnegative().max(20), dependencyCount: z.number().int().nonnegative().max(2), validationCommands: z.array(text(512)).max(8), revalidationConfigurationHash: sha256, approvalId: text(256), expiresAt: z.string().datetime(), protectedNodeId: z.literal("create-correction-snapshot"), consumed: z.boolean(),
+  preflightProposalHash: sha256.optional(),
 }).strict();
 export type CorrectionApprovalBindingV1 = z.infer<typeof correctionApprovalBindingV1Schema>;
 

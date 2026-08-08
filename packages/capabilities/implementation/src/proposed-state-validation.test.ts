@@ -163,4 +163,51 @@ describe("proposed-module compile validation", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("compile-valid NavigationMenu proposal can still fail the proposed-state runtime gate", async () => {
+    const root = fixture(BASE);
+    try {
+      const result = await validateProposedModules(
+        root,
+        proposal([{ path: "src/AddExpensePage.jsx", action: "create", content: `export default function AddExpensePage() { return NavigationMenu(); }\nfunction NavigationMenu() { throw new Error("NavigationMenu missing required items prop"); }\n` }]),
+        {
+          buildCommand: BUILD,
+          postBuild: async (workspace) => {
+            expect(readFileSync(join(workspace, "src/AddExpensePage.jsx"), "utf8")).toContain("NavigationMenu");
+            return { status: "failed", diagnostics: [{ message: "pageerror: NavigationMenu missing required items prop" }] };
+          },
+        },
+      );
+      expect(result.status).toBe("passed");
+      expect(result.postBuild?.status).toBe("failed");
+      expect(result.postBuild?.diagnostics[0]?.message).toContain("NavigationMenu");
+      expect(lingeringWorkspaces()).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("compile failure short-circuits the proposed-state runtime gate", async () => {
+    const root = fixture(BASE);
+    let runtimeStarted = false;
+    try {
+      const result = await validateProposedModules(
+        root,
+        proposal([{ path: "src/Broken.jsx", action: "create", content: `import Missing from "./does-not-exist";\nexport default Missing;\n` }]),
+        {
+          buildCommand: BUILD,
+          postBuild: async () => {
+            runtimeStarted = true;
+            return { status: "passed", diagnostics: [] };
+          },
+        },
+      );
+      expect(result.status).toBe("failed");
+      expect(result.postBuild).toBeUndefined();
+      expect(runtimeStarted).toBe(false);
+      expect(lingeringWorkspaces()).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

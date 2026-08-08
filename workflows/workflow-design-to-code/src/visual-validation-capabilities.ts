@@ -23,7 +23,7 @@ import {
   terminateAtStage6Failpoint,
 } from "@designflow/sdk";
 import { readArtifact, writeArtifact } from "./artifact-io";
-import { captureWithPreview, comparePngImages, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, storeImplementationEvidence, type PreviewRuntimeRecord, type BrowserRenderer, type SpatialComparison, type BrowserCapture } from "./visual-validation-runtime";
+import { captureWithPreview, comparePngImages, configuredBrowserRenderer, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, storeImplementationEvidence, type PreviewRuntimeRecord, type BrowserRenderer, type SpatialComparison, type BrowserCapture } from "./visual-validation-runtime";
 import { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, domEvidenceCollectionSchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema, visualValidationSummarySchema, visualValidationWorkflowInputSchema, type VisualValidationReport } from "./visual-validation-types";
 
 const outputSchema = z.object({ artifactRef: z.object({ id: z.string(), type: z.string(), metadata: z.record(z.unknown()) }).strict() }).strict();
@@ -168,14 +168,6 @@ export const startPreviewServerCapability: Capability<unknown, CapabilityOutput>
   },
 };
 
-function configuredRenderer(context: CapabilityContext): BrowserRenderer | undefined {
-  const value = context.config.visualRenderer;
-  if (typeof value !== "object" || value === null) return undefined;
-  const renderer = value as { capture?: BrowserRenderer["capture"]; close?: BrowserRenderer["close"] };
-  if (renderer.capture === undefined || renderer.close === undefined) return undefined;
-  return { capture: renderer.capture.bind(value), close: renderer.close.bind(value) };
-}
-
 export const captureImplementationScreenshotsCapability: Capability<unknown, CapabilityOutput> = {
   id: "capture-implementation-screenshots", name: "Capture implementation screenshots", description: "Renders each configured viewport in a clean browser context and stores bounded evidence.", type: "pure", version: "1", inputSchema: z.unknown(), outputSchema,
   async execute(context, raw): Promise<CapabilityOutput> {
@@ -189,7 +181,7 @@ export const captureImplementationScreenshotsCapability: Capability<unknown, Cap
     const recovered = restoreCaptures(persisted);
     const recoveredViewportIds = new Set(recovered.map((item) => item.viewport.id));
     const recoveredAll = input.viewports.every((viewport) => recoveredViewportIds.has(viewport.id));
-    let renderer = configuredRenderer(context);
+    let renderer = configuredBrowserRenderer(context.config.visualRenderer);
     if (!recoveredAll && renderer === undefined) renderer = await loadOptionalPlaywrightRenderer();
     let runtime: PreviewRuntimeRecord;
     let captures: readonly { viewport: (typeof input.viewports)[number]; capture: Awaited<ReturnType<BrowserRenderer["capture"]>> }[] = recovered;

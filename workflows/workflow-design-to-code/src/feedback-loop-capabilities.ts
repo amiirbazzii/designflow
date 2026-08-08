@@ -46,7 +46,12 @@ import {
   runFreshStage5Validation,
   storeRevalidatedReport,
 } from "./feedback-loop-revalidation";
+import { configuredBrowserRenderer } from "./visual-validation-runtime";
 import { deriveCompositionScope } from "./composition-scope";
+import {
+  MAX_CORRECTION_PROPOSAL_ATTEMPTS,
+  preflightCorrectionProposal,
+} from "./correction-runtime-preflight";
 
 const inputSchema = feedbackLoopWorkflowInputSchema;
 const projectInput = (raw: unknown): FeedbackLoopWorkflowInput =>
@@ -371,40 +376,149 @@ export const invokeVisualCorrectionAgentCapability: Capability<
       FEEDBACK_LOOP_ARTIFACT_IDS.context,
       correctionContextV1Schema,
     );
-    const result = await requireAgents(context).invoke(
-      {
-        agentId: "visual-correction-agent",
-        objective: `Prepare correction proposal for iteration ${correctionContext.iterationNumber}.`,
-        input: { correctionContext },
-        attempt: correctionContext.iterationNumber,
-        metadata: {
-          workflowId: context.workflowId,
-          projectId: input.project.id,
-        },
-      },
-      context.signal,
-    );
-    if (result.type === "failure")
+    const project = inspectRegisteredProject(input.project, {}, context.signal);
+    if (project.project.contextFingerprint !== input.projectFingerprint)
       throw new DesignFlowError(
-        result.code,
-        "The Visual Correction Agent failed to produce a proposal.",
+        "ERR_PROJECT_FINGERPRINT_CHANGED",
+        "The registered project changed before correction preflight.",
       );
-    const output = validateCorrectionAgentOutput(
-      result.output,
-      correctionContextV1Schema.parse(correctionContext),
-      input,
+    const failures: Array<{
+      readonly attempt: number;
+      readonly proposalHash: string;
+      readonly code: string;
+      readonly compile: "passed" | "failed" | "unavailable";
+      readonly runtime: "passed" | "failed" | "unavailable";
+      readonly diagnostics: readonly { readonly message: string }[];
+    }> = [];
+    let repairFeedback: Record<string, unknown> | undefined;
+    for (let attempt = 1; attempt <= MAX_CORRECTION_PROPOSAL_ATTEMPTS; attempt += 1) {
+      if (context.signal.aborted)
+        throw new DesignFlowError(
+          "ERR_CORRECTION_PROPOSAL_ATTEMPT_CANCELLED",
+          "Correction proposal preparation was cancelled; no approval was requested.",
+          { attempt },
+        );
+      const result = await requireAgents(context).invoke(
+        {
+          agentId: "visual-correction-agent",
+          objective: `Prepare correction proposal for iteration ${correctionContext.iterationNumber}.`,
+          input: {
+            correctionContext,
+            ...(repairFeedback === undefined ? {} : { correctionRepairFeedback: repairFeedback }),
+          },
+          attempt,
+          metadata: { workflowId: context.workflowId, projectId: input.project.id },
+        },
+        context.signal,
+      );
+      if (result.type === "failure")
+        throw new DesignFlowError(
+          result.code,
+          "The Visual Correction Agent failed to produce a proposal.",
+        );
+      const output = validateCorrectionAgentOutput(
+        result.output,
+        correctionContextV1Schema.parse(correctionContext),
+        input,
+      );
+      const proposal = proposedFileChangesSchema.parse(
+        correctionToImplementationProposal(
+          project.project.id,
+          project.project.contextFingerprint,
+          output,
+        ),
+      );
+      const preflight = await preflightCorrectionProposal(
+        input.project.rootPath,
+        project,
+        proposal,
+        input.viewportConfiguration.viewports,
+        context.signal,
+        configuredBrowserRenderer(context.config.visualRenderer),
+      );
+      const runtimeFailureCode = preflight.compile.status !== "passed"
+        ? "ERR_CORRECTION_COMPILE_PREFLIGHT_FAILED"
+        : preflight.runtime.status !== "passed"
+          ? "ERR_CORRECTION_RUNTIME_PREFLIGHT_FAILED"
+          : undefined;
+      const diagnostics = preflight.compile.status !== "passed"
+        ? preflight.compile.diagnostics
+        : preflight.runtime.diagnostics;
+      await writeArtifact(context, {
+        artifactId: `correction-proposal-attempt-${attempt}`,
+        artifactType: "feedback.correction-proposal-attempt",
+        name: `Correction Proposal Attempt ${attempt}`,
+        payload: {
+          schemaVersion: "1",
+          attempt,
+          proposalHash: preflight.proposalHash,
+          validationOutcome: runtimeFailureCode === undefined ? "passed" : "failed",
+          compile: preflight.compile.status,
+          runtime: preflight.runtime.status,
+          diagnostics: diagnostics.slice(0, 12),
+        },
+        summary: {
+          attempt,
+          proposalHash: preflight.proposalHash,
+          compile: preflight.compile.status,
+          runtime: preflight.runtime.status,
+          ...(runtimeFailureCode === undefined ? {} : { code: runtimeFailureCode }),
+        },
+      });
+      if (runtimeFailureCode === undefined)
+        return writeArtifact(context, {
+          artifactId: FEEDBACK_LOOP_ARTIFACT_IDS.agentOutput,
+          artifactType: FEEDBACK_LOOP_ARTIFACT_TYPES.agentOutput,
+          name: "Correction Agent Output",
+          payload: output,
+          summary: {
+            files: output.changes.length,
+            findings: output.plan.selectedFindingIds.length,
+            traceIds: output.traceIds,
+            proposalAttempts: attempt,
+            preflightProposalHash: preflight.proposalHash,
+            preflightCompile: preflight.compile.status,
+            preflightRuntime: preflight.runtime.status,
+          },
+        });
+      failures.push({
+        attempt,
+        proposalHash: preflight.proposalHash,
+        code: runtimeFailureCode,
+        compile: preflight.compile.status,
+        runtime: preflight.runtime.status,
+        diagnostics: diagnostics.slice(0, 12),
+      });
+      if (attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS)
+        throw new DesignFlowError(
+          "ERR_CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED",
+          `Correction proposals remained invalid after ${MAX_CORRECTION_PROPOSAL_ATTEMPTS} bounded attempts; no approval was requested and no files were changed.`,
+          {
+            attempts: attempt,
+            attemptsExhausted: true,
+            failures: failures.map((failure) => ({
+              attempt: failure.attempt,
+              proposalHash: failure.proposalHash,
+              code: failure.code,
+              compile: failure.compile,
+              runtime: failure.runtime,
+              diagnostics: failure.diagnostics,
+            })),
+          },
+        );
+      repairFeedback = {
+        attempt,
+        maxAttempts: MAX_CORRECTION_PROPOSAL_ATTEMPTS,
+        code: runtimeFailureCode,
+        runtimeDiagnostics: diagnostics.slice(0, 12),
+        rule: "repair only the deterministic runtime or compile failure facts; preserve the same finding scope and one-iteration authorization",
+      };
+    }
+    throw new DesignFlowError(
+      "ERR_CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED",
+      "Correction proposal attempts were exhausted.",
+      { attempts: MAX_CORRECTION_PROPOSAL_ATTEMPTS },
     );
-    return writeArtifact(context, {
-      artifactId: FEEDBACK_LOOP_ARTIFACT_IDS.agentOutput,
-      artifactType: FEEDBACK_LOOP_ARTIFACT_TYPES.agentOutput,
-      name: "Correction Agent Output",
-      payload: output,
-      summary: {
-        files: output.changes.length,
-        findings: output.plan.selectedFindingIds.length,
-        traceIds: output.traceIds,
-      },
-    });
   },
 };
 
@@ -453,6 +567,11 @@ export const storeProposedCorrectionChangesCapability: Capability<
   inputSchema: z.unknown(),
   outputSchema: capabilityOutputSchema,
   async execute(context) {
+    const input = await readArtifact(
+      context,
+      FEEDBACK_LOOP_ARTIFACT_IDS.input,
+      inputSchema,
+    );
     const output = await readArtifact(
       context,
       FEEDBACK_LOOP_ARTIFACT_IDS.agentOutput,
@@ -460,6 +579,14 @@ export const storeProposedCorrectionChangesCapability: Capability<
     );
     const changes = output.changes.map((change) =>
       proposedCorrectionChangeV1Schema.parse(change),
+    );
+    const project = inspectRegisteredProject(input.project);
+    const exactProposal = proposedFileChangesSchema.parse(
+      correctionToImplementationProposal(
+        project.project.id,
+        project.project.contextFingerprint,
+        output,
+      ),
     );
     const payload = proposedCorrectionChangesSchema.parse({
       schemaVersion: "1",
@@ -473,6 +600,7 @@ export const storeProposedCorrectionChangesCapability: Capability<
       dependencyCount: changes.filter(
         (change) => change.dependencyChangeRequired,
       ).length,
+      preflightProposalHash: objectHash(exactProposal),
     });
     return writeArtifact(context, {
       artifactId: FEEDBACK_LOOP_ARTIFACT_IDS.changes,
@@ -532,6 +660,9 @@ export const requestCorrectionApprovalCapability: Capability<
       correctionPlanHash: planHash,
       proposedCorrectionArtifactId: FEEDBACK_LOOP_ARTIFACT_IDS.changes,
       proposedCorrectionHash: changesHash,
+      ...(changes.preflightProposalHash !== undefined
+        ? { preflightProposalHash: changes.preflightProposalHash }
+        : {}),
       selectedFindingIds: plan.selectedFindingIds,
       projectId: input.project.id,
       canonicalRootIdentity: input.project.canonicalRootIdentity,
@@ -615,6 +746,14 @@ export const createCorrectionSnapshotCapability: Capability<
         { schemaVersion: "1", plan, changes: changes.changes, traceIds: [] },
       ),
     );
+    if (
+      binding.preflightProposalHash !== undefined &&
+      binding.preflightProposalHash !== objectHash(proposal)
+    )
+      throw new DesignFlowError(
+        "ERR_CORRECTION_APPROVAL_MISMATCH",
+        "Correction approval is not bound to the preflighted proposal.",
+      );
     // Only files the parent implementation run itself applied carry the
     // provenance-backed dirty-target exemption: `validateCorrectionAgentOutput`
     // bound them to the approved file scope and verified each base hash, and
@@ -753,6 +892,14 @@ export const applyApprovedCorrectionCapability: Capability<
         agentOutput,
       ),
     );
+    if (
+      binding.preflightProposalHash !== undefined &&
+      binding.preflightProposalHash !== objectHash(proposal)
+    )
+      throw new DesignFlowError(
+        "ERR_CORRECTION_APPROVAL_MISMATCH",
+        "Correction approval is not bound to the preflighted proposal.",
+      );
     const result = await applyProjectFileChanges(
       requested.project.id,
       requested.project.rootPath,
@@ -860,7 +1007,7 @@ export const revalidateVisualValidationCapability: Capability<
     );
     if (validation.status !== "passed")
       return writeArtifact(context, {
-        artifactId: "feedback-loop-revalidation-gate",
+        artifactId: "feedback-loop-revalidation-output",
         artifactType: "feedback.revalidation-gate",
         name: "Visual Revalidation Gate",
         payload: { status: "stopped", reason: "project_validation_failed" },
@@ -1278,7 +1425,7 @@ export const directStage5RevalidationCapability: Capability<
     );
     if (validation.status !== "passed")
       return writeArtifact(context, {
-        artifactId: "feedback-loop-revalidation-gate",
+        artifactId: "feedback-loop-revalidation-output",
         artifactType: "feedback.revalidation-gate",
         name: "Visual Revalidation Gate",
         payload: {
@@ -1296,13 +1443,59 @@ export const directStage5RevalidationCapability: Capability<
         requested.revalidatedVisualValidationReport,
       );
     } else {
-      const result = await runFreshStage5Validation(
-        context,
-        requested,
-        initial,
-      );
-      fresh = result.report;
-      stage5ArtifactIds = result.artifactIds;
+      try {
+        const result = await runFreshStage5Validation(
+          context,
+          requested,
+          initial,
+        );
+        fresh = result.report;
+        stage5ArtifactIds = result.artifactIds;
+        if (
+          objectHash(fresh) === requested.latestVisualValidationReport.artifactHash
+        )
+          return writeArtifact(context, {
+            artifactId: "feedback-loop-revalidation-output",
+            artifactType: "feedback.revalidation-gate",
+            name: "Visual Revalidation Gate",
+            payload: {
+              status: "stopped",
+              reason: "visual_validation_inconclusive",
+              stage5ArtifactIds,
+              referenceSource: result.referenceSource,
+            },
+            summary: {
+              status: "stopped",
+              reason: "visual_validation_inconclusive",
+              referenceSource: result.referenceSource,
+            },
+          });
+        return storeRevalidatedReport(
+          context,
+          fresh,
+          stage5ArtifactIds,
+          result.referenceSource,
+        );
+      } catch (error) {
+        const reason = error instanceof DesignFlowError && error.code === "ERR_MCP_TIMEOUT"
+          ? "reference_acquisition_failed"
+          : "visual_validation_inconclusive";
+        return writeArtifact(context, {
+          artifactId: "feedback-loop-revalidation-output",
+          artifactType: "feedback.revalidation-gate",
+          name: "Visual Revalidation Gate",
+          payload: {
+            status: "stopped",
+            reason,
+            stage5ArtifactIds,
+          },
+          summary: {
+            status: "stopped",
+            reason,
+            projectFilesChanged: true,
+          },
+        });
+      }
     }
     if (
       objectHash(fresh) === requested.latestVisualValidationReport.artifactHash
@@ -1382,20 +1575,17 @@ export const normalizeFeedbackLoopRevalidationGateCapability: Capability<
   inputSchema: z.unknown(),
   outputSchema: capabilityOutputSchema,
   async execute(context) {
+    const gateSchema = z
+      .object({
+        status: z.enum(["ready", "stopped"]),
+        reason: z.string().optional(),
+        report: visualValidationReportV1Schema.optional(),
+        reportArtifactId: z.string().optional(),
+        stage5ArtifactIds: z.array(z.string()).default([]),
+      })
+      .passthrough();
     try {
-      const gate = await readArtifact(
-        context,
-        "feedback-loop-revalidation-gate",
-        z
-          .object({
-            status: z.enum(["ready", "stopped"]),
-            reason: z.string().optional(),
-            report: visualValidationReportV1Schema.optional(),
-            reportArtifactId: z.string().optional(),
-            stage5ArtifactIds: z.array(z.string()).default([]),
-          })
-          .passthrough(),
-      );
+      const gate = await readArtifact(context, "feedback-loop-revalidation-gate", gateSchema);
       return writeArtifact(context, {
         artifactId: "feedback-loop-revalidation-gate",
         artifactType: "feedback.revalidation-gate",
@@ -1414,25 +1604,32 @@ export const normalizeFeedbackLoopRevalidationGateCapability: Capability<
         },
       });
     } catch {
-      const report = await readArtifact(
-        context,
-        FEEDBACK_LOOP_ARTIFACT_IDS.revalidatedReport,
-        visualValidationReportV1Schema,
-      );
-      return writeArtifact(context, {
-        artifactId: "feedback-loop-revalidation-gate",
-        artifactType: "feedback.revalidation-gate",
-        name: "Visual Revalidation Gate",
-        payload: {
+      let gate: z.infer<typeof gateSchema>;
+      try {
+        const storedGate = await readArtifact(context, "feedback-loop-revalidation-output", gateSchema);
+        gate = { ...storedGate, stage5ArtifactIds: storedGate.stage5ArtifactIds ?? [] };
+      } catch {
+        const report = await readArtifact(
+          context,
+          FEEDBACK_LOOP_ARTIFACT_IDS.revalidatedReport,
+          visualValidationReportV1Schema,
+        );
+        gate = {
           status: "ready",
           report,
           reportArtifactId: FEEDBACK_LOOP_ARTIFACT_IDS.revalidatedReport,
           stage5ArtifactIds: [],
-        },
+        };
+      }
+      return writeArtifact(context, {
+        artifactId: "feedback-loop-revalidation-gate",
+        artifactType: "feedback.revalidation-gate",
+        name: "Visual Revalidation Gate",
+        payload: gate,
         summary: {
-          status: "ready",
-          reportStatus: report.overallStatus,
-          capturedViewports: report.coverage.capturedViewports,
+          status: gate.status,
+          ...(gate.reason !== undefined ? { reason: gate.reason } : {}),
+          ...(gate.report !== undefined ? { reportStatus: gate.report.overallStatus, capturedViewports: gate.report.coverage.capturedViewports } : {}),
           projectFilesChanged: true,
         },
       });

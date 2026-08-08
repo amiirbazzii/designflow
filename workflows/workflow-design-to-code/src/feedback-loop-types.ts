@@ -70,7 +70,7 @@ export const actionableFindingSelectionSchema = z.object({
   schemaVersion: z.literal("1"), selectedFindingIds: z.array(z.string().min(1)).max(20), excludedFindingIds: z.array(z.string().min(1)).max(500), reason: z.string().min(1).max(2_000), stopReason: z.enum(["no_actionable_findings", "visual_validation_inconclusive", "renderer_unavailable"]).optional(),
 }).strict();
 
-export const proposedCorrectionChangesSchema = z.object({ schemaVersion: z.literal("1"), changes: z.array(proposedCorrectionChangeV1Schema).max(20), contentHash: z.string().regex(/^[a-f0-9]{64}$/), totalBytes: z.number().int().nonnegative(), dependencyCount: z.number().int().nonnegative() }).strict();
+export const proposedCorrectionChangesSchema = z.object({ schemaVersion: z.literal("1"), changes: z.array(proposedCorrectionChangeV1Schema).max(20), contentHash: z.string().regex(/^[a-f0-9]{64}$/), totalBytes: z.number().int().nonnegative(), dependencyCount: z.number().int().nonnegative(), preflightProposalHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 export const correctionAgentOutputSchema = correctionAgentOutputV1Schema;
 export const correctionContextSchema = correctionContextV1Schema;
 export const correctionPlanSchema = correctionPlanV1Schema;

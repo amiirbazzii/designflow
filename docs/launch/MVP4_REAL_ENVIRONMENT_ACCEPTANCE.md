@@ -1019,3 +1019,19 @@ runtime crash — invisible to bundler-level validation).
 (runtime prop crash; recapture unavailable)`.** New debts: Stage-6
 revalidation must stop honestly on capture-infra failure; the fixture's
 own `npm test` asserts the Northstar page and fails any legitimate mount.
+
+## 33. MVP-4P — correction runtime preflight and resilient revalidation — 2026-08-08
+
+MVP-4P addresses the two execution-truth gaps exposed by MVP-4O without changing model profiles, build validation, approval semantics, or the hard `--visual-correction=once` bound.
+
+The correction path now validates the exact proposed state in the existing bounded temporary project workspace before presenting approval: structural/hash/scope validation, the proposed-state compile/build, bounded localhost preview plus Playwright runtime capture, then manual exact approval. The proposed state is never applied to the registered project. Compile validation remains first; a compile failure starts no preview. Runtime preflight records bounded `pageerror`, preview readiness, and missing-capture diagnostics, so the confirmed `NavigationMenu` missing-`items` failure is rejected before approval even when the project's build command succeeds.
+
+Runtime-invalid proposals receive fact-only repair feedback and may be regenerated at most three times inside the same persisted correction iteration. Proposal attempts are not correction iterations: one approved proposal remains the only possible snapshot/apply, and the persisted iteration remains `1 of 1`. Exhaustion is typed as `ERR_CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED`; it creates no approval, snapshot, or registered-project write. The exact preflight proposal hash is bound into the approval and rechecked at snapshot and apply.
+
+Stage-6 revalidation now reuses a persisted trusted Figma reference when its file key, node identity, screenshot artifact identity, and provenance match. If no valid persisted reference exists, normal refresh is attempted. A bounded reference or capture infrastructure failure is persisted as an honest inconclusive gate, and the child terminates cleanly with applied/project-validation state preserved; it is not presented as visual improvement and cannot start another iteration. Gate normalization prevents the prior final-artifact conflict from turning this infrastructure outcome into a child crash.
+
+Focused coverage includes compile-valid/runtime-invalid NavigationMenu-style proposals, repaired runtime-valid proposals, compile short-circuiting, trusted reference identity checks, and the full Stage-6 boundary suite. Forced regression totals: build 26/26, typecheck 44/44, lint 26/26, tests 2,509 passed / 1 skipped / 0 failed across 52 successful Turbo tasks; installed smoke and package freshness both pass. No live Journey 6 rerun was started because `OPENROUTER_API_KEY` was absent in the current process. No SIGINT acceptance was started.
+
+The disposable fixture was restored to committed baseline `992d7d5` after recording the applied blank-page state. Its independent validation covered 7 files and its Vite build passed. The current inspector reports context fingerprint `97ce9bb0…`; the historical acceptance evidence's `23c36efd…` fingerprint is preserved as historical evidence.
+
+**MVP-4P: `PASS` for the source, safety, regression, and revalidation work. Journey 6: `BLOCKED — credential not present`; no final live rerun was performed.** MVP-4K rollback acceptance remains `PASS`.
