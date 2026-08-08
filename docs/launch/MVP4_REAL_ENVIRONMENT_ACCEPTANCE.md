@@ -874,3 +874,33 @@ modified files are recoverable from commit `992d7d51…`. Qwen
 `qwen3-coder-next` is rejected as a correction-profile candidate; the
 next experiment needs a stronger low-cost coding model and an
 un-scripted manual review at the correction approval.
+
+## 27. MVP-4J — GLM correction experiment with un-scripted approval
+
+**Journey 6: `FAIL — CORRECTION_PROPOSAL_REJECTED_QUALITY` (no write).**
+
+The mandated process correction was implemented and proven: a PTY
+driver halts indefinitely at the exact correction approval until a
+decision is written after genuine review of the full persisted proposal
+(`approval mode: manual interactive; scripted stdin: false`). The
+fixture was restored to the accepted clean baseline `992d7d51…` after
+discovering the prior prose contamination extended to the fb6d0587
+implementation apply. With `visual-correction-default` →
+`z-ai/glm-5.2` (isolation proven), parent `ab3e7457…` reached
+correction eligibility honestly and child `938c99f0…` produced the
+best correction proposal of the three models tested — 14KB of genuinely
+executable React + token-based CSS importing the fixture's real
+components (≈$0.045, 119s, two structured attempts). It was manually
+rejected on the decisive relevance test: the target file is not
+imported by `App.jsx`, so the change cannot alter the rendered page.
+Rejection was clean and byte-verified write-free.
+
+**Structural conclusion:** the correction scope contract (parent run's
+changed files) can never reach the composition root, so the recurring
+"generated UI not mounted" defect is uncorrectable by any correction
+model. Correction-model tuning is exhausted per instruction; MVP-4
+requires an explicit product/model strategy decision before further
+Journey 6 work (widen correction scope to composition files under the
+same safety contract, or require implementations to mount what they
+create). GLM 5.2 is the recommended correction-profile candidate for
+when that decision lands.

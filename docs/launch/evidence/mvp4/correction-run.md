@@ -1,5 +1,88 @@
 # MVP-4 Journey 6 — Bounded Live Visual Correction
 
+## MVP-4J — GLM correction experiment with un-scripted approval — 2026-08-08
+
+Evidence baseline commit `3540ded3…`. No product-source changes this
+task (machinery frozen; regression not required).
+
+### Fixture restoration
+
+The Qwen-corrupted files were first restored from correction child
+`74b3a177…`'s persisted snapshot — which revealed that the *pre-Qwen*
+state was itself prose (the fb6d0587 implementation modify had also been
+scripted-approved sight-unseen). The truthful clean baseline was
+therefore the last accepted commit `992d7d51…` (verified identical to
+the fb6d0587 implementation snapshot's pre-state hashes); the two files
+were restored via `git restore`, tree clean, fingerprint `23c36efd…`,
+build/test green.
+
+### Profile + probe
+
+`visual-correction-default` → OpenRouter `z-ai/glm-5.2` (8000/120000);
+one bounded probe OK (structured mode, 4.4s, provider Baidu); isolation
+proven via `designflow settings` (all other profiles unchanged;
+implementation remains the accepted luna).
+
+### Un-scripted approval mechanism (process requirement met)
+
+The run was driven under a real PTY by an expect script that answers
+only the deterministic setup prompts and **halts indefinitely at
+"Approve these exact correction changes?"** until a decision file is
+written after genuine review. Two earlier driver attempts failed
+harmlessly (a FIFO open race and a Tcl glob character-class bug) with
+zero project writes; stale `running`/`waiting_approval` history rows
+from those killed processes remain as cosmetic state.
+`approval mode: manual interactive; scripted stdin: false.`
+
+### The live run
+
+Parent `ab3e7457-487e-4c55-93fe-9a8e61b8d5a6`: luna implementation
+applied 2 modifies to the committed root `SpendlyExpenseScreen`
+files (real code; scripted implementation approval as permitted);
+validation green; MVP-4H comparator produced the actionable root-frame
+finding; `CORRECTION_ELIGIBLE`. Correction child
+`938c99f0-78f6-498c-a55a-d6345817d85c`, iteration 1 of 1: live GLM
+calls (2 structured-output attempts: 11,175 + 18,221 tokens, 119s
+total, ≈$0.0446), hash-bound valid 2-modify proposal.
+
+### Manual review and rejection
+
+The full persisted proposal was inspected before answering: **genuinely
+real, high-quality code** — 9,046 bytes of working React importing the
+fixture's actual components (ExpenseHistoryItem, TextField,
+PrimaryButton), real state/handlers, plus 5,088 bytes of token-based
+CSS Modules. The decisive Part-9 question failed anyway: `App.jsx`
+still renders Northstar and nothing imports the target file, so the
+changes cannot alter the rendered page. Decision file written:
+**reject**. The product stopped cleanly: "Status: rejected. No further
+files were changed." Byte-precise no-write proof: on-disk content
+matches the proposal's `baseFileHash` (the implementation's applied
+output) and does not match the rejected `proposedContentHash`.
+
+### Structural finding (for the strategy decision)
+
+The correction file scope is derived from the parent implementation's
+changed files, which **can never include the composition root**
+(`App.jsx`). The recurring "generated UI not mounted" defect class is
+therefore uncorrectable by any correction model under the current
+scope contract — GLM produced the best proposal of the three models
+tested and was still structurally unable to fix the actual problem.
+Correction-model tuning is exhausted; the next step is an explicit
+product/model strategy decision (e.g., widening correction scope to
+composition files under the same safety contract, or requiring
+implementations to mount what they create).
+
+### Outcome
+
+**Journey 6: `FAIL — CORRECTION_PROPOSAL_REJECTED_QUALITY`** (no write;
+the manual quality gate was exercised un-scripted for the first time
+and worked exactly as required). GLM 5.2 quality assessment: strong —
+recommended over gpt-4o-mini and Qwen for `visual-correction-default`
+in future testing, once the scope limitation is resolved. Final
+fixture: `ab3e7457`'s implementation preserved (fingerprint
+`c95b76c3…`, build/test green); no pending approvals; no orphans; no
+leaks.
+
 ## MVP-4I — Qwen correction-model experiment — 2026-08-08
 
 Evidence baseline commit `81a02d6b…`. Acceptance-home override:
