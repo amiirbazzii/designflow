@@ -135,6 +135,10 @@ export const viewportValidationResultV1Schema = z.object({
     changedRegionCount: z.number().int().nonnegative().optional(),
     changedRegion: z.object({ x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative() }).strict().optional(),
     dimensionCompatible: z.boolean(),
+    /** MVP-4H overlap comparison: extent and verdict of the comparable region when dimensions differ. Optional for historical reports. */
+    overlapCoverage: z.number().min(0).max(1).optional(),
+    overlapMismatchRatio: z.number().min(0).max(1).optional(),
+    pixelDiffExecuted: z.boolean().optional(),
   }).strict(),
   warnings: z.array(boundedText(500)).max(32),
 }).strict();

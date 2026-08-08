@@ -100,12 +100,36 @@ export const prepareVisualValidationCapability: Capability<unknown, CapabilityOu
     const generated = await readArtifact(context, "generated-implementation", generatedImplementationV1Schema);
     const spec = await readArtifact(context, "design-specification", designSpecificationSchema);
     const previewCommand = discoverPreviewCommand(stage4Project);
+    // Reference-aligned capture: when a real reference screenshot with
+    // decodable dimensions exists, add a viewport matching its exact pixel
+    // size (captures run at deviceScaleFactor 1, so PNG pixels equal CSS
+    // pixels). The reference then associates with this viewport exactly and
+    // the primary comparison is same-size; the preset viewports remain as
+    // additional evidence.
+    const viewports = [...requested.viewports];
+    try {
+      const snapshot = await readArtifact(context, "figma-source-snapshot", figmaSourceSnapshotSchema);
+      const first = (snapshot.screenshots ?? [])[0];
+      const stored = first === undefined ? null : await context.artifactStore.get(first.artifactId);
+      if (stored !== null && typeof stored?.data === "string") {
+        const bytes = new Uint8Array(Buffer.from(stored.data, "base64"));
+        const dims = comparePngImages(bytes, bytes);
+        const width = dims.referenceWidth;
+        const height = dims.referenceHeight;
+        if (width > 0 && height > 0 && width <= 4096 && height <= 4096 && !viewports.some((viewport) => viewport.width === width && viewport.height === height)) {
+          viewports.push({ id: "reference-aligned", width, height });
+        }
+      }
+    } catch {
+      // Alignment is best-effort: without a decodable reference the preset
+      // viewports and the comparator's overlap fallback remain in charge.
+    }
     const input = visualValidationInputV1Schema.parse({
       schemaVersion: "1", executionId: context.executionId, workflowId: context.workflowId,
       project: { id: project.project.id, rootIdentity: project.project.rootIdentity, contextFingerprint: project.project.contextFingerprint },
       generatedImplementationArtifactId: "generated-implementation", designSpecificationArtifactId: "design-specification", figmaSourceSnapshotArtifactId: "figma-source-snapshot",
       requestedFrames: requested.frames.length > 0 ? requested.frames : spec.frames, framework: project.runtime.framework,
-      preview: { ...(previewCommand !== undefined ? { command: previewCommand } : {}), readinessPath: requested.readinessPath }, viewports: requested.viewports, capture: requested.capture,
+      preview: { ...(previewCommand !== undefined ? { command: previewCommand } : {}), readinessPath: requested.readinessPath }, viewports, capture: requested.capture,
       agentVersion: requested.agentVersion, ...(requested.modelProfileId !== undefined ? { modelProfileId: requested.modelProfileId } : {}),
     });
     return writeArtifact(context, { artifactId: VISUAL_VALIDATION_ARTIFACT_IDS.input, artifactType: VISUAL_VALIDATION_ARTIFACT_TYPES.input, name: "Visual Validation Input", payload: input, summary: { projectId: input.project.id, generatedImplementationArtifactId: generated.projectId, designSpecificationArtifactId: input.designSpecificationArtifactId, frameCount: input.requestedFrames.length, viewportCount: input.viewports.length, projectFilesChanged: false } });
@@ -297,9 +321,18 @@ export const resolveReferenceEvidenceCapability: Capability<unknown, CapabilityO
   },
 };
 
-function finding(id: string, category: VisualFindingV1["category"], severity: VisualFindingV1["severity"], explanation: string, refs: string[], options: { referenceEvidenceId?: string; implementationEvidenceId?: string; expectedValue?: string; actualValue?: string; delta?: number; boundingRegion?: { x: number; y: number; width: number; height: number } } = {}): VisualFindingV1 {
-  return visualFindingV1Schema.parse({ schemaVersion: "1", findingId: id, category, severity, confidence: 1, status: "confirmed", explanation, ...(options.referenceEvidenceId !== undefined ? { referenceEvidenceId: options.referenceEvidenceId } : {}), ...(options.implementationEvidenceId !== undefined ? { implementationEvidenceId: options.implementationEvidenceId } : {}), ...(options.expectedValue !== undefined ? { expectedValue: options.expectedValue } : {}), ...(options.actualValue !== undefined ? { actualValue: options.actualValue } : {}), ...(options.delta !== undefined ? { measurableDelta: options.delta } : {}), ...(options.boundingRegion !== undefined ? { boundingRegion: options.boundingRegion } : {}), evidenceReferences: refs, origin: "deterministic" });
+function finding(id: string, category: VisualFindingV1["category"], severity: VisualFindingV1["severity"], explanation: string, refs: string[], options: { referenceEvidenceId?: string; implementationEvidenceId?: string; expectedValue?: string; actualValue?: string; delta?: number; boundingRegion?: { x: number; y: number; width: number; height: number }; affectedFrame?: string } = {}): VisualFindingV1 {
+  return visualFindingV1Schema.parse({ schemaVersion: "1", findingId: id, category, severity, confidence: 1, status: "confirmed", explanation, ...(options.referenceEvidenceId !== undefined ? { referenceEvidenceId: options.referenceEvidenceId } : {}), ...(options.implementationEvidenceId !== undefined ? { implementationEvidenceId: options.implementationEvidenceId } : {}), ...(options.expectedValue !== undefined ? { expectedValue: options.expectedValue } : {}), ...(options.actualValue !== undefined ? { actualValue: options.actualValue } : {}), ...(options.delta !== undefined ? { measurableDelta: options.delta } : {}), ...(options.boundingRegion !== undefined ? { boundingRegion: options.boundingRegion } : {}), ...(options.affectedFrame !== undefined ? { affectedFrame: options.affectedFrame } : {}), evidenceReferences: refs, origin: "deterministic" });
 }
+
+/**
+ * Minimum share of the larger image that the top-left-aligned overlap must
+ * cover before a content verdict is honest: below half, a comparison would
+ * mostly be measuring absent canvas rather than content, so the result is
+ * inconclusive instead of a fabricated finding. The value is a general
+ * comparable-area floor, not tuned to any particular design.
+ */
+export const MIN_OVERLAP_COVERAGE = 0.5;
 
 async function imageBytes(context: CapabilityContext, evidence: ScreenshotEvidenceV1): Promise<Uint8Array | undefined> {
   const stored = await context.artifactStore.get(evidence.image.artifactId);
@@ -420,8 +453,22 @@ export const compareVisualEvidenceCapability: Capability<unknown, CapabilityOutp
           try { comparison = comparePngImages(referenceBytes, implementationBytes, { maxImageBytes: input.capture.maxImageBytes ?? 10_000_000, maxImagePixels: input.capture.maxImagePixels ?? 8_000_000 }); } catch (error) { warnings.push(`image comparison unavailable for ${viewport.id}: ${error instanceof Error ? error.message.slice(0, 300) : "invalid PNG"}`); }
         }
         if (comparison !== undefined && !comparison.dimensionCompatible) {
-          const item = finding(`dimension-mismatch-${viewport.id}`, "size", "major", `Reference and implementation dimensions differ at ${viewport.id}.`, [impl.evidenceId, referenceEvidence.evidenceId], { referenceEvidenceId: referenceEvidence.evidenceId, implementationEvidenceId: impl.evidenceId, expectedValue: `${comparison.referenceWidth}x${comparison.referenceHeight}px`, actualValue: `${comparison.implementationWidth}x${comparison.implementationHeight}px`, delta: Math.abs(comparison.referenceHeight - comparison.implementationHeight), ...(comparison.changedRegion !== undefined ? { boundingRegion: comparison.changedRegion } : {}) });
+          // Dimension mismatch stays its own truthful measurement, and it no
+          // longer suppresses content comparison: the pixel diff always ran
+          // over the top-left-aligned overlap, and when that overlap covers
+          // enough of both images its own mismatch ratio is judged too. An
+          // instrumentation-only size difference (equivalent content in the
+          // comparable region) therefore yields only this size finding, while
+          // real content divergence additionally yields an actionable
+          // root-frame content finding below.
+          const item = finding(`dimension-mismatch-${viewport.id}`, "size", "major", `Reference and implementation dimensions differ at ${viewport.id}.`, [impl.evidenceId, referenceEvidence.evidenceId], { referenceEvidenceId: referenceEvidence.evidenceId, implementationEvidenceId: impl.evidenceId, expectedValue: `${comparison.referenceWidth}x${comparison.referenceHeight}px`, actualValue: `${comparison.implementationWidth}x${comparison.implementationHeight}px`, delta: Math.abs(comparison.referenceHeight - comparison.implementationHeight) });
           viewportFindings.push(item); viewportFindingIds.push(item.findingId);
+          if (comparison.overlapCoverage < MIN_OVERLAP_COVERAGE) {
+            warnings.push(`content comparison inconclusive for ${viewport.id}: insufficient-comparable-area (overlap coverage ${comparison.overlapCoverage.toFixed(3)} below ${MIN_OVERLAP_COVERAGE})`);
+          } else if (comparison.overlapMismatchRatio > comparison.mismatchRatioThreshold) {
+            const content = finding(`content-divergence-${viewport.id}`, "layout", "major", `Implementation content differs materially from the Figma reference within the comparable ${comparison.overlapWidth}x${comparison.overlapHeight}px region at ${viewport.id}.`, [impl.evidenceId, referenceEvidence.evidenceId], { referenceEvidenceId: referenceEvidence.evidenceId, implementationEvidenceId: impl.evidenceId, expectedValue: `overlap mismatch <= ${comparison.mismatchRatioThreshold}`, actualValue: `${comparison.overlapMismatchRatio.toFixed(4)}`, delta: comparison.overlapMismatchRatio, ...(comparison.changedRegion !== undefined ? { boundingRegion: comparison.changedRegion } : {}), ...(referenceEvidence.frame.id !== undefined ? { affectedFrame: referenceEvidence.frame.id } : {}) });
+            viewportFindings.push(content); viewportFindingIds.push(content.findingId);
+          }
         } else if (comparison !== undefined && comparison.mismatchRatio > comparison.mismatchRatioThreshold) {
           const specification = referenceEvidence.specification?.find((item) => /header/i.test(item.selector));
           const actual = (implementation.domEvidence ?? []).find((item) => item.viewport.id === viewport.id)?.evidence as { elements?: Array<{ selector?: string; height?: number }> } | undefined;
@@ -429,12 +476,12 @@ export const compareVisualEvidenceCapability: Capability<unknown, CapabilityOutp
           const expectedHeight = specification?.boundingRectangle?.height;
           const actualHeight = actualHeader?.height;
           const measured = expectedHeight !== undefined && actualHeight !== undefined;
-          const item = finding(`image-difference-${viewport.id}`, measured ? "size" : "layout", "major", measured ? `Header height differs at ${viewport.id}; deterministic DOM evidence overrides agent interpretation.` : `Implementation pixels differ materially from the reference at ${viewport.id}.`, [impl.evidenceId, referenceEvidence.evidenceId], { referenceEvidenceId: referenceEvidence.evidenceId, implementationEvidenceId: impl.evidenceId, ...(measured ? { expectedValue: `${expectedHeight}px`, actualValue: `${actualHeight}px`, delta: Math.abs(expectedHeight - actualHeight) } : { delta: comparison.mismatchRatio }), ...(comparison.changedRegion !== undefined ? { boundingRegion: comparison.changedRegion } : {}) });
+          const item = finding(`image-difference-${viewport.id}`, measured ? "size" : "layout", "major", measured ? `Header height differs at ${viewport.id}; deterministic DOM evidence overrides agent interpretation.` : `Implementation pixels differ materially from the reference at ${viewport.id}.`, [impl.evidenceId, referenceEvidence.evidenceId], { referenceEvidenceId: referenceEvidence.evidenceId, implementationEvidenceId: impl.evidenceId, ...(measured ? { expectedValue: `${expectedHeight}px`, actualValue: `${actualHeight}px`, delta: Math.abs(expectedHeight - actualHeight) } : { expectedValue: `mismatch <= ${comparison.mismatchRatioThreshold}`, actualValue: `${comparison.mismatchRatio.toFixed(4)}`, delta: comparison.mismatchRatio }), ...(comparison.changedRegion !== undefined ? { boundingRegion: comparison.changedRegion } : {}), ...(referenceEvidence.frame.id !== undefined ? { affectedFrame: referenceEvidence.frame.id } : {}) });
           viewportFindings.push(item); viewportFindingIds.push(item.findingId);
         }
       }
       const status = !captureAvailable ? "unavailable" : impl === undefined ? "fail" : refs.length === 0 ? "inconclusive" : viewportFindingIds.length > 0 ? "fail" : "pass";
-      return { viewport, status, implementationEvidenceIds: impl === undefined ? [] : [impl.evidenceId], referenceEvidenceIds: refs.map((item) => item.evidenceId), findingIds: viewportFindingIds, findings: viewportFindings, metrics: { ...(comparison !== undefined ? { pixelMismatchRatio: comparison.mismatchRatio, perceptualSimilarity: Math.max(0, 1 - comparison.mismatchRatio), changedRegionCount: comparison.changedPixelCount > 0 ? 1 : 0, ...(comparison.changedRegion !== undefined ? { changedRegion: comparison.changedRegion } : {}) } : {}), dimensionCompatible: comparison?.dimensionCompatible ?? (impl === undefined || refs.length === 0 || refs[0]?.viewport.width === impl.viewport.width) }, warnings };
+      return { viewport, status, implementationEvidenceIds: impl === undefined ? [] : [impl.evidenceId], referenceEvidenceIds: refs.map((item) => item.evidenceId), findingIds: viewportFindingIds, findings: viewportFindings, metrics: { ...(comparison !== undefined ? { pixelMismatchRatio: comparison.mismatchRatio, perceptualSimilarity: Math.max(0, 1 - comparison.mismatchRatio), changedRegionCount: comparison.changedPixelCount > 0 ? 1 : 0, ...(comparison.changedRegion !== undefined ? { changedRegion: comparison.changedRegion } : {}), overlapCoverage: comparison.overlapCoverage, overlapMismatchRatio: comparison.overlapMismatchRatio, pixelDiffExecuted: comparison.pixelDiffExecuted } : {}), dimensionCompatible: comparison?.dimensionCompatible ?? (impl === undefined || refs.length === 0 || refs[0]?.viewport.width === impl.viewport.width) }, warnings };
     }));
     findings.push(...results.flatMap((result) => result.findings));
     const viewportResults = results.map(({ findings: _findings, ...result }) => result);

@@ -101,3 +101,57 @@ describe("Stage 5 preview runtime", () => {
     expect(comparePngImages(base, smaller).dimensionCompatible).toBe(false);
   });
 });
+
+describe("overlap comparison on dimension mismatch (MVP-4H)", () => {
+  const white: [number, number, number, number] = [255, 255, 255, 255];
+  const black: [number, number, number, number] = [0, 0, 0, 255];
+
+  test("same-size identical images produce zero diff and full overlap", () => {
+    const image = png(40, 40, () => white);
+    const result = comparePngImages(image, png(40, 40, () => white));
+    expect(result.dimensionCompatible).toBe(true);
+    expect(result.overlapWidth).toBe(40);
+    expect(result.overlapCoverage).toBe(1);
+    expect(result.overlapChangedPixelCount).toBe(0);
+    expect(result.pixelDiffExecuted).toBe(true);
+  });
+
+  test("different dimensions with identical overlapping content report mismatch without content divergence", () => {
+    const reference = png(41, 50, () => white);
+    const implementation = png(40, 44, () => white);
+    const result = comparePngImages(reference, implementation);
+    expect(result.dimensionCompatible).toBe(false);
+    expect(result.overlapWidth).toBe(40);
+    expect(result.overlapHeight).toBe(44);
+    expect(result.overlapChangedPixelCount).toBe(0);
+    expect(result.overlapMismatchRatio).toBe(0);
+    expect(result.overlapCoverage).toBeCloseTo((40 * 44) / (41 * 50), 5);
+    // The whole-canvas ratio still counts the size delta truthfully.
+    expect(result.changedPixelCount).toBe(41 * 50 - 40 * 44);
+  });
+
+  test("different dimensions with very different content report substantial overlap divergence", () => {
+    const reference = png(41, 50, () => white);
+    const implementation = png(40, 44, () => black);
+    const result = comparePngImages(reference, implementation);
+    expect(result.dimensionCompatible).toBe(false);
+    expect(result.overlapChangedPixelCount).toBe(40 * 44);
+    expect(result.overlapMismatchRatio).toBe(1);
+    expect(result.pixelDiffExecuted).toBe(true);
+  });
+
+  test("tiny overlap coverage is measured so callers can classify it inconclusive", () => {
+    const reference = png(100, 100, () => white);
+    const implementation = png(10, 10, () => black);
+    const result = comparePngImages(reference, implementation);
+    expect(result.overlapCoverage).toBeCloseTo(0.01, 5);
+  });
+
+  test("identical inputs produce byte-for-byte identical measurements (determinism)", () => {
+    const reference = png(41, 50, (x, y) => (x + y) % 3 === 0 ? black : white);
+    const implementation = png(40, 44, (x, y) => (x * y) % 5 === 0 ? black : white);
+    const first = comparePngImages(reference, implementation);
+    const second = comparePngImages(reference, implementation);
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
+  });
+});

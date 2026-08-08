@@ -93,6 +93,21 @@ export interface SpatialComparison {
   readonly implementationHeight: number;
   readonly changedPixelCount: number;
   readonly changedRegion?: { x: number; y: number; width: number; height: number };
+  /**
+   * The common top-left-aligned region both images cover. The pixel diff has
+   * always run over this region; these fields make its extent and its own
+   * mismatch ratio explicit so a dimension mismatch no longer hides what the
+   * comparable content actually showed.
+   */
+  readonly overlapWidth: number;
+  readonly overlapHeight: number;
+  /** Overlap area divided by the larger image's area, in [0, 1]. */
+  readonly overlapCoverage: number;
+  readonly overlapChangedPixelCount: number;
+  /** Changed pixels within the overlap divided by the overlap area. */
+  readonly overlapMismatchRatio: number;
+  /** Always true when both PNGs decoded — content comparison is never skipped for size. */
+  readonly pixelDiffExecuted: boolean;
 }
 
 export class RendererUnavailableError extends Error {
@@ -200,7 +215,7 @@ export function comparePngImages(reference: Uint8Array, implementation: Uint8Arr
   const width = Math.min(referenceImage.width, implementationImage.width);
   const height = Math.min(referenceImage.height, implementationImage.height);
   const comparedPixels = Math.max(referenceImage.width * referenceImage.height, implementationImage.width * implementationImage.height);
-  let changedPixelCount = Math.abs(referenceImage.width * referenceImage.height - implementationImage.width * implementationImage.height);
+  let overlapChangedPixelCount = 0;
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = -1;
@@ -211,11 +226,13 @@ export function comparePngImages(reference: Uint8Array, implementation: Uint8Arr
     let different = false;
     for (let channel = 0; channel < 4; channel += 1) if (Math.abs((referenceImage.rgba[referenceOffset + channel] ?? 0) - (implementationImage.rgba[implementationOffset + channel] ?? 0)) > threshold) different = true;
     if (different) {
-      changedPixelCount += 1;
+      overlapChangedPixelCount += 1;
       minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
     }
   }
+  const changedPixelCount = overlapChangedPixelCount + Math.abs(referenceImage.width * referenceImage.height - implementationImage.width * implementationImage.height);
   const mismatchRatio = Math.min(1, changedPixelCount / comparedPixels);
+  const overlapArea = width * height;
   return {
     algorithmVersion: "png-rgba-pixel-diff-v1",
     threshold,
@@ -229,6 +246,12 @@ export function comparePngImages(reference: Uint8Array, implementation: Uint8Arr
     implementationHeight: implementationImage.height,
     changedPixelCount,
     ...(maxX >= 0 ? { changedRegion: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 } } : {}),
+    overlapWidth: width,
+    overlapHeight: height,
+    overlapCoverage: comparedPixels === 0 ? 0 : overlapArea / comparedPixels,
+    overlapChangedPixelCount,
+    overlapMismatchRatio: overlapArea === 0 ? 0 : overlapChangedPixelCount / overlapArea,
+    pixelDiffExecuted: true,
   };
 }
 
