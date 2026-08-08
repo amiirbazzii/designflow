@@ -904,3 +904,32 @@ Journey 6 work (widen correction scope to composition files under the
 same safety contract, or require implementations to mount what they
 create). GLM 5.2 is the recommended correction-profile candidate for
 when that decision lands.
+
+## 28. MVP-4K — composition-aware correction scope + final Journey 6 run
+
+Commit `b5e9873` extended the correction scope contract: root-frame
+findings now also authorize a small host-derived composition scope
+(preview entry from `index.html` plus its statically imported root
+components; bound `MAX_CORRECTION_COMPOSITION_FILES = 8`; provenance
+`deterministic-project-inspection`; fail-closed derivation; model never
+chooses the set). Enforcement, host-derived hashes, and approval binding
+unchanged; the snapshot dirty-target exemption now covers only
+parent-applied files. 10 focused tests; full regression 2,463 pass /
+1 skip / 0 fail; smoke and freshness pass; fresh package `f46ccbab…`.
+
+Final run: parent `c0d8ac8e` (luna, 2 applied modifies) → root-frame
+finding → child `224ec164` with scope
+`[SpendlyScreen.jsx, SpendlyScreen.module.css] + [src/main.jsx,
+src/App.jsx]`. GLM-5.2 proposed exactly the mount correction
+(`App.jsx → <SpendlyScreen />` + token-aligned css); manually reviewed
+and approved un-scripted; snapshot/apply succeeded; required `build`
+validation failed — the parent's own SpendlyScreen.jsx default-imports
+the named-export-only `TextField`, a latent defect invisible while the
+module was unmounted — and rollback restored the pre-correction state
+byte-precisely. One iteration; honest stop.
+
+**MVP-4K: `PASS`. Journey 6: `FAIL — CORRECTION_APPLIED_THEN_ROLLED_BACK
+(project validation failed)`.** The correction stage is now fully proven
+live; the blocker moved upstream to the recorded product debt:
+implementation rendered-reachability validation (an implementation that
+creates UI must build with that UI reachable from the preview entry).

@@ -612,3 +612,120 @@ implementation model profile (explicitly deferred by task scope) or a
 host-side reconciliation contract. Correction-stage machinery (child
 lineage, Visual Correction Specialist, correction approval/snapshot/
 apply, runtime one-iteration bound) remains unexercised.
+
+## MVP-4K — deterministic composition-aware correction scope — 2026-08-08
+
+### Architectural change (commit `b5e9873`)
+
+The correction candidate scope was extended from "parent implementation
+changed files only" to the union of those files and a small,
+host-derived composition scope. The old contract could never reach the
+composition root, so a "generated UI is never mounted" defect was
+uncorrectable by any model (MVP-4J structural finding).
+
+- Derivation (`workflows/workflow-design-to-code/src/composition-scope.ts`):
+  the host reads `index.html`, takes the first same-origin
+  `<script type="module" src>` as the preview entry, then resolves the
+  entry's static relative imports (extension/index probing, style and
+  asset imports excluded, symlinks and traversal rejected). Precedence
+  is entry first, then entry-source import order; hard bound
+  `MAX_CORRECTION_COMPOSITION_FILES = 8` (SDK constant, not
+  user-configurable); any unresolvable step fails closed to the old
+  parent-changed-only scope. The model never chooses or extends the set.
+- Activation: only when a selected finding is root-frame
+  (`affectedFrame` set, no `affectedComponent`). Component-specific
+  findings keep their component-file scope.
+- Contract: `correctionContextV1Schema` gained
+  `compositionAuthorizedFiles: [{ path, reason, source:
+  "deterministic-project-inspection" }]` (provenance-typed, max 8);
+  `allowedFileScope` carries the union; only files that also yield a
+  valid bounded excerpt (host base hash from disk) enter the scope.
+- Enforcement unchanged and authoritative: `validateCorrectionAgentOutput`
+  still rejects any path outside `allowedFileScope` and any base-hash
+  mismatch; hashes remain host-derived.
+- Dirty-target semantics tightened: the workflow input now carries
+  `parentChangedFiles`; the correction snapshot exempts only
+  parent-applied files from the dirty-target rule. A composition file
+  dirty with unrelated local changes fails closed (tested).
+- Tests: 10 new focused tests (`composition-scope.test.ts`) — derivation,
+  provenance, unrelated-file exclusion, bound precedence, fail-closed
+  ambiguity, symlink skip, scope validation allow/reject, stale hash,
+  clean/dirty composition snapshot semantics. Full regression: build
+  26/26, typecheck 44/44, lint 26/26, test 52 tasks — 2,463 pass /
+  1 skip / 0 fail; smoke exit 0; freshness exit 0. Fresh package
+  `f46ccbab…` reinstalled and verified to contain the new scope code.
+
+### Final Journey 6 run
+
+- Baseline: fixture restored to committed `992d7d5` (fingerprint
+  `23c36efd…`, npm test/build exit 0). Profiles: implementation
+  `openai/gpt-5.6-luna`, correction `z-ai/glm-5.2` (8000/120000), all
+  others unchanged.
+- First launch failed closed in 3 seconds: "Figma Desktop MCP returned a
+  different selected node than requested" (run `3d39a8bb`, 0 changes).
+  The user re-selected the Spendly frame; relaunched.
+- Parent `c0d8ac8e-ff5d-481f-9d0a-707eb3461a1f`: luna applied 2 modifies
+  (`src/SpendlyScreen.jsx`, `src/SpendlyScreen.module.css`), validation
+  passed, MVP-4H comparison produced the root-frame actionable finding
+  `image-difference-reference-aligned` → correction child
+  `224ec164-15d7-4b9b-8ce7-586614469557`, iteration 1 of 1.
+- Composition scope proof (persisted correction-context artifact
+  `54fc276b…`): 4 files — 2 parent-changed + `compositionAuthorizedFiles
+  = [src/main.jsx, src/App.jsx]`, host-derived, provenance recorded.
+  No unrelated file was exposed.
+- GLM proposal (persisted changes artifact `ced2e973…`, contentHash
+  `d114b633…`): modify `src/App.jsx` (112 bytes — mounts
+  `<SpendlyScreen />`, replacing the Northstar composition) + modify
+  `src/SpendlyScreen.module.css` (3,847 bytes — token alignment).
+  Exactly the correction the old scope made impossible.
+- Manual un-scripted approval: the expect driver halts at "Approve these
+  exact correction changes?" until a reviewed decision file exists
+  (approval mode: manual interactive; scripted stdin: false). Review
+  verified the full persisted payload, byte-exact base hashes against
+  disk (`App.jsx da4fe6f3…`, css `21546bff…`), and that the mount would
+  alter the rendered page → approved.
+- Snapshot covered both approved paths including the composition file;
+  approval consumed once; apply succeeded
+  (changedFiles = [src/App.jsx, src/SpendlyScreen.module.css]).
+- Required `build` validation FAILED with the correction applied →
+  rollback `passed`; restoration verified byte-precise (all three files
+  match their exact pre-correction hashes; fixture fingerprint
+  `9437adbc…`, npm test/build exit 0 post-rollback). One iteration only;
+  no second correction agent call.
+- GLM usage this run: 2 structured attempts, 8,187 + 9,875 tokens,
+  ≈ $0.0206.
+
+### Root cause of the validation failure (new product finding)
+
+The parent implementation's own `src/SpendlyScreen.jsx` contains
+`import TextField from './components/TextField/TextField'`, but
+`TextField.tsx` has only a named export ("default" is not exported —
+reproduced independently in a scratch copy). The parent's build
+validation passed because the unmounted module was never in the Vite
+module graph; mounting it surfaced the latent defect. This is precisely
+the deferred **implementation rendered-reachability validation** debt:
+an implementation can create meaningful UI files whose build defects and
+integration omissions are both invisible until something mounts them.
+
+Secondary observation: the child's final summary printed
+`ArtifactReconciliationError: Cannot reconcile execution 224ec164…: 1
+conflict(s)` after the loop finished recording (29 artifacts persisted;
+outcome honest). Worth a follow-up but did not affect safety.
+
+### Classifications
+
+**MVP-4K: `PASS`** — all 16 criteria hold: scope deterministically
+expanded, bounded, provenance-typed, unrelated files inaccessible,
+dirty-file safety intact, host-derived hashes, authoritative validation,
+snapshot covered composition files, focused + full regression + smoke +
+freshness green, fresh package, GLM run, manual un-scripted approval,
+no safety regression.
+**Journey 6: `FAIL — CORRECTION_APPLIED_THEN_ROLLED_BACK (project
+validation failed)`** — the correction machinery end-to-end is now fully
+proven (scope, proposal, manual approval, snapshot, apply, validation,
+rollback, one-iteration bound). The remaining structural blocker is no
+longer in the correction stage: the parent implementation produced an
+unmounted screen that does not build when mounted. The fix path is the
+deferred implementation rendered-reachability validation (build/bundle
+the proposal with the module actually reachable from the entry), after
+which this exact correction would have succeeded or been unnecessary.
