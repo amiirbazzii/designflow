@@ -994,3 +994,28 @@ IMPLEMENTATION_PROPOSAL_REJECTED_QUALITY (irrelevant single-CSS
 proposal)`.** Model work is closed per instruction; the remaining Journey
 6 blocker is the Implementation Agent proposal-generation contract
 (nothing requires proposals to cover the mapped design surface).
+
+## 32. MVP-4O — implementation coverage contract + deepest Journey 6 run
+
+Commits `cca9f25` + `4e9487d`: host-derived required design surface
+(root frame always; mapped-reuse components; bound 8; trusted reuse paths
+from inspection), typed model coverage claims validated before compile,
+repairable coverage codes in the 3-attempt loop, persisted
+`implementation-coverage` artifact, and a coverage summary in the
+approval prompt above the bounded diff. 10+ focused tests; regression
+2,502 pass / 1 skip / 0 fail; fresh package `c86bf461…`.
+
+Final run `9976ba10`: compile gate rejected attempt 1 live; attempt 2
+delivered real composed Spendly UI (coverage ✓ compile ✓ unreachable —
+allowed), manually approved with full visibility; applied and validated;
+root-frame finding → one GLM correction child mounted it via `App.jsx`
+(+2/−47, byte-verified), manually approved; **the mounted project passed
+build validation live**. The child then failed environmentally at
+post-correction recapture (`ERR_MCP_TIMEOUT`) and a labeled manual
+capture shows the mounted page blank (NavigationMenu `items` prop
+runtime crash — invisible to bundler-level validation).
+
+**MVP-4O: `PASS`. Journey 6: `FAIL — CORRECTION_APPLIED_NO_IMPROVEMENT
+(runtime prop crash; recapture unavailable)`.** New debts: Stage-6
+revalidation must stop honestly on capture-infra failure; the fixture's
+own `npm test` asserts the Northstar page and fails any legitimate mount.
