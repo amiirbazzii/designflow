@@ -850,3 +850,27 @@ to `PASS — CORRECTION_APPLIED_AND_IMPROVED` is a stronger
 `visual-correction-default` profile (its gpt-4o-mini output was
 placeholder-quality), which is a model-quality decision, not product
 machinery.
+
+## 26. MVP-4I — Qwen visual-correction model experiment
+
+**Result: Journey 6 remains `FAIL — CORRECTION_APPLIED_NO_IMPROVEMENT`.**
+
+Controlled single-model experiment: `visual-correction-default` →
+`qwen/qwen3-coder-next` (isolation proven; implementation stayed on the
+accepted luna profile). A fresh parent (`fb6d0587-…`) reached
+correction eligibility honestly — notably the luna implementation
+proposed real modifies to the committed SpendlyScreen files, and the
+MVP-4H comparator again yielded the actionable root-frame finding. The
+correction child (`74b3a177-…`) exercised the full loop a second time
+(live Qwen call: 3,334 tokens, 12s, $0.00152; valid hash-bound
+proposal; exact approval; snapshot; apply; validation; recapture;
+honest `no improvement`; one-iteration stop). Qwen's output quality was
+below the gpt-4o-mini baseline: it emitted meta-commentary as literal
+file content. A process caveat is recorded: the scripted acceptance
+input answered the correction approval before the mandated manual
+relevance review, which would have rejected the visibly prose-only diff
+pre-mutation. All safety machinery behaved correctly; the fixture's two
+modified files are recoverable from commit `992d7d51…`. Qwen
+`qwen3-coder-next` is rejected as a correction-profile candidate; the
+next experiment needs a stronger low-cost coding model and an
+un-scripted manual review at the correction approval.

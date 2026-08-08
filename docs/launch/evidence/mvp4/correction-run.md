@@ -1,5 +1,56 @@
 # MVP-4 Journey 6 — Bounded Live Visual Correction
 
+## MVP-4I — Qwen correction-model experiment — 2026-08-08
+
+Evidence baseline commit `81a02d6b…`. Acceptance-home override:
+`visual-correction-default` → OpenRouter `qwen/qwen3-coder-next`
+(8000/120000); probe OK (structured mode, 1.8s, provider Ionstream);
+`designflow settings` proves isolation (coordinator/specification/
+validation built-in gpt-4o-mini; `implementation-default` stays the
+accepted `openai/gpt-5.6-luna`). Fixture accepted-state committed as
+`992d7d51…` (fingerprint `23c36efd…`, build/test green).
+
+Fresh parent `fb6d0587-58b5-4077-bdea-3ccce1946d14`: the luna
+implementation this time proposed **2 modifies to the existing committed
+SpendlyScreen files** (its reasoning explicitly cited the inventory),
+applied cleanly through snapshot/validation; the MVP-4H comparator again
+produced the actionable root-frame content finding; correction
+eligibility held. Correction child
+`74b3a177-8fb3-440d-9e6e-f1563776ef95`, iteration 1 of 1: live Qwen call
+(1,790 in / 1,544 out / 3,334 tokens, 12s, $0.00152), hash-bound valid
+2-modify proposal, exact approval, snapshot, apply, validation
+completed, recapture, honest `no improvement` stop, hard one-iteration
+bound held.
+
+**Model-quality verdict: worse than the gpt-4o-mini baseline.** Qwen's
+`proposedContent` was literal meta-commentary — the applied files now
+begin with "REDACTED — content must be inferred from current excerpt and
+design constraints…" — prose in place of code. Project validation still
+passed truthfully (the files are unmounted and outside the build graph),
+and the visual evaluator correctly ruled the render unchanged.
+
+**Process caveat (recorded honestly):** the acceptance automation
+answered the exact-approval prompt from a scripted input, so the
+mandatory Part-12 manual-relevance review did not occur before apply —
+the bounded diff visibly contained prose and should have been rejected,
+which would have classified this as an invalid/irrelevant proposal
+without mutation. The safety machinery behaved correctly throughout; the
+gate that failed was the human-review step this experiment scripted
+away.
+
+Final fixture: the two SpendlyScreen files remain modified with the
+applied prose (recoverable via git from `992d7d51…`); build/test still
+green; no pending state, no orphans, no leaks.
+
+**Journey 6 classification:
+`FAIL — CORRECTION_APPLIED_NO_IMPROVEMENT`** (second consecutive
+model-quality failure; per the one-model rule no further correction
+model was tried). Recommendation: `qwen/qwen3-coder-next` is **not** a
+suitable `visual-correction-default` candidate; the next controlled
+experiment should test a stronger low-cost coding model, and the
+acceptance harness should surface the bounded diff for genuine manual
+review before the correction approval is answered.
+
 ## FINAL — full correction loop exercised live — 2026-08-08
 
 After the MVP-4H comparator fix, two further architecture defects were
