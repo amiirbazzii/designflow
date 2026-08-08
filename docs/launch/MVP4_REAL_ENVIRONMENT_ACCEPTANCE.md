@@ -784,3 +784,36 @@ contract on the path (authorization, eligibility, bounded proposals,
 approval, snapshot, apply, validation, honesty) has been proven live.
 The low-cost testing policy and the DeepSeek recommendation for
 `implementation-default` are recorded in the evidence.
+
+## 24. MVP-4H — reference-aligned deterministic visual comparison
+
+**MVP-4H: `PASS`. Journey 6: `FAIL — blocked externally
+(DEEPSEEK_UPSTREAM_LATENCY)`.**
+
+Root cause traced precisely: the pixel diff always ran over the
+top-left-aligned overlap; the loss was in finding construction, where
+dimension mismatch and content divergence were mutually exclusive
+branches and no deterministic finding carried frame identity. The fix
+(commit `6ce904fd…`, +164/−9 across comparator, capability, and two
+backward-compatible schema extensions): reference-aligned capture
+viewport derived from the real Figma export's pixel size (DPR-1
+contract); surfaced overlap metrics (`overlapCoverage`,
+`overlapMismatchRatio`, `pixelDiffExecuted`); a 0.5 comparable-area
+floor with an explicit `insufficient-comparable-area` outcome; separate
+truthful size and content findings; root-frame `affectedFrame`
+attribution with no fabricated components; and the actionability
+distinction proven by tests (real divergence is selectable,
+instrumentation-only mismatch launches no correction). Focused +7
+tests; full regression 52/52 tasks, 2,452 pass / 1 skip / 0 fail;
+smoke and freshness PASS; fresh pack `3e29b396…` installed.
+
+The final live rerun was blocked by an external condition: OpenRouter's
+DeepSeek upstreams currently exceed the product's hard 120s model
+timeout (measured 111s success once, then three 120s timeouts; the
+same model ran in 26s the previous day). The product's schema correctly
+rejected a 300s override (`MAX_TIMEOUT_MS`). Per the no-mining rule no
+other model was tried; four attempts all terminated pre-approval with
+zero writes, the fixture stayed byte-identical (`8bc42afd…`), and no
+security or process regressions occurred. Journey 6 needs exactly one
+clean rerun once DeepSeek serving recovers (or a future task selects a
+different low-cost implementation model).

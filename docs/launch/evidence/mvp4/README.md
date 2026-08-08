@@ -166,6 +166,23 @@ journey then hit a hard external wall: **OpenRouter credits exhausted**
 blocked externally on credits.** Rerun Part 5 once after topping up the
 key; no product work is pending.
 
+MVP-4H removed the last product blocker: the comparator now surfaces its
+always-computed overlap diff (coverage + overlap mismatch ratio, 0.5
+comparable-area floor), dimension mismatch and content divergence are
+separate truthful findings, deterministic content findings carry
+root-frame attribution (`affectedFrame`, never a fabricated component),
+and `prepare-visual-validation` adds a reference-aligned capture viewport
+matching the real Figma export's pixel size. Seven new tests prove the
+actionability distinction (real divergence → CORRECTION_ELIGIBLE;
+instrumentation-only mismatch → no correction). Full regression 2,452
+pass / 1 skip / 0 fail; commit `6ce904fd…`; fresh pack `3e29b396…`. The
+final live Journey 6 rerun was then blocked externally: OpenRouter's
+DeepSeek upstreams currently exceed the product's 120s model-timeout
+ceiling (the same model ran in 26s earlier; a 300s override was correctly
+rejected by profile schema validation). Four attempts, all pre-approval,
+zero writes. **MVP-4H is `PASS`; Journey 6 remains `FAIL` — blocked
+externally on DeepSeek serving latency**, needing only one clean rerun.
+
 MVP-4G froze the corrected baseline (providerRouting audit: kept — it
 completes a pre-existing schema/runtime/provider contract; new focused
 tests; full regression 2,445 pass / 1 skip / 0 fail; commit `b8dc06f1…`)
