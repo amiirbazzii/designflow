@@ -566,12 +566,19 @@ export const createCorrectionSnapshotCapability: Capability<
         { schemaVersion: "1", plan, changes: changes.changes, traceIds: [] },
       ),
     );
+    // Correction targets are, by construction, files DesignFlow applied in
+    // the parent implementation run: `validateCorrectionAgentOutput` bound
+    // them to the approved file scope and verified each base hash against
+    // the file's current content, and the parent run holds its own rollback
+    // snapshot. They are therefore uncommitted-by-definition and exempt from
+    // the dirty-target rule; any path outside that provenance still blocks.
     const snapshot = await createProjectSnapshot(
       requested.project.id,
       requested.project.rootPath,
       proposal,
       requested.project.canonicalRootIdentity,
       requested.stateDirectory,
+      { exemptDirtyTargets: proposal.files.map((file) => file.path) },
     );
     return writeArtifact(context, {
       artifactId: FEEDBACK_LOOP_ARTIFACT_IDS.snapshot,

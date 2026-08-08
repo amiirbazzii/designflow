@@ -82,3 +82,23 @@ describe("Git-aware project safety", () => {
     }
   });
 });
+
+describe("DesignFlow-owned dirty-target exemption (MVP-4H)", () => {
+  test("an exempted just-applied target passes; a non-exempt dirty target still blocks", () => {
+    const root = repository();
+    try {
+      writeFileSync(join(root, "applied.ts"), "export const applied = 1;\n");
+      writeFileSync(join(root, "other.ts"), "export const other = 1;\n");
+      const report = inspectGitSafety(root, ["applied.ts", "other.ts"]);
+      expect(report.dirtyTargetPaths.sort()).toEqual(["applied.ts", "other.ts"]);
+      // Exempting only the DesignFlow-applied file still blocks on the other.
+      expect(() => assertGitSafeForWrite(report, { exemptDirtyTargets: new Set(["applied.ts"]) })).toThrow("uncommitted Git changes");
+      // Exempting both dirty targets allows the write.
+      expect(() => assertGitSafeForWrite(report, { exemptDirtyTargets: new Set(["applied.ts", "other.ts"]) })).not.toThrow();
+      // Without an exemption the original behavior is unchanged.
+      expect(() => assertGitSafeForWrite(report)).toThrow(DesignFlowError);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

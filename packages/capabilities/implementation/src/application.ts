@@ -31,12 +31,12 @@ async function findResumableSnapshot(projectId: string, rootIdentity: string, pr
   return undefined;
 }
 
-export async function createProjectSnapshot(projectId: string, root: string, proposal: ProposedFileChanges, rootIdentity: string, stateDirectory: string): Promise<ProjectSnapshot> {
+export async function createProjectSnapshot(projectId: string, root: string, proposal: ProposedFileChanges, rootIdentity: string, stateDirectory: string, options: { readonly exemptDirtyTargets?: readonly string[] } = {}): Promise<ProjectSnapshot> {
   assertStateDirectory(root, stateDirectory);
   const entries: SnapshotEntry[] = [];
   for (const file of proposal.files) { const path = target(root, file.path); if (await exists(path)) { const data = await readFile(path); const mode = (await stat(path)).mode; entries.push({ path: file.path, existed: true, content: data.toString("base64"), hash: createHash("sha256").update(data.toString("base64")).digest("hex"), mode }); } else entries.push({ path: file.path, existed: false }); }
   const gitSafety = inspectGitSafety(root, proposal.files.map((file) => file.path));
-  assertGitSafeForWrite(gitSafety);
+  assertGitSafeForWrite(gitSafety, options.exemptDirtyTargets !== undefined ? { exemptDirtyTargets: new Set(options.exemptDirtyTargets) } : {});
   const snapshot = { runId: randomUUID(), projectId, proposalHash: hash(proposal), rootIdentity, createdAt: new Date().toISOString(), entries, ...(gitSafety.isRepository ? { gitSafety } : {}) };
   await mkdir(stateDirectory, { recursive: true }); await persistSnapshot(stateDirectory, snapshot);
   return snapshot;

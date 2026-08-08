@@ -11,6 +11,8 @@ export interface GitSafetyReport {
   readonly dirty: boolean;
   readonly targetDirty: boolean;
   readonly targetPaths: readonly string[];
+  /** The subset of target paths git currently reports as changed/untracked. */
+  readonly dirtyTargetPaths: readonly string[];
   readonly unrelatedDirtyPaths: readonly string[];
   readonly stagedTargetPaths: readonly string[];
   readonly mergeOrRebaseInProgress: boolean;
@@ -78,6 +80,7 @@ export function inspectGitSafety(root: string, targetPaths: readonly string[] = 
       dirty: false,
       targetDirty: false,
       targetPaths: [],
+      dirtyTargetPaths: [],
       unrelatedDirtyPaths: [],
       stagedTargetPaths: [],
       mergeOrRebaseInProgress: false,
@@ -107,6 +110,7 @@ export function inspectGitSafety(root: string, targetPaths: readonly string[] = 
     dirty: dirtyPaths.length > 0,
     targetDirty: targetStatuses.length > 0,
     targetPaths: targets,
+    dirtyTargetPaths: targetStatuses.map((entry) => entry.path),
     unrelatedDirtyPaths: dirtyPaths.filter((path) => !targetSet.has(path)),
     stagedTargetPaths: targetStatuses.filter((entry) => entry.index !== " ").map((entry) => entry.path),
     mergeOrRebaseInProgress,
@@ -120,9 +124,17 @@ export function inspectGitSafety(root: string, targetPaths: readonly string[] = 
   return report;
 }
 
-export function assertGitSafeForWrite(report: GitSafetyReport): void {
+export function assertGitSafeForWrite(report: GitSafetyReport, options: { readonly exemptDirtyTargets?: ReadonlySet<string> } = {}): void {
   if (report.mergeOrRebaseInProgress)
     throw new DesignFlowError("ERR_GIT_CONFLICT_STATE", "Project writes are blocked while Git is in a merge, rebase, or cherry-pick state.", { root: report.root });
-  if (report.targetDirty)
-    throw new DesignFlowError("ERR_GIT_DIRTY_TARGET", "Project writes are blocked because a proposed target file has uncommitted Git changes.", { targetPaths: report.targetPaths, stagedTargetPaths: report.stagedTargetPaths });
+  // A dirty target is exempt only when the caller proves DesignFlow itself
+  // wrote it in the current journey (recorded in the parent run's applied
+  // proposal, still base-hash-verified against the file's current content,
+  // and covered by that run's own rollback snapshot). Without that
+  // provenance, uncommitted target changes still block the write — otherwise
+  // a correction of a just-applied implementation would be structurally
+  // impossible, since its targets are uncommitted by definition.
+  const blocking = (report.dirtyTargetPaths ?? []).filter((path) => !(options.exemptDirtyTargets?.has(path) ?? false));
+  if (blocking.length > 0)
+    throw new DesignFlowError("ERR_GIT_DIRTY_TARGET", "Project writes are blocked because a proposed target file has uncommitted Git changes.", { targetPaths: report.targetPaths, stagedTargetPaths: report.stagedTargetPaths, blockingTargetPaths: blocking });
 }
