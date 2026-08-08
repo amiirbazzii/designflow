@@ -933,3 +933,27 @@ byte-precisely. One iteration; honest stop.
 live; the blocker moved upstream to the recorded product debt:
 implementation rendered-reachability validation (an implementation that
 creates UI must build with that UI reachable from the preview entry).
+
+## 29. MVP-4L — proposed-module compile validation + final Journey 6 run
+
+Commit `2e2d43d` closes the MVP-4K root cause: before exact approval,
+every changed executable module is compile-validated with the project's
+real build tooling in a temporary workspace (project copy + node_modules
+symlink + exact proposed operations + synthetic multi-module entry) even
+when nothing imports it, hash-bound to the exact proposal; rendered
+reachability is measured separately and unreachable-but-valid proceeds.
+Compile failure is repairable inside the existing 3-attempt loop with
+bounded diagnostics. 14 focused tests; regression 2,477 pass / 1 skip /
+0 fail; smoke/freshness pass; fresh package `14e8472c…`.
+
+Final run `2b695b69`: luna exhausted 3 bounded attempts (8m02s) — the
+gate refused approval; zero writes, fixture fingerprint unchanged.
+Direct probes against the real fixture prove the validator honest (valid
+probe passes, the exact TextField latent defect fails with the real
+Rollup diagnostic). New recorded debt: exhaustion `failures[]` metadata
+is not persisted by the run recorder.
+
+**MVP-4L: `PASS`. Journey 6: `FAIL —
+IMPLEMENTATION_PROPOSAL_ATTEMPTS_EXHAUSTED`** — invalid unmounted code
+can no longer pass the parent stage; the remaining question is
+implementation-model capability under the honest gate.

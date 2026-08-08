@@ -85,3 +85,94 @@ History: run `completed`, no stale running execution, no pending
 approval, no correction child. No orphan preview/browser processes and
 port 51324 free after the run. Credential grep over the stored home: no
 match; all applied paths fixture-confined.
+
+## MVP-4L — proposed-module compile validation — 2026-08-08
+
+### Root cause being closed (from MVP-4K)
+
+DesignFlow validated only the application's existing reachable build graph.
+An implementation module nothing imported (`src/SpendlyScreen.jsx` with a
+default import of the named-export-only `TextField`) passed the parent
+stage and detonated only when a correction mounted it.
+
+### Architecture (commit `2e2d43d`)
+
+Two separate deterministic concepts, never conflated:
+
+- **A. Proposed-module compile validity**
+  (`packages/capabilities/implementation/src/proposed-state-validation.ts`):
+  before approval, the exact proposal is materialized in a temporary
+  OS-owned workspace (bounded project copy ≤2,000 files/20MB +
+  `node_modules` symlink + exact proposed operations), a synthetic entry
+  `designflow-proposed-entry.js` imports every changed executable module
+  (`.js/.jsx/.ts/.tsx/.mjs`; styles/assets/docs are dependencies, not
+  entries), `index.html` is pointed at it, and the project's own build
+  command runs there. The registered project is never mutated; the
+  workspace is removed on success, failure, and cancellation. Result is
+  hash-bound to the exact proposal JSON (`proposalHash`).
+- **B. Rendered reachability** (`analyzeRenderReachability`, reusing the
+  MVP-4K entry/import resolution): bounded static-import traversal from
+  the preview entry; changed files are recorded reachable/unreachable.
+  Unreachability is evidence for the correction stage, never an error.
+
+Integration: compile failure raises repairable
+`ERR_PROPOSAL_MODULE_COMPILE_FAILED` inside the existing
+`MAX_CORRECTION_PROPOSAL_ATTEMPTS = 3` loop, with bounded, path-stripped,
+secret-free diagnostics (≤12 lines × 500 chars) in the structured repair
+feedback (`moduleDiagnostics`). The store-proposal step revalidates the
+exact stored proposal and persists a `proposed-module-validation` artifact
+(status, validated files, diagnostics, proposalHash, renderReachability)
+before any approval. Approval is only reachable with structural PASS +
+compile PASS; unreachable-but-valid proceeds.
+
+### Tests and regression
+
+14 new focused tests: latent default-import defect fails while unmounted;
+repaired named import passes unmounted; multi-module failure identifies
+the failing module; CSS-module deps resolve without becoming entries;
+hash binding; no-executable-module fast pass; missing build command →
+honest `unavailable`; cancellation cleanup; zero fixture writes; three
+reachability cases; two bounded-loop integration cases (regenerate with
+diagnostics then succeed; 3 invalid → typed exhaustion, zero writes).
+Full regression: build 26/26, typecheck 44/44, lint 26/26, test 52 tasks
+— 2,477 pass / 1 skip / 0 fail; smoke exit 0; freshness exit 0. Fresh
+package `14e8472c…` reinstalled and verified.
+
+### Final Journey 6 run (parent `2b695b69-2f96-4582-8f48-9ba17fd487a1`)
+
+Baseline `992d7d5` (fingerprint `23c36efd…`, test/build green); profiles
+luna/glm unchanged. The implementation stage ran 3 bounded proposal
+attempts over 8m02s and ended honestly:
+`ERR_PROPOSAL_ATTEMPTS_EXHAUSTED` — "no approval was requested and no
+files were changed." Verified: fixture fingerprint unchanged
+(`23c36efd…`), zero writes, zero approvals, zero snapshots, no leftover
+validation workspaces or build processes.
+
+Validator integrity was proven directly against the real fixture with its
+real `npm run build` (Vite): a valid named-import probe module → `passed`;
+the exact latent default-import defect → `failed` with the genuine Rollup
+diagnostic (`"default" is not exported by
+"src/components/TextField/TextField.tsx"`). The gate is not a false
+failure; the model could not produce a compile-valid proposal within the
+bound in this run.
+
+### New product debt (recorded, not fixed here)
+
+1. **Attempt-level exhaustion metadata is not persisted**: the thrown
+   error carries `failures[]` (per-attempt code/path/diagnostics) but the
+   run recorder stores only `errorCode` + `reason`, so this run's three
+   failure codes are unknowable after the fact. Carry into the final
+   artifact/trace audit.
+2. MVP-4K's cosmetic `ArtifactReconciliationError` observation stands.
+
+### Classifications
+
+**MVP-4L: `PASS`** — all 17 criteria hold; the live run is the negative
+proof of the gate (invalid proposals can no longer reach approval or
+mutate the project).
+**Journey 6: `FAIL — IMPLEMENTATION_PROPOSAL_ATTEMPTS_EXHAUSTED`** — the
+blocker moved to implementation-model capability under the new honest
+gate: `gpt-5.6-luna` did not produce a compile-valid Spendly proposal in
+3 attempts this run. Remediation options: rerun (attempt variance),
+richer repair feedback, or an implementation-model decision — all outside
+MVP-4L's scope.
