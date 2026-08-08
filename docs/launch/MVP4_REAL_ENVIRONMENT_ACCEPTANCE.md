@@ -976,3 +976,21 @@ deterministic gates and the implementation approval prompt shows no
 bounded content diff. This, plus the exhaustion-observability and
 reconciliation debts, goes to the final audit; the next decision is the
 Implementation Agent proposal contract (no-op rejection + approval diff).
+
+## 31. MVP-4N — content integrity + approval diff + final Journey 6 attempt
+
+Commit `f05dea6`: empty/whitespace executable content and byte-identical
+no-op modifies are now typed, repairable pre-compile rejections; both
+approval prompts render an exact bounded diff/preview (shared renderer,
+120 lines / 12,000 chars, explicit truncation and blank-file warning).
+15 focused tests; regression 2,492 pass / 1 skip / 0 fail; fresh package
+`6f907dbb…`. Final run `b9d25a93`: GLM's attempt-1 proposal passed all
+deterministic gates but was a single irrelevant 259-byte CSS module —
+fully visible in the new approval review — and was manually rejected
+un-scripted; zero writes (`23c36efd…` unchanged).
+
+**MVP-4N: `PASS`. Journey 6: `FAIL —
+IMPLEMENTATION_PROPOSAL_REJECTED_QUALITY (irrelevant single-CSS
+proposal)`.** Model work is closed per instruction; the remaining Journey
+6 blocker is the Implementation Agent proposal-generation contract
+(nothing requires proposals to cover the mapped design surface).

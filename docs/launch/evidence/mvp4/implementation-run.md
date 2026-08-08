@@ -244,3 +244,74 @@ contract: nothing forces (or even surfaces) non-empty meaningful content.
 Recommended next architectural decision: minimum-content/no-op rejection
 in the deterministic gate plus bounded diff at the approval prompt,
 before any further implementation-model work.
+
+## MVP-4N — proposal content integrity + approval diff + final Journey 6 attempt — 2026-08-08
+
+### Product changes (commit `f05dea6`)
+
+- `validateProposedFileChanges` gained two narrow deterministic rules,
+  ordered before compile validation:
+  `ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT` (create/modify of an executable
+  source — shared MVP-4L classification via `isExecutableSourcePath` —
+  with empty/whitespace-only content; no minimum-length heuristic:
+  `export {};` passes) and `ERR_PROPOSAL_NOOP_MODIFY` (proposed modify
+  bytes exactly equal current trusted bytes; no normalization; skipped in
+  apply-time revalidation so a resumed partial apply is not misread).
+  Both codes are repairable inside the existing 3-attempt loop with
+  fact-only repair feedback.
+- New shared bounded proposal review renderer
+  (`apps/designflow-cli/src/services/proposal-preview.ts`, max 120
+  lines / 12,000 chars with explicit `[diff truncated — N more lines
+  omitted]`): exact LCS line diff for modify (with `changed: +A/-R`
+  summary and an explicit warning when proposed content would blank the
+  file), bounded content preview + byte size for create, DELETE + size
+  for delete. Used by BOTH the implementation approval
+  ("Proposed changes (bounded review):", current content resolved from
+  the registered root) and the correction approval ("Bounded diff:",
+  upgraded from the old 400-char slice to the same renderer). Rendering
+  is a pure function of the exact approval-bound proposal payload.
+- 15 new focused tests (7 content-integrity, 2 bounded-loop integration
+  incl. 3×invalid → typed exhaustion with zero writes, 6 renderer tests
+  incl. the destructive-empty-diff fixture). Full regression: build
+  26/26, typecheck 44/44, lint 26/26, test 52 tasks — 2,492 pass /
+  1 skip / 0 fail; smoke exit 0; freshness exit 0; fresh package
+  `6f907dbb…` reinstalled and verified.
+
+### Final Journey 6 attempt (parent `b9d25a93-5989-40e4-ac9a-54042b981b33`)
+
+Baseline `992d7d5` (fingerprint `23c36efd…`); profiles unchanged
+(implementation + correction = `z-ai/glm-5.2`, verified per-invocation in
+the run record: `profileId implementation-default, model z-ai/glm-5.2`,
+1,704 in / 409 out tokens, 9.7s, ≈ $0.0042; coordinator/figma remained
+built-in gpt-4o-mini).
+
+- Attempt 1 passed every deterministic gate honestly: structural PASS;
+  content-integrity PASS (single non-empty CSS file — not executable);
+  compile validation trivially PASS (no executable entries).
+- **The new bounded review rendered the complete proposed content inside
+  the approval prompt** — the proposal was a single 259-byte
+  `src/components/NavMenu/NavMenu.module.css` wrapper stylesheet with
+  zero Spendly implementation. The MVP-4M failure mode (innocuous-looking
+  prompt) is gone: the emptiness of the work was visible on screen.
+- Manual un-scripted quality gate: **rejected** — a lone unimported CSS
+  module cannot plausibly become the target Spendly UI.
+- Product stopped cleanly: "Rejected. The workflow was stopped. Nothing
+  was written to your project." Fixture fingerprint unchanged
+  (`23c36efd…`); zero approvals/snapshots/writes; no leftover
+  workspaces/processes; no credential leakage.
+
+### Classifications
+
+**MVP-4N: `PASS`** — all 16 criteria hold; both new rules enforced and
+tested; the approval UI now shows the exact bounded content; correction
+rendering upgraded without regression.
+**Journey 6: `FAIL — IMPLEMENTATION_PROPOSAL_REJECTED_QUALITY (irrelevant
+single-CSS proposal)`** — per the task contingency this ends
+model/profile work entirely. Three consecutive live runs now show the
+same shape: luna emitted compile-invalid modules, GLM emitted an empty
+modify, then a token-cheap irrelevant fragment. The blocker is the
+**Implementation Agent proposal-generation contract** itself: nothing in
+the prompt/plan contract requires the proposal to cover the mapped
+design surface (e.g. a minimum mapping between specification
+frames/components and proposed files). That contract redesign is the
+recorded next architectural decision.
