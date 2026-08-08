@@ -52,6 +52,12 @@ export const FEEDBACK_LOOP_ARTIFACT_TYPES = {
 export const feedbackLoopWorkflowInputSchema = feedbackLoopInputV1Schema.extend({
   stateDirectory: z.string().min(1),
   affectedFileMap: z.record(z.string().min(1), z.array(z.string().min(1))).default({}),
+  /**
+   * Files the parent implementation run applied. Only these carry the
+   * provenance-backed dirty-target exemption at the correction snapshot;
+   * composition-authorized files must be clean relative to the baseline.
+   */
+  parentChangedFiles: z.array(z.string().min(1)).max(50).default([]),
   currentImplementationHash: z.string().regex(/^[a-f0-9]{64}$/),
   /** Optional CLI/child handoff when the immutable report is not in parent artifacts. */
   initialVisualValidationReport: visualValidationReportV1Schema.optional(),

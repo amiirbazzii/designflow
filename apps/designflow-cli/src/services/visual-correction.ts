@@ -469,6 +469,7 @@ export async function prepareVisualCorrection(options: {
         timeouts: { agentMs: 120_000, approvalMs: 7 * 24 * 60 * 60_000 },
         limits: { maxContextBytes: 1_000_000, maxPatchBytes: 1_000_000 },
         stateDirectory: implementationInput.stateDirectory,
+        parentChangedFiles: changedFiles(artifacts.generatedImplementation.payload),
         affectedFileMap: report === undefined
           ? {}
           : affectedFileMap(report, artifacts.projectContext.payload, artifacts.generatedImplementation.payload),

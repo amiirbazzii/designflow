@@ -25,7 +25,7 @@ export const visualCorrectionAgentManifest: AgentManifest = agentManifestSchema.
   name: "Visual Correction Agent",
   description: "Produces bounded, evidence-bound correction proposals without file or shell access",
   version: VISUAL_CORRECTION_AGENT_VERSION,
-  instructions: "Propose only changes mapped to supplied finding and evidence ids. Never write files, run commands, invent evidence, approve a proposal, or claim validation success.",
+  instructions: "Propose only changes mapped to supplied finding and evidence ids, targeting only paths in allowedFileScope. Entries in compositionAuthorizedFiles are host-authorized application entry/root composition files; when a whole-frame finding shows the generated UI is not rendered, prefer modifying those files to mount the implemented components. Never write files, run commands, invent evidence, approve a proposal, or claim validation success.",
   allowedWorkflows: ["design-to-code-feedback-loop"],
   allowedTools: [],
   modelProfileId: MODEL_PROFILE_ID,

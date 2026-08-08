@@ -13,6 +13,12 @@ export const FEEDBACK_LOOP_HARD_LIMITS = {
   maxFindingsPerIteration: 20,
 } as const;
 
+/**
+ * Hard bound on host-authorized composition files added to a correction scope
+ * beyond the parent implementation's changed files. Not user-configurable.
+ */
+export const MAX_CORRECTION_COMPOSITION_FILES = 8 as const;
+
 export const feedbackLoopStopReasonSchema = z.enum([
   "passed", "pass_with_findings", "no_actionable_findings", "rejected",
   "project_validation_failed", "rollback_failed", "visual_validation_failed",
@@ -64,8 +70,12 @@ export type FeedbackLoopInputV1 = z.infer<typeof feedbackLoopInputV1Schema>;
 const measurable = z.object({ expected: text(2_000).optional(), actual: text(2_000).optional(), delta: z.number().finite().optional() }).strict();
 const finding = z.object({ findingId, classification: z.enum(["deterministic", "model-interpreted"]), affectedFiles: z.array(filePath).max(20), component: text(256).optional(), evidenceReferences: z.array(evidenceId).max(32), expected: text(2_000).optional(), actual: text(2_000).optional(), measurableDelta: z.number().finite().optional() }).strict();
 
+/** A composition file the host authorized beyond the parent-changed scope, with deterministic provenance. */
+export const compositionScopeEntrySchema = z.object({ path: filePath, reason: text(512), source: z.literal("deterministic-project-inspection") }).strict();
+export type CompositionScopeEntry = z.infer<typeof compositionScopeEntrySchema>;
+
 export const correctionContextV1Schema = z.object({
-  schemaVersion: z.literal(VISUAL_CORRECTION_SCHEMA_VERSION), iterationNumber: z.number().int().positive(), selectedFindings: z.array(finding).max(20), visualFindings: z.array(visualFindingV1Schema).max(20), evidenceReferences: z.array(artifact).max(128), currentImplementationExcerpts: z.array(z.object({ path: filePath, content: text(50_000), hash: sha256 }).strict()).max(20), relevantDesignTokens: z.array(z.object({ name: text(256), reference: text(512), value: text(512).optional() }).strict()).max(128), relevantComponents: z.array(z.object({ name: text(256), path: filePath, excerpt: text(20_000).optional() }).strict()).max(64), allowedFileScope: z.array(filePath).max(20), forbiddenPaths: z.array(text(512)).max(64), projectCommands: validationConfiguration.shape.commands, currentProjectFingerprint: sha256, currentImplementationHash: sha256, previousIterationSummaries: z.array(text(4_000)).max(8), designSystemMapping: artifact, evidenceOnly: z.literal(true),
+  schemaVersion: z.literal(VISUAL_CORRECTION_SCHEMA_VERSION), iterationNumber: z.number().int().positive(), selectedFindings: z.array(finding).max(20), visualFindings: z.array(visualFindingV1Schema).max(20), evidenceReferences: z.array(artifact).max(128), currentImplementationExcerpts: z.array(z.object({ path: filePath, content: text(50_000), hash: sha256 }).strict()).max(20), relevantDesignTokens: z.array(z.object({ name: text(256), reference: text(512), value: text(512).optional() }).strict()).max(128), relevantComponents: z.array(z.object({ name: text(256), path: filePath, excerpt: text(20_000).optional() }).strict()).max(64), allowedFileScope: z.array(filePath).max(20), compositionAuthorizedFiles: z.array(compositionScopeEntrySchema).max(MAX_CORRECTION_COMPOSITION_FILES).default([]), forbiddenPaths: z.array(text(512)).max(64), projectCommands: validationConfiguration.shape.commands, currentProjectFingerprint: sha256, currentImplementationHash: sha256, previousIterationSummaries: z.array(text(4_000)).max(8), designSystemMapping: artifact, evidenceOnly: z.literal(true),
 }).strict();
 export type CorrectionContextV1 = z.infer<typeof correctionContextV1Schema>;
 

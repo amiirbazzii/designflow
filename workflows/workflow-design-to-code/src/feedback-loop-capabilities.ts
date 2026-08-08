@@ -46,6 +46,7 @@ import {
   runFreshStage5Validation,
   storeRevalidatedReport,
 } from "./feedback-loop-revalidation";
+import { deriveCompositionScope } from "./composition-scope";
 
 const inputSchema = feedbackLoopWorkflowInputSchema;
 const projectInput = (raw: unknown): FeedbackLoopWorkflowInput =>
@@ -210,9 +211,45 @@ export const prepareCorrectionContextCapability: Capability<
         ),
       ),
     ];
-    const excerpts = paths.map((path) =>
-      readBoundedExcerpt(requested.project.rootPath, path),
+    // A root-frame finding (whole-page evidence, no component identity) may
+    // additionally reach the host-derived composition scope — the preview
+    // entry and the root components it imports — so a correction can repair
+    // integration mistakes such as generated UI that is never mounted. The
+    // set is deterministic, bounded, and only files that also yield a valid
+    // bounded excerpt become part of the enforced scope.
+    const hasRootFrameFinding = findings.some(
+      (finding) =>
+        finding.affectedFrame !== undefined &&
+        finding.affectedComponent === undefined,
     );
+    const compositionAuthorized: {
+      entry: import("@designflow/sdk").CompositionScopeEntry;
+      excerpt: ReturnType<typeof readBoundedExcerpt>;
+    }[] = [];
+    if (hasRootFrameFinding) {
+      for (const entry of deriveCompositionScope(requested.project.rootPath)) {
+        if (paths.includes(entry.path)) continue;
+        try {
+          compositionAuthorized.push({
+            entry,
+            excerpt: readBoundedExcerpt(requested.project.rootPath, entry.path),
+          });
+        } catch {
+          // A composition candidate that cannot be safely excerpted stays out
+          // of the scope entirely rather than weakening the excerpt/hash bond.
+        }
+      }
+    }
+    const compositionPaths = compositionAuthorized.map(
+      (candidate) => candidate.entry.path,
+    );
+    const scopePaths = [...paths, ...compositionPaths];
+    const excerpts = [
+      ...paths.map((path) =>
+        readBoundedExcerpt(requested.project.rootPath, path),
+      ),
+      ...compositionAuthorized.map((candidate) => candidate.excerpt),
+    ];
     const evidenceReferences = [
       ...report.implementationEvidence,
       ...report.referenceEvidence,
@@ -227,7 +264,15 @@ export const prepareCorrectionContextCapability: Capability<
       selectedFindings: findings.map((finding) => ({
         findingId: finding.findingId,
         classification: finding.origin,
-        affectedFiles: requested.affectedFileMap[finding.findingId] ?? [],
+        affectedFiles: [
+          ...new Set([
+            ...(requested.affectedFileMap[finding.findingId] ?? []),
+            ...(finding.affectedFrame !== undefined &&
+            finding.affectedComponent === undefined
+              ? compositionPaths
+              : []),
+          ]),
+        ],
         ...(finding.affectedComponent
           ? { component: finding.affectedComponent }
           : {}),
@@ -254,7 +299,10 @@ export const prepareCorrectionContextCapability: Capability<
           name: component.name,
           path: component.sourcePath,
         })),
-      allowedFileScope: paths,
+      allowedFileScope: scopePaths,
+      compositionAuthorizedFiles: compositionAuthorized.map(
+        (candidate) => candidate.entry,
+      ),
       forbiddenPaths: [
         ".env*",
         "node_modules",
@@ -287,7 +335,8 @@ export const prepareCorrectionContextCapability: Capability<
       payload: value,
       summary: {
         findings: findings.length,
-        files: paths.length,
+        files: scopePaths.length,
+        compositionAuthorizedFiles: compositionPaths,
         boundedBytes: excerpts.reduce(
           (total, excerpt) => total + Buffer.byteLength(excerpt.content),
           0,
@@ -342,7 +391,7 @@ export const invokeVisualCorrectionAgentCapability: Capability<
       );
     const output = validateCorrectionAgentOutput(
       result.output,
-      correctionContext,
+      correctionContextV1Schema.parse(correctionContext),
       input,
     );
     return writeArtifact(context, {
@@ -566,19 +615,25 @@ export const createCorrectionSnapshotCapability: Capability<
         { schemaVersion: "1", plan, changes: changes.changes, traceIds: [] },
       ),
     );
-    // Correction targets are, by construction, files DesignFlow applied in
-    // the parent implementation run: `validateCorrectionAgentOutput` bound
-    // them to the approved file scope and verified each base hash against
-    // the file's current content, and the parent run holds its own rollback
-    // snapshot. They are therefore uncommitted-by-definition and exempt from
-    // the dirty-target rule; any path outside that provenance still blocks.
+    // Only files the parent implementation run itself applied carry the
+    // provenance-backed dirty-target exemption: `validateCorrectionAgentOutput`
+    // bound them to the approved file scope and verified each base hash, and
+    // the parent run holds its own rollback snapshot, so they are
+    // uncommitted-by-definition. Host-authorized composition files have no
+    // such provenance — if one is dirty with unrelated local changes, the
+    // git-safety gate must still fail closed.
+    const parentChanged = new Set(requested.parentChangedFiles);
     const snapshot = await createProjectSnapshot(
       requested.project.id,
       requested.project.rootPath,
       proposal,
       requested.project.canonicalRootIdentity,
       requested.stateDirectory,
-      { exemptDirtyTargets: proposal.files.map((file) => file.path) },
+      {
+        exemptDirtyTargets: proposal.files
+          .map((file) => file.path)
+          .filter((path) => parentChanged.has(path)),
+      },
     );
     return writeArtifact(context, {
       artifactId: FEEDBACK_LOOP_ARTIFACT_IDS.snapshot,
