@@ -176,3 +176,71 @@ gate: `gpt-5.6-luna` did not produce a compile-valid Spendly proposal in
 3 attempts this run. Remediation options: rerun (attempt variance),
 richer repair feedback, or an implementation-model decision — all outside
 MVP-4L's scope.
+
+## MVP-4M — GLM implementation profile + final Journey 6 attempt — 2026-08-08
+
+### Setup
+
+- Baseline `a2287a1` unchanged (no product source change; profile switch is
+  acceptance-home configuration only). Installed CLI verified fresh with
+  the MVP-4L validator present.
+- `implementation-default` → `z-ai/glm-5.2` (8000/120000);
+  `visual-correction-default` already `z-ai/glm-5.2`. `designflow settings`
+  proof: only those two profiles show `(override)`; coordinator, Figma
+  specification, and visual validation remain built-in gpt-4o-mini.
+  Note: the CLI resolves the acceptance home via `DESIGNFLOW_HOME`.
+- One bounded structured probe: HTTP 200, 3s, valid strict-schema JSON,
+  provider Baidu, no 402.
+- Fixture baseline `992d7d5`, fingerprint `23c36efd…`, test/build green.
+
+### Run (parent `57f5595f-be53-43f1-ac51-f621bfe83dd6`)
+
+- Attempt 1: `ERR_PROPOSAL_TARGET_EXISTS` (`src/pages/AddExpensePage.jsx`
+  proposed as create over an existing file) → structured repair feedback.
+- Attempt 2: structurally valid 1-file modify of the same path;
+  MVP-4L proposed-state validation `passed` (`npm run build` in the
+  temporary workspace, no diagnostics, proposalHash `c0861bfd…`);
+  reachability honestly recorded `previewEntry: src/main.jsx`,
+  `unreachableChangedFiles: [src/pages/AddExpensePage.jsx]`.
+- Recorded GLM implementation usage: 1,779 in / 3,003 out tokens
+  (≈ $0.0157) for the persisted invocation; two attempts consumed of the
+  hard 3-attempt bound.
+- **Manual implementation quality gate (un-scripted; the driver halts at
+  the implementation approval until a reviewed decision file exists):**
+  the persisted proposal payload shows `"content": ""` — the modify would
+  BLANK the existing `AddExpensePage.jsx`. Compile validation passing is
+  honest (an empty module is valid JavaScript), but the Part-12 question
+  — does this modify meaningful Spendly implementation code? — is No; it
+  is a destructive no-op. **Rejected.**
+- Product behaved exactly to contract: "Rejected. The workflow was
+  stopped. Nothing was written to your project." Fixture fingerprint
+  byte-identical (`23c36efd…`); no approvals consumed, no snapshot, no
+  correction child, no orphan processes or workspaces; no credential in
+  logs.
+
+### New product finding (recorded, not fixed)
+
+An empty-content `modify` of an executable module passes structural
+validation and compile validation and reaches the exact approval prompt,
+and the CLI implementation-approval summary shows only file paths and
+reasons — no content size or bounded diff — so only artifact-level manual
+review exposes the blanking. Final-audit candidates: (a) deterministic
+rejection or explicit flagging of empty/whitespace-only executable
+content in `validateProposedFileChanges` or the module gate; (b) a
+bounded content diff in the implementation approval prompt, as the
+correction approval already provides.
+
+### Classifications
+
+**MVP-4M: `PASS`** — profile switch isolated to `implementation-default`;
+gate authoritative; 3-attempt bound intact (2 used); no model cycling;
+canonical Journey 6 run executed exactly once; all safety boundaries
+held; zero writes.
+**Journey 6: `FAIL — IMPLEMENTATION_PROPOSAL_REJECTED_QUALITY (empty
+modify content)`** — GLM repaired the structural error but emitted an
+empty implementation body. Correction-stage machinery remains proven from
+MVP-4K; the remaining blocker is the Implementation Agent proposal
+contract: nothing forces (or even surfaces) non-empty meaningful content.
+Recommended next architectural decision: minimum-content/no-op rejection
+in the deterministic gate plus bounded diff at the approval prompt,
+before any further implementation-model work.

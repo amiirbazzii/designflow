@@ -957,3 +957,22 @@ is not persisted by the run recorder.
 IMPLEMENTATION_PROPOSAL_ATTEMPTS_EXHAUSTED`** — invalid unmounted code
 can no longer pass the parent stage; the remaining question is
 implementation-model capability under the honest gate.
+
+## 30. MVP-4M — GLM implementation profile + final Journey 6 attempt
+
+Configuration-only task: `implementation-default` → `z-ai/glm-5.2`
+(probe OK; isolation proven via `designflow settings`; correction profile
+untouched). Run `57f5595f`: attempt 1 `ERR_PROPOSAL_TARGET_EXISTS`
+repaired; attempt 2 passed structural + MVP-4L compile validation with
+honest `UNREACHABLE` reachability — but the manual un-scripted
+implementation quality gate found the modify carried **empty content**
+(would blank `src/pages/AddExpensePage.jsx`) and rejected it. Zero
+writes; fingerprint unchanged (`23c36efd…`).
+
+**MVP-4M: `PASS`. Journey 6: `FAIL —
+IMPLEMENTATION_PROPOSAL_REJECTED_QUALITY (empty modify content)`.**
+New recorded debt: empty-content executable modifies pass all
+deterministic gates and the implementation approval prompt shows no
+bounded content diff. This, plus the exhaustion-observability and
+reconciliation debts, goes to the final audit; the next decision is the
+Implementation Agent proposal contract (no-op rejection + approval diff).
