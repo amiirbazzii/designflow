@@ -18,6 +18,11 @@ import { ImplementationError } from "./errors";
 
 /** Executable source modules that must compile; styles/assets/docs are dependencies, not entries. */
 const EXECUTABLE_SOURCE = /\.(jsx|tsx|js|ts|mjs)$/i;
+
+/** The single executable-source classification shared by every proposal gate. */
+export function isExecutableSourcePath(path: string): boolean {
+  return EXECUTABLE_SOURCE.test(path);
+}
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "build", "out", "coverage", ".turbo", ".next", ".nuxt", ".svelte-kit", ".designflow"]);
 const MAX_WORKSPACE_FILES = 2_000;
 const MAX_WORKSPACE_BYTES = 20_000_000;

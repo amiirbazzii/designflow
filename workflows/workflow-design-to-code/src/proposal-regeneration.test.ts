@@ -1,6 +1,6 @@
 // workflows/workflow-design-to-code/src/proposal-regeneration.test.ts
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -223,6 +223,60 @@ describe("MVP-4L proposed-module compile validation in the bounded loop", () => 
       await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
       expect(invocations.length).toBe(3);
       expect(existsSync(join(root, "src/GeneratedScreen.jsx"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("MVP-4N content-integrity in the bounded loop", () => {
+  const REAL = `import { TextField } from "./components/TextField.tsx";\nexport default function GeneratedScreen() { return TextField; }\n`;
+
+  async function contentFixtureRoot(): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), "designflow-regen-content-"));
+    await mkdir(join(root, "src/components"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "regen-content-fixture", scripts: { build: "bun build ./designflow-proposed-entry.js --outdir=dist" } }));
+    await writeFile(join(root, "index.html"), `<script type="module" src="/src/main.jsx"></script>`);
+    await writeFile(join(root, "src/main.jsx"), `import App from "./App.jsx";\nexport default App;\n`);
+    await writeFile(join(root, "src/App.jsx"), "export default function App() { return null; }\n");
+    await writeFile(join(root, "src/components/TextField.tsx"), "export const TextField = () => null;\n");
+    return root;
+  }
+
+  test("an empty executable modify regenerates with the content-integrity fact and a real attempt 2 succeeds", async () => {
+    const root = await contentFixtureRoot();
+    const invocations: unknown[] = [];
+    try {
+      const context = await contextFor(root, invocations, [
+        agentOutput([{ path: "src/App.jsx", action: "modify", content: "" }]),
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: REAL }]),
+      ]);
+      const output = await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
+      expect(invocations.length).toBe(2);
+      const feedback = (invocations[1] as { input: { proposalRepairFeedback?: { validationErrors: Array<{ code: string; fact?: string }> } } }).input.proposalRepairFeedback;
+      expect(feedback?.validationErrors[0]?.code).toBe("ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT");
+      expect(feedback?.validationErrors[0]?.fact).toBe("executable source proposals must contain non-whitespace source content");
+      expect(output.artifactRef.metadata.proposalAttempts).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("three empty/no-op attempts exhaust honestly with zero project writes", async () => {
+    const root = await contentFixtureRoot();
+    const invocations: unknown[] = [];
+    const noop = "export default function App() { return null; }\n";
+    try {
+      const context = await contextFor(root, invocations, [
+        agentOutput([{ path: "src/App.jsx", action: "modify", content: "" }]),
+        agentOutput([{ path: "src/App.jsx", action: "modify", content: noop }]),
+        agentOutput([{ path: "src/App.jsx", action: "modify", content: "\n\t " }]),
+      ]);
+      await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
+      expect(invocations.length).toBe(3);
+      const secondFeedback = (invocations[2] as { input: { proposalRepairFeedback?: { validationErrors: Array<{ code: string }> } } }).input.proposalRepairFeedback;
+      expect(secondFeedback?.validationErrors.some((e) => e.code === "ERR_PROPOSAL_NOOP_MODIFY")).toBe(true);
+      expect(readFileSync(join(root, "src/App.jsx"), "utf8")).toBe(noop);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

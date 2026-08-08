@@ -28,6 +28,9 @@ import {
   VISUAL_CORRECTION_BETA_LABEL,
 } from "../services/visual-correction";
 import { createOrLoadParent, runParentLoop } from "./feedback-loop";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
 
 /**
  * What `designflow run` and `designflow answer` share once a session exists.
@@ -144,7 +147,7 @@ export async function finishSession(
   }
 
   const executionId = result.session.executionId;
-  const approved = await resolveApproval(context, terminal, executionId);
+  const approved = await resolveApproval(context, terminal, executionId, result.session.originalInput);
 
   if (approved === false) {
     terminal.print();
@@ -168,6 +171,7 @@ async function resolveApproval(
   context: CliContext,
   terminal: Terminal,
   executionId: string,
+  originalInput?: unknown,
 ): Promise<boolean | undefined> {
   const pending = await context.runner.pendingApproval(executionId);
   if (pending === null) return undefined;
@@ -176,7 +180,7 @@ async function resolveApproval(
   terminal.print(heading("Approval required"));
   const stage4 = pending.workflowId === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID;
   if (stage4) {
-    await renderImplementationPreview(context, terminal, executionId);
+    await renderImplementationPreview(context, terminal, executionId, originalInput);
   } else {
     terminal.print("DesignFlow wants permission to:");
     terminal.print();
@@ -435,14 +439,14 @@ async function offerVisualCorrection(
   return runParentLoop(context, terminal, correctionParent);
 }
 
-async function renderImplementationPreview(context: CliContext, terminal: Terminal, executionId: string): Promise<void> {
+async function renderImplementationPreview(context: CliContext, terminal: Terminal, executionId: string, originalInput?: unknown): Promise<void> {
   const report = await context.runner.explain(executionId);
   const proposal = report.artifacts.find((artifact) => artifact.artifactId === "proposed-file-changes");
   terminal.print("DesignFlow wants permission to apply the proposed implementation to the registered project.");
   terminal.print();
   if (proposal !== undefined) {
     const detail = await context.artifactInspection.getPayload(proposal);
-    const payload = detail.payload as { projectId?: string; files?: Array<{ path: string; action: string; reason: string }>; packageChanges?: Array<{ packageName: string }> };
+    const payload = detail.payload as { projectId?: string; files?: Array<{ path: string; action: string; reason: string; content?: string }>; packageChanges?: Array<{ packageName: string }> };
     const files = Array.isArray(payload.files) ? payload.files : [];
     terminal.print(`Project: ${payload.projectId ?? "registered project"}`);
     terminal.print(`Files to create: ${files.filter((file) => file.action === "create").length}`);
@@ -453,6 +457,20 @@ async function renderImplementationPreview(context: CliContext, terminal: Termin
     terminal.print();
     for (const file of files.slice(0, 50)) terminal.print(`  ${file.action}  ${file.path} — ${file.reason}`);
     if (files.length > 50) terminal.print(`  … ${files.length - 50} more files omitted`);
+    // The bounded review below is rendered from the exact proposal payload
+    // the approval binds to. Current-file content comes from the registered
+    // root when the session input can resolve it; a modify diff must show
+    // what actually changes, or an empty destructive modify looks innocuous.
+    const rootPath = readImplementationInput(originalInput)?.project.rootPath;
+    const entries: ProposalPreviewEntry[] = files.map((file) => {
+      const currentContent = rootPath === undefined || file.action === "create"
+        ? undefined
+        : ((): string | undefined => { try { return readFileSync(join(rootPath, file.path), "utf8"); } catch { return undefined; } })();
+      return { path: file.path, action: file.action as ProposalPreviewEntry["action"], ...(file.content !== undefined ? { proposedContent: file.content } : {}), ...(currentContent !== undefined ? { currentContent } : {}) };
+    });
+    terminal.print();
+    terminal.print("Proposed changes (bounded review):");
+    for (const line of renderProposalPreview(entries)) terminal.print(line);
   }
   terminal.print();
   terminal.print("A rollback snapshot will be created before changes are applied.");

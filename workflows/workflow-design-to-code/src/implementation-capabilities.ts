@@ -36,7 +36,15 @@ export const REPAIRABLE_PROPOSAL_ERROR_CODES: ReadonlySet<string> = new Set([
   "ERR_PROPOSAL_INVALID",
   "ERR_PROPOSAL_TOO_LARGE",
   "ERR_PROPOSAL_MODULE_COMPILE_FAILED",
+  "ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT",
+  "ERR_PROPOSAL_NOOP_MODIFY",
 ]);
+
+/** Deterministic repair facts for content-integrity failures; anything else falls back to the target-existence fact. */
+const CONTENT_INTEGRITY_FACTS: Readonly<Record<string, string>> = {
+  ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT: "executable source proposals must contain non-whitespace source content",
+  ERR_PROPOSAL_NOOP_MODIFY: "proposed modify content is identical to the current file",
+};
 
 interface ProposalAttemptFailure { readonly attempt: number; readonly code: string; readonly path?: string; readonly operation?: string; readonly diagnostics?: readonly ProposedModuleDiagnostic[]; }
 
@@ -60,9 +68,9 @@ function buildProposalRepairFeedback(options: {
       ...(failure.path !== undefined
         ? {
             path: failure.path,
-            fact: existsSync(join(options.root, failure.path))
+            fact: CONTENT_INTEGRITY_FACTS[failure.code] ?? (existsSync(join(options.root, failure.path))
               ? "target already exists as a regular file"
-              : "target does not exist",
+              : "target does not exist"),
           }
         : {}),
     })),

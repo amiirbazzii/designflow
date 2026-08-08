@@ -3,6 +3,7 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, normalize, sep } from "node:path";
 import { proposedFileChangesSchema, type ProposedFileChanges } from "@designflow/sdk";
 import { ImplementationError } from "./errors";
+import { isExecutableSourcePath } from "./proposed-state-validation";
 
 const FORBIDDEN = /^(?:\.git|node_modules|\.designflow|\.env(?:\.|$)|.*(?:secret|credential|private[-_.]?key))/i;
 const SUPPORTED = /\.(?:tsx?|jsx?|vue|svelte|css|scss|sass|less|json|md)$/i;
@@ -40,6 +41,20 @@ export function validateProposedFileChanges(proposal: ProposedFileChanges, root:
     }
     if (file.action === "modify" && !file.expectedBaseHash) throw new ImplementationError("ERR_TARGET_FILE_CHANGED", `Modified file lacks an expected base hash: ${file.path}`);
     if ((file.action === "create" || file.action === "modify") && file.content === undefined && file.patch === undefined) throw new ImplementationError("ERR_PROPOSAL_INVALID", `File proposal has no content or patch: ${file.path}`);
+    // Content integrity for executable sources: empty/whitespace-only content
+    // is a destructive no-op that would blank (or create) a module the rest
+    // of the pipeline can only judge syntactically — an empty module compiles.
+    // There is deliberately NO minimum-length rule: `export {};` is valid.
+    if ((file.action === "create" || file.action === "modify") && isExecutableSourcePath(normalized) && file.content !== undefined && file.content.trim().length === 0) throw new ImplementationError("ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT", `Executable source proposals must contain non-whitespace source content: ${file.path}`);
+    // A modify whose proposed bytes equal the current trusted bytes changes
+    // nothing and must not consume an approval. Exact equality only — a
+    // formatting-only change that alters bytes is a real proposal. Skipped
+    // when existence checks are off (apply-time revalidation of a resumed
+    // partial apply legitimately sees its own already-written content).
+    if (checkTargetExistence && file.action === "modify" && file.content !== undefined) {
+      const current = ((): string | undefined => { try { return readFileSync(target, "utf8"); } catch { return undefined; } })();
+      if (current !== undefined && current === file.content) throw new ImplementationError("ERR_PROPOSAL_NOOP_MODIFY", `Proposed modify content is identical to the current file: ${file.path}`);
+    }
     const bytes = Buffer.byteLength(file.content ?? file.patch ?? ""); total += bytes; if (bytes > limits.maxFileBytes) throw new ImplementationError("ERR_PROPOSAL_TOO_LARGE", `Proposed file exceeds ${limits.maxFileBytes} bytes: ${file.path}`);
     if (total > limits.maxTotalBytes) throw new ImplementationError("ERR_PROPOSAL_TOO_LARGE", `Proposed changes exceed ${limits.maxTotalBytes} bytes.`);
     try { if (lstatSync(target).isSymbolicLink() || realpathSync(target) !== target) throw new ImplementationError("ERR_SYMLINK_ESCAPE", `Symlink target is not writable: ${file.path}`); } catch (error) { if (error instanceof ImplementationError) throw error; }

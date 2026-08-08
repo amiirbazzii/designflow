@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
 import {
   FEEDBACK_LOOP_WORKFLOW_ID,
   inspectRegisteredProject,
@@ -484,12 +486,12 @@ function mappingOutcomes(value: unknown): string[] {
   });
 }
 
-function changePreviews(value: unknown): string[] {
+function changePreviews(value: unknown, rootPath?: string): string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return [];
   const candidate = (value as Record<string, unknown>)["changes"];
   if (!Array.isArray(candidate)) return [];
-  return candidate.flatMap((item) => {
+  const entries: ProposalPreviewEntry[] = candidate.flatMap((item) => {
     if (typeof item !== "object" || item === null || Array.isArray(item))
       return [];
     const record = item as Record<string, unknown>;
@@ -497,12 +499,32 @@ function changePreviews(value: unknown): string[] {
       typeof record["relativePath"] === "string"
         ? record["relativePath"]
         : "unknown";
-    const content =
+    const operation =
+      record["operation"] === "create" || record["operation"] === "delete"
+        ? record["operation"]
+        : "modify";
+    const proposedContent =
       typeof record["proposedContent"] === "string"
-        ? record["proposedContent"].slice(0, 400)
-        : "";
-    return [`--- ${path}`, `+++ ${path}`, content];
+        ? record["proposedContent"]
+        : undefined;
+    const currentContent =
+      rootPath === undefined || operation === "create"
+        ? undefined
+        : ((): string | undefined => {
+            try {
+              return readFileSync(join(rootPath, path), "utf8");
+            } catch {
+              return undefined;
+            }
+          })();
+    return [{
+      path,
+      action: operation,
+      ...(proposedContent !== undefined ? { proposedContent } : {}),
+      ...(currentContent !== undefined ? { currentContent } : {}),
+    }];
   });
+  return renderProposalPreview(entries);
 }
 
 function readInput(path: string): unknown {
@@ -685,7 +707,7 @@ async function runCorrectionIteration(
     );
     terminal.print();
     terminal.print("Bounded diff:");
-    for (const line of changePreviews(changesPayload)) terminal.print(line);
+    for (const line of changePreviews(changesPayload, input.project.rootPath)) terminal.print(line);
     terminal.print();
     terminal.print("No files have been changed yet.");
     terminal.print();
