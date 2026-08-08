@@ -532,3 +532,27 @@ describe("what the runtime does not do", () => {
     expect(expectFailure(result).code).toBe("ERR_MODEL_TIMEOUT");
   });
 });
+
+describe("output-token budget precedence", () => {
+  test("an explicitly configured profile limit outranks the caller's built-in default", async () => {
+    let seen: number | undefined;
+    const provider = providerThat(async (request) => {
+      seen = request.maxOutputTokens;
+      return { type: "success", requestId: request.requestId, profileId: request.profileId, providerId: "openrouter", model: request.model, output: {}, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, durationMs: 1 };
+    });
+    const runtime = runtimeFor(provider, { ...PROFILE, maxOutputTokens: 8000 });
+    await runtime.generate({ ...CALL, maxOutputTokens: 1600 });
+    expect(seen).toBe(8000);
+  });
+
+  test("without a profile limit, the caller's request value applies", async () => {
+    let seen: number | undefined;
+    const provider = providerThat(async (request) => {
+      seen = request.maxOutputTokens;
+      return { type: "success", requestId: request.requestId, profileId: request.profileId, providerId: "openrouter", model: request.model, output: {}, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, durationMs: 1 };
+    });
+    const runtime = runtimeFor(provider);
+    await runtime.generate({ ...CALL, maxOutputTokens: 1600 });
+    expect(seen).toBe(1600);
+  });
+});

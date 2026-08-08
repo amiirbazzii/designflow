@@ -25,6 +25,17 @@ import {
   type FeedbackLoopWorkflowInput,
   type ImplementationWorkflowInput,
 } from "../services/cli-runner";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+/** Same file identity Stage 4's application service records as `postWriteHash`. */
+function appliedFileHash(path: string): string | undefined {
+  try {
+    return createHash("sha256").update(readFileSync(path).toString("base64")).digest("hex");
+  } catch {
+    return undefined;
+  }
+}
 
 export const VISUAL_CORRECTION_BETA_LABEL = "Visual correction (Beta)";
 export const CANONICAL_CORRECTION_MAX_ITERATIONS = 1 as const;
@@ -67,6 +78,8 @@ interface RequiredArtifacts {
   readonly designSpecification: VersionedArtifact<unknown>;
   readonly designSystemMapping: VersionedArtifact<unknown>;
   readonly visualReport: VersionedArtifact<VisualValidationReportV1>;
+  /** Present when the run applied files: the snapshot's per-file post-write hashes. */
+  readonly appliedFiles?: readonly { readonly path: string; readonly postWriteHash?: string }[];
 }
 
 export interface EligibilityProjectionInput {
@@ -77,6 +90,13 @@ export interface EligibilityProjectionInput {
   readonly validationRolledBack: boolean;
   readonly currentProjectFingerprint: string | undefined;
   readonly currentProjectRootIdentity: string | undefined;
+  /**
+   * For a run that applied files: whether every applied file still carries
+   * its snapshot-recorded post-write hash. The pre-apply project fingerprint
+   * can never match after a real apply — the run's own writes changed it —
+   * so applied-run staleness is judged against exactly what the run wrote.
+   */
+  readonly appliedStateFresh: boolean | undefined;
   readonly correctionWorkflowRegistered: boolean;
   readonly pendingApproval: boolean;
   readonly parent: FeedbackLoopParentRecordV1 | null;
@@ -116,8 +136,15 @@ function eligibility(
     return { ...base, status: "unavailable", reason: "Required implementation and visual-validation artifacts are unavailable." };
   if (input.currentProjectFingerprint === undefined)
     return { ...base, status: "blocked", reason: "The project could not be fingerprinted safely." };
-  if (input.artifacts.projectContext.payload.project.contextFingerprint !== input.currentProjectFingerprint)
+  if (input.artifacts.appliedFiles !== undefined) {
+    // This run applied files, so the pre-apply fingerprint can never match
+    // the current state — staleness is judged against the applied files'
+    // snapshot-recorded post-write hashes instead.
+    if (input.appliedStateFresh !== true)
+      return { ...base, status: "blocked", reason: "The project changed after visual validation; rerun the implementation journey." };
+  } else if (input.artifacts.projectContext.payload.project.contextFingerprint !== input.currentProjectFingerprint) {
     return { ...base, status: "blocked", reason: "The project changed after visual validation; rerun the implementation journey." };
+  }
   if (
     input.currentProjectRootIdentity !== undefined &&
     input.artifacts.projectContext.payload.project.rootIdentity !==
@@ -243,13 +270,40 @@ async function requiredArtifacts(
     designSystemMapping === undefined ||
     visualReport === undefined
   ) return undefined;
+  const application = await readVersioned(
+    summaryFor(run, "file-application-result"),
+    inspection,
+    store,
+    (value) => {
+      const parsed = record(value);
+      if (parsed === undefined) throw new Error("application result is not an object");
+      return parsed;
+    },
+  );
+  const appliedFiles = application === undefined ? undefined : snapshotEntries(application.payload);
   return {
     projectContext,
     generatedImplementation,
     designSpecification,
     designSystemMapping,
     visualReport,
+    ...(appliedFiles !== undefined ? { appliedFiles } : {}),
   };
+}
+
+function snapshotEntries(
+  application: Record<string, unknown>,
+): readonly { readonly path: string; readonly postWriteHash?: string }[] | undefined {
+  const snapshot = record(application["snapshot"]);
+  const entries = snapshot?.["entries"];
+  if (!Array.isArray(entries)) return undefined;
+  return entries.flatMap((entry) => {
+    const item = record(entry);
+    const path = item?.["path"];
+    if (typeof path !== "string" || path.length === 0) return [];
+    const postWriteHash = item?.["postWriteHash"];
+    return [{ path, ...(typeof postWriteHash === "string" ? { postWriteHash } : {}) }];
+  });
 }
 
 function changedFiles(payload: Record<string, unknown>): string[] {
@@ -430,6 +484,12 @@ export async function prepareVisualCorrection(options: {
         ...parsedCandidate,
         actionableFindingIds: selected,
       });
+  const appliedStateFresh = artifacts?.appliedFiles === undefined || implementationInput === undefined
+    ? undefined
+    : artifacts.appliedFiles.every((entry) =>
+        entry.postWriteHash === undefined ||
+        appliedFileHash(join(implementationInput.project.rootPath, entry.path)) === entry.postWriteHash,
+      );
   const eligibilityValue = eligibility({
     run: options.run,
     implementationInput,
@@ -438,6 +498,7 @@ export async function prepareVisualCorrection(options: {
     validationRolledBack: validation?.rollbackTriggered === true,
     currentProjectFingerprint: options.currentProjectFingerprint,
     currentProjectRootIdentity: options.currentProjectRootIdentity,
+    appliedStateFresh,
     correctionWorkflowRegistered: options.correctionWorkflowRegistered,
     pendingApproval: options.pendingApproval,
     parent: options.parent,

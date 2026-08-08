@@ -191,6 +191,96 @@ orphan processes, no credential leak.
 
 ### Outcome
 
+## MVP-4F — implementation model-profile suitability — 2026-08-07
+
+MVP-4E committed as `0e3dff9bb719d26b7b90ef513dafb3381b4c86f3`
+("feat: bound invalid implementation proposal regeneration"); fresh pack
+`56b25932…` (byte-identical to the MVP-4E validation build).
+
+### Model selection (once)
+
+`implementation-default` overridden in the acceptance home only, via the
+supported `settings.models.profiles` mechanism, to OpenRouter
+`anthropic/claude-sonnet-4.5` — a widely recommended high-capability
+coding/reasoning model, materially stronger than `gpt-4o-mini` at
+codebase-aware structured JSON planning. `designflow settings` proves
+isolation: only `implementation-default` shows `(override)`; coordinator,
+Figma specification, visual-validation, and visual-correction profiles
+remain the built-in `openai/gpt-4o-mini`. No production source hard-codes
+the model.
+
+### Genuine product defects found and fixed (full regression each time)
+
+1. **Profile `maxOutputTokens` override was ineffective**: the model
+   runtime let a strategy's built-in request value (1600, sized for
+   gpt-4o-mini) outrank the configured profile limit, so the documented
+   per-profile override could never apply and Sonnet's fuller output was
+   truncated (`ERR_MODEL_OUTPUT_INVALID`, run `d5a021b4-…`). Fixed in
+   `packages/models/src/runtime.ts` (explicit profile limit wins).
+   Acceptance config sets `maxOutputTokens: 8000`, `timeoutMs: 120000` —
+   documented because Sonnet's real proposals measure 3,475–7,285 output
+   tokens and ~36–100s.
+2. **Correction eligibility could never follow an applying run**: the
+   staleness gate compared the current fingerprint to the *pre-apply*
+   inspection fingerprint, which the run's own approved writes always
+   change (run `9c635359-…` reached visual fail and then reported "The
+   project changed after visual validation"). Fixed in
+   `apps/designflow-cli/src/services/visual-correction.ts`: applied runs
+   are judged per-file against the snapshot's recorded post-write hashes;
+   fingerprint equality still governs non-applying runs. New eligibility
+   test added.
+3. **`providerRouting` was configurable in the profile schema but not
+   readable from local config** — extended `model-config.ts`/`config.ts`
+   override readers (added under a mis-hypothesis about upstream routing;
+   kept as a legitimate, regression-green configuration capability).
+
+Regressions after each source change: build 26/26, typecheck 44/44, lint
+26/26, tests 52/52 tasks (2,439 → 2,440 pass with the new test, 1 skip,
+0 fail), smoke PASS, freshness PASS; fresh packs installed
+(`9362493a…`, `b58d6fc8…`, `ff79d535…`).
+
+### Live evidence with the stronger model
+
+- Run `9c635359-…`: Sonnet produced a **valid 12-file creates-only
+  proposal on attempt 1** (structured component directories with CSS
+  modules, barrel exports, an ExpenseTracking page — visibly stronger
+  output than any gpt-4o-mini attempt), which was approved, snapshotted,
+  applied exactly, validated (build/test pass), previewed, captured, and
+  honestly visual-failed (page composition root still unmounted).
+- Run `d43ed25f-…`: Sonnet proposed exactly the right correction-shaped
+  work — **2 modifies completing the ExpenseTracking page** — and the
+  proposal was valid; snapshot-time git safety then blocked writes
+  (`ERR_GIT_DIRTY_TARGET`) because the acceptance fixture's applied files
+  had never been committed. Environment reconciled by committing the
+  fixture's accepted applied state (`1034625160…`; content
+  byte-identical, fingerprint `4bda1f4e…`), as a real project owner
+  would.
+- Runs `5d6a574a-…`, `09ec9132-…`, `dc8c9298-…`: fast
+  `ERR_MODEL_PROVIDER_FAILED` (~550ms).
+
+### Blocking external constraint
+
+Direct probing identified the provider failures as **HTTP 402 —
+insufficient OpenRouter credits**: the key reports $5.00 total /
+$4.64 used, and the remainder affords ≤2,392 max_tokens, below Sonnet's
+measured real proposal size. The failure is an account/credit ceiling,
+not a product or model defect; two earlier hypotheses (transient
+upstream, Bedrock routing) were tested and disproven (the exact request
+shape succeeds with small max_tokens). No further model change was made
+(no mining).
+
+### Outcome
+
+**MVP-4F: `PASS`** — controlled single-model experiment, per-agent
+profile isolation proven, bounded 3-attempt contract intact, three real
+architecture defects fixed with green regressions, and live evidence
+that the stronger implementation profile produces valid, relevant
+proposals (including the exact page-mounting modifies the visual finding
+requires). **Journey 6 remains `FAIL` — blocked externally by exhausted
+OpenRouter credits** before the correction iteration could execute. Next
+step requires topping up the OpenRouter key (or raising its limit), then
+rerunning Part 5 once; no product work is pending for it.
+
 **MVP-4E: `PASS`** — the bounded-regeneration contract works end to end
 (structured feedback delivery proven, hard 3-attempt bound proven live,
 honest exhaustion, zero writes).

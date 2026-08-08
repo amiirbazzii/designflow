@@ -148,3 +148,20 @@ no valid proposal. **MVP-4E is `PASS`; Journey 6 remains
 `FAIL — CORRECTION_PROPOSAL_ATTEMPTS_EXHAUSTED`.** A stronger
 implementation model profile (deferred) or a contracted host-side
 reconciliation is required before the correction loop can be exercised.
+
+MVP-4F ran the controlled model-profile experiment: `implementation-default`
+alone overridden to OpenRouter `anthropic/claude-sonnet-4.5` (isolation
+proven via `designflow settings`). The stronger model immediately produced
+valid, materially relevant proposals — a 12-file structured implementation
+that was approved/applied/validated, then the exact 2-modify page-mounting
+correction the visual finding requires. Three genuine architecture defects
+surfaced and were fixed with green full regressions each time: the profile
+`maxOutputTokens` override could never take effect (runtime precedence),
+correction eligibility could never follow an applying run (pre-apply
+fingerprint comparison; now judged by post-write hashes), and
+`providerRouting` was schema-supported but unreadable from config. The
+journey then hit a hard external wall: **OpenRouter credits exhausted**
+(402 — $4.64 of $5.00 used; the remainder cannot afford Sonnet's measured
+3.5k–7.3k-token proposals). **MVP-4F is `PASS`; Journey 6 remains `FAIL`,
+blocked externally on credits.** Rerun Part 5 once after topping up the
+key; no product work is pending.

@@ -35,6 +35,16 @@ export interface ModelProfileOverride {
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
   readonly timeoutMs?: number;
+  /**
+   * Gateway routing preference (e.g. OpenRouter upstream order). Already part
+   * of `modelProfileSchema`; exposed here so a local config can pin a model
+   * to an upstream that supports DesignFlow's strict structured outputs.
+   */
+  readonly providerRouting?: {
+    readonly order?: readonly string[];
+    readonly allowFallbacks?: boolean;
+    readonly dataCollection?: "allow" | "deny";
+  };
 }
 
 /**

@@ -51,6 +51,7 @@ function facts(overrides: Partial<EligibilityProjectionInput> = {}): Eligibility
     validationRolledBack: false,
     currentProjectFingerprint: "fingerprint",
     currentProjectRootIdentity: "root",
+    appliedStateFresh: undefined,
     correctionWorkflowRegistered: true,
     pendingApproval: false,
     parent: null,
@@ -96,5 +97,31 @@ describe("visual correction eligibility", () => {
     });
     expect(result.maximumIterations).toBe(1);
     expect(result.iterationNumber).toBe(1);
+  });
+
+  test("an applied run is judged by its post-write hashes, not the pre-apply fingerprint", () => {
+    const artifacts = {
+      projectContext: { ref: {}, payload: { project: { id: "project-1", rootIdentity: "root", contextFingerprint: "pre-apply-fingerprint" } } },
+      visualReport: { ref: {}, payload: { projectId: "project-1", projectRootIdentity: "root", overallStatus: "fail" } },
+      appliedFiles: [{ path: "src/App.jsx", postWriteHash: "hash-1" }],
+    } as never;
+    // Fresh applied state passes the staleness gate even though the current
+    // fingerprint no longer equals the pre-apply inspection fingerprint.
+    const fresh = assessVisualCorrectionEligibility({
+      ...facts(),
+      artifacts,
+      currentProjectFingerprint: "post-apply-different-fingerprint",
+      appliedStateFresh: true,
+    });
+    expect(fresh.status).not.toBe("blocked");
+    // A mutated applied file is stale and blocked.
+    const stale = assessVisualCorrectionEligibility({
+      ...facts(),
+      artifacts,
+      currentProjectFingerprint: "post-apply-different-fingerprint",
+      appliedStateFresh: false,
+    });
+    expect(stale.status).toBe("blocked");
+    expect(stale.reason).toContain("changed after visual validation");
   });
 });

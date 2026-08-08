@@ -712,3 +712,37 @@ this fixture); model-profile changes were explicitly out of scope. The
 correction-stage machinery itself remains unexercised and Journey 6
 stays failed until a stronger profile or a contracted host-side
 reconciliation is adopted.
+
+## 22. MVP-4F — implementation model-profile suitability
+
+**MVP-4F: `PASS`. Journey 6: `FAIL — blocked externally (OpenRouter
+credits exhausted)`.**
+
+From MVP-4E baseline `0e3dff9b…`, `implementation-default` alone was
+overridden in the acceptance home to `anthropic/claude-sonnet-4.5`
+(selected once; per-agent isolation proven — all other profiles unchanged).
+The stronger model validated the whole thesis: attempt-1-valid proposals,
+including an approved+applied+validated 12-file implementation and then
+the exact 2-modify page-completion proposal the visual finding requires.
+
+Three architecture defects were exposed and fixed (each followed by full
+forced regression, 52/52 tasks, 2,440 pass / 1 skip / 0 fail, smoke and
+freshness PASS): profile `maxOutputTokens` overrides were silently
+outranked by strategy defaults (`packages/models/src/runtime.ts`);
+correction eligibility compared the current state to the *pre-apply*
+fingerprint and therefore could never follow a run that applied files
+(now judged against snapshot post-write hashes, with a new test); and
+`providerRouting` was schema-legal but unreadable from local config. One
+environment reconciliation was performed: the fixture's accepted applied
+files were committed (`1034625160…`, byte-identical content) after
+snapshot-time git safety correctly refused to modify uncommitted targets
+(`ERR_GIT_DIRTY_TARGET` — the gate working as designed).
+
+The final three run attempts failed in ~550ms with
+`ERR_MODEL_PROVIDER_FAILED`, diagnosed by direct probing as **HTTP 402 —
+insufficient OpenRouter credits** ($4.64 of $5.00 used; the remaining
+balance affords ≤2,392 max_tokens versus Sonnet's measured 3,475–7,285
+output-token proposals). Not a product or model defect; no model mining
+occurred. The correction iteration remains unexercised. Resuming requires
+only an OpenRouter credit top-up, then one rerun of the canonical
+`--visual-correction=once` journey.

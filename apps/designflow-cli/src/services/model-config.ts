@@ -38,6 +38,11 @@ export interface RawModelProfileOverride {
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
   readonly timeoutMs?: number;
+  readonly providerRouting?: {
+    readonly order?: readonly string[];
+    readonly allowFallbacks?: boolean;
+    readonly dataCollection?: "allow" | "deny";
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,6 +59,22 @@ function readNumber(source: Record<string, unknown>, key: string): number | unde
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function readProviderRouting(value: unknown): RawModelProfileOverride["providerRouting"] {
+  if (!isRecord(value)) return undefined;
+  const order = Array.isArray(value["order"])
+    ? value["order"].filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+    : undefined;
+  const allowFallbacks = typeof value["allowFallbacks"] === "boolean" ? value["allowFallbacks"] : undefined;
+  const dataCollection: "allow" | "deny" | undefined =
+    value["dataCollection"] === "allow" ? "allow" : value["dataCollection"] === "deny" ? "deny" : undefined;
+  const routing = {
+    ...(order !== undefined && order.length > 0 ? { order } : {}),
+    ...(allowFallbacks !== undefined ? { allowFallbacks } : {}),
+    ...(dataCollection !== undefined ? { dataCollection } : {}),
+  };
+  return Object.keys(routing).length > 0 ? routing : undefined;
+}
+
 function readOverride(value: unknown): RawModelProfileOverride | undefined {
   if (!isRecord(value)) return undefined;
 
@@ -62,6 +83,7 @@ function readOverride(value: unknown): RawModelProfileOverride | undefined {
   const temperature = readNumber(value, "temperature");
   const maxOutputTokens = readNumber(value, "maxOutputTokens");
   const timeoutMs = readNumber(value, "timeoutMs");
+  const providerRouting = readProviderRouting(value["providerRouting"]);
 
   const override: RawModelProfileOverride = {
     ...(providerId !== undefined ? { providerId } : {}),
@@ -69,6 +91,7 @@ function readOverride(value: unknown): RawModelProfileOverride | undefined {
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    ...(providerRouting !== undefined ? { providerRouting } : {}),
   };
 
   return Object.keys(override).length > 0 ? override : undefined;

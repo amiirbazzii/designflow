@@ -130,7 +130,12 @@ export class ModelRuntime implements ModelInvoker {
       messages: [...validated.messages],
       responseSchema: validated.responseSchema,
       temperature: validated.temperature ?? profile.temperature,
-      maxOutputTokens: validated.maxOutputTokens ?? profile.maxOutputTokens,
+      // Output budget is model policy, so an explicitly configured profile
+      // limit outranks the caller's built-in default — otherwise the
+      // documented per-profile `maxOutputTokens` override could never take
+      // effect for a strategy that supplies its own value, and a stronger
+      // configured model would be truncated to a weaker model's budget.
+      maxOutputTokens: profile.maxOutputTokens ?? validated.maxOutputTokens,
       fallbackModels: profile.fallbackModels,
       ...(profile.providerRouting !== undefined
         ? { providerRouting: profile.providerRouting }
