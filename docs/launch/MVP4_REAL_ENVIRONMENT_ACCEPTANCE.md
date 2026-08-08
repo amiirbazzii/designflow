@@ -817,3 +817,36 @@ zero writes, the fixture stayed byte-identical (`8bc42afd…`), and no
 security or process regressions occurred. Journey 6 needs exactly one
 clean rerun once DeepSeek serving recovers (or a future task selects a
 different low-cost implementation model).
+
+## 25. Journey 6 final — full correction loop exercised live
+
+**Result: `FAIL — CORRECTION_APPLIED_NO_IMPROVEMENT` — every safety and
+control requirement proven at runtime; only material visual improvement
+remains unmet.**
+
+User-directed model changes: `implementation-default` →
+`deepseek/deepseek-v4-pro` (empty 0-file proposal; its run nonetheless
+proved the MVP-4H comparator live — reference-aligned 413×1024 capture,
+pixel diff executed, 92.75% mismatch, actionable root-frame finding for
+`1026:6098`) → fallback `openai/gpt-5.6-luna` (attempt-1-valid Spendly
+page proposals throughout). Two further architecture defects were fixed
+with green full regressions: the model-impossible sha256 hash contract
+in the correction strategy (host now derives content hashes
+deterministically — commit `90c09ee…`) and the structurally impossible
+correction-of-own-apply under the git dirty-target gate (provenance-
+backed exemption for scope- and hash-verified run-applied targets —
+commit `9dcb786…`; regression 2,453 pass / 1 skip / 0 fail).
+
+Final run: parent `ddc9cdff…`, correction child `ddcb246e…` — one
+child, iteration 1 of 1, live Visual Correction Specialist on its
+unchanged low-cost profile, valid hash-bound 2-modify proposal, exact
+approval, correction snapshot before mutation, exact apply, validation
+completed, independent build/test green, real recapture, deterministic
+re-comparison, honest `no improvement` stop, and the hard one-iteration
+bound held with a stored final report and one truthfully remaining
+major finding. Fixture preserved (fingerprint `23c36efd…`, build/test
+green); no pending state, orphans, or leaks. The single remaining step
+to `PASS — CORRECTION_APPLIED_AND_IMPROVED` is a stronger
+`visual-correction-default` profile (its gpt-4o-mini output was
+placeholder-quality), which is a model-quality decision, not product
+machinery.

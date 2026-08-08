@@ -1,5 +1,78 @@
 # MVP-4 Journey 6 — Bounded Live Visual Correction
 
+## FINAL — full correction loop exercised live — 2026-08-08
+
+After the MVP-4H comparator fix, two further architecture defects were
+found and fixed live (full regression green each time):
+
+1. **Model-impossible hash contract** (commit `90c09ee…`): the
+   model-backed Visual Correction Specialist strategy expected the LLM to
+   emit `baseFileHash`/`proposedContentHash` — sha256 values no model can
+   compute — so the model path could never validate ("Correction proposal
+   is stale or has an invalid content hash"). The host now derives
+   `proposedContentHash` deterministically from the model's own proposed
+   content and takes `baseFileHash` from the trusted excerpt (checksum
+   derivation, not intent rewriting).
+2. **Structurally impossible correction-of-own-apply** (commit
+   `9dcb786…`): within one `--visual-correction=once` run, correction
+   targets the files the run itself just applied, which are uncommitted
+   by definition — the git dirty-target gate therefore always blocked the
+   correction snapshot. `assertGitSafeForWrite` now accepts a
+   provenance-backed exemption used only by the correction snapshot:
+   targets that are scope-bound and base-hash-verified DesignFlow applies
+   from the parent run (any other dirty path still blocks; new
+   `dirtyTargetPaths` report field; git-safety exemption test added).
+   Regression: 2,453 pass / 1 skip / 0 fail; pack `59023791…`.
+
+Model changes this session (user-directed): `implementation-default` →
+`deepseek/deepseek-v4-pro` (probe OK, but proposed an empty 0-file
+implementation — its applied run `81f82f33…` also proved the MVP-4H
+comparator live: reference-aligned 413×1024 viewport, pixel diff
+executed, 92.75% mismatch, root-frame finding `affectedFrame 1026:6098`)
+→ fallback `openai/gpt-5.6-luna` (attempt-1-valid 2-file Spendly page
+proposals on every run). Two fixture commits recorded accepted applied
+state (`6111424…` and the final acceptance commit) to satisfy the git
+gate for *implementation* modifies.
+
+**The final run** (parent `ddc9cdff-1050-43fa-8146-9df9d894d1a9`,
+correction child `ddcb246e-06c3-4921-8451-f25bce844cbc`) executed the
+entire loop live for the first time:
+
+- eligibility from persisted host state (root-frame content finding,
+  92%+ overlap mismatch, actionable);
+- exactly one correction child, iteration 1 of 1;
+- live Visual Correction Specialist (unchanged `visual-correction-default`
+  gpt-4o-mini profile);
+- deterministically valid hash-bound 2-modify proposal;
+- exact correction approval (distinct from the once-authorization);
+- correction snapshot before mutation (dirty-target exemption applied
+  only to the run's own scope-verified files);
+- exact apply; deterministic validation completed; independent
+  build/test green;
+- real recapture and deterministic re-comparison;
+- honest verdict: **visual result unchanged → stop reason
+  `no improvement`** — the gpt-4o-mini correction content was
+  placeholder-quality (comments instead of real layout work), the
+  evaluator refused to call it better;
+- hard one-iteration bound held: "Another correction iteration was not
+  started"; persisted parent shows Status stopped, Iteration 1 of 1,
+  Completed 1, one child ID, final report stored, 1 major finding
+  honestly remaining.
+
+Final fixture: build/test green, fingerprint `23c36efd…`, correction
+files preserved; no pending approvals, no orphan processes, no
+credential leakage.
+
+**Journey 6 classification:
+`FAIL — CORRECTION_APPLIED_NO_IMPROVEMENT`.** Every safety and control
+requirement of the correction contract — the acceptance target that
+survived eight tasks of blockers — is now proven at runtime; the sole
+unmet criterion is material visual improvement, which is a
+correction-model-quality question (`visual-correction-default` is still
+gpt-4o-mini), not a product-machinery one. A rerun with a stronger
+correction profile is the single remaining step to a full
+`PASS — CORRECTION_APPLIED_AND_IMPROVED`.
+
 Classification: `FAIL — correction loop unreachable (Implementation
 Specialist proposal-validity defect)`. All safety/no-write gates held on
 every attempt; the single authorized correction iteration was never
