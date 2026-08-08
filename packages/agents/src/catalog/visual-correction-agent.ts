@@ -94,7 +94,21 @@ export const modelVisualCorrectionStrategy: VisualCorrectionStrategy = async (re
         for (const findingId of change.findingIds) if (!input.selectedFindings.some((finding) => finding.findingId === findingId)) throw new SpecializedAgentOutputInvalidError(VISUAL_CORRECTION_AGENT_ID, [`unknown finding ${findingId}`]);
         for (const evidenceId of change.evidenceIds) if (!input.evidenceReferences.some((evidence) => evidence.artifactId === evidenceId)) throw new SpecializedAgentOutputInvalidError(VISUAL_CORRECTION_AGENT_ID, [`unknown evidence ${evidenceId}`]);
       }
-      return correctionAgentOutputV1Schema.parse({ ...parsed, plan: { ...parsed.plan, agent: { ...parsed.plan.agent, id: VISUAL_CORRECTION_AGENT_ID, version: manifest.version, modelProfileId: manifest.modelProfileId ?? MODEL_PROFILE_ID } } });
+      // Content-hash identities are deterministic facts, not model claims: a
+      // model cannot compute sha256 of its own output, so the host derives
+      // `proposedContentHash` from the model's proposed content and takes
+      // `baseFileHash` from the trusted excerpt for the targeted path. A path
+      // outside the supplied excerpts keeps the model's value and fails the
+      // downstream scope/hash validation honestly.
+      const changes = parsed.changes.map((change) => {
+        const excerpt = input.currentImplementationExcerpts.find((candidate) => candidate.path === change.relativePath);
+        return {
+          ...change,
+          ...(excerpt !== undefined ? { baseFileHash: excerpt.hash } : {}),
+          ...(change.proposedContent !== undefined ? { proposedContentHash: hash(change.proposedContent) } : {}),
+        };
+      });
+      return correctionAgentOutputV1Schema.parse({ ...parsed, changes, plan: { ...parsed.plan, agent: { ...parsed.plan.agent, id: VISUAL_CORRECTION_AGENT_ID, version: manifest.version, modelProfileId: manifest.modelProfileId ?? MODEL_PROFILE_ID } } });
     },
   });
 };
