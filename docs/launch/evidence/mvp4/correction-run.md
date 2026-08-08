@@ -281,6 +281,118 @@ OpenRouter credits** before the correction iteration could execute. Next
 step requires topping up the OpenRouter key (or raising its limit), then
 rerunning Part 5 once; no product work is pending for it.
 
+## MVP-4G — frozen baseline + low-cost final Journey 6 run — 2026-08-08
+
+### providerRouting audit (Fix 3): KEPT
+
+`modelProviderRoutingSchema` was already part of the SDK's
+`modelProfileSchema`; `ModelRuntime` already forwarded
+`profile.providerRouting`, and the OpenRouter provider already serialized
+it. The only gap was the CLI config reader silently dropping the field —
+a real, pre-existing configuration contract that the change completes.
+Focused tests added (`model-config.test.ts`: parses model/tokens/timeout/
+providerRouting; ignores malformed routing). Runtime token-precedence
+tests added (`runtime.test.ts`: explicit profile limit outranks caller
+default; caller value applies when no profile limit).
+
+### Frozen baseline
+
+Focused suites green (model-config 3, visual-correction 6,
+proposal-regeneration 5, models runtime 29). Full forced regression:
+build 26/26, typecheck 44/44, lint 26/26, test 52/52 tasks — **2,445
+pass / 1 skip / 0 fail**, exit 0; smoke PASS; freshness PASS. Committed
+as `b8dc06f198a0c884c5d1de657d0ffb923257739e`
+("fix: stabilize model profiles and correction state"); pack shasum
+`ff79d53553be299b39afad6fcf91959fde8f874e` (byte-identical to the prior
+install — the commit added only tests/docs on already-built source).
+
+### Low-cost profile + credit gate
+
+`implementation-default` overridden (acceptance home only) to OpenRouter
+`deepseek/deepseek-v4-flash-0731`, `maxOutputTokens: 8000`,
+`timeoutMs: 120000`; the earlier Sonnet override and routing pin were
+removed (normal OpenRouter routing). `designflow settings` proves all
+four other profiles remain built-in `gpt-4o-mini`. Credit gate passed:
+a bounded 8000-max-token strict-schema probe succeeded (61 tokens, no
+402) after the user raised the OpenRouter limit.
+
+### Final run history (fixture at `1034625160…`, fingerprint `4bda1f4e…`)
+
+- `ce287ebe-…` (2s, 0 writes): the Figma Desktop selection had drifted to
+  another node; the adapter's selection-binding gate refused honestly.
+  The user re-selected frame `1026:6098`; verified via MCP before
+  continuing.
+- `ff2790e5-…` (108s, 0 writes): DeepSeek's first live structured call
+  failed at the provider boundary (`ERR_MODEL_OUTPUT_INVALID` —
+  unparseable structured output; upstream serving variance). One rerun of
+  the same model (no model switch).
+- `a0bc2592-fef5-47ca-98d9-fbf361ca9526` — the accepted final run.
+  Implementation proposal **valid on attempt 1** (single live DeepSeek
+  call, 1,734 in / 2,839 out / 4,573 tokens, **$0.00104** — roughly 60×
+  cheaper than the comparable Sonnet call): 8 creates (AddExpensePage,
+  AddExpenseForm, ExpenseHistorySection, BackButton + CSS modules), all
+  vacant fixture-relative targets. Approved (approvalId `d37387dc…`,
+  proposal hash `d28aa9e0…`, fingerprint `e9f20dbc…`); snapshot
+  `8dd90079…` covered exactly the 8 paths before mutation; apply exact;
+  deterministic validation build/test passed; independent
+  `npm test`/`npm run build` exit 0; real preview + 3 Playwright
+  captures; deterministic comparison (real-reference) mobile fail with
+  the known `dimension-mismatch-mobile` major finding; live Visual
+  Validation Specialist confirmed (859 tokens).
+
+### Correction outcome — the honest terminal state
+
+With the MVP-4F fingerprint fix in place, the correction offer now
+progresses past staleness — and the next deterministic gate answers
+truthfully: **"Visual validation found no actionable differences."**
+The sole finding (category `size`, deterministic dimension mismatch)
+carries no `affectedComponent`/`affectedFrame` and is therefore
+non-actionable by the selection policy, and the real content divergence
+(the page still renders the original fixture app — the captures are
+byte-identical to Journey 4's) produces **no finding at all** because
+the dimension mismatch skips the pixel diff. That comparator
+measurement debt — deferred by explicit instruction in Journeys 4, 6,
+and this task — is now the **sole remaining blocker** to exercising the
+correction loop: there is nothing product-side left in the correction
+path itself.
+
+Manual assessment: `NO_MEANINGFUL_IMPROVEMENT` (rendered page
+byte-identical; DeepSeek, like every implementation model before it,
+proposed only unmounted creates). No correction child was created; no
+second iteration; no pending approvals; no orphan processes; no
+credential in stored state. Final fixture: HEAD `1034625160…` plus the
+8 new untracked files, fingerprint
+`8bc42afd50b4fd04de6f87c78672a6e82b92beab2d48578998ab9b14136c3ec2`,
+build/test green, preserved.
+
+### Cost policy recommendation (recorded per instruction)
+
+> During DesignFlow development and acceptance testing, prefer low-cost
+> models that satisfy each agent's contract. Expensive frontier models
+> should not be the default for routine test runs. Per-agent profiles
+> should be selected according to task complexity, and deterministic
+> validation must remain authoritative regardless of model capability.
+
+`deepseek/deepseek-v4-flash-0731` is recommended as the low-cost testing
+profile for `implementation-default`: attempt-1-valid structured
+proposal at ~$0.001/call (vs ~$0.06–0.13 for Sonnet), with one observed
+provider-boundary output failure in two live calls — acceptable for
+testing given the bounded retry contract. Profile selection remains
+configuration; no production default was changed.
+
+### Classifications
+
+**MVP-4G: `PASS`** (all 11 criteria hold; the single same-model rerun
+after a provider-boundary failure was not model cycling).
+**Journey 6: `FAIL — correction loop unreachable: no actionable finding
+under the deferred comparator measurement debt.`** Every safety,
+approval, snapshot, apply, validation, and honesty contract on the path
+has now been proven live; the loop itself awaits either
+dimension-normalized comparison (so content divergence yields
+component-bound findings) or a fixture whose visual defect is
+finding-mappable. That comparator work is the single prerequisite for a
+Journey 6 rerun.
+
 **MVP-4E: `PASS`** — the bounded-regeneration contract works end to end
 (structured feedback delivery proven, hard 3-attempt bound proven live,
 honest exhaustion, zero writes).

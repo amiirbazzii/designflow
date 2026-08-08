@@ -746,3 +746,41 @@ output-token proposals). Not a product or model defect; no model mining
 occurred. The correction iteration remains unexercised. Resuming requires
 only an OpenRouter credit top-up, then one rerun of the canonical
 `--visual-correction=once` journey.
+
+## 23. MVP-4G — frozen baseline + low-cost final Journey 6 run
+
+**MVP-4G: `PASS`. Journey 6 final: `FAIL — no actionable finding under
+the deferred comparator measurement debt.`**
+
+The `providerRouting` reader was audited and kept (it completes a
+pre-existing schema→runtime→provider contract that config parsing alone
+dropped); focused tests were added for it and for the `maxOutputTokens`
+precedence fix. Full regression on the frozen baseline: build 26/26,
+typecheck 44/44, lint 26/26, tests 52/52 tasks (2,445 pass, 1 skip,
+0 fail), smoke and freshness PASS. Committed as `b8dc06f1…`; fresh CLI
+verified.
+
+With credits restored (bounded 8000-token probe passed, no 402),
+`implementation-default` alone was overridden to
+`deepseek/deepseek-v4-flash-0731` (8000/120000; all other profiles
+proven unchanged). After one honest environment stop (Figma selection
+drift, refused by the node-binding gate; user re-selected) and one
+provider-boundary output failure (same model retried once — no
+cycling), the final run `a0bc2592-…` delivered an attempt-1-valid
+8-file proposal at ~$0.001 (4,573 tokens — ~60× cheaper than Sonnet),
+approved/snapshotted/applied exactly, validation and independent
+build/test green, real preview/Playwright captures, deterministic
+comparison and live visual specialist honestly reporting the known
+mobile dimension-mismatch fail.
+
+The correction offer — now past the fixed staleness gate — terminated
+truthfully at the next deterministic policy: the sole finding is not
+component/frame-bound and therefore not correction-actionable, and the
+true content divergence (page byte-identical to Journey 4's captures)
+yields no finding because dimension mismatch skips the pixel diff. The
+long-deferred dimension-normalization comparator debt is now the single
+remaining prerequisite for exercising the correction loop; every other
+contract on the path (authorization, eligibility, bounded proposals,
+approval, snapshot, apply, validation, honesty) has been proven live.
+The low-cost testing policy and the DeepSeek recommendation for
+`implementation-default` are recorded in the evidence.

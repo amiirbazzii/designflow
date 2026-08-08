@@ -165,3 +165,20 @@ journey then hit a hard external wall: **OpenRouter credits exhausted**
 3.5k–7.3k-token proposals). **MVP-4F is `PASS`; Journey 6 remains `FAIL`,
 blocked externally on credits.** Rerun Part 5 once after topping up the
 key; no product work is pending.
+
+MVP-4G froze the corrected baseline (providerRouting audit: kept — it
+completes a pre-existing schema/runtime/provider contract; new focused
+tests; full regression 2,445 pass / 1 skip / 0 fail; commit `b8dc06f1…`)
+and ran the final low-cost Journey 6 with `implementation-default`
+overridden to `deepseek/deepseek-v4-flash-0731` (all other profiles
+untouched; credit gate passed after the user raised the OpenRouter limit).
+The final run produced an attempt-1-valid 8-file proposal at ~$0.001,
+which was approved, snapshotted, applied exactly, validated, previewed,
+captured, and honestly visual-failed. The correction offer — now past the
+fixed fingerprint gate — truthfully reported no actionable finding: the
+sole deterministic finding (viewport dimension mismatch) is not
+component-bound, and the real content divergence yields no finding because
+the dimension mismatch skips the pixel diff. **MVP-4G is `PASS`; Journey 6
+remains `FAIL`**, with the deferred dimension-normalization comparator
+debt now the single remaining prerequisite. DeepSeek is recommended as the
+low-cost testing profile for `implementation-default`.
