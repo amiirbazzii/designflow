@@ -105,6 +105,34 @@ describe("createProjectInspector", () => {
     }
   });
 
+  test("extracts supported route and component destinations from project evidence", async () => {
+    const root = mkdtempSync(join(tmpdir(), "df-inspector-destinations-"));
+    try {
+      writeFileSync(join(root, "package.json"), JSON.stringify({
+        name: "destination-fixture",
+        dependencies: { react: "^18.0.0" },
+      }));
+      mkdirSync(join(root, "src", "app", "dashboard"), { recursive: true });
+      mkdirSync(join(root, "src", "components"), { recursive: true });
+      writeFileSync(join(root, "src", "app", "dashboard", "page.tsx"), "export default function Dashboard() { return null; }");
+      writeFileSync(join(root, "src", "components", "ExpenseForm.tsx"), "export function ExpenseForm() { return null; }");
+      writeFileSync(join(root, "src", "App.tsx"), 'export function App() { return <Routes><Route path="/expenses" /></Routes>; }');
+      writeFileSync(join(root, "src", "Shell.tsx"), '<a href="/invented">Not a route declaration</a>');
+
+      const { facts } = await createProjectInspector().inspect(root);
+      const destinations = facts.find((fact) => fact.key === "project.destinations")?.value;
+
+      expect(destinations).toEqual([
+        { kind: "page", label: "/dashboard", sourcePath: "src/app/dashboard/page.tsx" },
+        { kind: "page", label: "/expenses", sourcePath: "src/App.tsx" },
+        { kind: "component", label: "ExpenseForm", sourcePath: "src/components/ExpenseForm.tsx" },
+      ]);
+      expect(JSON.stringify(destinations)).not.toContain("/invented");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("a design-system-named directory is inferred, not asserted, with confidence", async () => {
     const root = workspace();
     try {

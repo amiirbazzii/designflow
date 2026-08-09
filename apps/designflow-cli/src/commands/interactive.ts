@@ -1,6 +1,7 @@
 // apps/designflow-cli/src/commands/interactive.ts
 import {
   banner,
+  destinationMenu,
   menu,
   shellHelp,
   type Terminal,
@@ -9,6 +10,10 @@ import {
   detectCurrentProject,
   ensureCurrentProject,
 } from "../services/current-project";
+import {
+  findDestinationCandidates,
+  type DestinationCandidate,
+} from "../services/destinations";
 
 import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
@@ -19,18 +24,47 @@ import { runCommand } from "./run";
 
 export function interactiveRunOptions(
   project: ProjectIdentity | null,
+  destination?: DestinationCandidate,
 ): {
   interactive: true;
   offerArtifactView: true;
   productExperience: true;
   projectId?: string;
+  destination?: DestinationCandidate;
 } {
   return {
     interactive: true,
     offerArtifactView: true,
     productExperience: true,
     ...(project !== null ? { projectId: project.id } : {}),
+    ...(destination !== undefined ? { destination } : {}),
   };
+}
+
+export async function selectDestination(
+  terminal: Terminal,
+  candidates: readonly DestinationCandidate[],
+): Promise<DestinationCandidate | null> {
+  if (candidates.length === 0) return null;
+
+  terminal.print(destinationMenu(candidates));
+  const answer = (await terminal.ask(
+    "Destination",
+    candidates.map((candidate) => candidate.label),
+  ))
+    .trim()
+    .toLowerCase();
+
+  if (answer.length === 0) return candidates[0] ?? null;
+
+  const numeric = Number.parseInt(answer, 10);
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= candidates.length) {
+    return candidates[numeric - 1] ?? null;
+  }
+
+  return (
+    candidates.find((candidate) => candidate.label.toLowerCase() === answer) ?? null
+  );
 }
 
 /**
@@ -91,13 +125,21 @@ export async function interactiveCommand(
         continue;
       }
 
+      const destinations = await findDestinationCandidates(context, project);
+      const destination = await selectDestination(terminal, destinations);
+      if (destination === null) {
+        terminal.print();
+        terminal.print("Choose one of the destinations shown to continue.");
+        continue;
+      }
+
       terminal.print();
       terminal.print("Starting Design Engineer...");
       await runCommand(
         context,
         terminal,
         worker.id,
-        interactiveRunOptions(project),
+        interactiveRunOptions(project, destination),
       );
       continue;
     }

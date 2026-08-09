@@ -14,6 +14,7 @@ import {
   type CliContext,
 } from "./cli-runner";
 import { interactiveRunOptions } from "../commands/interactive";
+import { describeRequest } from "../commands/run";
 import { menu } from "../ui/terminal";
 
 const temporaryDirectories: string[] = [];
@@ -105,15 +106,26 @@ describe("current interactive project", () => {
       updatedAt: "2026-08-09T00:00:00.000Z",
     } satisfies ProjectIdentity;
 
-    expect(interactiveRunOptions(project)).toMatchObject({
+    const destination = {
+      label: "/dashboard",
+      kind: "page" as const,
+      path: "/dashboard",
+      sourcePath: "src/app/dashboard/page.tsx",
+    };
+
+    expect(interactiveRunOptions(project, destination)).toMatchObject({
       interactive: true,
       productExperience: true,
       projectId: "project-spendly",
+      destination,
     });
-    expect(interactiveRunOptions(project)).not.toHaveProperty(
+    expect(describeRequest({ designFile: "homepage.fig" }, destination)).toContain(
+      "destination: /dashboard",
+    );
+    expect(interactiveRunOptions(project, destination)).not.toHaveProperty(
       "projectWriteConsent",
     );
-    expect(interactiveRunOptions(project)).not.toHaveProperty("approval");
+    expect(interactiveRunOptions(project, destination)).not.toHaveProperty("approval");
     expect(interactiveRunOptions(null)).not.toHaveProperty("projectId");
   });
 

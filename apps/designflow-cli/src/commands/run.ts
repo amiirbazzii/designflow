@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
+import type { DestinationCandidate } from "../services/destinations";
 import type { WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";
 import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
@@ -49,6 +50,8 @@ export async function runCommand(
     readonly offerArtifactView?: boolean;
     /** Product-stage progress is reserved for the bare interactive shell. */
     readonly productExperience?: boolean;
+    /** A shell-selected destination carried as request context. */
+    readonly destination?: DestinationCandidate;
     readonly noCache?: boolean;
     readonly visualCorrection?: "off" | "once";
   },
@@ -188,7 +191,7 @@ export async function runCommand(
   // command's call — a session starts, and the session decides.
   const started = await context.sessions.startSessionForWorker(resolved.worker, {
     workerId: resolved.worker.id,
-    request: describeRequest(input),
+    request: describeRequest(input, options?.destination),
     input,
     ...(options?.projectId !== undefined ? { projectId: options.projectId } : {}),
   });
@@ -248,10 +251,18 @@ async function collectInput(
  * nobody filled in describes no work, and saying so honestly is what lets an
  * agent ask for detail rather than be handed "{}" and guess.
  */
-function describeRequest(input: Record<string, unknown>): string {
-  return Object.entries(input)
+export function describeRequest(
+  input: Record<string, unknown>,
+  destination?: DestinationCandidate,
+): string {
+  const fields = Object.entries(input)
     .map(([key, value]) => [key, Array.isArray(value) ? value.join(", ") : value] as const)
     .filter(([, value]) => value !== undefined && value !== null && String(value).length > 0)
-    .map(([key, value]) => `${key}: ${String(value)}`)
-    .join("; ");
+    .map(([key, value]) => `${key}: ${String(value)}`);
+
+  if (destination !== undefined) {
+    fields.push(`destination: ${destination.label}`);
+  }
+
+  return fields.join("; ");
 }

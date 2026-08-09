@@ -102,6 +102,14 @@ export const DESIGN_SYSTEM_DIRECTORY_NAMES = new Set([
 
 export const SOURCE_ROOT_DIRECTORY_NAMES = new Set(["src", "app", "source"]);
 
+export type ProjectDestinationKind = "page" | "component";
+
+export interface ProjectDestinationEvidence {
+  readonly kind: ProjectDestinationKind;
+  readonly label: string;
+  readonly sourcePath: string;
+}
+
 export function isSkippedName(name: string): boolean {
   return name.startsWith(".") || SKIPPED_DIRECTORIES.has(name) || SENSITIVE.test(name);
 }
@@ -295,6 +303,7 @@ export interface ProjectInspectionRaw {
     sourcePath: string;
     props: readonly string[];
   }[];
+  readonly destinations: readonly ProjectDestinationEvidence[];
   readonly commands: readonly string[];
   readonly testFramework?: string;
   readonly designSystemPackage?: string;
@@ -364,6 +373,7 @@ export function inspectProjectDirectory(root: string, signal: AbortSignal): Proj
         .flatMap((match) => [...match[1]!.matchAll(/(\w+)\??\s*:/g)].map((prop) => prop[1]!));
       return [{ name: names[0]!, sourcePath: path, props: [...new Set(props)] }];
     });
+  const destinations = detectProjectDestinations(relevantFiles, texts, components);
   const scripts = manifest?.["scripts"];
   const commands = scripts !== null && typeof scripts === "object" && scripts !== null && !Array.isArray(scripts)
     ? Object.keys(scripts as Record<string, unknown>).filter((name) => typeof (scripts as Record<string, unknown>)[name] === "string").sort()
@@ -378,6 +388,7 @@ export function inspectProjectDirectory(root: string, signal: AbortSignal): Proj
     tokenSources,
     tokens,
     components,
+    destinations,
     commands,
     ...(testFramework !== undefined ? { testFramework } : {}),
     ...(designSystemPackage !== undefined ? { designSystemPackage } : {}),
@@ -385,4 +396,86 @@ export function inspectProjectDirectory(root: string, signal: AbortSignal): Proj
     ...(sourceRoot !== undefined ? { sourceRoot } : {}),
     relevantFiles,
   };
+}
+
+/**
+ * Finds only destinations supported by file-layout or route-literal evidence.
+ * This is intentionally conservative: an arbitrary directory name is not a
+ * page, and a component is only suggested when the existing component scan
+ * already found an exported symbol.
+ */
+export function detectProjectDestinations(
+  relevantFiles: readonly string[],
+  texts: readonly { readonly path: string; readonly text: string }[],
+  components: readonly { readonly name: string; readonly sourcePath: string }[],
+): readonly ProjectDestinationEvidence[] {
+  const byKey = new Map<string, ProjectDestinationEvidence>();
+
+  const add = (candidate: ProjectDestinationEvidence): void => {
+    const key = `${candidate.kind}:${candidate.label}`;
+    const existing = byKey.get(key);
+    if (existing === undefined || candidate.sourcePath.localeCompare(existing.sourcePath) < 0) {
+      byKey.set(key, candidate);
+    }
+  };
+
+  for (const file of relevantFiles) {
+    const label = routeLabelFromFile(file);
+    if (label !== undefined) add({ kind: "page", label, sourcePath: file });
+  }
+
+  for (const { path, text } of texts) {
+    if (!isRouteSource(path, text)) continue;
+
+    for (const match of text.matchAll(/\bpath\s*(?:=|:)\s*["'`](\/[^"'`?#]*)["'`]/g)) {
+      const label = match[1]?.trim();
+      if (label !== undefined && label.length > 0 && label !== "//") {
+        add({ kind: "page", label, sourcePath: path });
+      }
+    }
+  }
+
+  for (const component of components) {
+    add({ kind: "component", label: component.name, sourcePath: component.sourcePath });
+  }
+
+  return [...byKey.values()]
+    .sort(
+      (left, right) =>
+        (left.kind === "page" ? 0 : 1) - (right.kind === "page" ? 0 : 1) ||
+        left.label.localeCompare(right.label) ||
+        left.sourcePath.localeCompare(right.sourcePath),
+    )
+    .slice(0, 20);
+}
+
+function isRouteSource(path: string, text: string): boolean {
+  const filename = path.split("/").at(-1) ?? path;
+  const routeNamedFile = /(?:^|[-_.])(route|router|routing)(?:[-_.]|$)/i.test(filename);
+  const routeDeclaration = /<Route\b|create(?:Browser|Hash|Memory)Router\b|\broutes?\s*[:=]/i.test(text);
+  return routeNamedFile || routeDeclaration;
+}
+
+function routeLabelFromFile(file: string): string | undefined {
+  const segments = file.split("/");
+  const filename = segments.at(-1);
+  if (filename === undefined || !/\.(tsx?|jsx?|vue|svelte)$/i.test(filename)) return undefined;
+
+  const rootIndex = segments.findIndex((segment) =>
+    ["app", "pages", "routes"].includes(segment.toLowerCase()),
+  );
+  if (rootIndex < 0) return undefined;
+
+  const root = segments[rootIndex]!.toLowerCase();
+  const basename = filename.replace(/\.[^.]+$/, "");
+  if (root === "app" && basename !== "page") return undefined;
+  if (["_app", "_document", "layout", "loading", "error", "not-found", "template"].includes(basename)) {
+    return undefined;
+  }
+
+  const routeSegments = segments.slice(rootIndex + 1, -1);
+  if (root !== "app" && basename !== "index") routeSegments.push(basename);
+  if (routeSegments.length === 0) return "/";
+
+  return `/${routeSegments.join("/")}`;
 }

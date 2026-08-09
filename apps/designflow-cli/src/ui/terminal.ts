@@ -107,6 +107,22 @@ export function shellHelp(): string {
   ].join("\n");
 }
 
+export interface InteractiveDestination {
+  readonly label: string;
+}
+
+export function destinationMenu(
+  candidates: readonly InteractiveDestination[],
+): string {
+  return [
+    "",
+    "Where should this design go?",
+    "",
+    ...candidates.map((candidate, index) => `${index === 0 ? "›" : " "} ${candidate.label}`),
+    "",
+  ].join("\n");
+}
+
 /** What `Use an AI Worker` shows. Driven entirely by the worker registry. */
 export function workerMenu(
   workers: readonly { readonly name: string; readonly description: string }[],

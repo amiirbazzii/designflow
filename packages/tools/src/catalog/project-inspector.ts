@@ -83,6 +83,10 @@ class FileSystemProjectInspector implements ProjectInspector {
       facts.push({ key: "designSystem.components", value: inspected.components, source: "inspection" });
     }
 
+    if (inspected.destinations.length > 0) {
+      facts.push({ key: "project.destinations", value: inspected.destinations, source: "inspection" });
+    }
+
     if (inspected.commands.length > 0) {
       facts.push({ key: "project.commands", value: inspected.commands, source: "inspection" });
     }

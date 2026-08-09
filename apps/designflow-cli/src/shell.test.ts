@@ -363,12 +363,15 @@ describe("product shell", () => {
   });
   test("starting Design Engineer uses the existing run path", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["", "q"]);
+    const terminal = new ScriptedTerminal(["", "", "q"]);
 
     const code = await dispatch([], context(home), terminal);
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Starting Design Engineer...");
+    expect(terminal.transcript).toContain("Where should this design go?");
+    expect(terminal.transcript).toContain("New page");
+    expect(terminal.transcript).toContain("New component");
     expect(terminal.transcript).toContain("This worker reads a connected Figma design.");
     expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
     expect(terminal.transcript).toContain("Goodbye.");
