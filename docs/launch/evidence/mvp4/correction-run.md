@@ -810,3 +810,11 @@ persisted parent-artifact resolution, post-correction Playwright capture,
 deterministic comparison, and Visual Validation Specialist evaluation are all
 not reached. **MVP-4R live acceptance: BLOCKED —
 COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED.**
+
+### MVP-4T cancellation boundary — 2026-08-09
+
+The sole live cancellation run stopped during pre-write Figma source
+retrieval, before implementation proposal, approval, snapshot, apply, or
+visual correction. Execution `ac818282-3ae9-4d75-a444-f2e1aa49f67a` ended
+`cancelled` after one SIGINT with exit code `130`; no correction child or
+iteration was created. Project state and fingerprint remained unchanged.

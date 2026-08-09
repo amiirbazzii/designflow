@@ -241,6 +241,22 @@ The bounded terminal code was
 was created. **MVP-4S implementation: PASS. Live Coordinator gate: PASS.
 Journey 6: BLOCKED — COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED.**
 
+## MVP-4T — live root cancellation — 2026-08-09
+
+After checkpoint commit `9f64430`, the installed `DesignFlow 0.1.1` CLI ran
+one canonical Spendly implementation invocation with explicit project
+selection. The clean fixture baseline was commit `992d7d5` with fingerprint
+`97ce9bb0…`; test and build passed.
+
+Execution `ac818282-3ae9-4d75-a444-f2e1aa49f67a` reached active
+`retrieve-figma-source-snapshot` work before any project mutation. One normal
+SIGINT reached the owning process; it exited `130` and persisted terminal
+`cancelled`. No approval, snapshot, write, correction iteration, or later
+node/agent activity occurred. No active state, orphan process, proposed-state
+workspace, credential, auth header, raw provider response, or environment dump
+remained. Final fixture fingerprint and Git state were unchanged. **MVP-4T:
+PASS.**
+
 ## MVP-4Q — final credentialed Journey 6 acceptance — 2026-08-09
 
 Pure acceptance run on frozen `316fb01`; no source changes. Credential present and probed (200, GLM responded, no 401/402). Stale installed CLI repacked from the frozen HEAD (tarball `fec53db6…`). Parent `0cda5b14…`: compile gate rejected attempt 1 live (named PrimaryButton import), attempt 2 passed all gates including coverage and was manually approved with coverage summary plus bounded diff; apply and required validation passed; Stage 5 confirmed a major root finding (mismatch 0.9319) against a real Figma reference. Child `9c9efb82…`: one proposal, runtime preflight executed (`preflightProposalHash 034ec5e8…` bound pre-approval), manual approval, apply, mounted build passed. Revalidation stopped honestly inconclusive — the fresh Stage 5 threw pre-seed and the catch discarded the diagnostic (new reported defect); no product recapture, no crash, no iteration 2, no rollback. Supplementary non-product capture shows a fully rendered Spendly Add Expense screen with zero page errors. **MVP-4Q: PASS. Journey 6: FAIL — CORRECTION_APPLIED_RECAPTURE_INCONCLUSIVE.**

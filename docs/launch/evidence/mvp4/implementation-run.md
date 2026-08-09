@@ -492,3 +492,13 @@ before implementation. Trace
 and schema-invalid `decline`/`reason` diagnostics on attempts 1 and 2, ending
 with `ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED`. Implementation attempts,
 approval, snapshot, apply, and mounted validation remain `0`.
+
+### MVP-4T root cancellation evidence — 2026-08-09
+
+The accepted installed CLI reached the Coordinator and entered active Figma
+MCP retrieval for execution `ac818282-3ae9-4d75-a444-f2e1aa49f67a` before any
+write stage. One SIGINT produced the documented graceful cancellation and
+exit code `130`. Persisted execution state is `cancelled`; no pending
+approval, snapshot, project write, correction child, or post-cancel node
+started. The fixture remained at clean commit `992d7d5` and fingerprint
+`97ce9bb0…`, with test/build green. **Root cancellation acceptance: PASS.**

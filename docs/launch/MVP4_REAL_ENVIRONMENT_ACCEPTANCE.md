@@ -1214,3 +1214,40 @@ are present. No parent visual evidence or correction child exists, so the
 MVP-4R trusted-reference handoff, persisted resolution, Playwright recapture,
 deterministic comparison, and specialist validation were not reached. No
 Journey 6 rerun is permitted.
+
+## MVP-4T — live root cancellation / first SIGINT — 2026-08-09
+
+The full worktree was checkpointed before this acceptance at commit
+`9f64430`. Installed CLI: `/tmp/designflow-mvp4s-install/node_modules/.bin/designflow`,
+reporting `DesignFlow 0.1.1`; package freshness passed. The disposable fixture
+started clean at commit `992d7d518a2394862544547a9d28deff15ed14ed`, fingerprint
+`97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`; fixture
+test and build both passed.
+
+Exactly one canonical public run was started with explicit Spendly project
+selection and `--visual-correction=once`. Coordinator/model work completed,
+then execution `ac818282-3ae9-4d75-a444-f2e1aa49f67a` became active in the
+pre-write `retrieve-figma-source-snapshot` Figma MCP capability. Coordinator
+trace `2561e9b3-edfa-415d-912e-d3c4ab366158` recorded provider success. One
+normal SIGINT was sent to the owning CLI process. The CLI printed its graceful
+cancellation message and exited with code `130`.
+
+Persisted execution state is terminal `cancelled`; no execution, session, or
+approval remains active. There were zero pending approvals, zero snapshots,
+zero project writes, zero correction iterations, and no capability or agent
+start after cancellation. The event timeline ends with the active capability
+failure followed by execution cancellation; no later node started. The only
+session is a completed non-waiting invocation record tied to the cancelled
+execution.
+
+The fixture remained clean at the same commit and fingerprint; final test and
+build passed. No acceptance-owned DesignFlow, Figma MCP child, preview, Vite,
+esbuild, Playwright, Chromium, or temporary acceptance process remained. No
+proposed/preflight/correction workspace remained. Safe scans found no
+credential, auth header, raw provider response, environment dump, or
+secret-bearing diagnostic. Live second-SIGINT testing was not required; the
+existing unit/integration forced-second-interrupt coverage remains sufficient.
+
+**MVP-4T: PASS.** Canonical Coordinator output reliability remains a known
+MVP limitation recorded in the MVP-4S evidence; it was not changed during this
+cancellation acceptance.
