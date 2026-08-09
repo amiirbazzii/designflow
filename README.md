@@ -183,17 +183,22 @@ which model profile each uses, and which fields you have overridden locally.
 **What is supported today.** A design specification, and implementation
 proposal and apply, are supported and consent- and approval-gated. Visual
 correction is a bounded beta continuation from eligible Design Engineer runs,
-off by default and one iteration per explicit opt-in. The legacy
-scaffold workflow is kept for compatibility with older runs and is no longer
-the product path. "Supported" here means implemented and covered by this
-repository's tests — it has not yet been verified against a real Figma
-workspace and a live model provider, which is the next milestone's work.
-Visual validation additionally needs the optional Playwright package and an
-installed Chromium; `doctor` reports those two separately.
+off by default and one iteration per explicit opt-in. The legacy scaffold
+workflow is kept for compatibility with older runs and is no longer the
+product path. MVP-4 live evidence verified implementation generation,
+compile/coverage gates, approval/apply, visual detection, correction
+preflight, mounted validation, rollback, and root cancellation. The final
+canonical Journey 6 did not obtain a product-owned
+`CORRECTION_APPLIED_AND_IMPROVED` result, and Coordinator routing can safely
+stop after its bounded output-repair attempts; these are known limitations,
+not write-safety bypasses. Visual validation additionally needs the optional
+Playwright package and an installed Chromium; `doctor` reports those two
+separately.
 
-For local diagnostics, Git-aware write safety, state compatibility and the
-remaining release gates, see
+For local diagnostics, Git-aware write safety and state compatibility, see
 [`docs/STAGE_7_PRODUCTION_READINESS.md`](docs/STAGE_7_PRODUCTION_READINESS.md).
+For the release-candidate baseline and launch-freeze decision, see
+[`docs/launch/MVP5A_RELEASE_CANDIDATE.md`](docs/launch/MVP5A_RELEASE_CANDIDATE.md).
 Design decisions behind the Figma integration and the specialized agents are
 in [`docs/adr/20260810-figma-mcp-integration.md`](docs/adr/20260810-figma-mcp-integration.md)
 and

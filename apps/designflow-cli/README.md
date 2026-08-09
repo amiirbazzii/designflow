@@ -201,11 +201,14 @@ ignored.
 | Visual correction (Beta) | off by default; offered only after actionable findings |
 | Legacy scaffold workflow | compatibility only |
 
-Known limitations of this milestone: "supported" means implemented and
-covered by this repository's tests, not verified against a real Figma
-workspace and a live model provider — that verification is the next
-milestone's work. Visual validation needs the optional Playwright package
-*and* an installed Chromium; `doctor` distinguishes those two.
+Known limitations of this milestone: the final canonical Journey 6 did not
+obtain a product-owned CORRECTION_APPLIED_AND_IMPROVED result, and Coordinator
+routing can safely stop after its bounded output-repair attempts. MVP-4
+separately live-proved implementation generation, compile/coverage gates,
+approval/apply, visual detection, correction preflight, mounted validation,
+rollback, and root cancellation. Visual validation needs the optional
+Playwright package *and* an installed Chromium; `doctor` distinguishes those
+two.
 
 Visual correction is a bounded beta continuation. It is offered only when the
 completed implementation run has a valid applied baseline, visual evidence,
@@ -216,8 +219,13 @@ its own approval, and a correction may stop as unavailable, inconclusive,
 rejected, cancelled, stale, or rolled back. The internal correction JSON is
 not a user input.
 
-Live-provider, real-Figma, real-browser, and real-project apply/rollback proof
-remain MVP-4 gates.
+MVP-4 live evidence verified implementation generation, compile/coverage
+gates, approval/apply, visual detection, correction preflight, mounted
+validation, rollback, and root cancellation. The final canonical Journey 6
+did not obtain a product-owned `CORRECTION_APPLIED_AND_IMPROVED` result.
+Coordinator routing can also safely stop after its bounded output-repair
+attempts. These are known limitations; invalid output cannot create a
+workflow, approval, or project write.
 
 ## Configuration
 

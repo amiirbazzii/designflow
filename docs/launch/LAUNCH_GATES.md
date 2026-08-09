@@ -1,5 +1,11 @@
 # DesignFlow Launch Gates
 
+> Historical L0 snapshot: the statuses below are preserved as prior evidence
+> and are not the current MVP-5A release-candidate decision. The current
+> package/distribution/readiness matrix is recorded in
+> MVP5A_RELEASE_CANDIDATE.md. MVP-4 is complete with its documented
+> non-blocking limitations; no historical gate row is rewritten here.
+
 Measurable go/no-go gates for the public release of `designflow-ai@0.1.1`.
 Statuses are updated only with recorded evidence. Evidence classes are kept
 distinct and are **not interchangeable**:
