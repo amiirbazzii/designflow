@@ -24,7 +24,7 @@ const BASE: ReadinessFacts = {
   configPath: "/tmp/designflow-home/config.json",
   configExists: true,
   configParsed: true,
-  version: "0.1.1",
+  version: "0.1.2",
 };
 
 function facts(overrides: Partial<ReadinessFacts> = {}): ReadinessFacts {
@@ -253,7 +253,7 @@ describe("assembleDesignEngineerReadiness", () => {
       browserAvailable: "not_checked",
       specificationDispatchAvailable: false,
       implementationDispatchAvailable: false,
-      version: "0.1.1",
+      version: "0.1.2",
     });
 
     expect(readiness.figma.state).toBe("invalid");

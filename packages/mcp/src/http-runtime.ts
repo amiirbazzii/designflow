@@ -232,7 +232,7 @@ export class HttpMcpRuntime implements McpClient {
           params: {
             protocolVersion: MCP_HTTP_PROTOCOL_VERSION,
             capabilities: {},
-            clientInfo: { name: "designflow-ai", version: "0.1.1" },
+            clientInfo: { name: "designflow-ai", version: "0.1.2" },
           },
         },
         signal,

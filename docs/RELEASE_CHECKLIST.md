@@ -3,7 +3,7 @@
 Manual steps for cutting and publishing a release of the `designflow-ai`
 package — the npm package is `designflow-ai`, the installed command is
 `designflow` — published from `apps/designflow-cli`, currently at version
-`0.1.1`. Follow in order. Do not skip steps.
+`0.1.2`. Follow in order. Do not skip steps.
 
 > **`npm publish` requires separate human confirmation.** This checklist
 > documents the full process, but the publish step itself must be run
@@ -20,10 +20,10 @@ package — the npm package is `designflow-ai`, the installed command is
 
 ## 1. Bump the version
 
-- [ ] The version lives **only** in `apps/designflow-cli/package.json`
-      (`"version": "0.1.1"` today). The root `package.json` is
-      `"private": true` and has no `version` field — there is nothing to keep
-      in sync there.
+- [ ] The package version is authoritative in `apps/designflow-cli/package.json`
+      (`"version": "0.1.2"` today). The release CLI/MCP identity constants,
+      package-contract tests, and packaging verification scripts must agree.
+      The root `package.json` is `"private": true` and has no `version` field.
 - [ ] Bump it by hand, or with `npm version <patch|minor|major>` run from
       inside `apps/designflow-cli`. Follow semver based on the changes since
       the last tag.

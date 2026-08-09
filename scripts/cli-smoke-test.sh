@@ -376,7 +376,7 @@ node -e '
   const pkg = JSON.parse(fs.readFileSync(process.argv[1] + "/package/package.json", "utf8"));
   const assert = (cond, msg) => { if (!cond) { console.error("packed manifest: " + msg); process.exit(1); } };
   assert(pkg.name === "designflow-ai", "name");
-  assert(pkg.version === "0.1.1", "version");
+  assert(pkg.version === "0.1.2", "version");
   assert(pkg.bin && pkg.bin.designflow === "dist/main.js", "bin");
   assert(pkg.main === undefined && pkg.types === undefined, "no library entry point");
   assert(JSON.stringify(pkg.exports) === JSON.stringify({"./package.json": "./package.json"}), "exports is ./package.json only");
@@ -411,11 +411,11 @@ step "installed CLI non-destructive command matrix (fresh isolated home)"
 LOCAL_HOME="$WORK/local-home"
 lcli() { DESIGNFLOW_HOME="$LOCAL_HOME" "$LOCAL_BIN" "$@"; }
 lcli --help | grep -q "your AI workforce" || fail "--help"
-lcli --version | grep -q "DesignFlow 0.1.1" || fail "--version"
+lcli --version | grep -q "DesignFlow 0.1.2" || fail "--version"
 lcli workers | grep -q "Design Engineer" || fail "workers"
 DOCTOR="$(lcli doctor)"
 grep -q "Doctor is read-only" <<<"$DOCTOR" || fail "doctor did not state its read-only contract"
-lcli settings | grep -q "DesignFlow 0.1.1" || fail "settings"
+lcli settings | grep -q "DesignFlow 0.1.2" || fail "settings"
 lcli projects | grep -q "No projects registered yet." || fail "projects empty state"
 lcli history | grep -q "Nothing has run yet." || fail "history empty state"
 lcli sessions | grep -q "Nothing is waiting on you" || fail "sessions empty state"
@@ -469,14 +469,14 @@ mark "registrations & gating" "PASS"
 step "CLI-only import contract from the consumer project"
 IMPORT_PROBE="$(cd "$CONSUMER" && node -e 'import("designflow-ai").then(() => { console.log("RESOLVED"); process.exit(7); }, (e) => { console.log(e.code ?? e.name); })')"
 grep -q "ERR_PACKAGE_PATH_NOT_EXPORTED" <<<"$IMPORT_PROBE" || fail "root import did not fail with the documented error: $IMPORT_PROBE"
-META_PROBE="$(cd "$CONSUMER" && node -e 'const p = require("designflow-ai/package.json"); if (p.version !== "0.1.1") process.exit(1); console.log("META-ONLY");')"
+META_PROBE="$(cd "$CONSUMER" && node -e 'const p = require("designflow-ai/package.json"); if (p.version !== "0.1.2") process.exit(1); console.log("META-ONLY");')"
 [ "$META_PROBE" = "META-ONLY" ] || fail "package.json export failed or produced side-effect output: $META_PROBE"
 echo "ok — root import rejected, metadata importable, no side effects"
 mark "CLI-only contract" "PASS"
 
 step "npm exec against the local tarball (documented package name designflow-ai)"
 NPX_OUT="$(cd "$WORK" && DESIGNFLOW_HOME="$WORK/npx-home" npm exec --yes --package="$WORK/$TARBALL" -- designflow --version 2>/dev/null | tail -1)"
-grep -q "DesignFlow 0.1.1" <<<"$NPX_OUT" || fail "npm exec local-tarball invocation failed: $NPX_OUT"
+grep -q "DesignFlow 0.1.2" <<<"$NPX_OUT" || fail "npm exec local-tarball invocation failed: $NPX_OUT"
 echo "ok — $NPX_OUT"
 mark "npm-exec" "PASS"
 

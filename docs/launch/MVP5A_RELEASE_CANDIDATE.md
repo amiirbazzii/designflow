@@ -284,3 +284,9 @@ MVP-5A: RC_READY_WITH_KNOWN_LIMITATIONS.
 
 All package, installation, CLI, configuration, safety, security, and accepted
 MVP-4 evidence gates pass. No MVP-5B implementation was started.
+
+## MVP-5C release follow-up
+
+This document preserves the historical MVP-5A audit at version 0.1.1. The
+subsequent release-preparation decision bumps the immutable npm release to
+designflow-ai@0.1.2; historical acceptance results above are not rewritten.

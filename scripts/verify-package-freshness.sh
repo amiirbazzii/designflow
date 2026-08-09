@@ -37,14 +37,14 @@ pack_into() {
   local dest="$1"
   mkdir -p "$dest"
   (cd "$CLI" && npm pack --silent --pack-destination "$dest" >/dev/null)
-  ls "$dest"/designflow-ai-0.1.1.tgz >/dev/null || fail "expected designflow-ai-0.1.1.tgz in $dest"
+  ls "$dest"/designflow-ai-0.1.2.tgz >/dev/null || fail "expected designflow-ai-0.1.2.tgz in $dest"
 }
 
 payload_hash() {
   local dest="$1"
   rm -rf "$dest/extract"
   mkdir -p "$dest/extract"
-  tar -xzf "$dest"/designflow-ai-0.1.1.tgz -C "$dest/extract"
+  tar -xzf "$dest"/designflow-ai-0.1.2.tgz -C "$dest/extract"
   (cd "$dest/extract" && find package -type f | sort | xargs shasum -a 256) | shasum -a 256 | cut -d' ' -f1
 }
 
@@ -62,7 +62,7 @@ pack_into "$WORK/b"
 grep -q "$MARKER" "$SDK_DIST/index.js" && fail "prepack left the marker in sdk dist"
 grep -q "$MARKER" "$CLI/dist/main.js" && fail "marker reached the CLI bundle"
 rm -rf "$WORK/b/extract"; mkdir -p "$WORK/b/extract"
-tar -xzf "$WORK/b"/designflow-ai-0.1.1.tgz -C "$WORK/b/extract"
+tar -xzf "$WORK/b"/designflow-ai-0.1.2.tgz -C "$WORK/b/extract"
 grep -rq "$MARKER" "$WORK/b/extract" && fail "marker reached the tarball"
 HASH_B="$(payload_hash "$WORK/b")"
 echo "ok — marker eliminated; payload $HASH_B"
@@ -78,10 +78,10 @@ step "Installed tarball runs without Bun, Turbo, or repository scripts"
 CONSUMER="$WORK/consumer"
 mkdir -p "$CONSUMER"
 printf '{"name":"consumer","private":true}\n' > "$CONSUMER/package.json"
-(cd "$CONSUMER" && npm install --omit=optional --no-audit --no-fund "$WORK/c"/designflow-ai-0.1.1.tgz >/dev/null)
+(cd "$CONSUMER" && npm install --omit=optional --no-audit --no-fund "$WORK/c"/designflow-ai-0.1.2.tgz >/dev/null)
 HOME_DIR="$WORK/home"
 OUT="$(DESIGNFLOW_HOME="$HOME_DIR" node "$CONSUMER/node_modules/.bin/designflow" --version)"
-printf '%s\n' "$OUT" | grep -q "DesignFlow 0.1.1" || fail "installed CLI --version failed"
+printf '%s\n' "$OUT" | grep -q "DesignFlow 0.1.2" || fail "installed CLI --version failed"
 echo "ok — installed CLI reports: $(printf '%s\n' "$OUT" | tail -1)"
 
 printf '\nFRESHNESS VERIFICATION PASSED\n'
