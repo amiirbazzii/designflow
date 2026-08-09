@@ -58,11 +58,29 @@ export function banner(): string {
   return "DesignFlow";
 }
 
-export function menu(): string {
+export interface InteractiveProject {
+  readonly name: string;
+  readonly rootPath?: string | undefined;
+}
+
+export function menu(project?: InteractiveProject | null): string {
+  const projectLines =
+    project === undefined || project === null
+      ? [
+          "  No project detected",
+          "  Run DesignFlow from your project directory.",
+        ]
+      : [
+          `  ${project.name}`,
+          project.rootPath === undefined
+            ? "  Path unavailable"
+            : `  ${project.rootPath}`,
+        ];
+
   return [
     "",
     "Project",
-    "  Not selected yet",
+    ...projectLines,
     "",
     "Design",
     "  Not selected yet",

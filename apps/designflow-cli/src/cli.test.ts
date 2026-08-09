@@ -105,7 +105,9 @@ describe("starting the CLI", () => {
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("DesignFlow");
-    expect(terminal.transcript).toContain("Project\n  Not selected yet");
+    expect(terminal.transcript).toContain(
+      `Project\n  designflow-monorepo\n  ${process.cwd()}`,
+    );
     expect(terminal.transcript).toContain("Design\n  Not selected yet");
     expect(terminal.transcript).toContain("Status\n  Ready");
     expect(terminal.transcript).toContain("Enter  Start Design Engineer");

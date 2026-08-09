@@ -5,12 +5,33 @@ import {
   shellHelp,
   type Terminal,
 } from "../ui/terminal";
+import {
+  detectCurrentProject,
+  ensureCurrentProject,
+} from "../services/current-project";
 
 import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
   type CliContext,
 } from "../services/cli-runner";
+import type { ProjectIdentity } from "@designflow/sdk";
 import { runCommand } from "./run";
+
+export function interactiveRunOptions(
+  project: ProjectIdentity | null,
+): {
+  interactive: true;
+  offerArtifactView: true;
+  productExperience: true;
+  projectId?: string;
+} {
+  return {
+    interactive: true,
+    offerArtifactView: true,
+    productExperience: true,
+    ...(project !== null ? { projectId: project.id } : {}),
+  };
+}
 
 /**
  * `designflow` with no arguments — the application shell.
@@ -26,10 +47,15 @@ export async function interactiveCommand(
   context: CliContext,
   terminal: Terminal,
 ): Promise<number> {
+  const project = await ensureCurrentProject(
+    context,
+    detectCurrentProject(),
+  );
+
   terminal.print(banner());
 
   for (;;) {
-    terminal.print(menu());
+    terminal.print(menu(project));
 
     const choice = (await terminal.ask("Command", ["Enter", "q", "?"]))
       .trim()
@@ -67,11 +93,12 @@ export async function interactiveCommand(
 
       terminal.print();
       terminal.print("Starting Design Engineer...");
-      await runCommand(context, terminal, worker.id, {
-        interactive: true,
-        offerArtifactView: true,
-        productExperience: true,
-      });
+      await runCommand(
+        context,
+        terminal,
+        worker.id,
+        interactiveRunOptions(project),
+      );
       continue;
     }
 
