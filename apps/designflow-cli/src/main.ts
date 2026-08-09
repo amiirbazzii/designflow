@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // apps/designflow-cli/src/main.ts
-import { createInterface } from "node:readline/promises";
+import { createInterface } from "node:readline";
 import { dispatch } from "./cli";
 import {
   createCliContext,
@@ -12,6 +12,13 @@ import { ExitOutcome, resolveExitCode } from "./services/exit-outcome";
 import { SignalCoordinator } from "./services/signal-coordinator";
 import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
+
+class TerminalInterruptedError extends Error {
+  public constructor() {
+    super("Terminal input interrupted");
+    this.name = "TerminalInterruptedError";
+  }
+}
 
 /**
  * Process entry point.
@@ -52,15 +59,39 @@ function interactiveTerminal(onInterrupt: () => void): {
     output: process.stdout,
   });
 
+  let rejectPending: (() => void) | undefined;
+
   // A terminal-mode readline swallows Ctrl+C instead of letting it reach the
   // process-level handlers, so its SIGINT event is forwarded to the same
-  // coordinator the process handlers use.
-  readline.on("SIGINT", onInterrupt);
+  // coordinator the process handlers use. Rejecting the pending question is
+  // important for the product shell: the first Ctrl+C must unwind the prompt
+  // and let the existing root cancellation path finish cleanly.
+  readline.on("SIGINT", () => {
+    onInterrupt();
+    rejectPending?.();
+    rejectPending = undefined;
+    readline.close();
+  });
 
   return {
     terminal: {
       print,
-      ask: (question, options) => readline.question(prompt(question, options)),
+      ask: (question, options) =>
+        new Promise<string>((resolve, reject) => {
+          let settled = false;
+          rejectPending = () => {
+            if (settled) return;
+            settled = true;
+            reject(new TerminalInterruptedError());
+          };
+
+          readline.question(prompt(question, options), (answer) => {
+            if (settled) return;
+            settled = true;
+            rejectPending = undefined;
+            resolve(answer);
+          });
+        }),
     },
     close: () => readline.close(),
   };
@@ -73,20 +104,20 @@ function interactiveTerminal(onInterrupt: () => void): {
  * scripted input is drained up front and served from a queue. A CLI that
  * cannot be scripted cannot be used in CI or shown in a README.
  */
-async function pipedTerminal(): Promise<{
+async function pipedTerminal(emptyInputAnswer = ""): Promise<{
   terminal: Terminal;
   close: () => void;
 }> {
   let buffer = "";
   for await (const chunk of process.stdin) buffer += String(chunk);
 
-  const answers = buffer.split("\n");
+  const answers = buffer.length === 0 ? [] : buffer.split("\n");
 
   return {
     terminal: {
       print,
       async ask(question, options) {
-        const answer = answers.shift() ?? "";
+        const answer = answers.shift() ?? emptyInputAnswer;
         print(`${prompt(question, options)}${answer}`);
         return answer;
       },
@@ -121,7 +152,7 @@ async function main(): Promise<number> {
 
   const { terminal, close } =
     needsInput && process.stdin.isTTY !== true
-      ? await pipedTerminal()
+      ? await pipedTerminal(argv.length === 0 ? "q" : "")
       : interactiveTerminal(() => coordinator.interrupt());
 
   // Built inside the guard: preparing `~/.designflow` is filesystem work, so
@@ -137,6 +168,11 @@ async function main(): Promise<number> {
         outcome.recordResult(commandCode);
         return commandCode;
       } catch (error) {
+        if (error instanceof TerminalInterruptedError) {
+          outcome.recordResult(130);
+          return 130;
+        }
+
         // Recorded BEFORE the error is printed: the EPIPE that reporting a
         // failure into a closed pipe may trigger is then provably late and
         // cannot convert this established failure into a success.

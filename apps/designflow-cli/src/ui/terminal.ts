@@ -55,18 +55,36 @@ export function onboarding(layout: HomeLayout): string {
 // ── Interactive shell ───────────────────────────────────────────
 
 export function banner(): string {
-  return heading("DesignFlow AI");
+  return "DesignFlow";
 }
 
 export function menu(): string {
   return [
     "",
-    "Options:",
+    "Project",
+    "  Not selected yet",
     "",
-    "  1. Use an AI Worker",
-    "  2. View History",
-    "  3. Settings",
-    "  4. Exit",
+    "Design",
+    "  Not selected yet",
+    "",
+    "Status",
+    "  Ready",
+    "",
+    "Enter  Start Design Engineer",
+    "q      Quit",
+    "?      Help",
+    "",
+  ].join("\n");
+}
+
+export function shellHelp(): string {
+  return [
+    "",
+    "DesignFlow help",
+    "",
+    "  Enter  Start the Design Engineer flow",
+    "  q      Quit DesignFlow",
+    "  ?      Show this help",
     "",
   ].join("\n");
 }

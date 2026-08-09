@@ -98,43 +98,49 @@ afterEach(() => {
 // ── 1. CLI starts successfully ──────────────────────────────────
 
 describe("starting the CLI", () => {
-  test("names itself and offers the four options", async () => {
-    const terminal = new ScriptedTerminal(["4"]);
+  test("bare invocation enters the product shell", async () => {
+    const terminal = new ScriptedTerminal(["q"]);
 
     const code = await dispatch([], context(), terminal);
 
     expect(code).toBe(0);
-    expect(terminal.transcript).toContain("DesignFlow AI");
-    expect(terminal.transcript).toContain("1. Use an AI Worker");
-    expect(terminal.transcript).toContain("2. View History");
-    expect(terminal.transcript).toContain("3. Settings");
-    expect(terminal.transcript).toContain("4. Exit");
+    expect(terminal.transcript).toContain("DesignFlow");
+    expect(terminal.transcript).toContain("Project\n  Not selected yet");
+    expect(terminal.transcript).toContain("Design\n  Not selected yet");
+    expect(terminal.transcript).toContain("Status\n  Ready");
+    expect(terminal.transcript).toContain("Enter  Start Design Engineer");
   });
 
   test("exits cleanly", async () => {
-    const terminal = new ScriptedTerminal(["4"]);
+    const terminal = new ScriptedTerminal(["q"]);
 
     expect(await dispatch([], context(), terminal)).toBe(0);
     expect(terminal.transcript).toContain("Goodbye.");
   });
 
-  test("returns to the menu after an action", async () => {
-    const terminal = new ScriptedTerminal(["2", "4"]);
+  test("help returns to the persistent shell", async () => {
+    const terminal = new ScriptedTerminal(["?", "q"]);
 
     await dispatch([], context(), terminal);
 
-    // The session is a place to work, not a single command.
-    const menus = terminal.output.filter((line) =>
-      line.includes("1. Use an AI Worker"),
-    );
-    expect(menus.length).toBeGreaterThan(1);
+    expect(terminal.transcript).toContain("DesignFlow help");
+    expect(terminal.output.filter((line) => line === "DesignFlow")).toHaveLength(1);
   });
 
-  test("reports an unrecognised menu choice without exiting", async () => {
-    const terminal = new ScriptedTerminal(["9", "4"]);
+  test("starting Design Engineer uses the existing run path", async () => {
+    const terminal = new ScriptedTerminal(["", "q"]);
 
     expect(await dispatch([], context(), terminal)).toBe(0);
-    expect(terminal.transcript).toContain("Not an option: 9");
+    expect(terminal.transcript).toContain("Starting Design Engineer...");
+    expect(terminal.transcript).toContain("This worker reads a connected Figma design.");
+    expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
+  });
+
+  test("explicit commands still route normally", async () => {
+    const terminal = new ScriptedTerminal();
+
+    expect(await dispatch(["--version"], context(), terminal)).toBe(0);
+    expect(terminal.transcript).toContain("DesignFlow");
   });
 });
 
@@ -675,11 +681,11 @@ describe("command parsing", () => {
   });
 
   test("no arguments means interactive mode", async () => {
-    const terminal = new ScriptedTerminal(["4"]);
+    const terminal = new ScriptedTerminal(["q"]);
 
     await dispatch([], context(), terminal);
 
-    expect(terminal.transcript).toContain("DesignFlow AI");
+    expect(terminal.transcript).toContain("DesignFlow");
   });
 });
 

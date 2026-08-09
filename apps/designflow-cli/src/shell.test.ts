@@ -5,7 +5,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -78,8 +77,6 @@ function context(
  * offline, so a menu-driven run can be followed all the way to "Complete".
  * Design Engineer needs a connected Figma design, which no test configures.
  */
-const RUN_ANSWERS = ["src/components/Header.tsx", "accessibility", "major"];
-
 afterEach(() => {
   for (const created of contexts.splice(0)) created.close();
   for (const dir of homes.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -313,38 +310,32 @@ describe("second run", () => {
   });
 });
 
-// ── 4. Main menu appears ────────────────────────────────────────
+// ── 4. Product shell ────────────────────────────────────────────
 
-describe("main menu", () => {
-  test("offers the four options in order", async () => {
+describe("product shell", () => {
+  test("bare invocation renders the product screen", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["4"]);
+    const terminal = new ScriptedTerminal(["q"]);
 
     const code = await dispatch([], context(home), terminal);
 
     expect(code).toBe(0);
 
-    const menu = terminal.transcript;
-    expect(menu).toContain("DesignFlow AI");
-    expect(menu.indexOf("1. Use an AI Worker")).toBeLessThan(
-      menu.indexOf("2. View History"),
-    );
-    expect(menu.indexOf("2. View History")).toBeLessThan(
-      menu.indexOf("3. Settings"),
-    );
-    expect(menu.indexOf("3. Settings")).toBeLessThan(menu.indexOf("4. Exit"));
+    expect(terminal.transcript).toContain("DesignFlow");
+    expect(terminal.transcript).toContain("Project\n  Not selected yet");
+    expect(terminal.transcript).toContain("Design\n  Not selected yet");
+    expect(terminal.transcript).toContain("Status\n  Ready");
+    expect(terminal.transcript).toContain("Enter  Start Design Engineer");
   });
 
-  test("option 3 shows where things are kept", async () => {
+  test("help is minimal and returns to the shell", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["3", "4"]);
+    const terminal = new ScriptedTerminal(["?", "q"]);
 
     await dispatch([], context(home), terminal);
 
-    expect(terminal.transcript).toContain("Settings");
-    expect(terminal.transcript).toContain(home);
-    expect(terminal.transcript).toContain(`DesignFlow ${CLI_VERSION}`);
-    expect(terminal.transcript).toContain("4 installed");
+    expect(terminal.transcript).toContain("DesignFlow help");
+    expect(terminal.transcript).toContain("Enter  Start the Design Engineer flow");
   });
 
   test("settings offers no account, key or endpoint", async () => {
@@ -360,161 +351,29 @@ describe("main menu", () => {
     }
   });
 
-  test("option 2 shows history and returns to the menu", async () => {
+  test("quitting the shell exits cleanly", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["2", "4"]);
+    const terminal = new ScriptedTerminal(["q"]);
 
-    await dispatch([], context(home), terminal);
+    expect(await dispatch([], context(home), terminal)).toBe(0);
 
-    expect(terminal.transcript).toContain("Previous runs");
     expect(terminal.transcript).toContain("Goodbye.");
   });
-});
-
-// ── 5. Workers are loaded dynamically ───────────────────────────
-
-describe("the menu reads the worker registry", () => {
-  test("lists the installed workers", async () => {
+  test("starting Design Engineer uses the existing run path", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["1", "2", ...RUN_ANSWERS, "no", "4"]);
-
-    await dispatch([], context(home), terminal);
-
-    expect(terminal.transcript).toContain("Who would you like to use?");
-    expect(terminal.transcript).toContain("1. Design Engineer");
-    expect(terminal.transcript).toContain("2. QA Reviewer");
-
-    // The picker's answer chooses the worker, and that worker's job runs to
-    // completion without leaving the menu.
-    expect(terminal.transcript).toContain("Complete");
-  });
-
-  test("picking the Design Engineer with no Figma connection explains the setup and returns to the menu", async () => {
-    const home = freshHome();
-    const terminal = new ScriptedTerminal(["1", "1", "4"]);
+    const terminal = new ScriptedTerminal(["", "q"]);
 
     const code = await dispatch([], context(home), terminal);
 
-    // The interactive path reaches the same prerequisite as `designflow run`:
-    // no connected Figma design means setup guidance, not a legacy scaffold.
-    // A session is a place to work, so this returns to the menu rather than
-    // ending the process.
     expect(code).toBe(0);
+    expect(terminal.transcript).toContain("Starting Design Engineer...");
     expect(terminal.transcript).toContain("This worker reads a connected Figma design.");
     expect(terminal.transcript).toContain("Nothing was run and no files were changed.");
     expect(terminal.transcript).toContain("Goodbye.");
   });
-
-  test("a worker registered at runtime appears with no code change", async () => {
-    const home = freshHome();
-    const created = context(home);
-
-    created.workers.registerWorker({
-      id: "copy-editor",
-      name: "Copy Editor",
-      description: "Invented by this test, never named in the CLI",
-      category: "writing",
-      workflows: ["design-to-code"],
-      inputs: [],
-    });
-
-    const terminal = new ScriptedTerminal(["1", "9", "4"]);
-    await dispatch([], created, terminal);
-
-    // The picker reads the registry every time. Nothing in commands/ or ui/
-    // names a worker, so adding one is a registration rather than an edit.
-    expect(terminal.transcript).toContain("1. Design Engineer");
-    expect(terminal.transcript).toContain("5. Copy Editor");
-    expect(terminal.transcript).toContain(
-      "Invented by this test, never named in the CLI",
-    );
-  });
-
-  test("no worker in the catalogue means no worker in the menu", async () => {
-    const home = freshHome();
-
-    // An empty catalogue, to prove the menu is driven by the registry rather
-    // than by a list in the source.
-    const created = context(home, { workers: new InMemoryWorkerRegistry() });
-
-    const terminal = new ScriptedTerminal(["1", "4"]);
-    await dispatch([], created, terminal);
-
-    expect(terminal.transcript).toContain("No AI Workers are installed.");
-    expect(terminal.transcript).not.toContain("Design Engineer");
-  });
-
-  test("no worker id appears in any printable string in the CLI", () => {
-    // Scoped to every non-test source file rather than a chosen few: the two
-    // that failed when this was first written were `cli.ts` and `history.ts`,
-    // neither of which a list of likely suspects had included.
-    //
-    // Comments are stripped before matching. A worker named in prose is
-    // illustrative; one in a string is a claim the registry has to back.
-    const offenders: string[] = [];
-
-    const walk = (dir: string): string[] => {
-      const found: string[] = [];
-
-      for (const entry of readdirSync(dir)) {
-        const path = join(dir, entry);
-
-        if (statSync(path).isDirectory()) {
-          found.push(...walk(path));
-          continue;
-        }
-
-        if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) {
-          found.push(path);
-        }
-      }
-
-      return found;
-    };
-
-    for (const path of walk(import.meta.dir)) {
-      const code = readFileSync(path, "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/.*$/gm, "");
-
-      const relative = path.split("/").slice(-2).join("/");
-
-      // No file may name a worker. Three deliberate exceptions:
-      //
-      // The composition root may name the workflow package it installs —
-      // loading one is precisely its job — so the workflow id is checked
-      // everywhere else.
-      //
-      // `run.ts` may say "Design Engineer" in prose, and only there: the
-      // Figma setup guidance is written *about* that worker's prerequisite,
-      // and a sentence assembled from `worker.name` would read as though any
-      // worker might need Figma. Its *id* is still forbidden, so nothing
-      // routes or branches on a name typed into the source.
-      // `services/readiness.ts` may say "Design Engineer" in prose, and it
-      // is the only file that may: it is where the onboarding vocabulary
-      // lives, so doctor, settings and run all render one wording rather
-      // than three. Its *ids* stay forbidden — the profile ids and workflow
-      // ids it reports come from the composition root, never from a literal
-      // typed here.
-      const forbidden = relative.endsWith("services/cli-runner.ts")
-        ? ["design-engineer", "Design Engineer"]
-        : relative.endsWith("commands/run.ts") || relative.endsWith("services/readiness.ts")
-          ? ["design-engineer", "design-to-code"]
-          : ["design-engineer", "Design Engineer", "design-to-code"];
-
-      for (const name of forbidden) {
-        if (code.includes(name)) offenders.push(`${relative} → ${name}`);
-      }
-    }
-
-    // The registry is the single source. A hardcoded name works until the
-    // catalogue changes and then quietly sends someone somewhere that is not
-    // installed.
-    expect(offenders).toEqual([]);
-  });
 });
 
-// ── 6. Version command works ────────────────────────────────────
+// ── 5. Version command works ────────────────────────────────────
 
 describe("designflow --version", () => {
   test("names the product and the version", async () => {

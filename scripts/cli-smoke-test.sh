@@ -242,10 +242,10 @@ done
 echo "ok"
 
 step "designflow (interactive)"
-MENU="$(printf '4\n' | designflow)"
-grep -q "DesignFlow AI" <<<"$MENU" || fail "interactive mode did not start"
-for option in "1. Use an AI Worker" "2. View History" "3. Settings" "4. Exit"; do
-  grep -q "$option" <<<"$MENU" || fail "the main menu is missing: $option"
+MENU="$(printf 'q\n' | designflow)"
+grep -q "DesignFlow" <<<"$MENU" || fail "interactive mode did not start"
+for screen in "Project" "Design" "Status" "Enter  Start Design Engineer" "q      Quit" "?      Help"; do
+  grep -q "$screen" <<<"$MENU" || fail "the product shell is missing: $screen"
 done
 echo "ok"
 
