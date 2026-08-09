@@ -794,3 +794,19 @@ finding, correction child, proposal, preflight, approval, apply, mounted
 validation, product recapture, deterministic comparison, or specialist result
 exists. **Correction remains NOT REACHED; live gate is BLOCKED —
 COORDINATOR_OUTPUT_RELIABILITY.**
+
+### MVP-4S final Coordinator-gated attempt — 2026-08-09
+
+The MVP-4S implementation is committed at `cd55af0` and regression-green. The
+live Coordinator-only gate passed once with `prepare_implementation` and
+workflow dispatch count `0` (trace
+`aabbc03a-6e8d-46d6-9a01-b99930408e1d`). The one canonical public
+`--visual-correction=once` launch then stopped before creating its parent:
+trace `3646bbbe-4824-44b1-b2f6-26cc2ccf7f4b` has two successful OpenRouter
+calls, each returning schema-invalid `decline` with invalid/null `reason`.
+The child was never created; correction proposals, runtime preflight, manual
+approval, correction apply, mounted validation, trusted-reference handoff,
+persisted parent-artifact resolution, post-correction Playwright capture,
+deterministic comparison, and Visual Validation Specialist evaluation are all
+not reached. **MVP-4R live acceptance: BLOCKED —
+COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED.**

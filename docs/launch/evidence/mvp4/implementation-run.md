@@ -472,3 +472,23 @@ exactly once. The coordinator declined again before implementation with trace
 tokens). No implementation proposal, attempt, approval, snapshot, apply, or
 mounted validation exists. **Implementation remains blocked by repeated
 coordinator output unreliability; no further Journey 6 launch is allowed.**
+
+### MVP-4S source and live Coordinator gate — 2026-08-09
+
+The bounded repair implementation is committed at `cd55af0`. It shares one
+strict Coordinator validator between canonical and probe paths, classifies
+invalid output into bounded structural categories, persists at most two safe
+diagnostics, and retries only repairable provider-success output failures once.
+The exact host allowed-action set is carried into repair feedback unchanged.
+Focused Coordinator/trace/provider tests passed 129/129; full agents tests
+passed 238/238; full forced regression, smoke, and package freshness passed.
+
+The live Coordinator-only gate passed on attempt 1 with final
+`prepare_implementation` and no workflow dispatch, trace
+`aabbc03a-6e8d-46d6-9a01-b99930408e1d`. The sole actual canonical public
+`--visual-correction=once` launch reached the Coordinator twice and stopped
+before implementation. Trace
+`3646bbbe-4824-44b1-b2f6-26cc2ccf7f4b` records provider success on both calls
+and schema-invalid `decline`/`reason` diagnostics on attempts 1 and 2, ending
+with `ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED`. Implementation attempts,
+approval, snapshot, apply, and mounted validation remain `0`.

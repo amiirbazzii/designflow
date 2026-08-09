@@ -217,6 +217,30 @@ Focused tests and the full Stage-6 boundary suite passed. Full forced validation
 
 The current process had no `OPENROUTER_API_KEY`, so the final live Journey 6 rerun was not started. SIGINT acceptance remains unstarted. No secret, raw model response, auth header, or unrelated state was added. **MVP-4P: PASS for the implementation/regression gate. Journey 6: BLOCKED — credential not present.**
 
+## MVP-4S — Coordinator output repair and final live gate — 2026-08-09
+
+MVP-4S source is committed at `cd55af0`. Canonical and probe now share strict
+Coordinator validation and the allowed-action check. Invalid output receives
+bounded typed diagnostics and at most one fact-only repair attempt; no invalid
+attempt can create a workflow. Valid decline and clarification remain final
+decisions.
+
+Focused tests were 129/129; agents were 238/238. Forced full regression was
+build 26/26, typecheck 44/44, lint 26/26, and Turbo test 52/52 tasks (384 pass,
+1 explicit live-provider skip, 0 fail). Smoke and freshness passed. Package
+SHA256: `e1e1193bc2cdc485bedeccd95ecc09ce9065792b600bfdaa20d3479ed7ec5696`.
+
+Live Coordinator-only gate trace `aabbc03a-6e8d-46d6-9a01-b99930408e1d`
+passed on attempt 1 with `prepare_implementation`, frozen
+`openai/gpt-4o-mini`, and workflow count `0`. The one canonical public
+`--visual-correction=once` launch then exhausted the two Coordinator attempts
+in trace `3646bbbe-4824-44b1-b2f6-26cc2ccf7f4b`: both attempts were provider
+successes but schema-invalid `decline` responses with `reason` invalid/null.
+The bounded terminal code was
+`ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED`; no workflow, approval, or write
+was created. **MVP-4S implementation: PASS. Live Coordinator gate: PASS.
+Journey 6: BLOCKED — COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED.**
+
 ## MVP-4Q — final credentialed Journey 6 acceptance — 2026-08-09
 
 Pure acceptance run on frozen `316fb01`; no source changes. Credential present and probed (200, GLM responded, no 401/402). Stale installed CLI repacked from the frozen HEAD (tarball `fec53db6…`). Parent `0cda5b14…`: compile gate rejected attempt 1 live (named PrimaryButton import), attempt 2 passed all gates including coverage and was manually approved with coverage summary plus bounded diff; apply and required validation passed; Stage 5 confirmed a major root finding (mismatch 0.9319) against a real Figma reference. Child `9c9efb82…`: one proposal, runtime preflight executed (`preflightProposalHash 034ec5e8…` bound pre-approval), manual approval, apply, mounted build passed. Revalidation stopped honestly inconclusive — the fresh Stage 5 threw pre-seed and the catch discarded the diagnostic (new reported defect); no product recapture, no crash, no iteration 2, no rollback. Supplementary non-product capture shows a fully rendered Spendly Add Expense screen with zero page errors. **MVP-4Q: PASS. Journey 6: FAIL — CORRECTION_APPLIED_RECAPTURE_INCONCLUSIVE.**

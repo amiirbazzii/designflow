@@ -1159,3 +1159,58 @@ parents `0`, approvals `0`, and events `0`. The fixture remains at clean
 `97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`; tests and
 build passed. No product source, prompt, schema, model, provider configuration,
 or fixture was changed.
+
+## MVP-4S — bounded Coordinator output repair — 2026-08-09
+
+The frozen Coordinator/probe discrepancy was traced to response variance, not
+provider transport: the two historical canonical traces had successful
+OpenRouter calls and normalized responses, while the isolated call returned a
+valid `prepare_implementation`. Canonical and probe now share
+`validateProductActionTransport`, the strict product-action schema, and the
+allowed-action validator.
+
+MVP-4S commit: `cd55af0`. Invalid output is classified into bounded
+categories for empty, invalid JSON, schema-invalid output, invalid action,
+disallowed action, or truncation. Trace persistence records at most two
+sanitized structural diagnostics. Repair feedback is factual and
+action-neutral; the same Coordinator identity/profile and host-computed
+allowed-action set are used for attempt 2. Valid `decline` and
+`request_clarification` are not retried. Invalid attempts cannot create
+workflows, approvals, or writes; a second invalid attempt ends as
+`ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED`.
+
+Focused tests: 129 pass, 0 fail in the Coordinator/trace/provider set; the
+full agents package is 238 pass, 0 fail. Forced regression: build 26/26,
+typecheck 44/44, lint 26/26, Turbo test 52/52 tasks with 384 pass, 1 explicit
+live-provider skip, and 0 fail. CLI smoke and package freshness passed.
+Fresh package SHA256 is
+`e1e1193bc2cdc485bedeccd95ecc09ce9065792b600bfdaa20d3479ed7ec5696`; fresh
+installed binary SHA256 is
+`0f413192cf71b3730acdb060a47dd7ea57f2f00f12058341e604b35468fb9d5b`.
+
+The one live Coordinator-only gate used the frozen
+`design-engineer-coordinator-default` / OpenRouter /
+`openai/gpt-4o-mini` contract and stopped before dispatch. Trace
+`aabbc03a-6e8d-46d6-9a01-b99930408e1d` passed on attempt 1 with final action
+`prepare_implementation`, allowed-action validation PASS, and workflow
+dispatch count `0`.
+
+The one actual canonical public launch was then run interactively as
+`designflow run design-engineer --visual-correction=once`. Trace
+`3646bbbe-4824-44b1-b2f6-26cc2ccf7f4b` reached OpenRouter twice under the same
+Coordinator profile; both provider calls succeeded (525/39/564 and
+584/38/622 tokens). Attempt 1 and attempt 2 both returned `decline` with an
+invalid null `reason`, persisted as bounded
+`ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID` diagnostics at `reason`. The exact
+allowed set on both attempts was `create_specification`,
+`request_clarification`, and `decline`. The run terminated with
+`ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED` before workflow creation.
+
+Canonical live result: MVP-4S implementation PASS; live Coordinator-only gate
+PASS; Journey 6 `BLOCKED — COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED`. Executions,
+approvals, events, artifacts, payloads, feedback-loop parents, and sessions
+are all `0`; one failed Coordinator trace and one registered Spendly project
+are present. No parent visual evidence or correction child exists, so the
+MVP-4R trusted-reference handoff, persisted resolution, Playwright recapture,
+deterministic comparison, and specialist validation were not reached. No
+Journey 6 rerun is permitted.
