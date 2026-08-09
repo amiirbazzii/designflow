@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ArtifactStore, CapabilityContext } from "@designflow/sdk";
-import { buildFigmaDesktopSourceSnapshot } from "./figma-desktop-adapter";
+import {
+  buildFigmaDesktopSourceSnapshot,
+  figmaDesktopSelectionSource,
+  readFigmaDesktopSelection,
+} from "./figma-desktop-adapter";
 import { parseFigmaSource } from "./parse-figma-source";
 import { InMemoryMcpClient } from "../test/support/in-memory-mcp-client";
 
@@ -43,6 +47,34 @@ const tools = [
 ];
 
 describe("Figma Desktop MCP adapter", () => {
+  test("reads the current selection through the same metadata contract", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }],
+      results: {
+        get_metadata: [{ type: "text", text: "Currently selected nodes:\n- 10:1: Expense Form" }],
+      },
+    });
+
+    const selection = await readFigmaDesktopSelection(client);
+
+    expect(selection).toEqual({ id: "10:1", name: "Expense Form", type: "UNKNOWN" });
+    expect(figmaDesktopSelectionSource(selection!)).toBe(
+      "https://www.figma.com/design/desktopselection/current-selection?node-id=10-1",
+    );
+    expect(client.calls).toEqual([{ toolName: "get_metadata", arguments: {} }]);
+  });
+
+  test("returns no selection without inventing a node", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }],
+      results: { get_metadata: [{ type: "text", text: "No nodes selected" }] },
+    });
+
+    await expect(readFigmaDesktopSelection(client)).resolves.toBeUndefined();
+  });
+
   test("normalizes current selection metadata and image content without changing generic wrapper inputs", async () => {
     const client = new InMemoryMcpClient({
       serverIdentity: "figma-desktop-mcp",

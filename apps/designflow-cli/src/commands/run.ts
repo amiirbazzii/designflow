@@ -12,6 +12,7 @@ import type { WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";
 import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
 import { CLI_VERSION } from "../version";
+import type { InteractiveDesign } from "../services/figma-selection";
 
 /**
  * `designflow run <worker>` — hire a worker and see the job through.
@@ -52,6 +53,8 @@ export async function runCommand(
     readonly productExperience?: boolean;
     /** A shell-selected destination carried as request context. */
     readonly destination?: DestinationCandidate;
+    /** A shell-selected Figma source; explicit commands keep their prompts. */
+    readonly design?: InteractiveDesign;
     readonly noCache?: boolean;
     readonly visualCorrection?: "off" | "once";
   },
@@ -130,7 +133,7 @@ export async function runCommand(
 
   terminal.print();
 
-  const input = await collectInput(terminal, resolved);
+  const input = await collectInput(terminal, resolved, options?.design);
 
   if (isDesignEngineer && figmaAvailable) {
     // Journey consent (distinct from proposal approval): a selected project
@@ -211,14 +214,25 @@ export async function runCommand(
 
 // ── Input ────────────────────────────────────────────────────────
 
-async function collectInput(
+export async function collectInput(
   terminal: Terminal,
   resolved: ResolvedWorker,
+  design?: InteractiveDesign,
 ): Promise<Record<string, unknown>> {
   const fields: readonly WorkerInputField[] = resolved.worker.inputs;
   const input: Record<string, unknown> = {};
 
+  const prefilled: Readonly<Record<string, unknown>> =
+    design === undefined
+      ? {}
+      : { designFile: design.designFile, frames: [...design.frames] };
+
   for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(prefilled, field.key)) {
+      input[field.key] = prefilled[field.key];
+      continue;
+    }
+
     const answer = await terminal.ask(
       `${field.label} (${field.placeholder})`,
       field.choices,

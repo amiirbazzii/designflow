@@ -363,7 +363,14 @@ describe("product shell", () => {
   });
   test("starting Design Engineer uses the existing run path", async () => {
     const home = freshHome();
-    const terminal = new ScriptedTerminal(["", "", "q"]);
+    const terminal = new ScriptedTerminal([
+      "",
+      "",
+      "2",
+      "https://www.figma.com/design/abc123/Expenses?node-id=10-1",
+      "",
+      "q",
+    ]);
 
     const code = await dispatch([], context(home), terminal);
 
@@ -372,6 +379,7 @@ describe("product shell", () => {
     expect(terminal.transcript).toContain("Figma");
     expect(terminal.transcript).toContain("Not connected");
     expect(terminal.transcript).toContain("Open Figma Desktop and enable Dev Mode.");
+    expect(terminal.transcript).toContain("Pasted Figma design");
     expect(terminal.transcript).toContain("Where should this design go?");
     expect(terminal.transcript).toContain("New page");
     expect(terminal.transcript).toContain("New component");

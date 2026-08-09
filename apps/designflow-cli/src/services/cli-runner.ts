@@ -68,6 +68,10 @@ import {
 } from "@designflow/models";
 import { OpenRouterProvider } from "@designflow/model-provider-openrouter";
 import {
+  readFigmaDesktopSelection,
+  type FigmaDesktopSelection,
+} from "@designflow/capability-figma-mcp";
+import {
   type ModelProfile,
   primaryWorkflowOf,
   type ExecutionEvent,
@@ -384,6 +388,8 @@ export interface CliContext {
   readonly figmaConnectionStatus: () => FigmaConnectionStatus;
   /** Attempts the configured or standard local MCP handshake once. */
   readonly ensureFigmaConnection: () => Promise<FigmaConnectionStatus>;
+  /** Reads the current selection through the existing Desktop MCP adapter. */
+  readonly getCurrentFigmaSelection: () => Promise<FigmaDesktopSelection | null>;
   /** True only for the bare-shell standard endpoint fallback. */
   readonly figmaAutoDetected: boolean;
   /**
@@ -665,6 +671,19 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       });
 
     return figmaConnectionPromise;
+  };
+
+  const getCurrentFigmaSelection = async (): Promise<FigmaDesktopSelection | null> => {
+    if (mcpClient === undefined || figmaConnectionState !== "connected") return null;
+
+    try {
+      return (await readFigmaDesktopSelection(mcpClient, options?.signal)) ?? null;
+    } catch {
+      // The shell only needs the bounded recovery state. Doctor and the
+      // explicit diagnostics surfaces remain responsible for technical MCP
+      // details; no raw transport payload reaches normal product output.
+      return null;
+    }
   };
 
   // Build the specialized model port before constructing the invocation
@@ -1094,6 +1113,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       : {}),
     figmaConnectionStatus: () => figmaConnectionState,
     ensureFigmaConnection,
+    getCurrentFigmaSelection,
     figmaAutoDetected: figmaResolution.source === "automatic",
     traces,
     artifactInspection,

@@ -65,6 +65,8 @@ export interface InteractiveProject {
 
 export interface InteractiveFigma {
   readonly status: "connected" | "unavailable" | "not-configured";
+  readonly design?: string | undefined;
+  readonly destination?: string | undefined;
 }
 
 export function menu(
@@ -95,7 +97,10 @@ export function menu(
       : ["  Not connected", "  Open Figma Desktop and enable Dev Mode."]),
     "",
     "Design",
-    "  Not selected yet",
+    figma.design === undefined ? "  Not selected yet" : `  ${figma.design}`,
+    ...(figma.destination === undefined
+      ? []
+      : ["", "Destination", `  ${figma.destination}`]),
     "",
     "Status",
     "  Ready",
@@ -131,6 +136,18 @@ export function destinationMenu(
     "Where should this design go?",
     "",
     ...candidates.map((candidate, index) => `${index === 0 ? "›" : " "} ${candidate.label}`),
+    "",
+  ].join("\n");
+}
+
+export function designMenu(): string {
+  return [
+    "",
+    "Select design",
+    "",
+    "› Current Figma selection",
+    "  Paste Figma URL",
+    "  Back",
     "",
   ].join("\n");
 }

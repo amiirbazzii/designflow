@@ -130,7 +130,13 @@ describe("starting the CLI", () => {
   });
 
   test("starting Design Engineer uses the existing run path", async () => {
-    const terminal = new ScriptedTerminal(["", "", "q"]);
+    const terminal = new ScriptedTerminal([
+      "",
+      "2",
+      "https://www.figma.com/design/abc123/Expenses?node-id=10-1",
+      "",
+      "q",
+    ]);
 
     expect(await dispatch([], context(), terminal)).toBe(0);
     expect(terminal.transcript).toContain("Starting Design Engineer...");

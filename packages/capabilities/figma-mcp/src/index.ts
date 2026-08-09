@@ -31,7 +31,12 @@ export type { ScreenshotArtifactLimits, StoredScreenshot } from "./screenshot-ar
 
 export { buildFigmaSourceSnapshot } from "./build-snapshot";
 export type { BuildSnapshotOptions } from "./build-snapshot";
-export { buildFigmaDesktopSourceSnapshot } from "./figma-desktop-adapter";
+export {
+  buildFigmaDesktopSourceSnapshot,
+  figmaDesktopSelectionSource,
+  readFigmaDesktopSelection,
+} from "./figma-desktop-adapter";
+export type { FigmaDesktopSelection } from "./figma-desktop-adapter";
 
 export {
   FIGMA_MCP_ERROR_CODES,

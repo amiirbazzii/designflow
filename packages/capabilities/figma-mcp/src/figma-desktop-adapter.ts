@@ -33,10 +33,34 @@ interface ContentBlock {
   readonly mimeType?: unknown;
 }
 
-interface DesktopSelection {
+export interface FigmaDesktopSelection {
   readonly id: string;
   readonly name: string;
   readonly type: string;
+}
+
+/**
+ * Reads the authenticated Desktop MCP selection using the same metadata tool
+ * and parser as the source-snapshot adapter. A missing selection is a normal
+ * product state; transport/tool failures remain classified by the existing
+ * MCP boundary for callers that need the technical result.
+ */
+export async function readFigmaDesktopSelection(
+  client: McpClient,
+  signal?: AbortSignal,
+): Promise<FigmaDesktopSelection | undefined> {
+  const metadata = await callDesktopTool(client, DESKTOP_TOOLS.metadata, {}, signal);
+  return parseDesktopSelection(metadata);
+}
+
+/**
+ * A validated source-shaped identity for a Desktop selection. Desktop MCP
+ * resolves the selected node from its authenticated session rather than from
+ * a REST file lookup, so the reserved file-key segment is never sent to MCP;
+ * it only keeps the selection on the existing ParsedFigmaSource path.
+ */
+export function figmaDesktopSelectionSource(selection: Pick<FigmaDesktopSelection, "id">): string {
+  return `https://www.figma.com/design/desktopselection/current-selection?node-id=${selection.id.replace(":", "-")}`;
 }
 
 /**
@@ -69,8 +93,7 @@ export async function buildFigmaDesktopSourceSnapshot(
   // not a REST-style arbitrary node lookup; requesting an unselected node is
   // rejected by the server. Read the authenticated current selection first,
   // then enforce any URL node-id binding below.
-  const desktopSelectionArgs = {};
-  const metadata = await callDesktopTool(client, DESKTOP_TOOLS.metadata, desktopSelectionArgs, context.signal);
+  const metadata = await callDesktopTool(client, DESKTOP_TOOLS.metadata, {}, context.signal);
   const selection = parseDesktopSelection(metadata);
   if (selection === undefined) {
     throw new DesignFlowError(
@@ -275,7 +298,7 @@ function textFromContent(content: unknown): string {
     .join("\n");
 }
 
-function parseDesktopSelection(content: unknown): DesktopSelection | undefined {
+function parseDesktopSelection(content: unknown): FigmaDesktopSelection | undefined {
   const text = textFromContent(content);
   const selected = /^\s*-\s*(\d+:\d+)\s*:\s*(.+?)\s*$/m.exec(text);
   if (selected === null) return undefined;

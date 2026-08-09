@@ -2,6 +2,7 @@
 import {
   banner,
   destinationMenu,
+  designMenu,
   menu,
   shellHelp,
   type Terminal,
@@ -14,6 +15,11 @@ import {
   findDestinationCandidates,
   type DestinationCandidate,
 } from "../services/destinations";
+import {
+  designFromCurrentSelection,
+  designFromUrl,
+  type InteractiveDesign,
+} from "../services/figma-selection";
 
 import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
@@ -25,12 +31,14 @@ import { runCommand } from "./run";
 export function interactiveRunOptions(
   project: ProjectIdentity | null,
   destination?: DestinationCandidate,
+  design?: InteractiveDesign,
 ): {
   interactive: true;
   offerArtifactView: true;
   productExperience: true;
   projectId?: string;
   destination?: DestinationCandidate;
+  design?: InteractiveDesign;
 } {
   return {
     interactive: true,
@@ -38,7 +46,68 @@ export function interactiveRunOptions(
     productExperience: true,
     ...(project !== null ? { projectId: project.id } : {}),
     ...(destination !== undefined ? { destination } : {}),
+    ...(design !== undefined ? { design } : {}),
   };
+}
+
+export async function selectDesign(
+  context: CliContext,
+  terminal: Terminal,
+): Promise<InteractiveDesign | null> {
+  for (;;) {
+    terminal.print(designMenu());
+    const answer = (await terminal.ask(
+      "Design",
+      ["Current Figma selection", "Paste Figma URL", "Back"],
+    ))
+      .trim()
+      .toLowerCase();
+
+    if (answer === "back" || answer === "b" || answer === "q") return null;
+
+    const current =
+      answer.length === 0 ||
+      answer === "1" ||
+      answer === "current" ||
+      answer === "current figma selection";
+    const paste =
+      answer === "2" ||
+      answer === "paste" ||
+      answer === "paste figma url";
+
+    if (current) {
+      if (context.figmaConnectionStatus() !== "connected") {
+        terminal.print();
+        terminal.print("No Figma selection found.");
+        terminal.print("Select a frame in Figma or paste a Figma URL.");
+        continue;
+      }
+
+      const selection = await context.getCurrentFigmaSelection();
+      if (selection === null) {
+        terminal.print();
+        terminal.print("No Figma selection found.");
+        terminal.print("Select a frame in Figma or paste a Figma URL.");
+        continue;
+      }
+
+      return designFromCurrentSelection(selection);
+    }
+
+    if (paste) {
+      const raw = await terminal.ask("Figma URL");
+      try {
+        return designFromUrl(raw);
+      } catch {
+        terminal.print();
+        terminal.print("That is not a valid Figma URL. Try again.");
+        continue;
+      }
+    }
+
+    terminal.print();
+    terminal.print("Choose Current Figma selection, Paste Figma URL, or Back.");
+  }
 }
 
 export async function selectDestination(
@@ -90,8 +159,17 @@ export async function interactiveCommand(
 
   terminal.print(banner());
 
+  let design: InteractiveDesign | null = null;
+  let destination: DestinationCandidate | null = null;
+
   for (;;) {
-    terminal.print(menu(project, { status: context.figmaConnectionStatus() }));
+    terminal.print(
+      menu(project, {
+        status: context.figmaConnectionStatus(),
+        ...(design !== null ? { design: design.label } : {}),
+        ...(destination !== null ? { destination: destination.label } : {}),
+      }),
+    );
 
     const choice = (await terminal.ask("Command", ["Enter", "q", "?"]))
       .trim()
@@ -127,18 +205,18 @@ export async function interactiveCommand(
         continue;
       }
 
-      const destinations = await findDestinationCandidates(context, project);
-      const destination = await selectDestination(terminal, destinations);
+      if (design === null) {
+        design = await selectDesign(context, terminal);
+        if (design === null) continue;
+      }
+
+      if (destination === null) {
+        const destinations = await findDestinationCandidates(context, project);
+        destination = await selectDestination(terminal, destinations);
+      }
       if (destination === null) {
         terminal.print();
         terminal.print("Choose one of the destinations shown to continue.");
-        continue;
-      }
-
-      if (context.figmaAutoDetected && context.figmaConnectionStatus() !== "connected") {
-        terminal.print();
-        terminal.print("Figma Desktop is not connected.");
-        terminal.print("Open Figma Desktop and enable Dev Mode, then try again.");
         continue;
       }
 
@@ -148,7 +226,7 @@ export async function interactiveCommand(
         context,
         terminal,
         worker.id,
-        interactiveRunOptions(project, destination),
+        interactiveRunOptions(project, destination, design),
       );
       continue;
     }
