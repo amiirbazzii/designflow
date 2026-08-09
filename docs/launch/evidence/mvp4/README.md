@@ -313,3 +313,38 @@ again before workflow creation with trace
 was 629/31/660 tokens. Fresh-home state remains executions `0`, parents `0`,
 approvals `0`, events `0`. **Live classification: BLOCKED —
 COORDINATOR_OUTPUT_RELIABILITY. No further Journey 6 launch is permitted.**
+
+### MVP-4U final audit — 2026-08-09
+
+Final audit baseline: main / 8ed4c7362c4ffeacea2a8846f2fee38285bbe35b,
+designflow-ai@0.1.1. Fresh installed CLI:
+/tmp/designflow-mvp4s-install/node_modules/.bin/designflow; package freshness
+PASS; package SHA e1e1193bc2cdc485bedeccd95ecc09ce9065792b600bfdaa20d3479ed7ec5696;
+binary SHA 0f413192cf71b3730acdb060a47dd7ea57f2f00f12058341e604b35468fb9d5b.
+
+Canonical final regression: 2,509 individual tests passed, 1 skipped, 0
+failed across 52 Turbo test tasks; build 26/26, typecheck 44/44, lint 26/26,
+smoke, and freshness passed. The 384-pass figure is the CLI/agents
+package-level summary; 2,463 is an earlier source snapshot.
+
+Historical state has 51 executions including two running, one waiting approval,
+and one pending approval, all archived acceptance-home residue. Fresh MVP-4T
+state has one terminal cancelled execution and zero active executions, sessions,
+approvals, writes, or snapshots. Sampled artifacts retain provenance, hashes,
+and correction lineage. The one historical reconciliation warning is the
+feedback-loop-revalidation-gate identity at versions 3 and 4, a cosmetic
+ambiguous-version conflict with no artifact loss. Exhaustion records preserve
+typed terminal/no-approval/no-write facts; missing failures[] detail is
+post-MVP observability debt.
+
+Security scans found no credentials, auth headers, raw provider bodies,
+environment dumps, or secret diagnostics. No acceptance-owned process or
+temporary proposal/preflight/correction workspace remained. Coordinator
+reliability, final Journey 6 recapture, and live trusted-reference reuse proof
+are documented non-blocking MVP limitations. Stale historical rows and missing
+exhaustion detail are post-MVP debts; the Northstar assertion is fixture-only
+debt; rollback and root cancellation are resolved PASS results.
+
+**MVP-4 COMPLETE.** The final canonical Journey 6 result remains not fully
+accepted and is not rewritten as CORRECTION_APPLIED_AND_IMPROVED. No MVP-5
+implementation started.

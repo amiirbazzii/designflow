@@ -1251,3 +1251,74 @@ existing unit/integration forced-second-interrupt coverage remains sufficient.
 **MVP-4T: PASS.** Canonical Coordinator output reliability remains a known
 MVP limitation recorded in the MVP-4S evidence; it was not changed during this
 cancellation acceptance.
+
+## 36. MVP-4U — final artifact, trace, security, state audit — 2026-08-09
+
+Final read-only audit: main, HEAD 8ed4c7362c4ffeacea2a8846f2fee38285bbe35b,
+designflow-ai@0.1.1. Installed CLI /tmp/designflow-mvp4s-install/node_modules/.bin/designflow
+reported DesignFlow 0.1.1; package freshness PASS; package SHA
+e1e1193bc2cdc485bedeccd95ecc09ce9065792b600bfdaa20d3479ed7ec5696; binary SHA
+0f413192cf71b3730acdb060a47dd7ea57f2f00f12058341e604b35468fb9d5b. Product
+source was clean at the audit baseline.
+
+The canonical final regression is 2,509 individual tests passed, 1 skipped,
+0 failed across 52 successful Turbo test tasks; build 26/26, typecheck 44/44,
+lint 26/26, smoke PASS, and freshness PASS. The 384 pass / 1 live-provider
+skip figure was the CLI/agents package-level runner summary, not the
+repository-wide individual total. The earlier 2,463 total came from an earlier
+source snapshot. These are different runner scopes/source snapshots, not a
+regression.
+
+Historical state remains queryable: 51 executions (18 completed, 30 failed,
+2 running, 1 waiting_approval), 44 sessions, and 1 pending approval. These
+are archived acceptance-home rows, not shipped default state, and were not
+deleted. Fresh MVP-4T state contains only execution
+ac818282-3ae9-4d75-a444-f2e1aa49f67a, terminal cancelled, with zero active
+execution/session/approval. The pending historical execution retains its
+proposal artifact/version/hash, project identity, baseline fingerprint, node,
+and expiry binding. Historical residue is post-MVP state-store debt; no fresh
+default-home approval is actionable.
+
+Sampled specification, implementation, rollback, correction, and later
+correction artifacts retain execution/workflow/capability provenance, hashes,
+and parent/child lineage. The historical ArtifactReconciliationError on child
+224ec164-15d7-4b9b-8ce7-586614469557 is COSMETIC / NON-BLOCKING: the logical
+feedback-loop-revalidation-gate (feedback.revalidation-gate) appears at
+versions 3 and 4 in the merged final set, an ambiguous-version conflict.
+Fourteen child artifacts and 29 version events remained persisted; no loss,
+corruption, or destroyed auditability was found. Missing persisted per-attempt
+failures[] for ERR_PROPOSAL_ATTEMPTS_EXHAUSTED is POST-MVP observability debt;
+terminal error, bounded retries, no approval, and no writes remain recorded.
+
+Safe acceptance-home scans found no key, bearer token, auth header, raw provider
+response, environment dump, or secret diagnostic. No acceptance-owned
+DesignFlow/Figma MCP/preview/Vite/esbuild/Playwright/Chromium/helper process
+or proposed/preflight/correction workspace remained. Registered-project root
+identity, proposal hashes, scoped paths, snapshot-before-apply, validation,
+and byte-precise rollback evidence remained intact. No traversal, symlink
+escape, unauthorized path, or post-cancellation write was found.
+
+| Audit item | Classification |
+| --- | --- |
+| Coordinator canonical reliability | NON-BLOCKING MVP LIMITATION; strict and fail-closed |
+| Journey 6 final improved recapture | NON-BLOCKING MVP LIMITATION; not obtained |
+| Trusted-reference live proof | NON-BLOCKING MVP LIMITATION; implementation/tests only |
+| Exhaustion failures[] persistence | POST-MVP DEBT; terminal truth remains sufficient |
+| ArtifactReconciliationError | NON-BLOCKING / COSMETIC |
+| Stale historical rows | POST-MVP DEBT; archived home only |
+| Northstar FeatureCard assertion | FIXTURE-ONLY DEBT |
+| Rollback | RESOLVED; LIVE_ROLLBACK_ACCEPTANCE = PASS |
+| Root cancellation | RESOLVED; LIVE_ROOT_CANCELLATION_ACCEPTANCE = PASS |
+
+Journey 6 remains historically not fully accepted. MVP-4 did prove meaningful
+implementation generation, structural/content/coverage gates, proposed-state
+compile validation, manual approval, snapshot/apply, required validation,
+visual comparison, correction eligibility/preflight, correction approval,
+mounted build PASS, one-iteration bound, rollback, trusted-reference
+implementation/tests, and root cancellation. It did not obtain a final
+product-owned CORRECTION_APPLIED_AND_IMPROVED recapture.
+
+No safety-critical, state-integrity, approval-replay, credential, rollback,
+or cancellation defect remains. **MVP-4 COMPLETE**, with the known limitations
+and debts explicitly documented. Freeze MVP-4 architecture; no MVP-5 work
+started by this audit.

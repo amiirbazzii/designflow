@@ -818,3 +818,30 @@ retrieval, before implementation proposal, approval, snapshot, apply, or
 visual correction. Execution `ac818282-3ae9-4d75-a444-f2e1aa49f67a` ended
 `cancelled` after one SIGINT with exit code `130`; no correction child or
 iteration was created. Project state and fingerprint remained unchanged.
+
+### MVP-4U final audit — 2026-08-09
+
+The final audit found no correction, rollback, or cancellation integrity
+defect. Sampled correction children retain parent/child lineage, execution and
+workflow IDs, artifact types, versioned hashes, provider/capability provenance,
+exact correction proposal bindings, snapshot evidence, and mounted-validation
+results.
+
+The historical ArtifactReconciliationError on child
+224ec164-15d7-4b9b-8ce7-586614469557 is a non-blocking final-set conflict:
+feedback-loop-revalidation-gate (feedback.revalidation-gate) appears at
+versions 3 and 4 in the merged set. Fourteen child artifacts and 29 version
+events remain persisted; no artifact loss or corruption was found. Missing
+persisted proposal-attempt failures[] is post-MVP observability debt because
+the terminal record still states typed exhaustion, bounded retry count, no
+approval, and no writes.
+
+The final canonical Journey 6 did not reach the product-owned improved
+post-correction recapture, so its historical classification remains not fully
+accepted. Persisted trusted-reference handoff and revalidation behavior are
+implemented/tested, but their final live proof remains an explicit acceptance
+limitation. Rollback and root cancellation remain PASS. **MVP-4 COMPLETE**
+under the final audit rule: remaining issues are documented fail-closed
+limitations, cosmetic/history debt, or fixture-only debt, with no safety,
+state-integrity, approval-replay, credential, filesystem, rollback, or
+cancellation blocker.

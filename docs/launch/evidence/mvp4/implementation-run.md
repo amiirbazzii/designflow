@@ -502,3 +502,25 @@ exit code `130`. Persisted execution state is `cancelled`; no pending
 approval, snapshot, project write, correction child, or post-cancel node
 started. The fixture remained at clean commit `992d7d5` and fingerprint
 `97ce9bb0…`, with test/build green. **Root cancellation acceptance: PASS.**
+
+### MVP-4U final audit — 2026-08-09
+
+The shipped baseline is main at 8ed4c7362c4ffeacea2a8846f2fee38285bbe35b,
+version 0.1.1, with a fresh installed CLI and package-freshness PASS. The
+canonical regression is 2,509 individual tests passed, 1 skipped, 0 failed
+across 52 Turbo test tasks; the 384-pass figure is the package-level
+CLI/agents summary, and 2,463 is an earlier source snapshot.
+
+The historical acceptance home contains archived running/waiting rows and one
+pending approval, but the fresh cancellation home is terminally clean. The
+pending historical approval retains proposal/version/hash, project identity,
+baseline fingerprint, and expiry; no fresh/default approval is actionable.
+This residue is retained for queryability and is post-MVP state-store debt.
+
+Implementation and rollback samples retain proposal hashes, registered project
+scope, workflow/capability provenance, snapshot/apply evidence, and required
+validation. Invalid/exhausted proposals caused no approval and no project
+writes. The terminal failures[] detail remains observability debt only. The
+final Journey 6 was not fully accepted; the implementation, approval, apply,
+validation, correction-scope, and rollback machinery remain truthfully recorded
+without converting the final outcome to PASS.
