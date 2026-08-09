@@ -358,6 +358,30 @@ export const productActionDecisionSchema = z.discriminatedUnion("action", [
 
 export type ProductActionDecision = z.infer<typeof productActionDecisionSchema>;
 
+export const COORDINATOR_OUTPUT_ERROR_CODES = [
+  "ERR_COORDINATOR_OUTPUT_EMPTY",
+  "ERR_COORDINATOR_OUTPUT_JSON_INVALID",
+  "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID",
+  "ERR_COORDINATOR_ACTION_INVALID",
+  "ERR_COORDINATOR_ACTION_NOT_ALLOWED",
+  "ERR_COORDINATOR_OUTPUT_TRUNCATED",
+] as const;
+
+export type CoordinatorOutputErrorCode =
+  (typeof COORDINATOR_OUTPUT_ERROR_CODES)[number];
+
+export interface CoordinatorOutputValidationFailure {
+  readonly errorCode: CoordinatorOutputErrorCode;
+  readonly schemaPath?: string | undefined;
+  readonly returnedAction?: string | undefined;
+  readonly outputLength: number;
+  readonly truncated: boolean;
+}
+
+export type ProductActionValidation =
+  | { readonly decision: ProductActionDecision }
+  | { readonly failure: CoordinatorOutputValidationFailure };
+
 const productActionTransportSchema = z
   .object({
     action: z.enum(PRODUCT_ACTIONS),
@@ -367,34 +391,153 @@ const productActionTransportSchema = z
   })
   .strict();
 
-/**
- * Converts the flat provider response into the product-action union,
- * refusing any action outside the allowed set supplied for THIS request.
- */
+function boundedOutputLength(raw: unknown): number {
+  if (typeof raw === "string") return Math.min(raw.length, 100_000);
+  if (raw === undefined || raw === null) return 0;
+
+  try {
+    return Math.min(JSON.stringify(raw).length, 100_000);
+  } catch {
+    return 0;
+  }
+}
+
+function schemaPath(path: readonly PropertyKey[]): string | undefined {
+  const rendered = path
+    .map((part) => String(part).replace(/[^a-zA-Z0-9_.-]/g, ""))
+    .join(".")
+    .slice(0, 160);
+  return rendered.length > 0 ? rendered : undefined;
+}
+
+function safeReturnedAction(raw: unknown): string | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const action = (raw as { action?: unknown }).action;
+  if (typeof action !== "string" || !/^[a-zA-Z0-9_:-]{1,80}$/.test(action)) return undefined;
+  if (/(?:sk-|api[_-]?key|bearer|token|secret)/i.test(action)) return undefined;
+  return action;
+}
+
+function invalid(
+  raw: unknown,
+  errorCode: CoordinatorOutputErrorCode,
+  extra: Pick<CoordinatorOutputValidationFailure, "schemaPath" | "returnedAction"> &
+    Partial<Pick<CoordinatorOutputValidationFailure, "truncated">> = {},
+): ProductActionValidation {
+  return {
+    failure: {
+      errorCode,
+      outputLength: boundedOutputLength(raw),
+      truncated: extra.truncated ?? false,
+      ...(extra.schemaPath !== undefined ? { schemaPath: extra.schemaPath } : {}),
+      ...(extra.returnedAction !== undefined ? { returnedAction: extra.returnedAction } : {}),
+    },
+  };
+}
+
+/** Strictly validates one untrusted Coordinator transport response. */
+export function validateProductActionTransport(
+  raw: unknown,
+  allowedActions: readonly ProductAction[],
+): ProductActionValidation {
+  if (raw === undefined || raw === null) {
+    return invalid(raw, "ERR_COORDINATOR_OUTPUT_EMPTY");
+  }
+
+  let candidate: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      candidate = JSON.parse(raw) as unknown;
+    } catch {
+      return invalid(raw, "ERR_COORDINATOR_OUTPUT_JSON_INVALID");
+    }
+  }
+
+  const returnedAction = safeReturnedAction(candidate);
+  if (returnedAction !== undefined && !PRODUCT_ACTIONS.includes(returnedAction as ProductAction)) {
+    return invalid(candidate, "ERR_COORDINATOR_ACTION_INVALID", { returnedAction });
+  }
+
+  const parsed = productActionTransportSchema.safeParse(candidate);
+  if (!parsed.success) {
+    return invalid(candidate, "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID", {
+      schemaPath: schemaPath(parsed.error.issues[0]?.path ?? []),
+      returnedAction,
+    });
+  }
+
+  const decision = parsed.data;
+  if (!allowedActions.includes(decision.action)) {
+    return invalid(candidate, "ERR_COORDINATOR_ACTION_NOT_ALLOWED", {
+      returnedAction: decision.action,
+    });
+  }
+
+  if (decision.action === "request_clarification") {
+    if (decision.question === null || decision.question.trim().length === 0) {
+      return invalid(candidate, "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID", {
+        schemaPath: "question",
+        returnedAction: decision.action,
+      });
+    }
+    if (decision.reason !== null) {
+      return invalid(candidate, "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID", {
+        schemaPath: "reason",
+        returnedAction: decision.action,
+      });
+    }
+    return {
+      decision: productActionDecisionSchema.parse({
+        action: decision.action,
+        question: decision.question,
+        reasoningSummary: decision.reasoningSummary,
+      }),
+    };
+  }
+
+  if (decision.action === "decline") {
+    if (decision.reason === null || decision.reason.trim().length === 0) {
+      return invalid(candidate, "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID", {
+        schemaPath: "reason",
+        returnedAction: decision.action,
+      });
+    }
+    if (decision.question !== null) {
+      return invalid(candidate, "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID", {
+        schemaPath: "question",
+        returnedAction: decision.action,
+      });
+    }
+    return {
+      decision: productActionDecisionSchema.parse({
+        action: decision.action,
+        reason: decision.reason,
+        reasoningSummary: decision.reasoningSummary,
+      }),
+    };
+  }
+
+  if (decision.question !== null || decision.reason !== null) {
+    return invalid(candidate, "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID", {
+      schemaPath: decision.question !== null ? "question" : "reason",
+      returnedAction: decision.action,
+    });
+  }
+  return {
+    decision: productActionDecisionSchema.parse({
+      action: decision.action,
+      reasoningSummary: decision.reasoningSummary,
+    }),
+  };
+}
+
+/** Backward-compatible strict parser used by existing callers and tests. */
 export function productActionFromTransport(
   raw: unknown,
   allowedActions: readonly ProductAction[],
 ): ProductActionDecision | undefined {
-  const parsed = productActionTransportSchema.safeParse(raw);
-  if (!parsed.success) return undefined;
-
-  const decision = parsed.data;
-  if (!allowedActions.includes(decision.action)) return undefined;
-
-  if (decision.action === "request_clarification") {
-    if (decision.question === null || decision.question.trim().length === 0) return undefined;
-    if (decision.reason !== null) return undefined;
-    return productActionDecisionSchema.parse({ action: decision.action, question: decision.question, reasoningSummary: decision.reasoningSummary });
-  }
-
-  if (decision.action === "decline") {
-    if (decision.reason === null || decision.reason.trim().length === 0) return undefined;
-    if (decision.question !== null) return undefined;
-    return productActionDecisionSchema.parse({ action: decision.action, reason: decision.reason, reasoningSummary: decision.reasoningSummary });
-  }
-
-  if (decision.question !== null || decision.reason !== null) return undefined;
-  return productActionDecisionSchema.parse({ action: decision.action, reasoningSummary: decision.reasoningSummary });
+  const result = validateProductActionTransport(raw, allowedActions);
+  return "decision" in result ? result.decision : undefined;
 }
 
 const PRODUCT_ACTION_DESCRIPTIONS: Record<ProductAction, string> = {
@@ -418,6 +561,16 @@ export interface ProductActionPromptInput {
   /** Safe, host-derived facts only — never secrets, ids, or raw config. */
   readonly facts: readonly ProductActionFact[];
   readonly clarifications?: readonly DecisionPromptClarification[] | undefined;
+  readonly repairFeedback?: ProductActionRepairFeedback | undefined;
+}
+
+export interface ProductActionRepairFeedback {
+  readonly attempt: number;
+  readonly maxAttempts: number;
+  readonly errorCode: CoordinatorOutputErrorCode;
+  readonly schemaPath?: string | undefined;
+  readonly returnedAction?: string | undefined;
+  readonly allowedActions: readonly ProductAction[];
 }
 
 function productActionResponseSchema(allowedActions: readonly ProductAction[]): JsonSchemaObject {
@@ -450,9 +603,25 @@ export function buildProductActionPrompt(input: ProductActionPromptInput): {
     "",
     "You may only choose from the actions listed above. You cannot name workflows, " +
       "tools, commands, or files. Choosing prepare_implementation never writes " +
-      "anything by itself — a separate explicit approval always follows.",
+    "anything by itself — a separate explicit approval always follows.",
     "",
     REASONING_INSTRUCTION,
+    ...(input.repairFeedback === undefined
+      ? []
+      : [
+          "",
+          "Your previous Coordinator response was invalid.",
+          `Attempt: ${input.repairFeedback.attempt} of ${input.repairFeedback.maxAttempts}`,
+          `Failure: ${input.repairFeedback.errorCode}`,
+          ...(input.repairFeedback.schemaPath !== undefined
+            ? [`Schema field: ${input.repairFeedback.schemaPath}`]
+            : []),
+          ...(input.repairFeedback.returnedAction !== undefined
+            ? [`Returned action: ${input.repairFeedback.returnedAction}`]
+            : []),
+          `Allowed actions: ${input.repairFeedback.allowedActions.join(", ")}`,
+          "Return only an object satisfying the required Coordinator schema.",
+        ]),
   ].join("\n");
 
   const user = [

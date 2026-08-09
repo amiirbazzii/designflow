@@ -1063,3 +1063,99 @@ MVP-4R adds an optional backward-compatible `trustedVisualReference` containing 
 Stage-5 failures now persist a bounded sanitized `{code, phase, message}` diagnostic (message maximum 500 characters; no credentials, auth headers, absolute paths, raw provider bodies, or stack traces). Final reports preserve `correctionApplied`, project-validation status, and honest visual inconclusive state after visual infrastructure failure; no screenshot is fabricated and no iteration 2 starts. Focused identity/reuse/sanitization tests, full regression, smoke, and freshness passed. The required credential gate still reports `OPENROUTER_API_KEY=missing`, so no final credentialed Journey 6 or Figma substitute run was started.
 
 **MVP-4R: `BLOCKED_EXTERNAL — OPENROUTER_CREDENTIAL_MISSING` for live acceptance; implementation/regression gates pass. Journey 6 remains `FAIL — CORRECTION_APPLIED_RECAPTURE_INCONCLUSIVE` from MVP-4Q.** MVP-4K rollback acceptance remains `PASS`; SIGINT acceptance remains unstarted.
+## 36. MVP-4R live acceptance completion attempt — 2026-08-09
+
+The required credential gate passed in the exact launch environment:
+`OPENROUTER_API_KEY=present` (presence only; the value was never printed,
+read into persisted state, or dumped). One bounded provider capability probe
+against `z-ai/glm-5.2` returned HTTP 200 in 5 seconds; no 401 or 402 was
+observed and the request completed below 120 seconds.
+
+The frozen product source remained `cbb918c30a58768708b03f086e1ae513906dfaa6`
+on `main`, version `designflow-ai@0.1.1`. The stale installed CLI was replaced
+only by repacking this exact source commit. Installed binary:
+`/Users/wallex/.local/lib/node_modules/designflow-ai/dist/main.js`, SHA-256
+`fccd466a55a9e39cd38150a63a91d8f8456e16fb80b68abcdf1625f91dc467e2`;
+package tarball SHA-256 `41f457cf651ba0a3c47dda146d8f37b0737dd029d9e0cae8dac5ea9de7f236e1`.
+The installed bundle contains the trusted-reference handoff, exact persisted
+resolution, identity/hash/provenance checks, `referenceSource`, and bounded
+revalidation diagnostics.
+
+`designflow settings` proved the frozen profiles: implementation and visual
+correction use OpenRouter `z-ai/glm-5.2`, max output tokens 8000, timeout
+120000 ms; coordinator, Figma Specification, and Visual Validation remain on
+their unchanged built-in profiles. The disposable Spendly fixture was restored
+to clean HEAD `992d7d518a2394862544547a9d28deff15ed14ed`; `npm test` and
+`npm run build` passed. The current inspector fingerprint is
+`97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`.
+
+Figma Desktop was healthy and selected the Spendly file/frame
+`E958ARSSBoJjblLhxZQVSU / 1026:6098` (`iPhone 16 Pro Max - 14`); read-only
+metadata retrieval succeeded. A fresh disposable DesignFlow home was used
+because the historical home contained stale interrupted executions; the fresh
+home contained no prior executions, parents, approvals, or active workflows.
+
+The first CLI prompt trial was rejected before workflow creation. The single
+actual Journey 6 launch, through the canonical public command
+`designflow run design-engineer --visual-correction=once`, also stopped before
+workflow creation with the persisted session status `declined` and sanitized
+message: `The model's answer could not be used.` Trace ID:
+`c5c45f5a-45de-47e8-b5a1-fd3dbf40ba94`. No parent run ID, implementation
+attempt, approval, apply, parent visual evidence, correction eligibility,
+correction child, correction proposal, runtime preflight, correction approval,
+correction apply, mounted validation, trusted-reference handoff, artifact
+resolution, Stage 5 capture, deterministic comparison, or Visual Validation
+Specialist result was produced. Product fresh-reference acquisition count is
+`0` because Stage 5 was never entered.
+
+The fixture remained byte-clean after the declined launch. The fresh home has
+zero executions, zero correction parents, zero approvals, and no waiting
+session. No acceptance preview/browser orphan or proposed/preflight temporary
+directory was found; persisted credential, auth-header, raw-provider-response,
+and unauthorized-path scans were zero. MVP-4K rollback acceptance remains
+`PASS`. This run is blocked by a newly observed frozen-profile coordinator
+model-output failure; no model, source, architecture, or retry mechanism was
+changed. **MVP-4R: BLOCKED_EXTERNAL — COORDINATOR_MODEL_OUTPUT_INVALID.**
+
+## MVP-4R Coordinator Entry-Gate Diagnostic and bounded relaunch — 2026-08-09
+
+Trace `c5c45f5a-45de-47e8-b5a1-fd3dbf40ba94` used OpenRouter
+`openai/gpt-4o-mini` under `design-engineer-coordinator-default`; the provider
+call and classifier completed successfully. Persisted usage was 629 input,
+37 output, 666 total tokens. The frozen strategy reached the generic
+`productActionFromTransport(...) === undefined` decline branch. The raw model
+body was not persisted, so no credential or raw response was placed in evidence.
+
+The frozen contract uses the strict four-field coordinator schema and the
+allowed actions `create_specification`, `prepare_implementation`,
+`request_clarification`, and `decline`. Prompt, enum, required/nullable fields,
+structured-output configuration, and parser were inspected; no deterministic
+prompt/schema mismatch or parser defect was found. The coordinator has no
+retry/repair behavior. The persisted successful model-call record is bounded
+evidence against transport timeout, HTTP failure, empty transport, and JSON
+extraction failure, but does not expose the rejected field shape.
+
+The one isolated coordinator-only probe used the same frozen coordinator
+profile/provider/model/schema/request/action computation and did not invoke the
+workflow engine. It returned normalized provider success, structured extraction
+PASS, schema validation PASS, allowed-action validation PASS, and
+`prepare_implementation`; the host mapped it to `run_workflow`. Probe usage was
+572 input, 42 output, 614 total tokens, 37.6 seconds. This temporarily proved
+the original failure as **A. TRANSIENT_MODEL_OUTPUT_VARIANCE** under the
+specified decision matrix.
+
+The permitted canonical public command was then launched exactly once:
+`designflow run design-engineer --visual-correction=once`. It again declined
+before workflow creation. Second trace:
+`a7f825a9-96fc-4f21-b116-fc4cef164230`; second model call was OpenRouter
+`openai/gpt-4o-mini`, same coordinator profile, provider success, 2445.75 ms,
+629 input / 31 output / 660 total tokens. No workflow engine call occurred.
+This repeated unusable coordinator output changes the live gate to
+**BLOCKED — COORDINATOR_OUTPUT_RELIABILITY**. Journey 6 was not rerun.
+
+Zero-workflow proof after both declined sessions: executions `0`, feedback-loop
+parents `0`, approvals `0`, and events `0`. The fixture remains at clean
+`992d7d518a2394862544547a9d28deff15ed14ed` with fingerprint
+`97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`; tests and
+build passed. No product source, prompt, schema, model, provider configuration,
+or fixture was changed.

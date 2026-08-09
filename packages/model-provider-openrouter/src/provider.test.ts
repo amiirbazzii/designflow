@@ -342,17 +342,17 @@ describe("HTTP failure normalisation", () => {
     ).rejects.toMatchObject({ code: "ERR_MODEL_RESPONSE_INVALID" });
   });
 
-  test("no choices normalises to ERR_MODEL_OUTPUT_INVALID", async () => {
+  test("no choices normalises to ERR_MODEL_OUTPUT_EMPTY", async () => {
     const { endpoint } = await mockServer((_req, res) =>
       jsonResponse(res, 200, { id: "gen-1", model: "m", choices: [] }),
     );
 
     await expect(
       new OpenRouterProvider({ apiKey: "sk-test", endpoint }).generate(REQUEST, CONTEXT),
-    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_INVALID" });
+    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_EMPTY" });
   });
 
-  test("empty content normalises to ERR_MODEL_OUTPUT_INVALID", async () => {
+  test("empty content normalises to ERR_MODEL_OUTPUT_EMPTY", async () => {
     const { endpoint } = await mockServer((_req, res) =>
       jsonResponse(res, 200, {
         id: "gen-1",
@@ -363,10 +363,10 @@ describe("HTTP failure normalisation", () => {
 
     await expect(
       new OpenRouterProvider({ apiKey: "sk-test", endpoint }).generate(REQUEST, CONTEXT),
-    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_INVALID" });
+    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_EMPTY" });
   });
 
-  test("content that is not valid JSON normalises to ERR_MODEL_OUTPUT_INVALID", async () => {
+  test("content that is not valid JSON normalises to ERR_MODEL_OUTPUT_JSON_INVALID", async () => {
     const { endpoint } = await mockServer((_req, res) =>
       jsonResponse(res, 200, {
         id: "gen-1",
@@ -377,7 +377,21 @@ describe("HTTP failure normalisation", () => {
 
     await expect(
       new OpenRouterProvider({ apiKey: "sk-test", endpoint }).generate(REQUEST, CONTEXT),
-    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_INVALID" });
+    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_JSON_INVALID" });
+  });
+
+  test("a length finish reason normalises to ERR_MODEL_OUTPUT_TRUNCATED", async () => {
+    const { endpoint } = await mockServer((_req, res) =>
+      jsonResponse(res, 200, {
+        id: "gen-1",
+        model: "m",
+        choices: [{ finish_reason: "length", message: { role: "assistant", content: "{" } }],
+      }),
+    );
+
+    await expect(
+      new OpenRouterProvider({ apiKey: "sk-test", endpoint }).generate(REQUEST, CONTEXT),
+    ).rejects.toMatchObject({ code: "ERR_MODEL_OUTPUT_TRUNCATED" });
   });
 
   test("no error carries a stack, a raw body, or the credential", async () => {

@@ -222,6 +222,18 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "That worker's AI sent back something unusable.",
     suggestion: TRY_AGAIN,
   },
+  ERR_MODEL_OUTPUT_EMPTY: {
+    problem: "That worker's AI returned no answer.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MODEL_OUTPUT_JSON_INVALID: {
+    problem: "That worker's AI returned malformed structured data.",
+    suggestion: TRY_AGAIN,
+  },
+  ERR_MODEL_OUTPUT_TRUNCATED: {
+    problem: "That worker's AI answer was cut off before it was complete.",
+    suggestion: TRY_AGAIN,
+  },
   ERR_MODEL_AUTHENTICATION: {
     problem: "That worker's AI rejected the configured credential.",
     suggestion:
@@ -266,6 +278,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
   ERR_AGENT_MODEL_BUDGET_EXCEEDED: {
     problem: "That worker asked its AI for too much at once and was stopped.",
     suggestion: NOTHING_STARTED_REPORT,
+  },
+  ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED: {
+    problem: "The request could not produce a usable routing decision.",
+    suggestion: "Nothing was started. Try again, or report this if it repeats.",
   },
 
   // Session failures. A session is the conversation behind a clarifying

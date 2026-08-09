@@ -35,6 +35,7 @@ export const AGENT_ERROR_CODES = [
   "ERR_AGENT_INVOCATION_OUTPUT_INVALID",
   "ERR_AGENT_INVOCATION_FAILED",
   "ERR_AGENT_MODEL_SERVICE_UNAVAILABLE",
+  "ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED",
 ] as const;
 
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[number];
@@ -163,5 +164,18 @@ export class SpecializedAgentOutputInvalidError extends DesignFlowError {
     );
     this.name = "SpecializedAgentOutputInvalidError";
     Object.setPrototypeOf(this, SpecializedAgentOutputInvalidError.prototype);
+  }
+}
+
+/** The Coordinator used both bounded attempts without producing a decision. */
+export class CoordinatorOutputAttemptsExhaustedError extends DesignFlowError {
+  public constructor(diagnostics: readonly object[]) {
+    super(
+      "ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED",
+      "The Coordinator could not produce a usable decision within the allowed attempts.",
+      { coordinatorDiagnostics: diagnostics.slice(0, 2) },
+    );
+    this.name = "CoordinatorOutputAttemptsExhaustedError";
+    Object.setPrototypeOf(this, CoordinatorOutputAttemptsExhaustedError.prototype);
   }
 }

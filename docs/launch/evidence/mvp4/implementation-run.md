@@ -437,3 +437,38 @@ Run `0cda5b14-6453-4584-982b-be1bfc23542c` on frozen `316fb01`, GLM implementati
 No new implementation run was authorized after the credential gate reported `OPENROUTER_API_KEY=missing`. The source fix was validated independently. Parent visual evidence is converted into an optional correction input reference using the exact versioned `figma-source-snapshot`: logical artifact ID/type, content-addressed payload identity, parent image content hash, Figma file/node identity, and trusted real-reference provenance. The correction child resolves that immutable payload directly from the artifact store rather than searching its local artifact list or choosing the latest screenshot.
 
 The prior Stage-5 throw was traced to `readArtifact` in `seedStage5Inputs`, which searched only child `parentArtifacts` and raised `ERR_MISSING_UPSTREAM_ARTIFACT` before the first seed write; the prior catch discarded it. MVP-4R records bounded sanitized diagnostics with phase and code, and final child reports preserve applied/project-validation state when visual validation is inconclusive. Focused tests and full regression passed; no product fixture mutation or Figma call was made after the missing credential gate.
+## MVP-4R live acceptance completion attempt — 2026-08-09
+
+The required credential check passed (`OPENROUTER_API_KEY=present`) and the
+only bounded provider probe returned HTTP 200 for `z-ai/glm-5.2` in 5 seconds.
+The exact frozen source commit was packaged and installed; the installed CLI
+is `/Users/wallex/.local/lib/node_modules/designflow-ai/dist/main.js` with
+SHA-256 `fccd466a55a9e39cd38150a63a91d8f8456e16fb80b68abcdf1625f91dc467e2`.
+The bundle contains `trustedVisualReference`, persisted resolution,
+`referenceSource`, identity/hash/provenance checks, and bounded diagnostics.
+
+The fixture was restored to `992d7d518a2394862544547a9d28deff15ed14ed`, test
+and build passed, and the current inspector fingerprint was
+`97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`.
+Figma Desktop was healthy with Spendly frame `1026:6098` selected. Frozen
+implementation and correction profiles remained GLM 5.2 / 8000 / 120000.
+
+The one actual canonical Journey 6 launch reached no implementation stage:
+the coordinator session was persisted as `declined` with trace
+`c5c45f5a-45de-47e8-b5a1-fd3dbf40ba94` and bounded message `The model's answer
+could not be used.` Implementation attempts, manual approval, snapshot, apply,
+and mounted validation are all `0`/not reached. No parent visual evidence or
+correction child exists. The fixture remained clean and no product source was
+changed. **Implementation stage: BLOCKED before workflow creation.**
+
+### Coordinator diagnostic and bounded relaunch — 2026-08-09
+
+The isolated coordinator-only probe passed the frozen provider/schema/action
+contract and returned `prepare_implementation`, with no workflow invocation.
+The canonical public `--visual-correction=once` launch was then performed
+exactly once. The coordinator declined again before implementation with trace
+`a7f825a9-96fc-4f21-b116-fc4cef164230`; its OpenRouter call was successful under
+`design-engineer-coordinator-default` / `openai/gpt-4o-mini` (629/31/660
+tokens). No implementation proposal, attempt, approval, snapshot, apply, or
+mounted validation exists. **Implementation remains blocked by repeated
+coordinator output unreliability; no further Journey 6 launch is allowed.**

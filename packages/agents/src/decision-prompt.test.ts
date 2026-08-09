@@ -1,6 +1,13 @@
 // packages/agents/src/decision-prompt.test.ts
 import { describe, expect, test } from "bun:test";
-import { buildDecisionPrompt, decisionResponseSchema, modelDecisionFromTransport, modelDecisionSchema } from "./decision-prompt";
+import {
+  buildDecisionPrompt,
+  buildProductActionPrompt,
+  decisionResponseSchema,
+  modelDecisionFromTransport,
+  modelDecisionSchema,
+  validateProductActionTransport,
+} from "./decision-prompt";
 
 /**
  * The bounded prompt builder — deterministic, pure, and tested with no model,
@@ -306,5 +313,67 @@ describe("buildDecisionPrompt with project facts and memory", () => {
 
     expect(user).toContain("project.fact0");
     expect(user).not.toContain("project.fact49");
+  });
+});
+
+describe("strict Coordinator product-action validation", () => {
+  const allowed = ["create_specification", "prepare_implementation", "request_clarification", "decline"] as const;
+
+  test("classifies empty, malformed JSON, schema-invalid, unknown and disallowed actions", () => {
+    expect(validateProductActionTransport(undefined, allowed)).toMatchObject({
+      failure: { errorCode: "ERR_COORDINATOR_OUTPUT_EMPTY" },
+    });
+    expect(validateProductActionTransport("{bad", allowed)).toMatchObject({
+      failure: { errorCode: "ERR_COORDINATOR_OUTPUT_JSON_INVALID" },
+    });
+    expect(validateProductActionTransport({ action: "decline" }, allowed)).toMatchObject({
+      failure: { errorCode: "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID" },
+    });
+    expect(validateProductActionTransport({ action: "run_workflow" }, allowed)).toMatchObject({
+      failure: { errorCode: "ERR_COORDINATOR_ACTION_INVALID" },
+    });
+    expect(validateProductActionTransport({
+      action: "prepare_implementation",
+      question: null,
+      reason: null,
+      reasoningSummary: "x",
+    }, ["create_specification", "request_clarification", "decline"])).toMatchObject({
+      failure: { errorCode: "ERR_COORDINATOR_ACTION_NOT_ALLOWED", returnedAction: "prepare_implementation" },
+    });
+  });
+
+  test("sanitizes untrusted structural diagnostics", () => {
+    const secret = "sk-secret-token";
+    const result = validateProductActionTransport({
+      action: secret,
+      question: null,
+      reason: null,
+      reasoningSummary: "x".repeat(2000),
+      secret,
+    }, allowed);
+
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(JSON.stringify(result)).not.toContain("secret");
+    expect(result).toMatchObject({ failure: { errorCode: "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID" } });
+  });
+
+  test("repair feedback is bounded and preserves the exact allowed action set", () => {
+    const prompt = buildProductActionPrompt({
+      instructions: "Coordinate a design.",
+      request: "implement this design",
+      allowedActions: ["create_specification", "prepare_implementation", "decline"],
+      facts: [{ key: "implementation permitted", value: true }],
+      repairFeedback: {
+        attempt: 1,
+        maxAttempts: 2,
+        errorCode: "ERR_COORDINATOR_ACTION_NOT_ALLOWED",
+        returnedAction: "request_clarification",
+        allowedActions: ["create_specification", "prepare_implementation", "decline"],
+      },
+    });
+    const system = prompt.messages[0]?.content ?? "";
+    expect(system).toContain("Attempt: 1 of 2");
+    expect(system).toContain("Allowed actions: create_specification, prepare_implementation, decline");
+    expect(system).not.toContain("workflowId");
   });
 });

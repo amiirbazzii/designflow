@@ -9,14 +9,19 @@ import {
   type AgentTask,
   type ModelProfile,
   type ToolResult,
+  type CoordinatorOutputDiagnostic,
 } from "@designflow/sdk";
 
 import {
   buildProductActionPrompt,
-  productActionFromTransport,
+  validateProductActionTransport,
+  type CoordinatorOutputErrorCode,
   type ProductAction,
   type ProductActionFact,
+  type ProductActionDecision,
+  type ProductActionRepairFeedback,
 } from "../decision-prompt";
+import { CoordinatorOutputAttemptsExhaustedError } from "../errors";
 
 
 /**
@@ -469,6 +474,51 @@ function declineForModelFailure(code: string): AgentDecision {
   };
 }
 
+const MAX_COORDINATOR_ATTEMPTS = 2;
+
+function repairableModelFailureCode(code: string): CoordinatorOutputErrorCode | undefined {
+  switch (code) {
+    case "ERR_MODEL_OUTPUT_EMPTY":
+      return "ERR_COORDINATOR_OUTPUT_EMPTY";
+    case "ERR_MODEL_OUTPUT_JSON_INVALID":
+      return "ERR_COORDINATOR_OUTPUT_JSON_INVALID";
+    case "ERR_MODEL_OUTPUT_TRUNCATED":
+      return "ERR_COORDINATOR_OUTPUT_TRUNCATED";
+    default:
+      return undefined;
+  }
+}
+
+function coordinatorDiagnostic(
+  attempt: number,
+  allowedActions: readonly ProductAction[],
+  issue: {
+    readonly errorCode: CoordinatorOutputErrorCode;
+    readonly schemaPath?: string | undefined;
+    readonly returnedAction?: string | undefined;
+    readonly outputLength: number;
+    readonly truncated: boolean;
+  },
+): CoordinatorOutputDiagnostic {
+  return {
+    attempt,
+    maxAttempts: MAX_COORDINATOR_ATTEMPTS,
+    errorCode: issue.errorCode,
+    allowedActions: [...allowedActions],
+    outputLength: issue.outputLength,
+    truncated: issue.truncated,
+    ...(issue.schemaPath !== undefined ? { schemaPath: issue.schemaPath } : {}),
+    ...(issue.returnedAction !== undefined ? { returnedAction: issue.returnedAction } : {}),
+  };
+}
+
+function reportCoordinatorDiagnostic(
+  context: AgentContext,
+  diagnostic: CoordinatorOutputDiagnostic,
+): void {
+  context.reportCoordinatorOutputFailure?.(diagnostic);
+}
+
 /**
  * The genuine coordinator: interprets the user's intent among the product
  * actions the deterministic host currently permits, through the agent's own
@@ -517,30 +567,89 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
 
   const clarifications = readClarifications(task);
 
-  const { messages, responseSchema } = buildProductActionPrompt({
-    instructions: manifest.instructions,
-    request: describe(task),
-    allowedActions,
-    facts: promptFacts,
-    ...(clarifications.length > 0 ? { clarifications } : {}),
-  });
+  let repairFeedback: ProductActionRepairFeedback | undefined;
+  let decision: ProductActionDecision | undefined;
 
-  const result = await context.model.generate({
-    messages,
-    responseSchema,
-    maxOutputTokens: 300,
-  });
+  for (let attempt = 1; attempt <= MAX_COORDINATOR_ATTEMPTS; attempt += 1) {
+    if (attempt > 1 && context.signal.aborted) {
+      return declineForModelFailure("ERR_MODEL_ABORTED");
+    }
 
-  if (result.type === "failure") return declineForModelFailure(result.code);
+    const { messages, responseSchema } = buildProductActionPrompt({
+      instructions: manifest.instructions,
+      request: describe(task),
+      allowedActions,
+      facts: promptFacts,
+      ...(clarifications.length > 0 ? { clarifications } : {}),
+      ...(repairFeedback !== undefined ? { repairFeedback } : {}),
+    });
 
-  const decision = productActionFromTransport(result.output, allowedActions);
+    const result = await context.model.generate({
+      messages,
+      responseSchema,
+      maxOutputTokens: 300,
+    });
+
+    if (result.type === "failure") {
+      const errorCode = repairableModelFailureCode(result.code);
+      if (errorCode === undefined) return declineForModelFailure(result.code);
+
+      const diagnostic = coordinatorDiagnostic(attempt, allowedActions, {
+        errorCode,
+        outputLength: 0,
+        truncated: errorCode === "ERR_COORDINATOR_OUTPUT_TRUNCATED",
+      });
+      reportCoordinatorDiagnostic(context, diagnostic);
+
+      if (attempt === MAX_COORDINATOR_ATTEMPTS) {
+        throw new CoordinatorOutputAttemptsExhaustedError([
+          ...(repairFeedback === undefined ? [] : [repairFeedback]),
+          diagnostic,
+        ]);
+      }
+      repairFeedback = {
+        attempt: diagnostic.attempt,
+        maxAttempts: diagnostic.maxAttempts,
+        errorCode,
+        allowedActions: [...allowedActions],
+      };
+      continue;
+    }
+
+    const validation = validateProductActionTransport(result.output, allowedActions);
+    if ("failure" in validation) {
+      const diagnostic = coordinatorDiagnostic(attempt, allowedActions, validation.failure);
+      reportCoordinatorDiagnostic(context, diagnostic);
+
+      if (attempt === MAX_COORDINATOR_ATTEMPTS) {
+        throw new CoordinatorOutputAttemptsExhaustedError([
+          ...(repairFeedback === undefined ? [] : [repairFeedback]),
+          diagnostic,
+        ]);
+      }
+      repairFeedback = {
+        attempt: diagnostic.attempt,
+        maxAttempts: diagnostic.maxAttempts,
+        errorCode: validation.failure.errorCode,
+        allowedActions: [...allowedActions],
+        ...(validation.failure.schemaPath !== undefined
+          ? { schemaPath: validation.failure.schemaPath }
+          : {}),
+        ...(validation.failure.returnedAction !== undefined
+          ? { returnedAction: validation.failure.returnedAction }
+          : {}),
+      };
+      continue;
+    }
+
+    decision = validation.decision;
+    break;
+  }
 
   if (decision === undefined) {
-    return {
-      type: "decline",
-      reason: "The model's answer could not be used.",
-      reasoningSummary: "The model did not return a usable product-action decision.",
-    };
+    throw new CoordinatorOutputAttemptsExhaustedError(
+      repairFeedback === undefined ? [] : [repairFeedback],
+    );
   }
 
   // Deterministic translation + post-decision revalidation: even a decision

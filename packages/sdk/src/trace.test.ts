@@ -180,6 +180,20 @@ describe("traceEventSchema", () => {
         durationMs: 5,
         timestamp: "2026-08-01T10:00:00.005Z",
       },
+      {
+        type: "agent.coordinator.output.invalid",
+        traceId: "trace-1",
+        diagnostic: {
+          attempt: 1,
+          maxAttempts: 2,
+          errorCode: "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID",
+          schemaPath: "reason",
+          allowedActions: ["decline"],
+          outputLength: 42,
+          truncated: false,
+        },
+        timestamp: "2026-08-01T10:00:00.004Z",
+      },
     ];
 
     for (const event of events) {

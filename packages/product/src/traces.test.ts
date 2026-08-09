@@ -245,6 +245,7 @@ describe("what a completed trace holds", () => {
     expect(Object.keys(await realistic()).sort()).toEqual([
       "agentId",
       "completedAt",
+      "coordinatorDiagnostics",
       "decisionType",
       "durationMs",
       "id",
@@ -412,6 +413,40 @@ describe("TraceService", () => {
 // ── Model call collection ────────────────────────────────────────
 
 describe("building a trace with model calls", () => {
+  test("Coordinator diagnostics accumulate as bounded structural facts", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent(STARTED);
+
+    await observer.onEvent({
+      type: "agent.coordinator.output.invalid",
+      traceId: "trace-1",
+      diagnostic: {
+        attempt: 1,
+        maxAttempts: 2,
+        errorCode: "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID",
+        schemaPath: "reason",
+        returnedAction: "decline",
+        allowedActions: ["create_specification", "prepare_implementation", "decline"],
+        outputLength: 84,
+        truncated: false,
+      },
+      timestamp: "2026-08-01T10:00:01.000Z",
+    });
+
+    expect((await store.get("trace-1"))?.coordinatorDiagnostics).toEqual([
+      {
+        attempt: 1,
+        maxAttempts: 2,
+        errorCode: "ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID",
+        schemaPath: "reason",
+        returnedAction: "decline",
+        allowedActions: ["create_specification", "prepare_implementation", "decline"],
+        outputLength: 84,
+        truncated: false,
+      },
+    ]);
+  });
+
   test("a completed model call is recorded with provider, model and usage", async () => {
     const { store, observer } = collector();
     await observer.onEvent(STARTED);

@@ -19,6 +19,7 @@ import {
   type ToolInvoker,
   type TraceEvent,
   type TraceModelCall,
+  type CoordinatorOutputDiagnostic,
   type TraceObserver,
   type TraceToolCall,
 } from "@designflow/sdk";
@@ -252,6 +253,7 @@ export class AgentRuntime implements AgentDecisionService {
       installedProfiles.includes(manifest.modelProfileId);
 
     const modelCalls: TraceModelCall[] = [];
+    const coordinatorDiagnostics: CoordinatorOutputDiagnostic[] = [];
 
     // Fired before the call reaches the model layer, so a live view can show
     // "waiting on the model" rather than learning about a call only once it
@@ -332,6 +334,10 @@ export class AgentRuntime implements AgentDecisionService {
       availableTools,
       tools: toolService,
       model: modelService,
+      reportCoordinatorOutputFailure: (diagnostic) => {
+        if (coordinatorDiagnostics.length >= 2) return;
+        coordinatorDiagnostics.push(diagnostic);
+      },
       metadata: this.metadata,
       // A context without a signal would leave an agent unable to observe
       // cancellation, so one is always present — unaborted when none is given.
@@ -340,6 +346,19 @@ export class AgentRuntime implements AgentDecisionService {
     };
 
     const startedAt = performance.now();
+    let coordinatorDiagnosticsFlushed = false;
+    const flushCoordinatorDiagnostics = async (): Promise<void> => {
+      if (coordinatorDiagnosticsFlushed) return;
+      coordinatorDiagnosticsFlushed = true;
+      for (const diagnostic of coordinatorDiagnostics) {
+        await this.trace({
+          type: "agent.coordinator.output.invalid",
+          traceId,
+          diagnostic,
+          timestamp: this.now().toISOString(),
+        });
+      }
+    };
 
     this.emit({
       type: "agent.decision.started",
@@ -370,6 +389,8 @@ export class AgentRuntime implements AgentDecisionService {
         manifest.id,
         await agent.decide(validated, context),
       );
+
+      await flushCoordinatorDiagnostics();
 
       this.emit({
         type: "agent.decision.completed",
@@ -404,6 +425,8 @@ export class AgentRuntime implements AgentDecisionService {
 
       return result;
     } catch (error) {
+      await flushCoordinatorDiagnostics();
+
       await this.trace({
         type: "agent.decision.failed",
         traceId,

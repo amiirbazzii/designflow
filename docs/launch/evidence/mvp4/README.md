@@ -226,3 +226,50 @@ Pure acceptance run on frozen `316fb01`; no source changes. Credential present a
 The exact seam was `parent figma-source-snapshot → child parentArtifacts → seedStage5Inputs → readArtifact`. The parent snapshot was absent from the child list, so `ERR_MISSING_UPSTREAM_ARTIFACT` occurred before the first Stage-5 seed; the old catch dropped the cause. The schema was valid.
 
 The correction input now carries an optional exact parent reference: logical artifact ID/type, content-addressed payload identity, parent image content hash, Figma file/node identity, and trusted provenance. The child performs exact store lookup and verifies all identities before recording `referenceSource: persisted`; valid reuse makes zero fresh Figma calls. Invalid/missing references use the existing fresh path. Bounded sanitized code/phase/message diagnostics are persisted, and applied/project-validated child results survive visual infrastructure failure honestly without false pass or iteration 2. Focused tests, full regression, smoke, and freshness passed. `OPENROUTER_API_KEY` remains missing, so final live Journey 6 was not run. **MVP-4R live gate: BLOCKED_EXTERNAL — OPENROUTER_CREDENTIAL_MISSING.**
+## MVP-4R live acceptance completion attempt — 2026-08-09
+
+Credential presence passed and one bounded GLM probe returned HTTP 200 in 5s.
+Frozen source `cbb918c30a58768708b03f086e1ae513906dfaa6` was repacked and
+installed as `designflow-ai@0.1.1`; installed binary SHA-256 is
+`fccd466a55a9e39cd38150a63a91d8f8456e16fb80b68abcdf1625f91dc467e2` and the
+bundle contains the MVP-4R trusted-reference markers. Settings proved both
+implementation and visual-correction profiles remain OpenRouter
+`z-ai/glm-5.2`, 8000 tokens, 120000 ms.
+
+The clean fixture baseline was `992d7d518a2394862544547a9d28deff15ed14ed`
+with inspector fingerprint `97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`;
+test and build passed. Figma Desktop and metadata readiness were healthy for
+Spendly `1026:6098`, with the exact frame selected.
+
+The canonical public launch `designflow run design-engineer
+--visual-correction=once` was attempted once in a fresh acceptance home and
+stopped before creating any workflow because the frozen coordinator returned
+`The model's answer could not be used.` Persisted trace:
+`c5c45f5a-45de-47e8-b5a1-fd3dbf40ba94`. There is no parent, child,
+implementation/correction attempt, approval, apply, Stage 5 capture,
+persisted-reference resolution, fresh-reference acquisition, Playwright
+recapture, comparison, specialist result, or manual visual classification.
+The fixture stayed clean; no source or model changes were made. Fresh-home
+state is zero executions/parents/approvals, with no pending session; credential
+and auth/provider-response scans are zero. **MVP-4R live gate:
+BLOCKED_EXTERNAL — COORDINATOR_MODEL_OUTPUT_INVALID.**
+
+### Coordinator diagnostic and bounded relaunch — 2026-08-09
+
+The first trace had a successful OpenRouter coordinator call
+(`openai/gpt-4o-mini`, profile `design-engineer-coordinator-default`, 629/37/666
+tokens) followed by the frozen generic unusable-decision branch. The strict
+schema, allowed actions, prompt, parser, structured-output configuration, and
+retry behavior were inspected; no deterministic contract defect was found.
+The raw model body was not persisted.
+
+The single isolated coordinator-only probe did not invoke a workflow and
+passed provider normalization, structured extraction, schema validation, and
+allowed-action validation, returning `prepare_implementation` (572/42/614
+tokens; 37.6s). Per the decision matrix this proved transient variance, so the
+canonical public Journey 6 command was launched exactly once. It declined
+again before workflow creation with trace
+`a7f825a9-96fc-4f21-b116-fc4cef164230`; provider status was successful and usage
+was 629/31/660 tokens. Fresh-home state remains executions `0`, parents `0`,
+approvals `0`, events `0`. **Live classification: BLOCKED —
+COORDINATOR_OUTPUT_RELIABILITY. No further Journey 6 launch is permitted.**

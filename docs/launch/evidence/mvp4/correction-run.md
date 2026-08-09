@@ -755,3 +755,42 @@ Revalidation stopped honestly as `visual_validation_inconclusive`: the fresh Sta
 MVP-4Q’s child had a trusted parent reference, but the child-local `parentArtifacts` list did not contain the parent `figma-source-snapshot`. Stage 5 therefore called local `readArtifact`, raised `ERR_MISSING_UPSTREAM_ARTIFACT` before its first seed artifact, and the old catch dropped the cause. The fix carries the exact immutable parent payload reference into the child and verifies content-addressed payload identity, logical artifact ID/type, Figma file/node ID, screenshot artifact/content hash, and trusted real-Figma provenance before recording `referenceSource: persisted`. Valid reuse makes no fresh Figma acquisition; invalid/missing references use the existing fresh path.
 
 The new diagnostic is bounded to code, phase, and a sanitized message no longer than 500 characters. Final reports retain correction-applied/project-validation state and honest visual inconclusive status; no screenshot is fabricated and no second iteration starts. Focused tests pass for child-local discovery absence, identity mismatch, provenance/content hash, and sanitization. The required credential gate found `OPENROUTER_API_KEY=missing`, so no final Journey 6 correction child was started and no fixture/Figma state was changed. Historical MVP-4Q evidence remains preserved above.
+## MVP-4R live acceptance completion attempt — 2026-08-09
+
+Frozen source/package and profiles were verified; the clean fixture baseline
+was commit `992d7d518a2394862544547a9d28deff15ed14ed`, fingerprint
+`97ce9bb0e82b52d048de84ca533f79650aaa49d7ec56d848d260b863443a0e30`. Figma
+Desktop was healthy with Spendly `1026:6098` selected. The required credential
+gate passed and the sole bounded GLM probe returned HTTP 200 in 5 seconds.
+
+The canonical `--visual-correction=once` launch was attempted once after the
+coordinator prompt was supplied in the accepted implementation-intent form.
+The frozen coordinator declined before creating an implementation workflow:
+`The model's answer could not be used.` Persisted trace ID:
+`c5c45f5a-45de-47e8-b5a1-fd3dbf40ba94`. Therefore no parent run, parent trusted
+reference, deterministic parent finding, correction eligibility, correction
+child, correction proposal attempt, runtime preflight, manual correction
+approval, snapshot, apply, mounted validation, `trustedVisualReference`
+handoff, persisted artifact resolution, identity/hash/provenance verification,
+post-correction Playwright capture, deterministic comparison, or Visual
+Validation Specialist result exists. Product fresh-reference fetch count is 0
+because Stage 5 was never entered; the readiness metadata check is not a
+product Stage-5 acquisition.
+
+The fresh acceptance home is clean: zero executions, parents, approvals, and
+waiting sessions; no acceptance process or temp workspace orphan; no persisted
+credential, auth header, or raw provider response. The fixture is still clean,
+and no rollback was manufactured. MVP-4K rollback acceptance remains `PASS`.
+**Correction stage: NOT REACHED. MVP-4R: BLOCKED_EXTERNAL —
+COORDINATOR_MODEL_OUTPUT_INVALID.**
+
+### Coordinator diagnostic and bounded relaunch — 2026-08-09
+
+The coordinator-only probe passed without invoking a workflow. The one allowed
+canonical Journey 6 relaunch then declined before a parent workflow was
+created, with second trace `a7f825a9-96fc-4f21-b116-fc4cef164230` and a
+successful OpenRouter coordinator call. No parent trusted reference, visual
+finding, correction child, proposal, preflight, approval, apply, mounted
+validation, product recapture, deterministic comparison, or specialist result
+exists. **Correction remains NOT REACHED; live gate is BLOCKED —
+COORDINATOR_OUTPUT_RELIABILITY.**

@@ -90,6 +90,7 @@ export {
   AgentWorkflowUnavailableError,
   AgentInvocationRequestInvalidError,
   SpecializedAgentOutputInvalidError,
+  CoordinatorOutputAttemptsExhaustedError,
 } from "./errors";
 
 export {
@@ -138,8 +139,20 @@ export {
   modelDecisionFromTransport,
   modelDecisionSchema,
   modelDecisionTransportSchema,
+  validateProductActionTransport,
+  productActionFromTransport,
+  COORDINATOR_OUTPUT_ERROR_CODES,
 } from "./decision-prompt";
-export type { DecisionPromptInput, ModelDecision, ModelDecisionTransport } from "./decision-prompt";
+export type {
+  DecisionPromptInput,
+  ModelDecision,
+  ModelDecisionTransport,
+  CoordinatorOutputErrorCode,
+  CoordinatorOutputValidationFailure,
+  ProductActionDecision,
+  ProductActionValidation,
+  ProductActionRepairFeedback,
+} from "./decision-prompt";
 
 export {
   designEngineerCoordinator,

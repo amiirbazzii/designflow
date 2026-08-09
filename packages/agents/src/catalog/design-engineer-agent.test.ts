@@ -190,6 +190,29 @@ describe("the model-backed coordinator: intent interpretation over product actio
     };
   }
 
+  function productModelSequence(
+    transports: readonly unknown[],
+  ): ModelInvoker & { readonly seen: ModelInvocationRequest[] } {
+    const seen: ModelInvocationRequest[] = [];
+    let index = 0;
+    return {
+      seen,
+      installedProfileIds: () => ["design-engineer-default"],
+      generate: (request) => {
+        seen.push(request);
+        const output = transports[Math.min(index++, transports.length - 1)];
+        return Promise.resolve({
+          type: "success" as const,
+          requestId: request.requestId,
+          providerId: "openrouter",
+          model: "openai/gpt-4o-mini",
+          output,
+          durationMs: 1,
+        });
+      },
+    };
+  }
+
   const spec = { action: "create_specification", question: null, reason: null, reasoningSummary: "documentation intent" };
   const impl = { action: "prepare_implementation", question: null, reason: null, reasoningSummary: "implementation intent" };
 
@@ -242,17 +265,148 @@ describe("the model-backed coordinator: intent interpretation over product actio
   test("a disallowed action is rejected: implementation without consent cannot be accepted", async () => {
     // No consent → prepare_implementation is not in the allowed set; the
     // model answering it anyway is refused deterministically.
-    const models = productModel(impl);
+    const models = productModelSequence([impl, spec]);
     const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(TASK);
 
-    expect(models.seen).toHaveLength(1);
-    expect(result.decision.type).toBe("decline");
+    expect(models.seen).toHaveLength(2);
+    expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-figma-specification" });
+    expect(models.seen[1]?.messages[0]?.content).toContain("ERR_COORDINATOR_ACTION_NOT_ALLOWED");
+    expect(models.seen[1]?.messages[0]?.content).toContain("create_specification, request_clarification, decline");
   });
 
   test("an invented action or workflow id cannot be accepted", async () => {
-    const rogue = productModel({ action: "run_workflow", workflowId: "design-to-code", question: null, reason: null, reasoningSummary: "x" });
+    const rogue = productModelSequence([
+      { action: "run_workflow", workflowId: "design-to-code", question: null, reason: null, reasoningSummary: "x" },
+      { action: "create_specification", question: null, reason: null, reasoningSummary: "x" },
+    ]);
     const result = await runtimeWith({ models: rogue, strategy: modelDesignEngineerStrategy }).decide(TASK);
 
+    expect(rogue.seen).toHaveLength(2);
+    expect(result.decision.type).toBe("run_workflow");
+  });
+
+  test("malformed JSON repairs once, then dispatches only the valid decision", async () => {
+    const models = productModelSequence([
+      "{not-json",
+      impl,
+    ]);
+
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+
+    expect(models.seen).toHaveLength(2);
+    expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-implementation" });
+    expect(models.seen[1]?.messages[0]?.content).toContain("ERR_COORDINATOR_OUTPUT_JSON_INVALID");
+  });
+
+  test("provider output failure repairs, while transport failure does not", async () => {
+    const repairable: ModelInvoker & { readonly seen: ModelInvocationRequest[] } = {
+      seen: [],
+      installedProfileIds: () => ["design-engineer-default"],
+      generate: (request) => {
+        repairable.seen.push(request);
+        if (repairable.seen.length === 1) {
+          return Promise.resolve({
+            type: "failure" as const,
+            requestId: request.requestId,
+            code: "ERR_MODEL_OUTPUT_JSON_INVALID",
+            message: "bounded provider output classification",
+            retryable: false,
+            durationMs: 1,
+          });
+        }
+        return Promise.resolve({
+          type: "success" as const,
+          requestId: request.requestId,
+          providerId: "openrouter",
+          model: "openai/gpt-4o-mini",
+          output: impl,
+          durationMs: 1,
+        });
+      },
+    };
+    const transportFailure: ModelInvoker & { readonly seen: ModelInvocationRequest[] } = {
+      seen: [],
+      installedProfileIds: () => ["design-engineer-default"],
+      generate: (request) => {
+        transportFailure.seen.push(request);
+        return Promise.resolve({
+          type: "failure" as const,
+          requestId: request.requestId,
+          code: "ERR_MODEL_AUTHENTICATION",
+          message: "credential detail must stay private",
+          retryable: false,
+          durationMs: 1,
+        });
+      },
+    };
+
+    const repaired = await runtimeWith({ models: repairable, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+    const failed = await runtimeWith({ models: transportFailure, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+
+    expect(repairable.seen).toHaveLength(2);
+    expect(repaired.decision.type).toBe("run_workflow");
+    expect(transportFailure.seen).toHaveLength(1);
+    expect(failed.decision.type).toBe("decline");
+  });
+
+  test("schema-invalid output repairs with bounded strict feedback", async () => {
+    const models = productModelSequence([
+      { action: "prepare_implementation", question: null, reason: null },
+      impl,
+    ]);
+
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+
+    expect(models.seen).toHaveLength(2);
+    expect(result.decision.type).toBe("run_workflow");
+    expect(models.seen[1]?.messages[0]?.content).toContain("ERR_COORDINATOR_OUTPUT_SCHEMA_INVALID");
+    expect(models.seen[1]?.messages[0]?.content).toContain("Return only an object satisfying the required Coordinator schema.");
+  });
+
+  test("two invalid attempts exhaust with a typed stop and no decision", async () => {
+    const models = productModelSequence(["bad", "still bad"]);
+
+    await expect(
+      runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(CONSENTED),
+    ).rejects.toMatchObject({ code: "ERR_COORDINATOR_OUTPUT_ATTEMPTS_EXHAUSTED" });
+    expect(models.seen).toHaveLength(2);
+  });
+
+  test("valid decline and clarification are not retried", async () => {
+    const decline = productModel({ action: "decline", question: null, reason: "outside scope", reasoningSummary: "not a design" });
+    const clarification = productModel({ action: "request_clarification", question: "Which frame?", reason: null, reasoningSummary: "unclear" });
+
+    const declined = await runtimeWith({ models: decline, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+    const asked = await runtimeWith({ models: clarification, strategy: modelDesignEngineerStrategy }).decide(CONSENTED);
+
+    expect(decline.seen).toHaveLength(1);
+    expect(clarification.seen).toHaveLength(1);
+    expect(declined.decision.type).toBe("decline");
+    expect(asked.decision.type).toBe("request_clarification");
+  });
+
+  test("cancellation between invalid output and repair prevents attempt two", async () => {
+    const controller = new AbortController();
+    const models: ModelInvoker & { readonly seen: ModelInvocationRequest[] } = {
+      seen: [],
+      installedProfileIds: () => ["design-engineer-default"],
+      generate: (request) => {
+        models.seen.push(request);
+        controller.abort();
+        return Promise.resolve({
+          type: "success" as const,
+          requestId: request.requestId,
+          providerId: "openrouter",
+          model: "openai/gpt-4o-mini",
+          output: "bad",
+          durationMs: 1,
+        });
+      },
+    };
+
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(CONSENTED, controller.signal);
+
+    expect(models.seen).toHaveLength(1);
     expect(result.decision.type).toBe("decline");
   });
 

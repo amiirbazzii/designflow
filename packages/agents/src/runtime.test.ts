@@ -191,6 +191,7 @@ describe("the context an agent decides with", () => {
       "logger",
       "metadata",
       "model",
+      "reportCoordinatorOutputFailure",
       "signal",
       "tools",
     ]);

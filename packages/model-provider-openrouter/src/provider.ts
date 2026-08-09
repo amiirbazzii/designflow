@@ -231,8 +231,16 @@ function extractStructuredOutput(body: unknown): unknown {
 
   if (content === undefined || content.trim().length === 0) {
     throw new DesignFlowError(
-      "ERR_MODEL_OUTPUT_INVALID",
+      "ERR_MODEL_OUTPUT_EMPTY",
       "The model returned no content.",
+    );
+  }
+
+  const finishReason = firstChoiceFinishReason(body);
+  if (finishReason === "length" || finishReason === "max_tokens") {
+    throw new DesignFlowError(
+      "ERR_MODEL_OUTPUT_TRUNCATED",
+      "The model output reached its configured limit before producing valid JSON.",
     );
   }
 
@@ -240,10 +248,20 @@ function extractStructuredOutput(body: unknown): unknown {
     return JSON.parse(content) as unknown;
   } catch {
     throw new DesignFlowError(
-      "ERR_MODEL_OUTPUT_INVALID",
+      "ERR_MODEL_OUTPUT_JSON_INVALID",
       "The model's structured output was not valid JSON.",
     );
   }
+}
+
+function firstChoiceFinishReason(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const choices = (body as { choices?: unknown }).choices;
+  if (!Array.isArray(choices) || choices.length === 0) return undefined;
+  const first = choices[0];
+  if (typeof first !== "object" || first === null) return undefined;
+  const reason = (first as { finish_reason?: unknown }).finish_reason;
+  return typeof reason === "string" ? reason : undefined;
 }
 
 function firstChoiceContent(body: unknown): string | undefined {

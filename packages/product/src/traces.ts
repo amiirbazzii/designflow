@@ -118,6 +118,7 @@ export class TraceCollector implements TraceObserver {
             status: "running",
             toolCalls: [],
             modelCalls: [],
+            coordinatorDiagnostics: [],
             ...(validated.metadata !== undefined
               ? { metadata: validated.metadata }
               : {}),
@@ -139,6 +140,7 @@ export class TraceCollector implements TraceObserver {
             status: "running",
             toolCalls: [],
             modelCalls: [],
+            coordinatorDiagnostics: [],
           }),
         );
         return;
@@ -205,6 +207,18 @@ export class TraceCollector implements TraceObserver {
 
         this.pendingModels.set(validated.traceId, calls);
         await this.store.update(validated.traceId, { modelCalls: calls });
+        return;
+      }
+
+      case "agent.coordinator.output.invalid": {
+        const trace = await this.store.get(validated.traceId);
+        const diagnostics = [
+          ...(trace?.coordinatorDiagnostics ?? []),
+          validated.diagnostic,
+        ].slice(0, 2);
+        await this.store.update(validated.traceId, {
+          coordinatorDiagnostics: diagnostics,
+        });
         return;
       }
 

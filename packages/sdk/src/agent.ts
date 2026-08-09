@@ -262,6 +262,13 @@ export interface AgentContext {
    * unrepresentable, not merely forbidden.
    */
   readonly model: AgentModelService;
+  /**
+   * Reports bounded Coordinator-output diagnostics to the host trace. The
+   * callback is optional so non-Coordinator agents remain unaware of it.
+   */
+  readonly reportCoordinatorOutputFailure?: (
+    diagnostic: import("./trace").CoordinatorOutputDiagnostic,
+  ) => void;
   /** Ambient installation facts. Per-request data travels on the task. */
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;

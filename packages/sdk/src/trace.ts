@@ -95,6 +95,25 @@ export const traceModelCallSchema = z
 
 export type TraceModelCall = z.infer<typeof traceModelCallSchema>;
 
+/** Safe structural facts for a rejected Coordinator response. */
+export const coordinatorOutputDiagnosticSchema = z
+  .object({
+    attempt: z.number().int().min(1).max(2),
+    maxAttempts: z.number().int().min(1).max(2),
+    errorCode: z.string().min(1).max(96),
+    schemaPath: z.string().min(1).max(160).optional(),
+    returnedAction: z.string().min(1).max(80).optional(),
+    allowedActions: z.array(z.string().min(1).max(80)).max(16),
+    finishReason: z.string().min(1).max(80).optional(),
+    outputLength: z.number().int().min(0).max(100_000),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export type CoordinatorOutputDiagnostic = z.infer<
+  typeof coordinatorOutputDiagnosticSchema
+>;
+
 // ── The trace ───────────────────────────────────────────────────
 
 export const agentTraceSchema = z
@@ -139,6 +158,10 @@ export const agentTraceSchema = z
      * shape.
      */
     modelCalls: z.array(traceModelCallSchema).default([]),
+    coordinatorDiagnostics: z
+      .array(coordinatorOutputDiagnosticSchema)
+      .max(2)
+      .default([]),
     /**
      * Host-supplied facts about the installation, not about the request.
      *
@@ -164,6 +187,10 @@ export const agentTracePatchSchema = z
     durationMs: z.number().nonnegative().optional(),
     toolCalls: z.array(traceToolCallSchema).optional(),
     modelCalls: z.array(traceModelCallSchema).optional(),
+    coordinatorDiagnostics: z
+      .array(coordinatorOutputDiagnosticSchema)
+      .max(2)
+      .optional(),
     metadata: z.record(z.unknown()).optional(),
   })
   .strict();
@@ -285,6 +312,14 @@ export const traceEventSchema = z.discriminatedUnion("type", [
       /** A stable `ERR_MODEL_*` code. Never the provider's own error text. */
       errorCode: z.string().min(1),
       durationMs: z.number().nonnegative(),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("agent.coordinator.output.invalid"),
+      traceId: z.string().min(1),
+      diagnostic: coordinatorOutputDiagnosticSchema,
       timestamp: z.string().min(1),
     })
     .strict(),
