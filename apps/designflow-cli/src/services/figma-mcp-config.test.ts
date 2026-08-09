@@ -1,7 +1,12 @@
 // apps/designflow-cli/src/services/figma-mcp-config.test.ts
 import { afterEach, describe, expect, test } from "bun:test";
 import { configSchema } from "./config";
-import { readExperimentalFigmaMcpEnabled, readFigmaMcpConfig } from "./figma-mcp-config";
+import {
+  readExperimentalFigmaMcpEnabled,
+  readFigmaMcpConfig,
+  resolveFigmaMcpConfig,
+  STANDARD_FIGMA_DESKTOP_MCP_URL,
+} from "./figma-mcp-config";
 
 function configWithSettings(settings: Record<string, unknown>) {
   return configSchema.parse({ settings });
@@ -140,5 +145,43 @@ describe("credential handling", () => {
     expect(result?.transport).toBe("stdio");
     if (result?.transport !== "stdio") throw new Error("expected stdio configuration");
     expect(result?.env).toEqual({});
+  });
+});
+
+describe("automatic Figma Desktop configuration", () => {
+  test("uses only the documented standard endpoint for bare interactive detection", () => {
+    const resolved = resolveFigmaMcpConfig(configWithSettings({}), {
+      autoDetectDesktop: true,
+    });
+
+    expect(resolved.source).toBe("automatic");
+    expect(resolved.config).toMatchObject({
+      transport: "http",
+      url: STANDARD_FIGMA_DESKTOP_MCP_URL,
+    });
+  });
+
+  test("prefers explicit configuration over automatic detection", () => {
+    const resolved = resolveFigmaMcpConfig(
+      configWithSettings({
+        figmaMcp: { transport: "http", url: "http://localhost:4100/mcp" },
+      }),
+      { autoDetectDesktop: true },
+    );
+
+    expect(resolved.source).toBe("explicit");
+    expect(resolved.config).toMatchObject({
+      transport: "http",
+      url: "http://localhost:4100/mcp",
+    });
+  });
+
+  test("does not replace an invalid explicit block with the standard endpoint", () => {
+    const resolved = resolveFigmaMcpConfig(
+      configWithSettings({ figmaMcp: { transport: "websocket" } }),
+      { autoDetectDesktop: true },
+    );
+
+    expect(resolved).toEqual({ source: "invalid" });
   });
 });

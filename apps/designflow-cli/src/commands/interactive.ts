@@ -85,11 +85,13 @@ export async function interactiveCommand(
     context,
     detectCurrentProject(),
   );
+  await context.ensureFigmaConnection();
+  if (context.signal?.aborted === true) return 130;
 
   terminal.print(banner());
 
   for (;;) {
-    terminal.print(menu(project));
+    terminal.print(menu(project, { status: context.figmaConnectionStatus() }));
 
     const choice = (await terminal.ask("Command", ["Enter", "q", "?"]))
       .trim()
@@ -130,6 +132,13 @@ export async function interactiveCommand(
       if (destination === null) {
         terminal.print();
         terminal.print("Choose one of the destinations shown to continue.");
+        continue;
+      }
+
+      if (context.figmaAutoDetected && context.figmaConnectionStatus() !== "connected") {
+        terminal.print();
+        terminal.print("Figma Desktop is not connected.");
+        terminal.print("Open Figma Desktop and enable Dev Mode, then try again.");
         continue;
       }
 

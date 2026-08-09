@@ -369,6 +369,9 @@ describe("product shell", () => {
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("Starting Design Engineer...");
+    expect(terminal.transcript).toContain("Figma");
+    expect(terminal.transcript).toContain("Not connected");
+    expect(terminal.transcript).toContain("Open Figma Desktop and enable Dev Mode.");
     expect(terminal.transcript).toContain("Where should this design go?");
     expect(terminal.transcript).toContain("New page");
     expect(terminal.transcript).toContain("New component");

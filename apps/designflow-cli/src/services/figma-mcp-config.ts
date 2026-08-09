@@ -1,6 +1,9 @@
 // apps/designflow-cli/src/services/figma-mcp-config.ts
 import type { Config } from "./config";
 
+/** The one supported zero-config Figma Desktop MCP endpoint. */
+export const STANDARD_FIGMA_DESKTOP_MCP_URL = "http://127.0.0.1:3845/mcp";
+
 /**
  * Reads Stage 3's experimental Figma MCP configuration out of the same open
  * `settings` bag `model-config.ts` already reads model-profile overrides
@@ -54,6 +57,13 @@ export interface FigmaMcpHttpConfig {
 }
 
 export type FigmaMcpConfig = FigmaMcpStdioConfig | FigmaMcpHttpConfig;
+
+export type FigmaMcpConfigSource = "explicit" | "automatic" | "invalid" | "none";
+
+export interface FigmaMcpConfigResolution {
+  readonly config?: FigmaMcpConfig;
+  readonly source: FigmaMcpConfigSource;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -138,4 +148,38 @@ export function readFigmaMcpConfig(config: Config): FigmaMcpConfig | undefined {
     ...(maxResponseBytes !== undefined ? { maxResponseBytes } : {}),
     captureScreenshots,
   };
+}
+
+/**
+ * Resolves the configuration used by a host invocation.
+ *
+ * Automatic detection is deliberately narrow: it is only allowed when the
+ * caller opts into the bare interactive journey, and only when no explicit
+ * `figmaMcp` setting exists. An invalid explicit block therefore remains an
+ * invalid setup instead of being silently replaced with a different server.
+ */
+export function resolveFigmaMcpConfig(
+  config: Config,
+  options?: { readonly autoDetectDesktop?: boolean },
+): FigmaMcpConfigResolution {
+  const explicit = readFigmaMcpConfig(config);
+  if (explicit !== undefined) return { config: explicit, source: "explicit" };
+
+  const raw = config.settings["figmaMcp"];
+  if (raw !== undefined) return { source: "invalid" };
+
+  if (options?.autoDetectDesktop === true) {
+    return {
+      source: "automatic",
+      config: {
+        transport: "http",
+        url: STANDARD_FIGMA_DESKTOP_MCP_URL,
+        connectTimeoutMs: 1_500,
+        requestTimeoutMs: 2_000,
+        captureScreenshots: true,
+      },
+    };
+  }
+
+  return { source: "none" };
 }

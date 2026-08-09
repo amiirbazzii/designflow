@@ -63,7 +63,14 @@ export interface InteractiveProject {
   readonly rootPath?: string | undefined;
 }
 
-export function menu(project?: InteractiveProject | null): string {
+export interface InteractiveFigma {
+  readonly status: "connected" | "unavailable" | "not-configured";
+}
+
+export function menu(
+  project?: InteractiveProject | null,
+  figma: InteractiveFigma = { status: "not-configured" },
+): string {
   const projectLines =
     project === undefined || project === null
       ? [
@@ -81,6 +88,11 @@ export function menu(project?: InteractiveProject | null): string {
     "",
     "Project",
     ...projectLines,
+    "",
+    "Figma",
+    ...(figma.status === "connected"
+      ? ["  Connected"]
+      : ["  Not connected", "  Open Figma Desktop and enable Dev Mode."]),
     "",
     "Design",
     "  Not selected yet",

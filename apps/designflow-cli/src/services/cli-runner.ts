@@ -155,8 +155,12 @@ export type { FeedbackLoopWorkflowInput, ImplementationWorkflowInput };
 import {
   readExperimentalFigmaMcpEnabled,
   readExperimentalImplementationEnabled,
-  readFigmaMcpConfig,
+  resolveFigmaMcpConfig,
 } from "./figma-mcp-config";
+import {
+  probeFigmaConnection,
+  type FigmaConnectionStatus,
+} from "./figma-connection";
 
 export const EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID = [
   "design",
@@ -376,6 +380,12 @@ export interface CliContext {
   /** Safe Figma source mode selected by the composition root. */
   readonly figmaSourceMode?: "placeholder" | "rest" | "mcp-stdio" | "mcp-desktop";
   readonly figmaServerIdentity?: string;
+  /** Current bounded Figma connection state for the interactive shell. */
+  readonly figmaConnectionStatus: () => FigmaConnectionStatus;
+  /** Attempts the configured or standard local MCP handshake once. */
+  readonly ensureFigmaConnection: () => Promise<FigmaConnectionStatus>;
+  /** True only for the bare-shell standard endpoint fallback. */
+  readonly figmaAutoDetected: boolean;
   /**
    * Resolves a name to something runnable.
    *
@@ -524,6 +534,8 @@ export interface CliContextOptions {
   readonly sessionClockOverride?: SessionClock;
   /** Non-persisted capability collaborators for deterministic host tests. */
   readonly capabilityConfig?: Readonly<Record<string, unknown>>;
+  /** Bare interactive mode may probe the documented Figma Desktop endpoint. */
+  readonly autoConnectFigmaDesktop?: boolean;
 }
 
 export function createCliContext(options?: CliContextOptions): CliContext {
@@ -587,7 +599,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // source mode) derives from this one result.
   void readExperimentalFigmaMcpEnabled(home.config);
   void readExperimentalImplementationEnabled(home.config);
-  const figmaMcpConfig = readFigmaMcpConfig(home.config);
+  const figmaResolution = resolveFigmaMcpConfig(home.config, {
+    autoDetectDesktop: options?.autoConnectFigmaDesktop === true,
+  });
+  const figmaMcpConfig = figmaResolution.config;
   const figmaMcpEnabled = figmaMcpConfig !== undefined;
   // Implementation workflows register whenever Figma is available: routing
   // to them still requires an explicit per-run project-write consent (see
@@ -627,6 +642,30 @@ export function createCliContext(options?: CliContextOptions): CliContext {
             serverIdentity: "figma-mcp",
           })
       : undefined;
+
+  let figmaConnectionState: FigmaConnectionStatus =
+    figmaResolution.source === "none" ? "not-configured" : "unavailable";
+  let figmaConnectionPromise: Promise<FigmaConnectionStatus> | undefined;
+
+  const ensureFigmaConnection = async (): Promise<FigmaConnectionStatus> => {
+    if (mcpClient === undefined) {
+      figmaConnectionState = "not-configured";
+      return figmaConnectionState;
+    }
+    if (figmaConnectionState === "connected") return figmaConnectionState;
+    if (figmaConnectionPromise !== undefined) return figmaConnectionPromise;
+
+    figmaConnectionPromise = probeFigmaConnection(mcpClient, options?.signal)
+      .then((status) => {
+        figmaConnectionState = status;
+        return status;
+      })
+      .finally(() => {
+        figmaConnectionPromise = undefined;
+      });
+
+    return figmaConnectionPromise;
+  };
 
   // Build the specialized model port before constructing the invocation
   // runtime. The coordinator and workflow agents must see the same registered
@@ -1053,6 +1092,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     ...(figmaMcpEnabled && figmaMcpConfig !== undefined
       ? { figmaServerIdentity: figmaMcpConfig.transport === "http" ? "figma-desktop" : "figma-mcp" }
       : {}),
+    figmaConnectionStatus: () => figmaConnectionState,
+    ensureFigmaConnection,
+    figmaAutoDetected: figmaResolution.source === "automatic",
     traces,
     artifactInspection,
     artifactStore,

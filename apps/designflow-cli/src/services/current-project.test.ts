@@ -141,4 +141,14 @@ describe("current interactive project", () => {
       "Run DesignFlow from your project directory.",
     );
   });
+
+  test("renders connected and unavailable Figma states without technical details", () => {
+    expect(menu(null, { status: "connected" })).toContain("  Connected");
+    expect(menu(null, { status: "connected" })).not.toContain("3845");
+
+    const unavailable = menu(null, { status: "unavailable" });
+    expect(unavailable).toContain("Not connected");
+    expect(unavailable).toContain("Open Figma Desktop and enable Dev Mode.");
+    expect(unavailable).not.toContain("MCP");
+  });
 });

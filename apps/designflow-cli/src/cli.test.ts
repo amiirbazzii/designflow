@@ -134,6 +134,8 @@ describe("starting the CLI", () => {
 
     expect(await dispatch([], context(), terminal)).toBe(0);
     expect(terminal.transcript).toContain("Starting Design Engineer...");
+    expect(terminal.transcript).toContain("Figma");
+    expect(terminal.transcript).toContain("Not connected");
     expect(terminal.transcript).toContain("Where should this design go?");
     expect(terminal.transcript).toContain("This worker reads a connected Figma design.");
     expect(terminal.transcript).toContain("Nothing was run and no files were changed.");

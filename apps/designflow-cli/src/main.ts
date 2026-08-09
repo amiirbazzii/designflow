@@ -163,7 +163,10 @@ async function main(): Promise<number> {
   try {
     const code = await coordinator.run(async (signal) => {
       try {
-        context = createCliContext({ signal });
+        context = createCliContext({
+          signal,
+          autoConnectFigmaDesktop: argv.length === 0,
+        });
         const commandCode = await dispatch(argv, context, terminal);
         outcome.recordResult(commandCode);
         return commandCode;
