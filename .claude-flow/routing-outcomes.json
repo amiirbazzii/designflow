@@ -1,0 +1,30 @@
+{
+  "outcomes": [
+    {
+      "task": "Complete MVP-4R live acceptance using frozen DesignFlow source; one canonical Journey 6 launch, evidence-only updates, no product source changes.",
+      "agent": "codex",
+      "success": false,
+      "quality": 0.95,
+      "keywords": [
+        "complete",
+        "mvp-4r",
+        "live",
+        "acceptance",
+        "using",
+        "frozen",
+        "designflow",
+        "source",
+        "one",
+        "canonical",
+        "journey",
+        "launch",
+        "evidence-only",
+        "updates",
+        "product",
+        "source",
+        "changes"
+      ],
+      "timestamp": "2026-08-09T09:41:32.198Z"
+    }
+  ]
+}

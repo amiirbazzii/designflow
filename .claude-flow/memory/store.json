@@ -1,0 +1,17 @@
+{
+  "entries": {
+    "routing-decision:mvp4r-live-acceptance-2026-08-09": {
+      "key": "routing-decision:mvp4r-live-acceptance-2026-08-09",
+      "value": "{\"task\":\"Complete MVP-4R live acceptance using frozen DesignFlow source; one canonical Journey 6 launch, evidence-only updates, no product source changes.\",\"agent\":\"codex\",\"success\":false,\"quality\":0.95,\"keywords\":[\"complete\",\"mvp-4r\",\"live\",\"acceptance\",\"using\",\"frozen\",\"designflow\",\"source\",\"one\",\"canonical\",\"journey\",\"launch\",\"evidence-only\",\"updates\",\"product\",\"source\",\"changes\"]}",
+      "namespace": "patterns",
+      "createdAt": "2026-08-09T09:41:32.207Z",
+      "metadata": {
+        "type": "routing-decision",
+        "confidence": 0.95,
+        "agent": "codex",
+        "success": false
+      }
+    }
+  },
+  "version": "3.0.0"
+}
