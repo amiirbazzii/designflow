@@ -393,6 +393,8 @@ export {
   visualFindingV1Schema,
   viewportValidationResultV1Schema,
   visualValidationReportV1Schema,
+  visualValidationInconclusivePhaseSchema,
+  visualValidationInconclusiveReasonSchema,
   visualValidationAgentOutputV1Schema,
 } from "./visual-validation-contracts";
 
@@ -462,6 +464,8 @@ export type {
   VisualFindingV1,
   ViewportValidationResultV1,
   VisualValidationReportV1,
+  VisualValidationInconclusivePhase,
+  VisualValidationInconclusiveReason,
   VisualValidationAgentOutputV1,
 } from "./visual-validation-contracts";
 

@@ -3,7 +3,11 @@ import {
   figmaSourceSnapshotSchema,
   visualValidationReportV1Schema,
 } from "@designflow/sdk";
-import { hasTrustedPersistedReference } from "./feedback-loop-revalidation";
+import {
+  hasTrustedPersistedReference,
+  resolveTrustedVisualReference,
+  visualValidationInconclusiveReason,
+} from "./feedback-loop-revalidation";
 
 const hash = "a".repeat(64);
 
@@ -68,5 +72,63 @@ describe("correction reference reuse", () => {
 
   test("does not treat a missing persisted reference as reusable", () => {
     expect(hasTrustedPersistedReference(undefined, referenceReport())).toBe(false);
+  });
+
+  test("resolves the explicit parent payload without consulting child-local artifacts", async () => {
+    const payloadHash = "b".repeat(64);
+    let requested: string | undefined;
+    const context = {
+      artifactStore: {
+        get: async (id: string) => {
+          requested = id;
+          return id === payloadHash
+            ? { artifact: { id: payloadHash, type: "artifact", metadata: { artifactId: "figma-source-snapshot", type: "design.figma-source-snapshot" } }, data: referenceSnapshot() }
+            : null;
+        },
+      },
+    } as never;
+    const resolved = await resolveTrustedVisualReference(context, {
+      artifactId: "figma-source-snapshot",
+      artifactType: "design.figma-source-snapshot",
+      artifactHash: payloadHash,
+      contentHash: hash,
+      fileKey: "file-key",
+      nodeId: "1026:6098",
+      provenance: referenceSnapshot().sourceProvenance!,
+    }, referenceReport());
+    expect(requested).toBe(payloadHash);
+    expect(resolved?.source.fileKey).toBe("file-key");
+  });
+
+  test("rejects a persisted reference when stable identity or payload identity differs", async () => {
+    const payloadHash = "b".repeat(64);
+    const context = {
+      artifactStore: {
+        get: async () => ({ artifact: { id: payloadHash, type: "artifact", metadata: { artifactId: "figma-source-snapshot", type: "design.figma-source-snapshot" } }, data: referenceSnapshot() }),
+      },
+    } as never;
+    const base = {
+      artifactId: "figma-source-snapshot",
+      artifactType: "design.figma-source-snapshot",
+      artifactHash: payloadHash,
+      contentHash: hash,
+      fileKey: "file-key",
+      nodeId: "1026:6098",
+      provenance: referenceSnapshot().sourceProvenance!,
+    };
+    await expect(resolveTrustedVisualReference(context, { ...base, fileKey: "other-file" }, referenceReport())).resolves.toBeUndefined();
+    await expect(resolveTrustedVisualReference(context, { ...base, nodeId: "other-node" }, referenceReport())).resolves.toBeUndefined();
+    await expect(resolveTrustedVisualReference(context, { ...base, artifactHash: "c".repeat(64) }, referenceReport())).resolves.toBeUndefined();
+  });
+
+  test("bounds and sanitizes inconclusive diagnostics", () => {
+    const error = new Error("Authorization: Bearer super-secret /tmp/designflow-secret");
+    error.stack = `${error.stack ?? ""}\n${"at internal stack ".repeat(2000)}`;
+    const diagnostic = visualValidationInconclusiveReason(error, "capture");
+    expect(diagnostic.phase).toBe("capture");
+    expect(diagnostic.message.length).toBeLessThanOrEqual(500);
+    expect(diagnostic.message).not.toContain("super-secret");
+    expect(diagnostic.message).not.toContain("/tmp/");
+    expect(diagnostic.message).not.toContain("stack stack");
   });
 });

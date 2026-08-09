@@ -168,6 +168,24 @@ export const visualValidationReportV1Schema = z.object({
 }).strict();
 export type VisualValidationReportV1 = z.infer<typeof visualValidationReportV1Schema>;
 
+export const visualValidationInconclusivePhaseSchema = z.enum([
+  "reference_resolution",
+  "reference_acquisition",
+  "reference_decode",
+  "preview_start",
+  "capture",
+  "comparison",
+  "artifact_write",
+]);
+export type VisualValidationInconclusivePhase = z.infer<typeof visualValidationInconclusivePhaseSchema>;
+
+export const visualValidationInconclusiveReasonSchema = z.object({
+  code: z.string().regex(/^[A-Z0-9_]{1,96}$/),
+  phase: visualValidationInconclusivePhaseSchema,
+  message: boundedText(500),
+}).strict();
+export type VisualValidationInconclusiveReason = z.infer<typeof visualValidationInconclusiveReasonSchema>;
+
 export const visualValidationAgentOutputV1Schema = z.object({
   findings: z.array(visualFindingV1Schema).max(500),
   interpretation: boundedText(4_000),

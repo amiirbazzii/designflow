@@ -4,11 +4,13 @@ import {
   FEEDBACK_LOOP_HARD_LIMITS,
   feedbackLoopInputV1Schema,
   feedbackLoopParentStateSchema,
+  figmaSourceSnapshotSchema,
   implementationValidationReportSchema,
   projectImplementationContextV1Schema,
   visualValidationReportV1Schema,
   type FeedbackLoopParentRecordV1,
   type FeedbackLoopInputV1,
+  type FigmaSourceSnapshot,
   type RegistryArtifactStore,
   type VisualValidationReportV1,
 } from "@designflow/sdk";
@@ -69,6 +71,9 @@ export interface VisualCorrectionPreparation {
 
 interface VersionedArtifact<T> {
   readonly ref: FeedbackLoopInputV1["generatedImplementation"];
+  readonly artifactType: string;
+  /** Content-addressed payload identity when present in the immutable artifact version. */
+  readonly payloadId?: string;
   readonly payload: T;
 }
 
@@ -78,6 +83,8 @@ interface RequiredArtifacts {
   readonly designSpecification: VersionedArtifact<unknown>;
   readonly designSystemMapping: VersionedArtifact<unknown>;
   readonly visualReport: VersionedArtifact<VisualValidationReportV1>;
+  /** Optional for historical parent runs that predate the explicit handoff. */
+  readonly figmaSourceSnapshot?: VersionedArtifact<FigmaSourceSnapshot>;
   /** Present when the run applied files: the snapshot's per-file post-write hashes. */
   readonly appliedFiles?: readonly { readonly path: string; readonly postWriteHash?: string }[];
 }
@@ -208,6 +215,8 @@ async function readVersioned<T>(
   if (artifact === null) return undefined;
   const version = await store.getVersion(summary.artifactId, summary.version);
   if (version === null) return undefined;
+  const payloadIdValue = (version.metadata ?? artifact.metadata)["payloadId"];
+  const payloadId = typeof payloadIdValue === "string" && payloadIdValue.length > 0 ? payloadIdValue : undefined;
   const detail = await inspection.getPayloadAtVersion(summary, summary.version);
   if (detail.payload === undefined) return undefined;
   try {
@@ -217,6 +226,8 @@ async function readVersioned<T>(
         artifactHash: version.hash,
         version: String(version.version),
       },
+      artifactType: summary.type,
+      ...(payloadId === undefined ? {} : { payloadId }),
       payload: parse(detail.payload),
     };
   } catch {
@@ -263,6 +274,12 @@ async function requiredArtifacts(
     store,
     (value) => visualValidationReportV1Schema.parse(value),
   );
+  const figmaSourceSnapshot = await readVersioned(
+    summaryFor(run, "figma-source-snapshot"),
+    inspection,
+    store,
+    (value) => figmaSourceSnapshotSchema.parse(value),
+  );
   if (
     projectContext === undefined ||
     generatedImplementation === undefined ||
@@ -287,7 +304,41 @@ async function requiredArtifacts(
     designSpecification,
     designSystemMapping,
     visualReport,
+    ...(figmaSourceSnapshot === undefined ? {} : { figmaSourceSnapshot }),
     ...(appliedFiles !== undefined ? { appliedFiles } : {}),
+  };
+}
+
+function trustedVisualReferenceFrom(
+  snapshot: VersionedArtifact<FigmaSourceSnapshot> | undefined,
+  report: VisualValidationReportV1 | undefined,
+): FeedbackLoopInputV1["trustedVisualReference"] {
+  if (snapshot === undefined || report === undefined || snapshot.payloadId === undefined) return undefined;
+  const fileKey = snapshot.payload.source.fileKey;
+  const provenance = snapshot.payload.sourceProvenance;
+  if (fileKey === undefined || provenance === undefined || provenance.mode === "placeholder")
+    return undefined;
+  const evidence = report.referenceEvidence.find((candidate) => {
+    const nodeId = candidate.frame.id;
+    return candidate.authenticity === "real-figma" &&
+      nodeId !== undefined &&
+      candidate.image.artifactId.length > 0 &&
+      candidate.sourceProvenance?.mode !== "placeholder" &&
+      candidate.sourceProvenance?.requestedFileKey === fileKey &&
+      snapshot.payload.screenshots.some(
+        (screenshot) => screenshot.nodeId === nodeId && screenshot.artifactId === candidate.image.artifactId,
+      );
+  });
+  const nodeId = evidence?.frame.id;
+  if (evidence === undefined || nodeId === undefined) return undefined;
+  return {
+    artifactId: snapshot.ref.artifactId,
+    artifactType: snapshot.artifactType,
+    artifactHash: snapshot.payloadId,
+    contentHash: evidence.image.contentHash,
+    fileKey,
+    nodeId,
+    provenance,
   };
 }
 
@@ -424,6 +475,7 @@ export async function prepareVisualCorrection(options: {
   );
   const validation = validationVersioned?.payload;
   const report = artifacts?.visualReport.payload;
+  const trustedVisualReference = trustedVisualReferenceFrom(artifacts?.figmaSourceSnapshot, report);
   const candidate = artifacts === undefined || implementationInput === undefined
     ? undefined
     : feedbackLoopWorkflowInputSchema.safeParse({
@@ -474,6 +526,7 @@ export async function prepareVisualCorrection(options: {
           ? {}
           : affectedFileMap(report, artifacts.projectContext.payload, artifacts.generatedImplementation.payload),
         initialVisualValidationReport: report,
+        ...(trustedVisualReference === undefined ? {} : { trustedVisualReference }),
       });
   const parsedCandidate = candidate?.success ? candidate.data : undefined;
   const selected = parsedCandidate === undefined || report === undefined

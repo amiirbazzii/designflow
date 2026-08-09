@@ -5,6 +5,7 @@ import {
   figmaSourceProvenanceSchema,
   generatedImplementationV1Schema,
   projectImplementationContextV1Schema,
+  visualValidationInconclusiveReasonSchema,
   visualValidationReportV1Schema,
   type CapabilityContext,
   type FigmaSourceSnapshot,
@@ -31,6 +32,100 @@ import { FEEDBACK_LOOP_ARTIFACT_IDS, type FeedbackLoopWorkflowInput } from "./fe
 type Stage5Ref = { id: string; type: string; metadata: Record<string, unknown> };
 
 export type RevalidationReferenceSource = "persisted" | "refreshed";
+type Stage5Phase = "reference_resolution" | "reference_acquisition" | "reference_decode" | "preview_start" | "capture" | "comparison" | "artifact_write";
+type TrustedVisualReference = NonNullable<FeedbackLoopWorkflowInput["trustedVisualReference"]>;
+
+class Stage5RevalidationError extends DesignFlowError {
+  public readonly phase: Stage5Phase;
+  public readonly referenceSource: RevalidationReferenceSource;
+
+  public constructor(
+    phase: Stage5Phase,
+    error: unknown,
+    referenceSource: RevalidationReferenceSource,
+  ) {
+    const code = error instanceof DesignFlowError ? error.code : "ERR_STAGE5_REVALIDATION";
+    super(code, `Stage 5 ${phase} failed.`);
+    this.name = "Stage5RevalidationError";
+    this.phase = phase;
+    this.referenceSource = referenceSource;
+    Object.setPrototypeOf(this, Stage5RevalidationError.prototype);
+  }
+}
+
+function stage5Error(
+  phase: Stage5Phase,
+  error: unknown,
+  referenceSource: RevalidationReferenceSource,
+): Stage5RevalidationError {
+  return error instanceof Stage5RevalidationError
+    ? error
+    : new Stage5RevalidationError(phase, error, referenceSource);
+}
+
+function errorCode(error: unknown): string {
+  const code = error instanceof DesignFlowError ? error.code : "ERR_STAGE5_REVALIDATION";
+  return /^[A-Z0-9_]{1,96}$/.test(code) ? code : "ERR_STAGE5_REVALIDATION";
+}
+
+function sanitizeDiagnosticMessage(error: unknown, phase: Stage5Phase): string {
+  const source = error instanceof Error ? error.message : String(error);
+  const sanitized = source
+    .replace(/(?:authorization|proxy-authorization|x-api-key|api[-_]?key|access[-_]?token)\s*[:=]\s*[^\r\n]*/gi, "[redacted]")
+    .replace(/\bbearer\s+[^\s,;]+/gi, "bearer [redacted]")
+    .replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|private|tmp|var|home|workspace)[^\s'"`)]*)[^\s'"`)]*/g, "[path]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  return sanitized.length > 0 ? sanitized : `Visual validation failed during ${phase}.`;
+}
+
+export function visualValidationInconclusiveReason(
+  error: unknown,
+  fallbackPhase: Stage5Phase = "reference_resolution",
+) {
+  const phase = error instanceof Stage5RevalidationError ? error.phase : fallbackPhase;
+  return visualValidationInconclusiveReasonSchema.parse({
+    code: errorCode(error),
+    phase,
+    message: sanitizeDiagnosticMessage(error, phase),
+  });
+}
+
+export async function resolveTrustedVisualReference(
+  context: CapabilityContext,
+  reference: TrustedVisualReference | undefined,
+  report: VisualValidationReportV1,
+): Promise<FigmaSourceSnapshot | undefined> {
+  if (reference === undefined) return undefined;
+  const provenance = figmaSourceProvenanceSchema.safeParse(reference.provenance);
+  if (!provenance.success || provenance.data.mode === "placeholder") return undefined;
+  if (provenance.data.requestedFileKey !== reference.fileKey) return undefined;
+  if (provenance.data.requestedNodeId !== undefined && provenance.data.requestedNodeId !== reference.nodeId) return undefined;
+  const stored = await context.artifactStore.get(reference.artifactHash);
+  if (stored === null || stored.artifact.id !== reference.artifactHash) return undefined;
+  if (stored.artifact.metadata["artifactId"] !== reference.artifactId || stored.artifact.metadata["type"] !== reference.artifactType) return undefined;
+  let snapshot: FigmaSourceSnapshot;
+  try {
+    snapshot = figmaSourceSnapshotSchema.parse(stored.data);
+  } catch {
+    return undefined;
+  }
+  if (snapshot.source.fileKey !== reference.fileKey || !snapshot.source.nodeIds.includes(reference.nodeId)) return undefined;
+  const screenshot = snapshot.screenshots.find((candidate) => candidate.nodeId === reference.nodeId);
+  if (screenshot === undefined) return undefined;
+  const matchingEvidence = report.referenceEvidence.some((evidence) =>
+    evidence.authenticity === "real-figma" &&
+    evidence.frame.id === reference.nodeId &&
+    evidence.image.artifactId === screenshot.artifactId &&
+    evidence.image.contentHash === reference.contentHash &&
+    (() => {
+      const provenance = figmaSourceProvenanceSchema.safeParse(evidence.sourceProvenance);
+      return provenance.success && provenance.data.mode !== "placeholder" && provenance.data.requestedFileKey === reference.fileKey;
+    })(),
+  );
+  return matchingEvidence ? snapshot : undefined;
+}
 
 /**
  * A persisted reference is reusable only when its source identity and stored
@@ -100,32 +195,42 @@ async function seedStage5Inputs(context: CapabilityContext, input: FeedbackLoopW
   const generated = generatedImplementationV1Schema.parse({
     schemaVersion: "1", projectId: input.project.id, designSpecificationArtifactId: "design-specification", projectContextArtifactId: "project-implementation-context", mappingArtifactId: "design-system-mapping", implementationPlanArtifactId: "implementation-plan", proposalArtifactId: "proposed-file-changes", applicationArtifactId: "file-application-result", validationArtifactId: "implementation-validation", changedFiles: [], createdFiles: [], modifiedFiles: [], dependencyChanges: [], reusedComponents: [], reusedTokens: [], assumptions: [], unresolvedItems: [], agentId: "implementation-agent", agentVersion: "0.1.0", modelProfileId: "implementation-default",
   });
-  const persistedSnapshot = await (async () => {
-    try {
-      return await readArtifact(context, "figma-source-snapshot", figmaSourceSnapshotSchema);
-    } catch {
-      return undefined;
-    }
-  })();
   const firstProvenance = figmaSourceProvenanceSchema.safeParse(
     initial.referenceEvidence[0]?.sourceProvenance,
   );
   const firstFileKey = firstProvenance.success && firstProvenance.data.mode !== "placeholder"
     ? firstProvenance.data.requestedFileKey
     : undefined;
-  const persistedReference = hasTrustedPersistedReference(
-    persistedSnapshot === undefined ? undefined : figmaSourceSnapshotSchema.parse(persistedSnapshot),
+  let referenceSnapshot = await resolveTrustedVisualReference(
+    context,
+    input.trustedVisualReference,
     initial,
   );
-  let referenceSnapshot = persistedReference ? persistedSnapshot : undefined;
-  let referenceSource: RevalidationReferenceSource = persistedReference
-    ? "persisted"
-    : "refreshed";
+  let referenceSource: RevalidationReferenceSource = referenceSnapshot === undefined
+    ? "refreshed"
+    : "persisted";
+  // Historical inputs had no explicit handoff. Preserve their safe local
+  // fallback, but do not label it as new persisted-parent proof.
+  const childLocalSnapshotRaw = input.trustedVisualReference === undefined
+    ? await (async () => {
+        try {
+          return await readArtifact(context, "figma-source-snapshot", figmaSourceSnapshotSchema);
+        } catch {
+          return undefined;
+        }
+      })()
+    : undefined;
+  const childLocalSnapshot = childLocalSnapshotRaw === undefined
+    ? undefined
+    : figmaSourceSnapshotSchema.parse(childLocalSnapshotRaw);
+  if (referenceSnapshot === undefined && childLocalSnapshot !== undefined && hasTrustedPersistedReference(childLocalSnapshot, initial)) {
+    referenceSnapshot = childLocalSnapshot;
+  }
   const refreshableProvenance = firstProvenance.success &&
     firstProvenance.data.mode !== "placeholder"
     ? firstProvenance.data
     : undefined;
-  if (!persistedReference && refreshableProvenance !== undefined && context.mcp !== undefined) {
+  if (referenceSnapshot === undefined && refreshableProvenance !== undefined && context.mcp !== undefined) {
     const provenance = refreshableProvenance;
     const fileKey = provenance.requestedFileKey;
     const nodeId = provenance.requestedNodeId ?? initial.referenceEvidence[0]?.frame.id;
@@ -134,39 +239,43 @@ async function seedStage5Inputs(context: CapabilityContext, input: FeedbackLoopW
         "ERR_FIGMA_REFERENCE_IDENTITY_MISSING",
         "The visual reference cannot be refreshed because its Figma node identity is missing.",
       );
-    const parsed = await parseFigmaSourceCapability.execute(
-      context,
-      {
-        designFile: `https://www.figma.com/design/${fileKey}/?node-id=${nodeId.replace(":", "-")}`,
-        frames: [nodeId],
-        allowFixtureNames: false,
-      },
-    );
-    const parsedRef = refFrom(parsed);
-    const retrieved = await retrieveFigmaSourceSnapshotCapability.execute(
-      {
-        ...context,
-        artifactRefs: [...context.artifactRefs, parsedRef],
-        parentArtifacts: [...context.parentArtifacts, parsedRef],
-      },
-      {
-        captureScreenshots: true,
-        refreshFigmaSource: true,
-        sourceMode: provenance.mode,
-        serverIdentity: provenance.serverIdentity,
-        requestedNodeId: nodeId,
-      },
-    );
-    const retrievedRef = refFrom(retrieved);
-    const payloadId = retrievedRef.metadata["payloadId"];
-    if (typeof payloadId !== "string")
-      throw new DesignFlowError(
-        "ERR_FIGMA_REFERENCE_PAYLOAD_MISSING",
-        "The refreshed Figma reference did not retain a trusted payload.",
+    try {
+      const parsed = await parseFigmaSourceCapability.execute(
+        context,
+        {
+          designFile: `https://www.figma.com/design/${fileKey}/?node-id=${nodeId.replace(":", "-")}`,
+          frames: [nodeId],
+          allowFixtureNames: false,
+        },
       );
-    const stored = await context.artifactStore.get(payloadId);
-    referenceSnapshot = figmaSourceSnapshotSchema.parse(stored?.data);
-    referenceSource = "refreshed";
+      const parsedRef = refFrom(parsed);
+      const retrieved = await retrieveFigmaSourceSnapshotCapability.execute(
+        {
+          ...context,
+          artifactRefs: [...context.artifactRefs, parsedRef],
+          parentArtifacts: [...context.parentArtifacts, parsedRef],
+        },
+        {
+          captureScreenshots: true,
+          refreshFigmaSource: true,
+          sourceMode: provenance.mode,
+          serverIdentity: provenance.serverIdentity,
+          requestedNodeId: nodeId,
+        },
+      );
+      const retrievedRef = refFrom(retrieved);
+      const payloadId = retrievedRef.metadata["payloadId"];
+      if (typeof payloadId !== "string")
+        throw new DesignFlowError(
+          "ERR_FIGMA_REFERENCE_PAYLOAD_MISSING",
+          "The refreshed Figma reference did not retain a trusted payload.",
+        );
+      const stored = await context.artifactStore.get(payloadId);
+      referenceSnapshot = figmaSourceSnapshotSchema.parse(stored?.data);
+      referenceSource = "refreshed";
+    } catch (error) {
+      throw stage5Error("reference_acquisition", error, referenceSource);
+    }
   }
   const referenceArtifactIds: string[] = [];
   if (referenceSnapshot !== undefined) {
@@ -185,16 +294,16 @@ async function seedStage5Inputs(context: CapabilityContext, input: FeedbackLoopW
       referenceArtifactIds.push(stored?.id ?? evidence.image.artifactId);
     }
   }
-  const source = persistedSnapshot?.source ?? {
+  const source = childLocalSnapshot?.source ?? {
     designFile: `designflow://feedback-loop/${input.project.id}`,
     ...(firstFileKey === undefined ? {} : { fileKey: firstFileKey }),
     frames: spec.frames,
     nodeIds: initial.referenceEvidence.map((evidence) => evidence.frame.id ?? "frame"),
   };
   const snapshot = referenceSnapshot ?? figmaSourceSnapshotSchema.parse({
-    ...(persistedSnapshot ?? {}),
+    ...(childLocalSnapshot ?? {}),
     schemaVersion: "1", source: { ...source, frames: (source.frames ?? []).length > 0 ? source.frames : spec.frames, nodeIds: (source.nodeIds ?? []).length > 0 ? source.nodeIds : spec.frames },
-    ...(persistedSnapshot?.sourceProvenance === undefined && firstProvenance.success ? { sourceProvenance: firstProvenance.data } : {}),
+    ...(childLocalSnapshot?.sourceProvenance === undefined && firstProvenance.success ? { sourceProvenance: firstProvenance.data } : {}),
     screenshots: initial.referenceEvidence.map((evidence, index) => ({ nodeId: evidence.frame.id ?? "frame", artifactId: referenceArtifactIds[index] ?? evidence.image.artifactId, width: evidence.image.width, height: evidence.image.height, format: "png" })),
     capabilities: { screenshotsAvailable: initial.referenceEvidence.length > 0 }, warnings: [],
   });
@@ -205,7 +314,11 @@ async function seedStage5Inputs(context: CapabilityContext, input: FeedbackLoopW
     ["generated-implementation", "code.generated-implementation", generated],
     ["figma-source-snapshot", "design.figma-source-snapshot", snapshot],
   ] as const) {
-    refs.push(refFrom(await writeArtifact(stage5Context(context, `seed-${item[0]}`, refs), { artifactId: item[0], artifactType: item[1], name: item[0], payload: item[2], summary: { projectFilesChanged: false, feedbackLoopSeed: true } })));
+    try {
+      refs.push(refFrom(await writeArtifact(stage5Context(context, `seed-${item[0]}`, refs), { artifactId: item[0], artifactType: item[1], name: item[0], payload: item[2], summary: { projectFilesChanged: false, feedbackLoopSeed: true } })));
+    } catch (error) {
+      throw stage5Error("artifact_write", error, referenceSource);
+    }
   }
   return { refs, referenceSource };
 }
@@ -216,7 +329,17 @@ async function seedStage5Inputs(context: CapabilityContext, input: FeedbackLoopW
  * implementation. Every intermediate Stage 5 artifact is persisted.
  */
 export async function runFreshStage5Validation(context: CapabilityContext, input: FeedbackLoopWorkflowInput, initial: VisualValidationReportV1): Promise<{ report: VisualValidationReportV1; artifactIds: string[]; referenceSource: RevalidationReferenceSource }> {
-  const seeded = await seedStage5Inputs(context, input, initial);
+  const fallbackSource: RevalidationReferenceSource = "refreshed";
+  let seeded: Awaited<ReturnType<typeof seedStage5Inputs>>;
+  try {
+    seeded = await seedStage5Inputs(context, input, initial);
+  } catch (error) {
+    throw stage5Error(
+      error instanceof Stage5RevalidationError ? error.phase : "reference_resolution",
+      error,
+      error instanceof Stage5RevalidationError ? error.referenceSource : fallbackSource,
+    );
+  }
   let refs = seeded.refs;
   const stageInput = stage5Input(input);
   const steps: Array<[string, { execute(context: CapabilityContext, input: unknown): Promise<unknown>; input: unknown }]> = [
@@ -230,15 +353,35 @@ export async function runFreshStage5Validation(context: CapabilityContext, input
     ["store-visual-validation-report", { execute: storeVisualValidationReportCapability.execute.bind(storeVisualValidationReportCapability), input: {} }],
   ];
   for (const [capabilityId, step] of steps) {
-    const output = await step.execute(stage5Context(context, capabilityId, refs), step.input);
-    refs = [...refs, refFrom(output)];
+    const phase: Stage5Phase = capabilityId === "prepare-visual-validation"
+      ? "reference_resolution"
+      : capabilityId === "start-preview-server"
+        ? "preview_start"
+        : capabilityId === "capture-implementation-screenshots"
+          ? "capture"
+          : capabilityId === "resolve-reference-evidence"
+            ? "reference_decode"
+            : capabilityId === "compare-visual-evidence" || capabilityId === "invoke-visual-validation-agent-stage5"
+              ? "comparison"
+              : "artifact_write";
+    try {
+      const output = await step.execute(stage5Context(context, capabilityId, refs), step.input);
+      refs = [...refs, refFrom(output)];
+    } catch (error) {
+      throw stage5Error(phase, error, seeded.referenceSource);
+    }
   }
   const reportRef = refs.find((ref) => ref.id === "visual-validation-report");
-  if (reportRef === undefined) throw new Error("Stage 5 did not produce a Visual Validation Report.");
+  if (reportRef === undefined) throw stage5Error("artifact_write", new Error("Stage 5 did not produce a Visual Validation Report."), seeded.referenceSource);
   const payloadId = reportRef.metadata["payloadId"];
-  if (typeof payloadId !== "string") throw new Error("Stage 5 report did not retain its payload reference.");
-  const stored = await context.artifactStore.get(payloadId);
-  const report = visualValidationReportV1Schema.parse(stored?.data);
+  if (typeof payloadId !== "string") throw stage5Error("artifact_write", new Error("Stage 5 report did not retain its payload reference."), seeded.referenceSource);
+  let report: VisualValidationReportV1;
+  try {
+    const stored = await context.artifactStore.get(payloadId);
+    report = visualValidationReportV1Schema.parse(stored?.data);
+  } catch (error) {
+    throw stage5Error("artifact_write", error, seeded.referenceSource);
+  }
   const persisted = ["preview-runtime-record", "implementation-screenshot-evidence", "dom-and-computed-style-evidence", "reference-screenshot-evidence", "image-comparison-metrics", "visual-validation-agent-output", "visual-validation-report"];
   return { report, artifactIds: persisted, referenceSource: seeded.referenceSource };
 }

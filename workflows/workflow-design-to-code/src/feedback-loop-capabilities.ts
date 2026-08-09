@@ -45,6 +45,7 @@ import {
 import {
   runFreshStage5Validation,
   storeRevalidatedReport,
+  visualValidationInconclusiveReason,
 } from "./feedback-loop-revalidation";
 import { configuredBrowserRenderer } from "./visual-validation-runtime";
 import { deriveCompositionScope } from "./composition-scope";
@@ -1109,6 +1110,7 @@ export const evaluateFeedbackLoopCapability: Capability<
       status: "ready" | "stopped";
       reason?: string;
       report?: import("@designflow/sdk").VisualValidationReportV1;
+      inconclusiveReason?: import("@designflow/sdk").VisualValidationInconclusiveReason;
     };
     const now = new Date().toISOString();
     const initialMajor = initial.findings.filter(
@@ -1270,6 +1272,19 @@ export const evaluateFeedbackLoopCapability: Capability<
       totalApprovals: 1,
       rollbacks: validation.status === "failed" ? 1 : 0,
       overallConfidence: fresh?.confidence ?? initial.confidence,
+      correctionApplied: application !== undefined,
+      projectValidation: validation.status,
+      visualValidation: gate.status === "ready"
+        ? { status: "completed" }
+        : {
+            status: "inconclusive",
+            ...(gate.inconclusiveReason === undefined
+              ? {}
+              : { inconclusiveReason: gate.inconclusiveReason }),
+          },
+      ...(gate.inconclusiveReason === undefined
+        ? {}
+        : { visualValidationInconclusiveReason: gate.inconclusiveReason }),
       limitations: [
         "Each correction iteration is independently approved; continuation is allowed only when deterministic metrics improve without regression.",
       ],
@@ -1477,9 +1492,16 @@ export const directStage5RevalidationCapability: Capability<
           result.referenceSource,
         );
       } catch (error) {
-        const reason = error instanceof DesignFlowError && error.code === "ERR_MCP_TIMEOUT"
-          ? "reference_acquisition_failed"
-          : "visual_validation_inconclusive";
+        // Keep the persisted correction stop reason within the existing
+        // typed contract; the bounded diagnostic carries the infrastructure
+        // code and precise phase (for example ERR_MCP_TIMEOUT/acquisition).
+        const reason = "visual_validation_inconclusive";
+        const inconclusiveReason = visualValidationInconclusiveReason(error);
+        const referenceSource = error instanceof Error && "referenceSource" in error &&
+          ((error as { referenceSource?: unknown }).referenceSource === "persisted" ||
+            (error as { referenceSource?: unknown }).referenceSource === "refreshed")
+          ? (error as { referenceSource: "persisted" | "refreshed" }).referenceSource
+          : "refreshed";
         return writeArtifact(context, {
           artifactId: "feedback-loop-revalidation-output",
           artifactType: "feedback.revalidation-gate",
@@ -1488,11 +1510,15 @@ export const directStage5RevalidationCapability: Capability<
             status: "stopped",
             reason,
             stage5ArtifactIds,
+            referenceSource,
+            inconclusiveReason,
           },
           summary: {
             status: "stopped",
             reason,
             projectFilesChanged: true,
+            referenceSource,
+            inconclusiveReason,
           },
         });
       }

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { visualFindingV1Schema, visualValidationReportV1Schema } from "./visual-validation-contracts";
+import { figmaSourceProvenanceSchema } from "./design-engineer-contracts";
+import { visualFindingV1Schema, visualValidationInconclusiveReasonSchema, visualValidationReportV1Schema } from "./visual-validation-contracts";
 
 export const VISUAL_CORRECTION_SCHEMA_VERSION = "1" as const;
 export const VISUAL_CORRECTION_AGENT_ID = "visual-correction-agent" as const;
@@ -63,6 +64,18 @@ const viewportConfiguration = z.object({
 export const feedbackLoopInputV1Schema = z.object({
   schemaVersion: z.literal(VISUAL_CORRECTION_SCHEMA_VERSION), workflowId: z.literal("design-to-code-feedback-loop"), executionId: text(256), iterationNumber: z.number().int().positive().max(FEEDBACK_LOOP_HARD_LIMITS.maxIterations).default(1), project, projectFingerprint: sha256, currentImplementationHash: sha256, generatedImplementation: artifact, latestVisualValidationReport: artifact,
   designSpecification: artifact, designSystemMapping: artifact, actionableFindingIds: z.array(findingId).max(20), iterationPolicy, validationConfiguration, viewportConfiguration, referenceImagePayloads: z.record(z.string().max(25_000_000)).optional(),
+  /** Exact immutable parent Stage 5 reference; absent on historical inputs. */
+  trustedVisualReference: z.object({
+    artifactId: text(256),
+    artifactType: text(256),
+    /** Content-addressed trusted snapshot identity used by the artifact store. */
+    artifactHash: sha256,
+    /** Reference image content hash from the parent visual evidence. */
+    contentHash: sha256,
+    fileKey: text(256),
+    nodeId: text(256),
+    provenance: figmaSourceProvenanceSchema,
+  }).strict().optional(),
   agentVersion: text(32), modelProfileId: text(128), timeouts: z.object({ agentMs: z.number().int().positive().max(120_000), approvalMs: z.number().int().positive().max(7 * 24 * 60 * 60_000) }).strict(), limits: z.object({ maxContextBytes: z.number().int().positive().max(1_000_000), maxPatchBytes: z.number().int().positive().max(1_000_000) }).strict(),
 }).strict();
 export type FeedbackLoopInputV1 = z.infer<typeof feedbackLoopInputV1Schema>;
@@ -103,7 +116,13 @@ export const feedbackLoopIterationV1Schema = z.object({ schemaVersion: z.literal
 }).strict();
 export type FeedbackLoopIterationV1 = z.infer<typeof feedbackLoopIterationV1Schema>;
 
-export const feedbackLoopReportV1Schema = z.object({ schemaVersion: z.literal(VISUAL_CORRECTION_SCHEMA_VERSION), projectId: text(256), initialVisualReportId: text(256), finalVisualReportId: text(256), iterations: z.array(feedbackLoopIterationV1Schema).max(8), initialFindings: z.array(findingId).max(500), resolvedFindings: z.array(findingId).max(500), unresolvedFindings: z.array(findingId).max(500), introducedFindings: z.array(findingId).max(500), finalStatus: z.enum(["pass", "pass_with_findings", "fail", "stopped"]), stopReason: feedbackLoopStopReasonSchema, continuationAllowed: z.boolean().default(false), iterationLimit: z.number().int().positive().max(8), totalFilesChanged: z.number().int().nonnegative(), totalApprovals: z.number().int().nonnegative(), rollbacks: z.number().int().nonnegative(), overallConfidence: z.number().min(0).max(1), limitations: z.array(text(1_000)).max(64), agent: z.object({ id: z.literal(VISUAL_CORRECTION_AGENT_ID), version: text(32), modelProfileId: text(128) }).strict(), traceIds: z.array(text(256)).max(64),
+export const feedbackLoopReportV1Schema = z.object({ schemaVersion: z.literal(VISUAL_CORRECTION_SCHEMA_VERSION), projectId: text(256), initialVisualReportId: text(256), finalVisualReportId: text(256), iterations: z.array(feedbackLoopIterationV1Schema).max(8), initialFindings: z.array(findingId).max(500), resolvedFindings: z.array(findingId).max(500), unresolvedFindings: z.array(findingId).max(500), introducedFindings: z.array(findingId).max(500), finalStatus: z.enum(["pass", "pass_with_findings", "fail", "stopped"]), stopReason: feedbackLoopStopReasonSchema, continuationAllowed: z.boolean().default(false), iterationLimit: z.number().int().positive().max(8), totalFilesChanged: z.number().int().nonnegative(), totalApprovals: z.number().int().nonnegative(), rollbacks: z.number().int().nonnegative(), overallConfidence: z.number().min(0).max(1),
+  /** Explicit outcome fields for an applied-but-visually-inconclusive child. */
+  correctionApplied: z.boolean().optional(),
+  projectValidation: z.enum(["passed", "failed", "timed_out"]).optional(),
+  visualValidation: z.object({ status: z.enum(["completed", "inconclusive"]), inconclusiveReason: visualValidationInconclusiveReasonSchema.optional() }).strict().optional(),
+  visualValidationInconclusiveReason: visualValidationInconclusiveReasonSchema.optional(),
+  limitations: z.array(text(1_000)).max(64), agent: z.object({ id: z.literal(VISUAL_CORRECTION_AGENT_ID), version: text(32), modelProfileId: text(128) }).strict(), traceIds: z.array(text(256)).max(64),
 }).strict();
 export type FeedbackLoopReportV1 = z.infer<typeof feedbackLoopReportV1Schema>;
 
