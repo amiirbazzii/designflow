@@ -290,3 +290,23 @@ MVP-4 evidence gates pass. No MVP-5B implementation was started.
 This document preserves the historical MVP-5A audit at version 0.1.1. The
 subsequent release-preparation decision bumps the immutable npm release to
 designflow-ai@0.1.2; historical acceptance results above are not rewritten.
+
+## MVP-5C publication evidence
+
+Publication completed after exact-artifact verification.
+
+- Release source: `main` at `6ce49f5b7ec538793b024b3781343aacaf4ef4aa`
+- Package: `designflow-ai@0.1.2`
+- Published tarball: `designflow-ai-0.1.2.tgz`
+- Approved tarball SHA-256: `ee239d0bd94e12f2850df5db9ba27affc2f03d35d585c7b6968e26fefc5c46a8`
+- Payload: four CLI-only files; no private package metadata
+- Registry: `https://registry.npmjs.org/`
+- Publication: PASS with public access; `latest` resolves to `0.1.2`
+- Fresh public-registry installation: PASS
+- Installed checks: `designflow --version`, `--help`, `doctor`, `settings`,
+  and Design Engineer discovery all PASS
+- Git tag: `v0.1.2`, pushed to `origin`, targeting the exact release commit
+
+Known non-blocking limitations remain unchanged: bounded canonical
+Coordinator output reliability and incomplete final canonical Journey 6
+`CORRECTION_APPLIED_AND_IMPROVED` proof.
