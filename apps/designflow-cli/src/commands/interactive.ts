@@ -70,6 +70,7 @@ export async function interactiveCommand(
       await runCommand(context, terminal, worker.id, {
         interactive: true,
         offerArtifactView: true,
+        productExperience: true,
       });
       continue;
     }

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { dispatch } from "../cli";
 import { createCliContext, type CliContext } from "../services/cli-runner";
 import { ScriptedTerminal } from "../ui/terminal";
+import { runCommand } from "./run";
 
 /**
  * `designflow artifacts` — real CLI behaviour against a throwaway home.
@@ -214,19 +215,20 @@ describe("designflow artifacts", () => {
   });
 });
 
-describe("interactive artifact inspection", () => {
+describe("artifact inspection after a run", () => {
   test("offers to view artifacts after a completed run, and shows the chosen one", async () => {
     const cliContext = context();
     const terminal = new ScriptedTerminal([
-      "1",
-      "2",
       ...RUN_ANSWERS,
       "yes",
       "review-target-summary",
       "4",
     ]);
 
-    const code = await dispatch([], cliContext, terminal);
+    const code = await runCommand(cliContext, terminal, "qa-reviewer", {
+      interactive: true,
+      offerArtifactView: true,
+    });
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("View artifacts now?");
@@ -236,9 +238,12 @@ describe("interactive artifact inspection", () => {
 
   test("declining the offer leaves the completion screen exactly as before", async () => {
     const cliContext = context();
-    const terminal = new ScriptedTerminal(["1", "2", ...RUN_ANSWERS, "no", "4"]);
+    const terminal = new ScriptedTerminal([...RUN_ANSWERS, "no"]);
 
-    const code = await dispatch([], cliContext, terminal);
+    const code = await runCommand(cliContext, terminal, "qa-reviewer", {
+      interactive: true,
+      offerArtifactView: true,
+    });
 
     expect(code).toBe(0);
     expect(terminal.transcript).toContain("View artifacts now?");

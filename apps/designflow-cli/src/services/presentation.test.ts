@@ -15,6 +15,8 @@ import {
   progressLabel,
   projectChildExecutions,
   projectFeedbackLoopIterations,
+  renderProductProgress,
+  renderProductRunResult,
   readProvenanceFacts,
 } from "./presentation";
 
@@ -96,6 +98,78 @@ describe("capability presentation", () => {
     ]) {
       expect(progressLabel(capabilityId, capabilityId)).not.toContain(capabilityId);
     }
+  });
+});
+
+// ── Interactive product progress ──────────────────────────────
+
+describe("interactive product progress", () => {
+  test("groups observed execution state into human-readable stages", () => {
+    const output = renderProductProgress({
+      steps: [
+        { capabilityId: "parse-figma-source", status: "done" },
+        { capabilityId: "inspect-registered-project", status: "done" },
+        { capabilityId: "invoke-implementation-agent", status: "active" },
+      ],
+    });
+
+    expect(output).toContain("Understanding\n  ✓ Design loaded");
+    expect(output).toContain("  ✓ Project understood");
+    expect(output).toContain("Building\n  → Preparing implementation");
+  });
+
+  test("does not fabricate stages that have not appeared in execution", () => {
+    const output = renderProductProgress({
+      steps: [
+        { capabilityId: "parse-figma-source", status: "done" },
+        { status: "pending" },
+      ],
+    });
+
+    expect(output).toContain("Understanding");
+    expect(output).not.toContain("Building");
+    expect(output).not.toContain("Checking");
+    expect(output).not.toContain("Review");
+    expect(output).not.toContain("Pending step");
+  });
+
+  test("renders bounded success, failure, and cancellation summaries", () => {
+    expect(
+      renderProductRunResult({
+        state: "ready",
+        status: "completed",
+        hasImplementation: true,
+        hasSpecification: true,
+        hasValidation: true,
+        validationFailed: false,
+        rollbackTriggered: false,
+      }).join("\n"),
+    ).toContain("Ready for review");
+
+    const failure = renderProductRunResult({
+      state: "failed",
+      status: "failed",
+      hasImplementation: false,
+      hasSpecification: true,
+      hasValidation: true,
+      validationFailed: true,
+      rollbackTriggered: true,
+    }).join("\n");
+    expect(failure).toContain("The proposed change could not pass validation.");
+    expect(failure).toContain("restored the project to its previous state");
+    expect(failure).not.toContain("traceId");
+
+    const cancelled = renderProductRunResult({
+      state: "failed",
+      status: "cancelled",
+      hasImplementation: false,
+      hasSpecification: false,
+      hasValidation: false,
+      validationFailed: false,
+      rollbackTriggered: false,
+    }).join("\n");
+    expect(cancelled).toContain("Cancelled");
+    expect(cancelled).not.toContain("Implementation stopped");
   });
 });
 

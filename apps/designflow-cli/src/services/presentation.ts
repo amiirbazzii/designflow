@@ -148,6 +148,180 @@ export function progressLabel(
     : producer.label;
 }
 
+// ── Interactive product progress ───────────────────────────────
+
+export type ProductProgressStage =
+  | "Understanding"
+  | "Building"
+  | "Checking"
+  | "Review";
+
+export interface ProductProgressDefinition {
+  readonly stage: ProductProgressStage;
+  readonly label: string;
+}
+
+/**
+ * The interactive shell's vocabulary for the Design Engineer journey.
+ *
+ * This is deliberately a projection of capability ids already present in the
+ * progress event stream. The shell never invents future work: a product line
+ * is rendered only after its capability has appeared in that stream.
+ */
+const PRODUCT_PROGRESS_DEFINITIONS: Readonly<
+  Record<string, ProductProgressDefinition>
+> = {
+  "parse-figma-source": { stage: "Understanding", label: "Design loaded" },
+  "retrieve-figma-source-snapshot": { stage: "Understanding", label: "Design loaded" },
+  "invoke-figma-specification-agent": { stage: "Understanding", label: "Design understood" },
+  "inspect-registered-project": { stage: "Understanding", label: "Project understood" },
+  "map-design-system": { stage: "Understanding", label: "Existing components matched" },
+
+  "invoke-implementation-agent": { stage: "Building", label: "Preparing implementation" },
+  "store-implementation-plan": { stage: "Building", label: "Implementation planned" },
+  "store-generated-implementation": { stage: "Building", label: "Implementation prepared" },
+
+  "run-project-validation": { stage: "Checking", label: "Build and validation" },
+  "prepare-visual-validation": { stage: "Checking", label: "Browser checks" },
+  "start-preview-server": { stage: "Checking", label: "Browser checks" },
+  "capture-implementation-screenshots": { stage: "Checking", label: "Browser checks" },
+  "store-dom-and-computed-style-evidence": { stage: "Checking", label: "Browser checks" },
+  "resolve-reference-evidence": { stage: "Checking", label: "Visual comparison" },
+  "compare-visual-evidence": { stage: "Checking", label: "Visual comparison" },
+  "invoke-visual-validation-agent": { stage: "Checking", label: "Visual comparison" },
+  "invoke-visual-validation-agent-stage5": { stage: "Checking", label: "Visual comparison" },
+  "store-visual-validation-report": { stage: "Checking", label: "Visual comparison" },
+  "store-stage-5-summary": { stage: "Checking", label: "Visual comparison" },
+
+  "store-proposed-file-changes": { stage: "Review", label: "Implementation proposal ready" },
+  "request-implementation-approval": { stage: "Review", label: "Waiting for approval" },
+  "create-project-snapshot": { stage: "Review", label: "Rollback snapshot ready" },
+  "apply-approved-file-changes": { stage: "Review", label: "Applying approved implementation" },
+};
+
+const PRODUCT_PROGRESS_STAGE_ORDER: readonly ProductProgressStage[] = [
+  "Understanding",
+  "Building",
+  "Checking",
+  "Review",
+];
+
+export function productProgressDefinition(
+  capabilityId: string,
+): ProductProgressDefinition | undefined {
+  return PRODUCT_PROGRESS_DEFINITIONS[capabilityId];
+}
+
+function productProgressMarker(status: string): string {
+  return status === "done" ? "✓" : status === "active" ? "→" : "○";
+}
+
+/**
+ * Renders only observed Design Engineer capabilities in product language.
+ * Unknown or planner-only pending steps are intentionally omitted because
+ * their product meaning is not known here.
+ */
+export function renderProductProgress(progress: {
+  readonly steps: readonly {
+    readonly status: string;
+    readonly capabilityId?: string | undefined;
+  }[];
+}): string {
+  const groups = new Map<
+    ProductProgressStage,
+    Array<{ label: string; statuses: string[] }>
+  >();
+
+  for (const step of progress.steps) {
+    if (step.capabilityId === undefined) continue;
+    const definition = productProgressDefinition(step.capabilityId);
+    if (definition === undefined) continue;
+
+    const group = groups.get(definition.stage) ?? [];
+    const existing = group.find((item) => item.label === definition.label);
+    if (existing === undefined) {
+      group.push({ label: definition.label, statuses: [step.status] });
+    } else {
+      existing.statuses.push(step.status);
+    }
+    groups.set(definition.stage, group);
+  }
+
+  if (groups.size === 0) return "Preparing Design Engineer...";
+
+  const lines: string[] = [];
+  for (const stage of PRODUCT_PROGRESS_STAGE_ORDER) {
+    const group = groups.get(stage);
+    if (group === undefined) continue;
+
+    lines.push(stage);
+    for (const item of group) {
+      const status = item.statuses.includes("active")
+        ? "active"
+        : item.statuses.every((value) => value === "done")
+          ? "done"
+          : "pending";
+      lines.push(`  ${productProgressMarker(status)} ${item.label}`);
+    }
+    lines.push("");
+  }
+
+  lines.pop();
+  return lines.join("\n");
+}
+
+export interface ProductRunResultFacts {
+  readonly state: string;
+  readonly status: string;
+  readonly hasImplementation: boolean;
+  readonly hasSpecification: boolean;
+  readonly hasValidation: boolean;
+  readonly validationFailed: boolean;
+  readonly rollbackTriggered: boolean;
+}
+
+/** A bounded, product-level completion view for the interactive shell. */
+export function renderProductRunResult(facts: ProductRunResultFacts): string[] {
+  if (facts.status === "cancelled") {
+    return [
+      "",
+      "Cancelled",
+      "",
+      "The Design Engineer run was cancelled before it finished.",
+      "No further work was started.",
+    ];
+  }
+
+  if (facts.state === "ready") {
+    const lines = ["", "Complete", ""];
+    if (facts.hasImplementation) lines.push("✓ Implementation prepared");
+    else if (facts.hasSpecification) lines.push("✓ Design specification prepared");
+    if (facts.hasValidation) lines.push("✓ Validation completed");
+    lines.push("", "Ready for review");
+    return lines;
+  }
+
+  const lines = [
+    "",
+    "Implementation stopped",
+    "",
+    facts.validationFailed
+      ? "The proposed change could not pass validation."
+      : "The Design Engineer run did not complete.",
+  ];
+
+  if (facts.rollbackTriggered) {
+    lines.push("DesignFlow restored the project to its previous state.");
+  } else if (!facts.hasImplementation) {
+    lines.push("No files were changed.");
+  } else {
+    lines.push("Review the run before continuing.");
+  }
+
+  lines.push("", "Run `designflow traces` for technical details.");
+  return lines;
+}
+
 // ── Artifact stage grouping ─────────────────────────────────────
 
 export interface ArtifactGroup {

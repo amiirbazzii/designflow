@@ -21,6 +21,8 @@ import {
   describeVisualOutcome,
   progressLabel,
   readProvenanceFacts,
+  renderProductProgress,
+  renderProductRunResult,
 } from "../services/presentation";
 import {
   prepareVisualCorrection,
@@ -129,6 +131,7 @@ export async function finishSession(
   options: {
     readonly interactive?: boolean;
     readonly offerArtifactView?: boolean;
+    readonly productExperience?: boolean;
     readonly visualCorrection?: "off" | "once";
   } = {},
 ): Promise<number> {
@@ -152,6 +155,21 @@ export async function finishSession(
   const approved = await resolveApproval(context, terminal, executionId, result.session.originalInput);
 
   if (approved === false) {
+    if (options.productExperience === true) {
+      terminal.print(
+        renderProductRunResult({
+          state: "failed",
+          status: "rejected",
+          hasImplementation: false,
+          hasSpecification: true,
+          hasValidation: false,
+          validationFailed: false,
+          rollbackTriggered: false,
+        }).join("\n"),
+      );
+      return 1;
+    }
+
     terminal.print();
     terminal.print(heading("Rejected"));
     terminal.print("You rejected the proposed changes.");
@@ -214,11 +232,60 @@ async function report(
   options: {
     readonly interactive?: boolean;
     readonly offerArtifactView?: boolean;
+    readonly productExperience?: boolean;
     readonly visualCorrection?: "off" | "once";
   },
 ): Promise<number> {
   const result = await context.runner.explain(executionId);
   const { overview, artifacts } = result;
+
+  if (options.productExperience === true) {
+    const validation = artifacts.find((artifact) => artifact.artifactId === "implementation-validation");
+    let validationFailed = false;
+    let rollbackTriggered = false;
+    if (validation !== undefined) {
+      const detail = await context.artifactInspection.getPayload(validation);
+      const payload = detail.payload as {
+        checks?: Array<{ status: string }>;
+        rollbackTriggered?: boolean;
+      };
+      validationFailed = payload.checks?.some((check) => check.status === "failed") === true;
+      rollbackTriggered = payload.rollbackTriggered === true;
+    }
+
+    terminal.print(
+      renderProductRunResult({
+        state: overview.state,
+        status: overview.status,
+        hasImplementation: artifacts.some((artifact) => artifact.artifactId === "file-application-result"),
+        hasSpecification: artifacts.some(
+          (artifact) =>
+            artifact.artifactId === "design-specification" ||
+            artifact.artifactId === "stage-3-summary",
+        ),
+        hasValidation: validation !== undefined,
+        validationFailed,
+        rollbackTriggered,
+      }).join("\n"),
+    );
+
+    if (overview.state === "ready" && options.offerArtifactView === true) {
+      const named = artifacts.filter((artifact) => artifact.name !== artifact.artifactId);
+      if (named.length > 0) {
+        await offerArtifactView(context, terminal, executionId, artifacts);
+      }
+    }
+
+    const baseCode = overview.state === "ready" ? 0 : 1;
+    if (baseCode !== 0 || options.visualCorrection === "off") return baseCode;
+    return offerVisualCorrection(
+      context,
+      terminal,
+      executionId,
+      originalInput,
+      options,
+    );
+  }
 
   terminal.print();
   terminal.print(
@@ -616,10 +683,17 @@ export function renderProgress(progress: {
 }
 
 /** Attaches a live checklist for whichever `sessions` call ends up starting a workflow. */
-export function watchProgress(context: CliContext, terminal: Terminal): void {
+export function watchProgress(
+  context: CliContext,
+  terminal: Terminal,
+  options: { readonly productExperience?: boolean } = {},
+): void {
   let lastFrame = "";
   context.onProgress((progress) => {
-    const frame = renderProgress(progress);
+    const frame =
+      options.productExperience === true
+        ? renderProductProgress(progress)
+        : renderProgress(progress);
     if (frame === lastFrame) return;
 
     lastFrame = frame;

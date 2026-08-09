@@ -47,6 +47,8 @@ export async function runCommand(
     readonly interactive?: boolean;
     /** The menu shell, not direct `run`, may offer immediate artifact viewing. */
     readonly offerArtifactView?: boolean;
+    /** Product-stage progress is reserved for the bare interactive shell. */
+    readonly productExperience?: boolean;
     readonly noCache?: boolean;
     readonly visualCorrection?: "off" | "once";
   },
@@ -178,7 +180,9 @@ export async function runCommand(
   // only after several resumed ones, and either way `runner.start` runs and
   // settles inside whichever `sessions` call gets there — there is no later
   // point at which attaching this would still see every step land.
-  watchProgress(context, terminal);
+  watchProgress(context, terminal, {
+    productExperience: options?.productExperience === true,
+  });
 
   // The collected answers are the request. What to do with them is not this
   // command's call — a session starts, and the session decides.
@@ -195,6 +199,7 @@ export async function runCommand(
   return finishSession(context, terminal, result, {
     interactive: options?.interactive ?? false,
     offerArtifactView: options?.offerArtifactView ?? false,
+    productExperience: options?.productExperience === true,
     ...(options?.visualCorrection !== undefined
       ? { visualCorrection: options.visualCorrection }
       : {}),
