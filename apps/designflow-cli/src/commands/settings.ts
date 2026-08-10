@@ -62,6 +62,7 @@ export async function settingsCommand(
           ? { providerId: context.roleModelProfiles[0].effective.providerId }
           : {}),
       },
+      aiStatus: context.aiStatus(),
       roles,
       figmaMcp: describeFigmaMcp(context.home.config),
       featureTiers: FEATURE_TIERS,

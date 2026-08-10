@@ -14,6 +14,8 @@ const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 export interface ManagedGatewayProviderOptions {
   readonly endpoint: string;
   readonly sessionToken?: string | (() => string | undefined);
+  /** Called once a gateway rejects the bearer so the host can clear it. */
+  readonly onAuthenticationRequired?: () => void;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -23,11 +25,13 @@ export class ManagedGatewayProvider implements ModelProvider {
 
   private readonly endpoint: string;
   private readonly sessionToken: string | (() => string | undefined) | undefined;
+  private readonly onAuthenticationRequired: (() => void) | undefined;
   private readonly fetchImpl: typeof fetch;
 
   public constructor(options: ManagedGatewayProviderOptions) {
     this.endpoint = normalizeEndpoint(options.endpoint);
     this.sessionToken = options.sessionToken;
+    this.onAuthenticationRequired = options.onAuthenticationRequired;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -47,7 +51,13 @@ export class ManagedGatewayProvider implements ModelProvider {
       signal: context.signal,
     });
     const body = await readJsonBody(response);
-    if (!response.ok) throw gatewayError(response.status, body);
+    if (!response.ok) {
+      const error = gatewayError(response.status, body);
+      if ((error as { code?: unknown }).code === "ERR_MODEL_AUTHENTICATION") {
+        this.onAuthenticationRequired?.();
+      }
+      throw error;
+    }
 
     const parsed = modelResponseSchema.safeParse(body);
     if (!parsed.success) throw new DesignFlowError("ERR_MODEL_RESPONSE_INVALID", "The managed gateway returned an invalid model response.");

@@ -151,4 +151,11 @@ describe("current interactive project", () => {
     expect(unavailable).toContain("Open Figma Desktop and enable Dev Mode.");
     expect(unavailable).not.toContain("MCP");
   });
+
+  test("renders bounded AI session state", () => {
+    const rendered = menu(null, { status: "not-configured" }, { status: "connected" });
+    expect(rendered).toContain("AI");
+    expect(rendered).toContain("Connected");
+    expect(rendered).not.toContain("Authorization");
+  });
 });

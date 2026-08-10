@@ -69,9 +69,20 @@ export interface InteractiveFigma {
   readonly destination?: string | undefined;
 }
 
+export type InteractiveAiStatus =
+  | "connected"
+  | "sign-in-required"
+  | "development-provider"
+  | "not-configured";
+
+export interface InteractiveAi {
+  readonly status: InteractiveAiStatus;
+}
+
 export function menu(
   project?: InteractiveProject | null,
   figma: InteractiveFigma = { status: "not-configured" },
+  ai: InteractiveAi = { status: "not-configured" },
 ): string {
   const projectLines =
     project === undefined || project === null
@@ -102,6 +113,9 @@ export function menu(
       ? []
       : ["", "Destination", `  ${figma.destination}`]),
     "",
+    "AI",
+    `  ${aiLabel(ai.status)}`,
+    "",
     "Status",
     "  Ready",
     "",
@@ -110,6 +124,13 @@ export function menu(
     "?      Help",
     "",
   ].join("\n");
+}
+
+function aiLabel(status: InteractiveAiStatus): string {
+  if (status === "connected") return "Connected";
+  if (status === "development-provider") return "Development provider";
+  if (status === "sign-in-required") return "Sign-in required";
+  return "Not configured";
 }
 
 export function shellHelp(): string {
@@ -176,8 +197,8 @@ export function workerMenu(
  * driven editor for four fields would be more code and more ways to corrupt the
  * file than the file itself is worth.
  *
- * There is nothing here to authenticate, and by design nothing here to point at
- * a server.
+ * There is no account editor, credential value or endpoint here. Session state
+ * is summarized through a bounded status only.
  */
 /** A worker's AI assignment, as `designflow settings` may show it. */
 export interface SettingsModelAssignment {
@@ -245,6 +266,7 @@ export function settings(
       readonly credentialPresent: boolean;
       readonly providerId?: string;
     };
+    readonly aiStatus?: InteractiveAiStatus;
     /**
      * The specialized roles, already described. This file renders rows; it
      * does not know a role's name, its profile id, or which of its fields a
@@ -288,8 +310,12 @@ export function settings(
       ...(values.modelMode.providerId !== undefined
         ? [`    Provider:    ${displayProviderName(values.modelMode.providerId)}`]
         : []),
-      `    Credential:  ${values.modelMode.credentialPresent ? "present in the environment (value never read or stored)" : "not set — deterministic runs need none"}`,
+      `    Credential:  ${values.modelMode.credentialPresent ? "configured (value never displayed)" : "not set — deterministic runs need none"}`,
     );
+  }
+
+  if (values.aiStatus !== undefined) {
+    lines.push("", "  AI access", `    Status:      ${aiLabel(values.aiStatus)}`);
   }
 
   const roles = values.roles ?? [];
@@ -403,6 +429,7 @@ export function usage(): string {
     "  designflow                 Interactive mode",
     "  designflow doctor [--json]  Check setup and see what is ready to run",
     "  designflow settings        Show configuration, agents and feature status",
+    "  designflow logout           Clear the local DesignFlow AI session",
     "  designflow projects        Register and inspect your own projects",
     "  designflow workers         Show available AI workers (alias: list)",
     "  designflow workers <id>    Show one worker's detail",

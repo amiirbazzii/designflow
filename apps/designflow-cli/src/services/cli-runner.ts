@@ -143,6 +143,10 @@ import { initializeHome, type HomeState } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
 import { readManagedGatewayConfig } from "./managed-gateway-config";
+import {
+  AuthSessionService,
+  type AuthClient,
+} from "./auth-session";
 import type { DesignRoleId, ModelProfileFields, RoleModelProfile } from "./readiness";
 
 /** Internal Stage 6 routing stays in the composition root, not in CLI copy. */
@@ -355,6 +359,12 @@ export interface CleanupReport {
   readonly expiredApprovalIds: readonly string[];
 }
 
+export type AiConnectionStatus =
+  | "connected"
+  | "sign-in-required"
+  | "development-provider"
+  | "not-configured";
+
 export interface CliContext {
   readonly runner: WorkflowRunner;
   /**
@@ -375,8 +385,14 @@ export interface CliContext {
   readonly home: HomeState;
   /** Where this context's runs are stored. Shown by `settings`. */
   readonly databasePath: string;
-  /** True when the composition root found a non-empty live provider credential. */
+  /** True when the selected model provider can currently obtain a credential. */
   readonly modelProviderConfigured: boolean;
+  /** Product-level AI access state; never contains token or endpoint data. */
+  readonly aiStatus: () => AiConnectionStatus;
+  /** Refreshes an expired persisted session at most once per call chain. */
+  readonly refreshAiSession: () => Promise<AiConnectionStatus>;
+  /** Clears local auth state and best-effort invalidates a remote session. */
+  readonly signOut: () => Promise<void>;
   /** Read-only state health inspection, kept behind the composition boundary. */
   readonly inspectState: () => StateHealthReport;
   /** True when an explicit project can select the experimental implementation path. */
@@ -542,6 +558,10 @@ export interface CliContextOptions {
    * function directly, with no config file or env var able to reach it.
    */
   readonly sessionClockOverride?: SessionClock;
+  /** Test/local seam for the future Supabase auth client. */
+  readonly authClient?: AuthClient;
+  /** Test-only wall clock for persisted auth expiry. */
+  readonly authNowOverride?: () => number;
   /** Non-persisted capability collaborators for deterministic host tests. */
   readonly capabilityConfig?: Readonly<Record<string, unknown>>;
   /** Bare interactive mode may probe the documented Figma Desktop endpoint. */
@@ -575,6 +595,11 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // not two that could quietly disagree. Read once, early, since both
   // `approvals` and `sessions` below need it.
   const sessionConfig = readSessionConfig(home.config);
+  const authSession = new AuthSessionService({
+    sessionFile: home.layout.authSessionFile,
+    ...(options?.authClient !== undefined ? { client: options.authClient } : {}),
+    ...(options?.authNowOverride !== undefined ? { now: options.authNowOverride } : {}),
+  });
   const approvals = new FileApprovalManager(store, {
     defaultExpirationMs: sessionConfig.expirationDays * ONE_DAY_MS,
   });
@@ -597,6 +622,17 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const managedGatewayConfig = readManagedGatewayConfig();
   const managedProviderSelected = managedGatewayConfig !== undefined;
   const modelModeRequested = openRouterApiKey !== undefined || managedProviderSelected;
+  const managedGatewayToken = (): string | undefined =>
+    managedGatewayConfig?.sessionToken ?? authSession.currentBearerToken();
+  const directProviderConfigured = (): boolean =>
+    openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0;
+  const modelProviderIsConfigured = (): boolean =>
+    managedProviderSelected ? managedGatewayToken() !== undefined : directProviderConfigured();
+  const aiStatus = (): AiConnectionStatus => {
+    if (!managedProviderSelected) return directProviderConfigured() ? "development-provider" : "not-configured";
+    if (managedGatewayConfig.sessionToken !== undefined) return "development-provider";
+    return authSession.snapshot().status === "connected" ? "connected" : "sign-in-required";
+  };
 
   // Figma availability (MVP-3B): a successfully parsed `settings.figmaMcp`
   // block IS the intent to use Figma — no separate architecture flag is
@@ -716,9 +752,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           managedProviderSelected
             ? new ManagedGatewayProvider({
                 endpoint: managedGatewayConfig.endpoint,
-                ...(managedGatewayConfig.sessionToken !== undefined
-                  ? { sessionToken: managedGatewayConfig.sessionToken }
-                  : {}),
+                sessionToken: managedGatewayToken,
+                onAuthenticationRequired: () => authSession.markAuthenticationRequired(),
               })
             : new OpenRouterProvider({
                 apiKey: openRouterApiKey ?? "",
@@ -924,8 +959,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       providerId: profile.providerId,
       model: profile.model,
       credentialConfigured:
-        (managedProviderSelected && managedGatewayConfig.sessionToken !== undefined) ||
-        (openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0),
+        modelProviderIsConfigured(),
     });
   }
 
@@ -1119,9 +1153,15 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     home,
     databasePath,
     ...(options?.signal !== undefined ? { signal: options.signal } : {}),
-    modelProviderConfigured:
-      (managedProviderSelected && managedGatewayConfig.sessionToken !== undefined) ||
-      (openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0),
+    get modelProviderConfigured() {
+      return modelProviderIsConfigured();
+    },
+    aiStatus,
+    refreshAiSession: async () => {
+      await authSession.refreshIfNeeded();
+      return aiStatus();
+    },
+    signOut: () => authSession.signOut(),
     inspectState: () => inspectStateFile(databasePath),
     experimentalImplementationEnabled: implementationEnabled,
     specificationWorkflowAvailable,

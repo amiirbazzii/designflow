@@ -8,6 +8,8 @@ import {
   historyDir,
   loadConfig,
   saveConfig,
+  authDir,
+  authSessionPath,
   type Config,
 } from "./config";
 
@@ -35,6 +37,8 @@ export interface HomeLayout {
   readonly configFile: string;
   readonly history: string;
   readonly cache: string;
+  readonly auth: string;
+  readonly authSessionFile: string;
 }
 
 export interface HomeState {
@@ -71,6 +75,8 @@ export function homeLayout(): HomeLayout {
     configFile: configPath(),
     history: historyDir(),
     cache: cacheDir(),
+    auth: authDir(),
+    authSessionFile: authSessionPath(),
   };
 }
 
@@ -92,7 +98,7 @@ export function initializeHome(): HomeState {
   // A config that exists and says setup finished means there is nothing to do.
   const firstRun = newInstall || !loaded.firstRunCompleted;
 
-  for (const dir of [layout.home, layout.history, layout.cache]) {
+  for (const dir of [layout.home, layout.history, layout.cache, layout.auth]) {
     mkdirSync(dir, { recursive: true });
   }
 

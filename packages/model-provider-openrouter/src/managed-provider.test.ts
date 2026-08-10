@@ -50,8 +50,10 @@ describe("ManagedGatewayProvider", () => {
 
   test("does not attach Authorization without a session", async () => {
     let headers: HeadersInit | undefined;
+    let authenticationRequired = false;
     const provider = new ManagedGatewayProvider({
       endpoint: "http://127.0.0.1:54321/functions/v1/ai-gateway",
+      onAuthenticationRequired: () => { authenticationRequired = true; },
       fetchImpl: async (_url, init) => {
         headers = init?.headers;
         return response({ error: { code: "ERR_MODEL_AUTHENTICATION", message: "rejected", retryable: false } }, 401);
@@ -59,6 +61,7 @@ describe("ManagedGatewayProvider", () => {
     });
     await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({ code: "ERR_MODEL_AUTHENTICATION" });
     expect(headers).toEqual({ "Content-Type": "application/json" });
+    expect(authenticationRequired).toBe(true);
   });
 
   test("classifies bounded gateway errors without exposing payloads", async () => {

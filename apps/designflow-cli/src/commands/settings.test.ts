@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCliContext, type CliContext } from "../services/cli-runner";
@@ -37,6 +37,8 @@ afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
   delete process.env.DESIGNFLOW_HOME;
   delete process.env[providerEnv];
+  delete process.env.DESIGNFLOW_AI_GATEWAY_URL;
+  delete process.env.DESIGNFLOW_AI_GATEWAY_TOKEN;
 });
 
 describe("designflow settings", () => {
@@ -89,12 +91,30 @@ describe("designflow settings", () => {
     expect(output).toContain("Configuration");
     expect(output).toContain("config.json");
     expect(output).toContain("live reasoning");
-    expect(output).toContain("value never read or stored");
+    expect(output).toContain("value never displayed");
     expect(output).not.toContain("sk-or-settings-test-sentinel");
   });
 
   test("without a credential it names the deterministic fallback", async () => {
     expect(await transcript(context())).toContain("deterministic fallback");
+  });
+
+  test("shows persisted AI access without exposing session values", async () => {
+    process.env.DESIGNFLOW_AI_GATEWAY_URL = "https://project.supabase.co/functions/v1/ai-gateway";
+    const created = context();
+    mkdirSync(created.home.layout.auth, { recursive: true });
+    writeFileSync(created.home.layout.authSessionFile, JSON.stringify({
+      version: 1,
+      accessToken: "settings-access-secret",
+      refreshToken: "settings-refresh-secret",
+      expiresAt: Date.now() + 60_000,
+    }));
+
+    const output = await transcript(created);
+    expect(output).toContain("AI access");
+    expect(output).toContain("Connected");
+    expect(output).not.toContain("settings-access-secret");
+    expect(output).not.toContain("settings-refresh-secret");
   });
 
   test("shows Figma metadata as names and a target, never a URL, command line or value", async () => {

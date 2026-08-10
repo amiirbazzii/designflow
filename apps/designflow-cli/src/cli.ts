@@ -23,6 +23,7 @@ import {
 import { cleanupCommand } from "./commands/cleanup";
 import { feedbackLoopCommand } from "./commands/feedback-loop";
 import { doctorCommand } from "./commands/doctor";
+import { logoutCommand } from "./commands/logout";
 import {
   projectsAddCommand,
   projectsCommand,
@@ -119,6 +120,9 @@ export async function dispatch(
 
     case "settings":
       return settingsCommand(context, terminal);
+
+    case "logout":
+      return logoutCommand(context, terminal);
 
     case "cleanup":
       return cleanupCommand(context, terminal);

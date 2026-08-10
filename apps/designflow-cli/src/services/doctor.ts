@@ -116,7 +116,16 @@ async function browser(): Promise<BrowserInspection> {
 
 function provider(context: CliContext): DoctorCheck {
   const configured = context.modelProviderConfigured;
-  return configured ? check("model-provider", "healthy", "A model-provider credential is present in the environment; its value is not inspected or persisted.") : check("model-provider", "unavailable", "No model-provider credential is configured; deterministic execution remains available.", "Set OPENROUTER_API_KEY only in the process environment for a live model run.");
+  if (context.aiStatus() === "connected") {
+    return check("model-provider", "healthy", "A DesignFlow AI session is available; its token is never displayed.");
+  }
+  if (context.aiStatus() === "development-provider" && configured) {
+    return check("model-provider", "healthy", "A development model-provider credential is present in the environment; its value is never displayed.");
+  }
+  if (context.aiStatus() === "sign-in-required") {
+    return check("model-provider", "unavailable", "DesignFlow AI sign-in is required; no token was sent.", "Establish a DesignFlow AI session before using the managed provider.");
+  }
+  return check("model-provider", "unavailable", "No model-provider credential is configured; deterministic execution remains available.", "Set OPENROUTER_API_KEY only in the process environment for a development model run.");
 }
 
 function figma(context: CliContext): DoctorCheck {

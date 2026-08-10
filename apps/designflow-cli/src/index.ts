@@ -5,6 +5,7 @@ export { createCliContext } from "./services/cli-runner";
 export type {
   CliContext,
   CliContextOptions,
+  AiConnectionStatus,
   WorkflowInfo,
   CleanupReport,
 } from "./services/cli-runner";
@@ -20,11 +21,26 @@ export {
   configHome,
   historyDir,
   cacheDir,
+  authDir,
+  authSessionPath,
   resolveDatabasePath,
   configSchema,
   CONFIG_VERSION,
 } from "./services/config";
 export type { Config } from "./services/config";
+
+export {
+  AuthSessionService,
+  AuthSessionError,
+  authSessionSchema,
+} from "./services/auth-session";
+export type {
+  AuthClient,
+  AuthSession,
+  AuthSessionSnapshot,
+  AuthSessionStatus,
+  SupabaseSessionLike,
+} from "./services/auth-session";
 
 export { initializeHome, homeLayout } from "./services/home";
 export type { HomeLayout, HomeState } from "./services/home";

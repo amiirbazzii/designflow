@@ -85,6 +85,16 @@ export function cacheDir(): string {
   return join(configHome(), "cache");
 }
 
+/** `~/.designflow/auth` — restrictive, application-managed session state. */
+export function authDir(): string {
+  return join(configHome(), "auth");
+}
+
+/** `~/.designflow/auth/session.json` — never included in ordinary settings. */
+export function authSessionPath(): string {
+  return join(authDir(), "session.json");
+}
+
 /** The absolute database path implied by a config. */
 export function resolveDatabasePath(config: Config): string {
   return isAbsolute(config.databasePath)

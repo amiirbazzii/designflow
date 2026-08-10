@@ -154,6 +154,7 @@ export async function interactiveCommand(
     context,
     detectCurrentProject(),
   );
+  await context.refreshAiSession();
   await context.ensureFigmaConnection();
   if (context.signal?.aborted === true) return 130;
 
@@ -168,7 +169,7 @@ export async function interactiveCommand(
         status: context.figmaConnectionStatus(),
         ...(design !== null ? { design: design.label } : {}),
         ...(destination !== null ? { destination: destination.label } : {}),
-      }),
+      }, { status: context.aiStatus() }),
     );
 
     const choice = (await terminal.ask("Command", ["Enter", "q", "?"]))

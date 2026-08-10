@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCliContext, type CliContext } from "../services/cli-runner";
@@ -31,6 +31,8 @@ afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
   delete process.env.DESIGNFLOW_HOME;
   delete process.env[providerEnv];
+  delete process.env.DESIGNFLOW_AI_GATEWAY_URL;
+  delete process.env.DESIGNFLOW_AI_GATEWAY_TOKEN;
 });
 
 describe("designflow doctor", () => {
@@ -45,6 +47,24 @@ describe("designflow doctor", () => {
     expect(provider?.detail).toContain("present in the environment");
     expect(terminal.transcript).not.toContain("sk-stage7-test-sentinel");
     expect(readFileSync(created.home.layout.configFile, "utf8")).toBe(configBefore);
+  });
+
+  test("reports a persisted AI session without printing its bearer values", async () => {
+    process.env.DESIGNFLOW_AI_GATEWAY_URL = "https://project.supabase.co/functions/v1/ai-gateway";
+    const created = context();
+    mkdirSync(created.home.layout.auth, { recursive: true });
+    writeFileSync(created.home.layout.authSessionFile, JSON.stringify({
+      version: 1,
+      accessToken: "doctor-access-secret",
+      refreshToken: "doctor-refresh-secret",
+      expiresAt: Date.now() + 60_000,
+    }));
+
+    const terminal = new ScriptedTerminal();
+    expect(await doctorCommand(created, terminal, { json: true })).toBe(0);
+    expect(terminal.transcript).toContain("DesignFlow AI session is available");
+    expect(terminal.transcript).not.toContain("doctor-access-secret");
+    expect(terminal.transcript).not.toContain("doctor-refresh-secret");
   });
 
   test("reports an invalid state store without starting a workflow", async () => {

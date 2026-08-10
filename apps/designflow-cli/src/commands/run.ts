@@ -59,6 +59,7 @@ export async function runCommand(
     readonly visualCorrection?: "off" | "once";
   },
 ): Promise<number> {
+  await context.refreshAiSession();
   const resolved = context.resolve(name);
 
   if (resolved === null) {
