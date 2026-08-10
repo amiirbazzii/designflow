@@ -63,7 +63,7 @@
       "swarmId": "swarm-1786255332990-ttyh75",
       "topology": "hierarchical",
       "maxAgents": 8,
-      "status": "running",
+      "status": "terminated",
       "agents": [],
       "tasks": [],
       "config": {
@@ -75,13 +75,14 @@
         "consensusMechanism": "majority"
       },
       "createdAt": "2026-08-09T06:02:12.990Z",
-      "updatedAt": "2026-08-09T06:02:12.990Z"
+      "updatedAt": "2026-08-10T06:38:38.667Z",
+      "terminationReason": "no pid recorded and heartbeat is 25h stale"
     },
     "swarm-1786267857007-7xoes4": {
       "swarmId": "swarm-1786267857007-7xoes4",
       "topology": "hierarchical",
       "maxAgents": 8,
-      "status": "running",
+      "status": "terminated",
       "agents": [],
       "tasks": [],
       "config": {
@@ -93,7 +94,8 @@
         "consensusMechanism": "majority"
       },
       "createdAt": "2026-08-09T09:30:57.007Z",
-      "updatedAt": "2026-08-09T09:30:57.007Z"
+      "updatedAt": "2026-08-10T10:19:14.230Z",
+      "terminationReason": "no pid recorded and heartbeat is 25h stale"
     },
     "swarm-1786282567338-zs9jcy": {
       "swarmId": "swarm-1786282567338-zs9jcy",
@@ -112,6 +114,96 @@
       },
       "createdAt": "2026-08-09T13:36:07.338Z",
       "updatedAt": "2026-08-09T13:36:07.338Z"
+    },
+    "swarm-1786299269052-dnv1aq": {
+      "swarmId": "swarm-1786299269052-dnv1aq",
+      "topology": "hierarchical",
+      "maxAgents": 8,
+      "status": "running",
+      "agents": [],
+      "tasks": [],
+      "config": {
+        "topology": "hierarchical",
+        "maxAgents": 8,
+        "strategy": "specialized",
+        "communicationProtocol": "message-bus",
+        "autoScaling": true,
+        "consensusMechanism": "majority"
+      },
+      "createdAt": "2026-08-09T18:14:29.052Z",
+      "updatedAt": "2026-08-09T18:14:29.052Z"
+    },
+    "swarm-1786300211466-0ymjc3": {
+      "swarmId": "swarm-1786300211466-0ymjc3",
+      "topology": "hierarchical",
+      "maxAgents": 8,
+      "status": "running",
+      "agents": [],
+      "tasks": [],
+      "config": {
+        "topology": "hierarchical",
+        "maxAgents": 8,
+        "strategy": "specialized",
+        "communicationProtocol": "message-bus",
+        "autoScaling": true,
+        "consensusMechanism": "majority"
+      },
+      "createdAt": "2026-08-09T18:30:11.466Z",
+      "updatedAt": "2026-08-09T18:30:11.466Z"
+    },
+    "swarm-1786301748839-dzfauh": {
+      "swarmId": "swarm-1786301748839-dzfauh",
+      "topology": "hierarchical",
+      "maxAgents": 8,
+      "status": "running",
+      "agents": [],
+      "tasks": [],
+      "config": {
+        "topology": "hierarchical",
+        "maxAgents": 8,
+        "strategy": "specialized",
+        "communicationProtocol": "message-bus",
+        "autoScaling": true,
+        "consensusMechanism": "majority"
+      },
+      "createdAt": "2026-08-09T18:55:48.839Z",
+      "updatedAt": "2026-08-09T18:55:48.839Z"
+    },
+    "swarm-1786343918667-bofwor": {
+      "swarmId": "swarm-1786343918667-bofwor",
+      "topology": "hierarchical",
+      "maxAgents": 8,
+      "status": "running",
+      "agents": [],
+      "tasks": [],
+      "config": {
+        "topology": "hierarchical",
+        "maxAgents": 8,
+        "strategy": "specialized",
+        "communicationProtocol": "message-bus",
+        "autoScaling": true,
+        "consensusMechanism": "majority"
+      },
+      "createdAt": "2026-08-10T06:38:38.667Z",
+      "updatedAt": "2026-08-10T06:38:38.667Z"
+    },
+    "swarm-1786357154230-etq8oq": {
+      "swarmId": "swarm-1786357154230-etq8oq",
+      "topology": "hierarchical",
+      "maxAgents": 8,
+      "status": "running",
+      "agents": [],
+      "tasks": [],
+      "config": {
+        "topology": "hierarchical",
+        "maxAgents": 8,
+        "strategy": "specialized",
+        "communicationProtocol": "message-bus",
+        "autoScaling": true,
+        "consensusMechanism": "majority"
+      },
+      "createdAt": "2026-08-10T10:19:14.230Z",
+      "updatedAt": "2026-08-10T10:19:14.230Z"
     }
   },
   "version": "3.0.0"
