@@ -41,6 +41,9 @@ export type GatewayErrorCode =
   | "ERR_MODEL_OUTPUT_JSON_INVALID"
   | "ERR_MODEL_OUTPUT_TRUNCATED"
   | "ERR_MODEL_ROUTE_NOT_FOUND"
+  | "ERR_MODEL_RATE_LIMIT"
+  | "ERR_MODEL_QUOTA_EXCEEDED"
+  | "ERR_MODEL_SERVICE_UNAVAILABLE"
   | "ERR_MODEL_PROVIDER_FAILED";
 
 export interface GatewayMessage {
@@ -89,6 +92,7 @@ export interface GatewayErrorPayload {
     readonly code: GatewayErrorCode;
     readonly message: string;
     readonly retryable: boolean;
+    readonly retryAfterSeconds?: number;
   };
 }
 
@@ -96,13 +100,15 @@ export class GatewayFailure extends Error {
   public readonly code: GatewayErrorCode;
   public readonly status: number;
   public readonly retryable: boolean;
+  public readonly retryAfterSeconds: number | undefined;
 
-  public constructor(code: GatewayErrorCode, message: string, status = 502, retryable = false) {
+  public constructor(code: GatewayErrorCode, message: string, status = 502, retryable = false, retryAfterSeconds?: number) {
     super(message);
     this.name = "GatewayFailure";
     this.code = code;
     this.status = status;
     this.retryable = retryable;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -295,6 +301,7 @@ export function errorPayload(error: GatewayFailure): GatewayErrorPayload {
       code: error.code,
       message: error.message,
       retryable: error.retryable,
+      ...(error.retryAfterSeconds !== undefined ? { retryAfterSeconds: error.retryAfterSeconds } : {}),
     },
   };
 }

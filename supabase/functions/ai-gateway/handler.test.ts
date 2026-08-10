@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { handleAiGatewayRequest } from "./handler";
 import { MANAGED_MODEL, MANAGED_MODEL_ROUTES } from "./contract";
+import type { UsageFinalizationInput, UsageLedger, UsageReservationInput } from "./usage";
 
 const REQUEST = {
   requestId: "gateway-1",
@@ -22,6 +23,13 @@ function request(body: unknown = REQUEST, token = "local-test-token"): Request {
 }
 
 describe("ai-gateway Edge Function handler", () => {
+  function usageLedger(
+    reserve: (input: UsageReservationInput) => Promise<Awaited<ReturnType<UsageLedger["reserve"]>>>,
+    finalize: (input: UsageFinalizationInput) => Promise<void>,
+  ): UsageLedger {
+    return { reserve, finalize };
+  }
+
   test("keeps the upstream credential read in the server entrypoint only", () => {
     const functionDir = fileURLToPath(new URL(".", import.meta.url));
     const indexSource = readFileSync(`${functionDir}index.ts`, "utf8");
@@ -168,6 +176,10 @@ describe("ai-gateway Edge Function handler", () => {
       openRouterApiKey: "server-only-secret",
       supabaseUrl: "https://project.supabase.co",
       supabasePublishableKey: "sb_publishable-test",
+      usageLedger: usageLedger(
+        async (input) => ({ allowed: true, reservation: { requestId: "auth-test-request", reservedCostUsd: 0.1, reservedTokens: input.reservedTokens } }),
+        async () => {},
+      ),
       authFetchImpl: async (_url, init) => {
         authHeaders = init?.headers;
         return new Response(JSON.stringify({ id: "user-1" }), { status: 200 });
@@ -188,6 +200,121 @@ describe("ai-gateway Edge Function handler", () => {
       Authorization: "Bearer user-jwt",
       apikey: "sb_publishable-test",
     });
+  });
+
+  test("reserves and finalizes usage using the authenticated user, not client data", async () => {
+    let reservedInput: UsageReservationInput | undefined;
+    let finalizedInput: UsageFinalizationInput | undefined;
+    const result = await handleAiGatewayRequest(request(REQUEST, "user-jwt"), {
+      openRouterApiKey: "server-only-secret",
+      supabaseUrl: "https://project.supabase.co",
+      supabasePublishableKey: "sb_publishable-test",
+      authFetchImpl: async () => new Response(JSON.stringify({ id: "auth-user" }), { status: 200 }),
+      usageLedger: usageLedger(
+        async (input) => {
+          reservedInput = input;
+          return { allowed: true, reservation: { requestId: "server-generated-request", reservedCostUsd: 0.1, reservedTokens: input.reservedTokens } };
+        },
+        async (input) => { finalizedInput = input; },
+      ),
+      fetchImpl: async () => new Response(JSON.stringify({
+        id: "upstream-usage",
+        choices: [{ message: { content: JSON.stringify({ decision: "run" }) } }],
+        usage: { prompt_tokens: 50, completion_tokens: 6, total_tokens: 56, cost: 0.0000111 },
+      }), { status: 200 }),
+    });
+
+    expect(result.status).toBe(200);
+    expect(reservedInput).toMatchObject({ userId: "auth-user", profileId: REQUEST.profileId, effectiveModel: MANAGED_MODEL });
+    expect(finalizedInput).toEqual({ requestId: "server-generated-request", status: "succeeded", inputTokens: 50, outputTokens: 6, totalTokens: 56, actualCostUsd: 0.0000111 });
+  });
+
+  test("provider failure finalizes a reservation and never turns it into a success", async () => {
+    let finalizedInput: UsageFinalizationInput | undefined;
+    const result = await handleAiGatewayRequest(request(), {
+      openRouterApiKey: "server-only-secret",
+      allowLocalDev: true,
+      usageLedger: usageLedger(
+        async () => ({ allowed: true, reservation: { requestId: "server-generated-failure", reservedCostUsd: 0.1, reservedTokens: 100 } }),
+        async (input) => { finalizedInput = input; },
+      ),
+      fetchImpl: async () => new Response("provider unavailable", { status: 503 }),
+    });
+
+    expect(result.status).toBe(502);
+    expect(finalizedInput).toEqual({ requestId: "server-generated-failure", status: "failed" });
+  });
+
+  test("missing success cost is finalized conservatively by the ledger contract", async () => {
+    let finalizedInput: UsageFinalizationInput | undefined;
+    const result = await handleAiGatewayRequest(request(), {
+      openRouterApiKey: "server-only-secret",
+      allowLocalDev: true,
+      usageLedger: usageLedger(
+        async () => ({ allowed: true, reservation: { requestId: "server-generated-no-cost", reservedCostUsd: 0.1, reservedTokens: 100 } }),
+        async (input) => { finalizedInput = input; },
+      ),
+      fetchImpl: async () => new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ decision: "run" }) } }],
+        usage: { prompt_tokens: 4, completion_tokens: 3, total_tokens: 7 },
+      }), { status: 200 }),
+    });
+
+    expect(result.status).toBe(200);
+    expect(finalizedInput).toEqual({ requestId: "server-generated-no-cost", status: "succeeded", inputTokens: 4, outputTokens: 3, totalTokens: 7 });
+  });
+
+  test("quota rejection never contacts OpenRouter", async () => {
+    let upstreamCalled = false;
+    const result = await handleAiGatewayRequest(request(), {
+      openRouterApiKey: "server-only-secret",
+      allowLocalDev: true,
+      usageLedger: usageLedger(
+        async () => ({ allowed: false, code: "ERR_MODEL_QUOTA_EXCEEDED", message: "the DesignFlow token quota was reached", retryAfterSeconds: 86400 }),
+        async () => {},
+      ),
+      fetchImpl: async () => {
+        upstreamCalled = true;
+        return new Response("must not reach OpenRouter", { status: 200 });
+      },
+    });
+
+    expect(result.status).toBe(429);
+    expect((await result.json()) as unknown).toEqual({ error: { code: "ERR_MODEL_QUOTA_EXCEEDED", message: "the DesignFlow token quota was reached", retryable: true, retryAfterSeconds: 86400 } });
+    expect(upstreamCalled).toBe(false);
+  });
+
+  test("disabled service rejects before usage reservation or OpenRouter", async () => {
+    let reserved = false;
+    let upstreamCalled = false;
+    const result = await handleAiGatewayRequest(request(), {
+      openRouterApiKey: "server-only-secret",
+      allowLocalDev: true,
+      enabled: false,
+      usageLedger: usageLedger(
+        async () => { reserved = true; return { allowed: true, reservation: { requestId: "never", reservedCostUsd: 0.1, reservedTokens: 100 } }; },
+        async () => {},
+      ),
+      fetchImpl: async () => { upstreamCalled = true; return new Response("must not reach OpenRouter", { status: 200 }); },
+    });
+
+    expect(result.status).toBe(503);
+    expect((await result.json()) as unknown).toEqual({ error: { code: "ERR_MODEL_SERVICE_UNAVAILABLE", message: "managed AI service protection is active", retryable: true, retryAfterSeconds: 3600 } });
+    expect(reserved).toBe(false);
+    expect(upstreamCalled).toBe(false);
+  });
+
+  test("production requires durable usage protection before OpenRouter", async () => {
+    let upstreamCalled = false;
+    const result = await handleAiGatewayRequest(request(REQUEST, "user-jwt"), {
+      openRouterApiKey: "server-only-secret",
+      supabaseUrl: "https://project.supabase.co",
+      supabasePublishableKey: "sb_publishable-test",
+      authFetchImpl: async () => new Response(JSON.stringify({ id: "auth-user" }), { status: 200 }),
+      fetchImpl: async () => { upstreamCalled = true; return new Response("must not reach OpenRouter", { status: 200 }); },
+    });
+    expect(result.status).toBe(503);
+    expect(upstreamCalled).toBe(false);
   });
 
   test("rejects a bearer that Supabase Auth cannot validate", async () => {

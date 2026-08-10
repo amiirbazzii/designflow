@@ -1,4 +1,7 @@
 import { handleAiGatewayRequest } from "./handler.ts";
+import { createSupabaseUsageLedger } from "./usage.ts";
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
 
 Deno.serve((request: Request) => handleAiGatewayRequest(request, {
   // This is the only production code path that reads the upstream secret.
@@ -7,8 +10,13 @@ Deno.serve((request: Request) => handleAiGatewayRequest(request, {
   // These are public Supabase client values used only to validate the bearer
   // through Auth's /user endpoint. They never authorize a request by
   // themselves and are not upstream provider credentials.
-  supabaseUrl: Deno.env.get("SUPABASE_URL"),
+  supabaseUrl,
   supabasePublishableKey: Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY"),
+  usageLedger: createSupabaseUsageLedger({
+    supabaseUrl,
+    serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  }),
+  enabled: Deno.env.get("DESIGNFLOW_AI_GATEWAY_ENABLED") !== "false",
   // This seam is intentionally opt-in and is for local Supabase development
   // only. Deployed functions still require the explicit auth validation above.
   allowLocalDev: Deno.env.get("AI_GATEWAY_ALLOW_LOCAL_DEV") === "true",
