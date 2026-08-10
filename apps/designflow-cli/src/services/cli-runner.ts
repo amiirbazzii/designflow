@@ -66,7 +66,10 @@ import {
   ModelRuntime,
   mergeModelProfileOverrides,
 } from "@designflow/models";
-import { OpenRouterProvider } from "@designflow/model-provider-openrouter";
+import {
+  ManagedGatewayProvider,
+  OpenRouterProvider,
+} from "@designflow/model-provider-openrouter";
 import {
   readFigmaDesktopSelection,
   type FigmaDesktopSelection,
@@ -139,6 +142,7 @@ import { resolveDatabasePath } from "./config";
 import { initializeHome, type HomeState } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
+import { readManagedGatewayConfig } from "./managed-gateway-config";
 import type { DesignRoleId, ModelProfileFields, RoleModelProfile } from "./readiness";
 
 /** Internal Stage 6 routing stays in the composition root, not in CLI copy. */
@@ -590,7 +594,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // below) needs the same decision to toggle the Figma Specification
   // Agent's strategy.
   const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
-  const modelModeRequested = openRouterApiKey !== undefined;
+  const managedGatewayConfig = readManagedGatewayConfig();
+  const managedProviderSelected = managedGatewayConfig !== undefined;
+  const modelModeRequested = openRouterApiKey !== undefined || managedProviderSelected;
 
   // Figma availability (MVP-3B): a successfully parsed `settings.figmaMcp`
   // block IS the intent to use Figma — no separate architecture flag is
@@ -689,23 +695,37 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // Build the specialized model port before constructing the invocation
   // runtime. The coordinator and workflow agents must see the same registered
   // profiles and provider boundary.
+  const configuredModelProfiles = mergeModelProfileOverrides(
+    BUILT_IN_MODEL_PROFILES,
+    readModelProfileOverrides(home.config),
+  );
   const modelProfiles = new InMemoryModelProfileRegistry(
-    mergeModelProfileOverrides(
-      BUILT_IN_MODEL_PROFILES,
-      readModelProfileOverrides(home.config),
-    ),
+    managedProviderSelected
+      ? configuredModelProfiles.map((profile) =>
+          profile.providerId === "openrouter"
+            ? { ...profile, providerId: "designflow-managed" }
+            : profile,
+        )
+      : configuredModelProfiles,
   );
 
   const modelRuntime = modelModeRequested
     ? new ModelRuntime({
         profiles: modelProfiles,
         providers: new InMemoryModelProviderRegistry([
-          new OpenRouterProvider({
-            apiKey: openRouterApiKey,
-            ...(options?.modelEndpointOverride !== undefined
-              ? { endpoint: options.modelEndpointOverride }
-              : {}),
-          }),
+          managedProviderSelected
+            ? new ManagedGatewayProvider({
+                endpoint: managedGatewayConfig.endpoint,
+                ...(managedGatewayConfig.sessionToken !== undefined
+                  ? { sessionToken: managedGatewayConfig.sessionToken }
+                  : {}),
+              })
+            : new OpenRouterProvider({
+                apiKey: openRouterApiKey ?? "",
+                ...(options?.modelEndpointOverride !== undefined
+                  ? { endpoint: options.modelEndpointOverride }
+                  : {}),
+              }),
         ]),
         logger: silentLogger,
       })
@@ -904,7 +924,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       providerId: profile.providerId,
       model: profile.model,
       credentialConfigured:
-        modelModeRequested && openRouterApiKey.trim().length > 0,
+        (managedProviderSelected && managedGatewayConfig.sessionToken !== undefined) ||
+        (openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0),
     });
   }
 
@@ -1098,7 +1119,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     home,
     databasePath,
     ...(options?.signal !== undefined ? { signal: options.signal } : {}),
-    modelProviderConfigured: modelModeRequested && openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0,
+    modelProviderConfigured:
+      (managedProviderSelected && managedGatewayConfig.sessionToken !== undefined) ||
+      (openRouterApiKey !== undefined && openRouterApiKey.trim().length > 0),
     inspectState: () => inspectStateFile(databasePath),
     experimentalImplementationEnabled: implementationEnabled,
     specificationWorkflowAvailable,

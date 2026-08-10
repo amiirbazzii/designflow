@@ -1,0 +1,5 @@
+[functions.ai-gateway]
+# Supabase verifies the bearer token before invoking the function in deployed
+# environments. The function also checks for a bearer token so direct/local
+# handler use cannot accidentally become an unauthenticated production path.
+verify_jwt = true

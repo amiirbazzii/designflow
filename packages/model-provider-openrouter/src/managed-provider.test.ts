@@ -1,0 +1,78 @@
+import { describe, expect, test } from "bun:test";
+import { type ModelProviderContext, type ModelRequest } from "@designflow/sdk";
+import { ManagedGatewayProvider } from "./managed-provider";
+
+const CONTEXT: ModelProviderContext = {
+  signal: new AbortController().signal,
+  logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+  metadata: {},
+};
+const REQUEST: ModelRequest = {
+  requestId: "req-managed-1",
+  profileId: "design-engineer-default",
+  model: "openai/gpt-4o-mini",
+  messages: [{ role: "user", content: "decide" }],
+  responseSchema: { type: "object", additionalProperties: false },
+  fallbackModels: [],
+};
+
+function response(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+describe("ManagedGatewayProvider", () => {
+  test("sends a session token and never an upstream key", async () => {
+    let captured: { url: string; init: RequestInit } | undefined;
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      sessionToken: "session-test-token",
+      fetchImpl: async (url, init) => {
+        captured = { url, init };
+        return response({
+          requestId: REQUEST.requestId,
+          providerId: "openrouter",
+          model: REQUEST.model,
+          output: { decision: "run" },
+          usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5, cost: 0.0001 },
+          durationMs: 12,
+          providerRequestId: "upstream-1",
+        });
+      },
+    });
+    const result = await provider.generate(REQUEST, CONTEXT);
+    expect(captured?.url).toBe("https://project.supabase.co/functions/v1/ai-gateway");
+    expect(captured?.init.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer session-test-token" });
+    expect(String(captured?.init.body)).not.toContain("OPENROUTER_API_KEY");
+    expect(String(captured?.init.body)).not.toContain("sk-secret");
+    expect(result.providerId).toBe("designflow-managed");
+    expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 2, totalTokens: 5, cost: 0.0001 });
+  });
+
+  test("does not attach Authorization without a session", async () => {
+    let headers: HeadersInit | undefined;
+    const provider = new ManagedGatewayProvider({
+      endpoint: "http://127.0.0.1:54321/functions/v1/ai-gateway",
+      fetchImpl: async (_url, init) => {
+        headers = init?.headers;
+        return response({ error: { code: "ERR_MODEL_AUTHENTICATION", message: "rejected", retryable: false } }, 401);
+      },
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({ code: "ERR_MODEL_AUTHENTICATION" });
+    expect(headers).toEqual({ "Content-Type": "application/json" });
+  });
+
+  test("classifies bounded gateway errors without exposing payloads", async () => {
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      fetchImpl: async () => response({ error: { code: "ERR_MODEL_RATE_LIMITED", message: "secret upstream detail", retryable: true } }, 429),
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({
+      code: "ERR_MODEL_RATE_LIMITED",
+      message: "The managed AI gateway is rate-limiting requests.",
+    });
+  });
+
+  test("rejects non-HTTPS remote endpoints", () => {
+    expect(() => new ManagedGatewayProvider({ endpoint: "http://gateway.example.test" })).toThrow("must use HTTPS");
+  });
+});
