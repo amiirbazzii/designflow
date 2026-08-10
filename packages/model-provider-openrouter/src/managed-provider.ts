@@ -13,6 +13,8 @@ const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 
 export interface ManagedGatewayProviderOptions {
   readonly endpoint: string;
+  /** Public Supabase client key; never treated as user authentication. */
+  readonly publishableKey?: string;
   readonly sessionToken?: string | (() => string | undefined);
   /** Called once a gateway rejects the bearer so the host can clear it. */
   readonly onAuthenticationRequired?: () => void;
@@ -24,12 +26,14 @@ export class ManagedGatewayProvider implements ModelProvider {
   public readonly id = "designflow-managed";
 
   private readonly endpoint: string;
+  private readonly publishableKey: string | undefined;
   private readonly sessionToken: string | (() => string | undefined) | undefined;
   private readonly onAuthenticationRequired: (() => void) | undefined;
   private readonly fetchImpl: typeof fetch;
 
   public constructor(options: ManagedGatewayProviderOptions) {
     this.endpoint = normalizeEndpoint(options.endpoint);
+    this.publishableKey = options.publishableKey?.trim() || undefined;
     this.sessionToken = options.sessionToken;
     this.onAuthenticationRequired = options.onAuthenticationRequired;
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -45,6 +49,7 @@ export class ManagedGatewayProvider implements ModelProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(this.publishableKey !== undefined ? { apikey: this.publishableKey } : {}),
         ...(sessionToken !== undefined ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
       body: JSON.stringify(request),

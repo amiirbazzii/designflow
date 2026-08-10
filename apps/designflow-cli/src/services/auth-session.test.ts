@@ -58,7 +58,6 @@ describe("AuthSessionService", () => {
     const file = sessionFile();
     let refreshCalls = 0;
     const client: AuthClient = {
-      establishSession: async () => session(10_000),
       refreshSession: async (refreshToken) => {
         refreshCalls += 1;
         expect(refreshToken).toBe("refresh-test-token");
@@ -82,7 +81,6 @@ describe("AuthSessionService", () => {
       sessionFile: file,
       now: () => 10_000,
       client: {
-        establishSession: async () => session(20_000),
         refreshSession: async () => { throw new Error("provider details must not escape"); },
         invalidateSession: async () => {},
       },
@@ -101,7 +99,6 @@ describe("AuthSessionService", () => {
       sessionFile: file,
       now: () => 1_000,
       client: {
-        establishSession: async () => session(20_000),
         refreshSession: async () => session(20_000),
         invalidateSession: async (token) => { invalidated = token; throw new Error("remote failure"); },
       },
@@ -126,6 +123,25 @@ describe("AuthSessionService", () => {
     }, 1_000);
     expect(normalized).toEqual(session(12_000));
     expect(JSON.stringify(normalized)).not.toContain("provider");
+  });
+
+  test("persists the verified Google session returned through the auth seam", async () => {
+    const file = sessionFile();
+    const service = new AuthSessionService({
+      sessionFile: file,
+      now: () => 1_000,
+      client: {
+        signInWithGoogle: async () => session(20_000),
+        refreshSession: async () => session(20_000),
+        invalidateSession: async () => {},
+      },
+    });
+
+    await service.signInWithGoogle();
+
+    expect(service.snapshot().status).toBe("connected");
+    expect(service.currentBearerToken()).toBe("access-test-token");
+    expect(readFileSync(file, "utf8")).not.toContain("provider");
   });
 
   test("never exposes session values through a persisted file read failure", () => {

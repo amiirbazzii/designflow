@@ -85,6 +85,48 @@ describe("ai-gateway Edge Function handler", () => {
     expect(JSON.stringify(upstreamBody)).not.toContain("filesystem");
   });
 
+  test("validates an authenticated Supabase user before forwarding to OpenRouter", async () => {
+    let authHeaders: HeadersInit | undefined;
+    let upstreamCalled = false;
+    const result = await handleAiGatewayRequest(request(REQUEST, "user-jwt"), {
+      openRouterApiKey: "server-only-secret",
+      supabaseUrl: "https://project.supabase.co",
+      supabasePublishableKey: "sb_publishable-test",
+      authFetchImpl: async (_url, init) => {
+        authHeaders = init?.headers;
+        return new Response(JSON.stringify({ id: "user-1" }), { status: 200 });
+      },
+      fetchImpl: async () => {
+        upstreamCalled = true;
+        return new Response(JSON.stringify({
+          id: "upstream-1",
+          model: REQUEST.model,
+          choices: [{ message: { content: JSON.stringify({ decision: "run" }) } }],
+        }), { status: 200 });
+      },
+    });
+
+    expect(result.status).toBe(200);
+    expect(upstreamCalled).toBe(true);
+    expect(authHeaders).toEqual({
+      Authorization: "Bearer user-jwt",
+      apikey: "sb_publishable-test",
+    });
+  });
+
+  test("rejects a bearer that Supabase Auth cannot validate", async () => {
+    const result = await handleAiGatewayRequest(request(REQUEST, "revoked-jwt"), {
+      openRouterApiKey: "server-only-secret",
+      supabaseUrl: "https://project.supabase.co",
+      supabasePublishableKey: "sb_publishable-test",
+      authFetchImpl: async () => new Response("auth details", { status: 401 }),
+      fetchImpl: async () => { throw new Error("must not reach upstream"); },
+    });
+
+    expect(result.status).toBe(401);
+    expect(await result.text()).not.toContain("auth details");
+  });
+
   test("maps upstream errors to bounded safe classifications", async () => {
     const result = await handleAiGatewayRequest(request(), {
       openRouterApiKey: "server-only-secret",

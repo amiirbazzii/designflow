@@ -143,6 +143,8 @@ import { initializeHome, type HomeState } from "./home";
 
 import { readModelProfileOverrides } from "./model-config";
 import { readManagedGatewayConfig } from "./managed-gateway-config";
+import { readSupabasePublicConfig } from "./supabase-config";
+import { SupabaseAuthClient } from "./supabase-auth";
 import {
   AuthSessionService,
   type AuthClient,
@@ -389,6 +391,8 @@ export interface CliContext {
   readonly modelProviderConfigured: boolean;
   /** Product-level AI access state; never contains token or endpoint data. */
   readonly aiStatus: () => AiConnectionStatus;
+  /** Starts Google sign-in and persists the resulting Supabase session. */
+  readonly signInWithGoogle: (onBrowserFallback?: (url: string) => void) => Promise<AiConnectionStatus>;
   /** Refreshes an expired persisted session at most once per call chain. */
   readonly refreshAiSession: () => Promise<AiConnectionStatus>;
   /** Clears local auth state and best-effort invalidates a remote session. */
@@ -595,9 +599,14 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // not two that could quietly disagree. Read once, early, since both
   // `approvals` and `sessions` below need it.
   const sessionConfig = readSessionConfig(home.config);
+  const publicSupabaseConfig = readSupabasePublicConfig();
   const authSession = new AuthSessionService({
     sessionFile: home.layout.authSessionFile,
-    ...(options?.authClient !== undefined ? { client: options.authClient } : {}),
+    client: options?.authClient ?? new SupabaseAuthClient({
+      ...publicSupabaseConfig,
+      ...(options?.signal !== undefined ? { signal: options.signal } : {}),
+      ...(options?.authNowOverride !== undefined ? { now: options.authNowOverride } : {}),
+    }),
     ...(options?.authNowOverride !== undefined ? { now: options.authNowOverride } : {}),
   });
   const approvals = new FileApprovalManager(store, {
@@ -619,7 +628,13 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // below) needs the same decision to toggle the Figma Specification
   // Agent's strategy.
   const openRouterApiKey = process.env["OPENROUTER_API_KEY"];
-  const managedGatewayConfig = readManagedGatewayConfig();
+  const persistedAuthStatus = authSession.snapshot().status;
+  const managedGatewayConfig = readManagedGatewayConfig(process.env, {
+    includeDefault:
+      options?.autoConnectFigmaDesktop === true ||
+      persistedAuthStatus === "connected" ||
+      persistedAuthStatus === "expired",
+  });
   const managedProviderSelected = managedGatewayConfig !== undefined;
   const modelModeRequested = openRouterApiKey !== undefined || managedProviderSelected;
   const managedGatewayToken = (): string | undefined =>
@@ -752,6 +767,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           managedProviderSelected
             ? new ManagedGatewayProvider({
                 endpoint: managedGatewayConfig.endpoint,
+                publishableKey: managedGatewayConfig.publishableKey,
                 sessionToken: managedGatewayToken,
                 onAuthenticationRequired: () => authSession.markAuthenticationRequired(),
               })
@@ -1157,6 +1173,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       return modelProviderIsConfigured();
     },
     aiStatus,
+    signInWithGoogle: async (onBrowserFallback) => {
+      await authSession.signInWithGoogle(onBrowserFallback);
+      return aiStatus();
+    },
     refreshAiSession: async () => {
       await authSession.refreshIfNeeded();
       return aiStatus();

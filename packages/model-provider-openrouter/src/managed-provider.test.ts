@@ -25,6 +25,7 @@ describe("ManagedGatewayProvider", () => {
     let captured: { url: string; init: RequestInit } | undefined;
     const provider = new ManagedGatewayProvider({
       endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      publishableKey: "sb_publishable-test",
       sessionToken: "session-test-token",
       fetchImpl: async (url, init) => {
         captured = { url, init };
@@ -41,9 +42,15 @@ describe("ManagedGatewayProvider", () => {
     });
     const result = await provider.generate(REQUEST, CONTEXT);
     expect(captured?.url).toBe("https://project.supabase.co/functions/v1/ai-gateway");
-    expect(captured?.init.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer session-test-token" });
+    expect(captured?.init.headers).toEqual({
+      "Content-Type": "application/json",
+      apikey: "sb_publishable-test",
+      Authorization: "Bearer session-test-token",
+    });
     expect(String(captured?.init.body)).not.toContain("OPENROUTER_API_KEY");
     expect(String(captured?.init.body)).not.toContain("sk-secret");
+    expect(String(captured?.init.body)).not.toContain("provider_token");
+    expect(String(captured?.init.body)).not.toContain("google-refresh-token");
     expect(result.providerId).toBe("designflow-managed");
     expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 2, totalTokens: 5, cost: 0.0001 });
   });

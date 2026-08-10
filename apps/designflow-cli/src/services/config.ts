@@ -7,10 +7,9 @@ import { z } from "zod";
 /**
  * CLI configuration, at `~/.designflow/config.json`.
  *
- * Deliberately thin, and deliberately not a settings framework. There is no
- * authentication here, no API key and no cloud endpoint; the whole file
- * describes where this installation keeps its work and whether it has been
- * introduced to the user yet.
+ * Deliberately thin, and deliberately not a settings framework. Authentication
+ * is stored separately under auth/session.json; this file only describes where
+ * this installation keeps its work and whether it has been introduced yet.
  *
  * Three properties matter, and each is a decision rather than an accident:
  *

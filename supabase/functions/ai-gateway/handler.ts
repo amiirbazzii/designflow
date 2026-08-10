@@ -13,8 +13,12 @@ import {
 
 export interface GatewayHandlerOptions {
   readonly openRouterApiKey: string | undefined;
+  /** Public Supabase Auth endpoint configuration; never a service-role key. */
+  readonly supabaseUrl?: string;
+  readonly supabasePublishableKey?: string;
   readonly allowLocalDev?: boolean;
   readonly fetchImpl?: typeof fetch;
+  readonly authFetchImpl?: typeof fetch;
   readonly now?: () => number;
   /** Test seam; production defaults to the bounded 30-second ceiling. */
   readonly timeoutMs?: number;
@@ -22,6 +26,7 @@ export interface GatewayHandlerOptions {
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const UPSTREAM_TIMEOUT_MS = 30_000;
+const AUTH_TIMEOUT_MS = 5_000;
 
 /**
  * Pure Edge Function handler. `index.ts` is the only module that reads Deno
@@ -33,7 +38,12 @@ export async function handleAiGatewayRequest(
   options: GatewayHandlerOptions,
 ): Promise<Response> {
   if (request.method !== "POST") return json({ error: { code: "ERR_MODEL_PROVIDER_FAILED", message: "method not allowed", retryable: false } }, 405);
-  if (!hasBearerToken(request, options.allowLocalDev === true)) return json({ error: { code: "ERR_MODEL_AUTHENTICATION", message: "a bearer session token is required", retryable: false } }, 401);
+  const bearer = readBearerToken(request);
+  if (bearer === undefined) return json({ error: { code: "ERR_MODEL_AUTHENTICATION", message: "a bearer session token is required", retryable: false } }, 401);
+  if (!(options.allowLocalDev === true && bearer === "local-test-token")) {
+    const authenticated = await authenticateSupabaseUser(bearer, request, options);
+    if (!authenticated) return json({ error: { code: "ERR_MODEL_AUTHENTICATION", message: "the DesignFlow session is not valid", retryable: false } }, 401);
+  }
 
   const bodyText = await readBoundedText(request);
   if (bodyText === undefined) return json({ error: { code: "ERR_MODEL_RESPONSE_INVALID", message: "request body is too large", retryable: false } }, 413);
@@ -104,12 +114,45 @@ export async function handleAiGatewayRequest(
   }
 }
 
-function hasBearerToken(request: Request, allowLocalDev: boolean): boolean {
+function readBearerToken(request: Request): string | undefined {
   const authorization = request.headers.get("authorization");
-  if (authorization === null || !authorization.startsWith("Bearer ")) return false;
+  if (authorization === null || !authorization.startsWith("Bearer ")) return undefined;
   const token = authorization.slice("Bearer ".length).trim();
-  if (token.length === 0) return false;
-  return allowLocalDev || token !== "local-test-token";
+  return token.length === 0 ? undefined : token;
+}
+
+async function authenticateSupabaseUser(
+  token: string,
+  request: Request,
+  options: GatewayHandlerOptions,
+): Promise<boolean> {
+  if (options.supabaseUrl === undefined || options.supabasePublishableKey === undefined) return false;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+  const forwardAbort = () => controller.abort();
+  request.signal.addEventListener("abort", forwardAbort, { once: true });
+  try {
+    const fetchImpl = options.authFetchImpl ?? fetch;
+    const response = await fetchImpl(`${options.supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: options.supabasePublishableKey,
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) return false;
+    const body = await readBoundedText(response);
+    if (body === undefined || body.length === 0) return false;
+    const parsed = JSON.parse(body) as unknown;
+    return typeof parsed === "object" && parsed !== null && typeof (parsed as { id?: unknown }).id === "string";
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+    request.signal.removeEventListener("abort", forwardAbort);
+  }
 }
 
 async function readBoundedText(response: Request | Response): Promise<string | undefined> {

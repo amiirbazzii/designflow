@@ -31,8 +31,20 @@ export interface SupabaseSessionLike {
   readonly refresh_token?: string;
   /** Supabase's `expires_at` is expressed in epoch seconds. */
   readonly expires_at?: number;
+  /** Some Auth responses provide `expires_in` instead of `expires_at`. */
+  readonly expires_in?: number;
   readonly user?: { readonly id?: string; readonly email?: string };
 }
+
+export type AuthFailureCode =
+  | "browser-unavailable"
+  | "port-unavailable"
+  | "cancelled"
+  | "timeout"
+  | "state-mismatch"
+  | "invalid-callback"
+  | "auth-required"
+  | "unavailable";
 
 export type AuthSessionStatus =
   | "missing"
@@ -47,7 +59,7 @@ export interface AuthSessionSnapshot {
 }
 
 export interface AuthClient {
-  establishSession(input: unknown): Promise<AuthSession>;
+  signInWithGoogle?(onBrowserFallback?: (url: string) => void): Promise<AuthSession>;
   refreshSession(refreshToken: string): Promise<AuthSession>;
   invalidateSession(accessToken: string): Promise<void>;
 }
@@ -124,14 +136,17 @@ export class AuthSessionService {
     this.removeStoredSession();
   }
 
-  public async establishSession(input: unknown): Promise<AuthSession> {
-    if (this.client === undefined) throw new AuthSessionError("Authentication is not configured for this installation.");
+  public async signInWithGoogle(onBrowserFallback?: (url: string) => void): Promise<AuthSession> {
+    if (this.client === undefined || this.client.signInWithGoogle === undefined) {
+      throw new AuthSessionError("Sign-in is temporarily unavailable.", "unavailable");
+    }
     try {
-      const session = authSessionSchema.parse(await this.client.establishSession(input));
+      const session = authSessionSchema.parse(await this.client.signInWithGoogle(onBrowserFallback));
       this.saveSession(session);
       return session;
-    } catch {
-      throw new AuthSessionError("Authentication could not be established.");
+    } catch (error) {
+      if (error instanceof AuthSessionError) throw error;
+      throw safeAuthError(error, "Sign-in is temporarily unavailable.");
     }
   }
 
@@ -189,7 +204,11 @@ export class AuthSessionService {
 
   /** Converts the Supabase wire shape into the small persisted contract. */
   public static fromSupabaseSession(value: SupabaseSessionLike, now = Date.now()): AuthSession {
-    const expiresAt = value.expires_at === undefined ? now : value.expires_at * 1000;
+    const expiresAt = value.expires_at !== undefined
+      ? value.expires_at * 1000
+      : value.expires_in !== undefined
+        ? now + value.expires_in * 1000
+        : now;
     return authSessionSchema.parse({
       version: AUTH_SESSION_VERSION,
       accessToken: value.access_token,
@@ -217,10 +236,33 @@ export class AuthSessionService {
 }
 
 export class AuthSessionError extends Error {
-  public constructor(message: string) {
+  public readonly code: AuthFailureCode | undefined;
+  public readonly fallbackUrl: string | undefined;
+
+  public constructor(message: string, code?: AuthFailureCode, fallbackUrl?: string) {
     super(message);
     this.name = "AuthSessionError";
+    this.code = code;
+    this.fallbackUrl = fallbackUrl;
   }
+}
+
+function safeAuthError(error: unknown, fallback: string): AuthSessionError {
+  if (error instanceof AuthSessionError) return error;
+  const code = (error as { code?: unknown }).code;
+  if (
+    code === "browser-unavailable" ||
+    code === "port-unavailable" ||
+    code === "cancelled" ||
+    code === "timeout" ||
+    code === "state-mismatch" ||
+    code === "invalid-callback" ||
+    code === "auth-required" ||
+    code === "unavailable"
+  ) {
+    return new AuthSessionError(fallback, code);
+  }
+  return new AuthSessionError(fallback, "unavailable");
 }
 
 function bestEffortChmod(path: string, mode: number): void {

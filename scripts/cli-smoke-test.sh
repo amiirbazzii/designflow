@@ -244,7 +244,7 @@ echo "ok"
 step "designflow (interactive)"
 MENU="$(printf 'q\n' | designflow)"
 grep -q "DesignFlow" <<<"$MENU" || fail "interactive mode did not start"
-for screen in "Project" "Design" "Status" "Enter  Start Design Engineer" "q      Quit" "?      Help"; do
+for screen in "Project" "Design" "AI" "Sign-in required" "Status" "Enter  Continue with Google" "q      Quit" "?      Help"; do
   grep -q "$screen" <<<"$MENU" || fail "the product shell is missing: $screen"
 done
 echo "ok"

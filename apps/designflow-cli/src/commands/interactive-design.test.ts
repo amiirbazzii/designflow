@@ -4,7 +4,7 @@ import type { CliContext, ResolvedWorker } from "../services/cli-runner";
 import { designFromCurrentSelection, type InteractiveDesign } from "../services/figma-selection";
 import { menu, ScriptedTerminal } from "../ui/terminal";
 import { collectInput } from "./run";
-import { interactiveRunOptions, selectDesign } from "./interactive";
+import { interactiveRunOptions, selectDesign, signInInteractive } from "./interactive";
 
 function shellContext(options: {
   readonly status: "connected" | "unavailable" | "not-configured";
@@ -100,5 +100,24 @@ describe("interactive design selection", () => {
     expect(input).toMatchObject({ designFile: design.designFile, frames: ["Expense Form"] });
     expect(input.request).toBe("prepare the implementation");
     expect(terminal.questions).toEqual(["What would you like from this design? (Create an engineering specification. Do not modify the project.)"]);
+  });
+
+  test("Google sign-in updates the product session without rendering credentials", async () => {
+    const calls: string[] = [];
+    const terminal = new ScriptedTerminal();
+    const context = {
+      signInWithGoogle: async (onBrowserFallback: (url: string) => void) => {
+        calls.push("google");
+        onBrowserFallback("https://project.supabase.co/auth/v1/authorize?provider=google");
+        return "connected";
+      },
+    } as unknown as CliContext;
+
+    await expect(signInInteractive(context, terminal)).resolves.toBe(true);
+    expect(calls).toEqual(["google"]);
+    expect(terminal.transcript).toContain("Opening Google sign-in in your browser...");
+    expect(terminal.transcript).toContain("Open this sign-in link:");
+    expect(terminal.transcript).toContain("✓ Signed in");
+    expect(terminal.transcript).not.toContain("access-token");
   });
 });

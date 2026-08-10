@@ -27,6 +27,7 @@ import {
 } from "../services/cli-runner";
 import type { ProjectIdentity } from "@designflow/sdk";
 import { runCommand } from "./run";
+import { AuthSessionError } from "../services/auth-session";
 
 export function interactiveRunOptions(
   project: ProjectIdentity | null,
@@ -136,6 +137,31 @@ export async function selectDestination(
   );
 }
 
+export async function signInInteractive(
+  context: CliContext,
+  terminal: Terminal,
+): Promise<boolean> {
+  try {
+    terminal.print();
+    terminal.print("Opening Google sign-in in your browser...");
+    await context.signInWithGoogle((url) => {
+      terminal.print();
+      terminal.print("Could not open your browser automatically.");
+      terminal.print();
+      terminal.print("Open this sign-in link:");
+      terminal.print(url);
+    });
+  } catch (error) {
+    terminal.print();
+    terminal.print(error instanceof AuthSessionError ? error.message : "Sign-in is temporarily unavailable.");
+    return false;
+  }
+
+  terminal.print();
+  terminal.print("✓ Signed in");
+  return true;
+}
+
 /**
  * `designflow` with no arguments — the application shell.
  *
@@ -193,6 +219,11 @@ export async function interactiveCommand(
       choice === "design" ||
       choice === "run"
     ) {
+      if (context.aiStatus() === "sign-in-required") {
+        await signInInteractive(context, terminal);
+        continue;
+      }
+
       const worker = context.workers
         .listWorkers()
         .find((candidate) =>

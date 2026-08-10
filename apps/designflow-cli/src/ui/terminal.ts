@@ -47,7 +47,7 @@ export function onboarding(layout: HomeLayout): string {
     "  history/       your previous runs",
     "  cache/         working space",
     "",
-    "Nothing leaves this machine. There is no account to create.",
+    "Your project stays local. DesignFlow AI access uses secure Google sign-in.",
     "",
   ].join("\n");
 }
@@ -119,7 +119,9 @@ export function menu(
     "Status",
     "  Ready",
     "",
-    "Enter  Start Design Engineer",
+    ai.status === "sign-in-required"
+      ? "Enter  Continue with Google"
+      : "Enter  Start Design Engineer",
     "q      Quit",
     "?      Help",
     "",
@@ -138,7 +140,7 @@ export function shellHelp(): string {
     "",
     "DesignFlow help",
     "",
-    "  Enter  Start the Design Engineer flow",
+    "  Enter  Start the Design Engineer flow, or continue with Google when AI access needs it",
     "  q      Quit DesignFlow",
     "  ?      Show this help",
     "",

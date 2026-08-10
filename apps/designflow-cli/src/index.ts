@@ -36,11 +36,34 @@ export {
 } from "./services/auth-session";
 export type {
   AuthClient,
+  AuthFailureCode,
   AuthSession,
   AuthSessionSnapshot,
   AuthSessionStatus,
   SupabaseSessionLike,
 } from "./services/auth-session";
+
+export { SupabaseAuthClient } from "./services/supabase-auth";
+export type { SupabaseAuthClientOptions } from "./services/supabase-auth";
+export {
+  createOAuthCallbackServer,
+  OAuthCallbackError,
+  GOOGLE_CALLBACK_HOST,
+  GOOGLE_CALLBACK_PATH,
+  GOOGLE_CALLBACK_PORT,
+} from "./services/oauth-callback";
+export type {
+  OAuthCallbackFailureCode,
+  OAuthCallbackResult,
+  OAuthCallbackServer,
+  OAuthCallbackServerOptions,
+} from "./services/oauth-callback";
+export {
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_PUBLISHABLE_KEY,
+  readSupabasePublicConfig,
+} from "./services/supabase-config";
+export type { SupabasePublicConfig } from "./services/supabase-config";
 
 export { initializeHome, homeLayout } from "./services/home";
 export type { HomeLayout, HomeState } from "./services/home";
