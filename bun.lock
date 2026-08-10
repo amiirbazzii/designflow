@@ -53,7 +53,7 @@
     },
     "apps/designflow-cli": {
       "name": "designflow-ai",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "bin": {
         "designflow": "dist/main.js",
       },

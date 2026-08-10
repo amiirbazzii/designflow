@@ -1,6 +1,6 @@
 {
   "name": "designflow-ai",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "AI workflows that turn ideas into results, from your terminal",
   "type": "module",
   "bin": {

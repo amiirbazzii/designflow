@@ -34,7 +34,7 @@ describeOnPosix("installed-package acceptance (CLI-only contract)", () => {
         encoding: "utf8",
       }).trim();
       const tarball = join(work, packOutput.split("\n").at(-1) ?? "");
-      expect(tarball.endsWith("designflow-ai-0.1.2.tgz")).toBe(true);
+      expect(tarball.endsWith("designflow-ai-0.2.0.tgz")).toBe(true);
 
       // 2. Isolated project install, no workspace resolution.
       const project = join(work, "consumer");
@@ -49,7 +49,7 @@ describeOnPosix("installed-package acceptance (CLI-only contract)", () => {
       const installed = JSON.parse(
         readFileSync(join(project, "node_modules", "designflow-ai", "package.json"), "utf8"),
       ) as { version: string; main?: string; types?: string; exports?: Record<string, string> };
-      expect(installed.version).toBe("0.1.2");
+      expect(installed.version).toBe("0.2.0");
       expect(installed.main).toBeUndefined();
       expect(installed.types).toBeUndefined();
       expect(installed.exports).toEqual({ "./package.json": "./package.json" });
@@ -59,7 +59,7 @@ describeOnPosix("installed-package acceptance (CLI-only contract)", () => {
       const bin = join(project, "node_modules", ".bin", "designflow");
       for (const [args, expected] of [
         [["--help"], "your AI workforce"],
-        [["--version"], "DesignFlow 0.1.2"],
+        [["--version"], "DesignFlow 0.2.0"],
         [["workers"], "Design Engineer"],
       ] as const) {
         const run = spawnSync(bin, [...args], {

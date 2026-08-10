@@ -34,7 +34,7 @@ describe("designflow-ai package contract (CLI-only)", () => {
   test("identity and version are unchanged", () => {
     const pkg = manifest();
     expect(pkg.name).toBe("designflow-ai");
-    expect(pkg.version).toBe("0.1.2");
+    expect(pkg.version).toBe("0.2.0");
     expect(pkg.type).toBe("module");
     expect(pkg.engines?.["node"]).toBe(">=18");
   });
