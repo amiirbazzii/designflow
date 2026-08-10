@@ -159,6 +159,21 @@ export class ArtifactInspectionService {
    * handoff. The caller must already possess the artifact id; this method does
    * not discover or broaden artifact scope.
    */
+  /**
+   * The current version's registry metadata for one artifact — the compact
+   * producer-supplied summary facts (never the payload). Presentation layers
+   * use this to read facts the producing capability stamped onto the exact
+   * artifact, e.g. the proposal's `moduleValidation` outcome.
+   */
+  public async getMetadata(
+    artifactId: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    const artifact = await this.artifactRegistry.getArtifact(artifactId);
+    if (artifact === null) return undefined;
+    const version = await this.artifactRegistry.getVersion(artifact.id, artifact.version);
+    return version?.metadata ?? artifact.metadata;
+  }
+
   public async getPayloadByArtifactId(artifactId: string): Promise<unknown> {
     const artifact = await this.artifactRegistry.getArtifact(artifactId);
     if (artifact === null) return undefined;

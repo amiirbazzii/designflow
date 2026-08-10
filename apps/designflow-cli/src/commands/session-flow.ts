@@ -35,6 +35,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
+import {
+  buildProposalReview,
+  renderReadyToApply,
+  renderReviewFileList,
+  type ReviewCheck,
+} from "../services/proposal-review";
 
 /**
  * What `designflow run` and `designflow answer` share once a session exists.
@@ -152,7 +158,13 @@ export async function finishSession(
   }
 
   const executionId = result.session.executionId;
-  const approved = await resolveApproval(context, terminal, executionId, result.session.originalInput);
+  const approved = await resolveApproval(
+    context,
+    terminal,
+    executionId,
+    result.session.originalInput,
+    options.productExperience === true,
+  );
 
   if (approved === false) {
     if (options.productExperience === true) {
@@ -192,9 +204,16 @@ async function resolveApproval(
   terminal: Terminal,
   executionId: string,
   originalInput?: unknown,
+  productExperience = false,
 ): Promise<boolean | undefined> {
   const pending = await context.runner.pendingApproval(executionId);
   if (pending === null) return undefined;
+
+  if (productExperience && pending.workflowId === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) {
+    const reviewed = await resolveProductImplementationReview(context, terminal, executionId, originalInput);
+    if (reviewed !== undefined) return reviewed;
+    // No proposal artifact to review — fall through to the legacy prompt.
+  }
 
   terminal.print();
   terminal.print(heading("Approval required"));
@@ -251,6 +270,23 @@ async function report(
       };
       validationFailed = payload.checks?.some((check) => check.status === "failed") === true;
       rollbackTriggered = payload.rollbackTriggered === true;
+    }
+
+    // Truthful Applying status: each line appears only when the matching
+    // artifact proves the step actually happened in this run.
+    const hasSnapshot = artifacts.some((artifact) => artifact.artifactId === "project-snapshot");
+    const hasApplication = artifacts.some((artifact) => artifact.artifactId === "file-application-result");
+    if (hasSnapshot || hasApplication) {
+      terminal.print();
+      terminal.print("Applying");
+      terminal.print();
+      if (hasSnapshot) terminal.print("✓ Snapshot created");
+      if (hasApplication) terminal.print("✓ Changes applied");
+      if (validation !== undefined && !validationFailed) terminal.print("✓ Build passed");
+      if (validationFailed) {
+        terminal.print("✗ Validation failed");
+        if (rollbackTriggered) terminal.print("↩ Rolling back changes");
+      }
     }
 
     terminal.print(
@@ -594,6 +630,140 @@ async function renderImplementationPreview(context: CliContext, terminal: Termin
   terminal.print();
   terminal.print("A rollback snapshot will be created before changes are applied.");
   terminal.print("Validation commands will run after approval.");
+}
+
+/**
+ * Phase 8 integrated product review for the exact validated proposal.
+ *
+ * Presentation over the same authoritative artifacts the approval hash
+ * binds: the review, the diffs, and the totals are all pure functions of
+ * the stored `proposed-file-changes` payload plus the current registered
+ * project file content. Approving here invokes the same `runner.approve`
+ * path as the legacy prompt; viewing the diff approves nothing.
+ *
+ * Returns undefined when there is no proposal artifact to review, so the
+ * caller can fall back to the legacy approval prompt.
+ */
+async function resolveProductImplementationReview(
+  context: CliContext,
+  terminal: Terminal,
+  executionId: string,
+  originalInput?: unknown,
+): Promise<boolean | undefined> {
+  const report = await context.runner.explain(executionId);
+  const proposal = report.artifacts.find((artifact) => artifact.artifactId === "proposed-file-changes");
+  if (proposal === undefined) return undefined;
+
+  const detail = await context.artifactInspection.getPayload(proposal);
+  const payload = detail.payload as { files?: Array<{ path: string; action: string; content?: string }> };
+  const files = Array.isArray(payload.files) ? payload.files : [];
+  if (files.length === 0) return undefined;
+
+  const rootPath = readImplementationInput(originalInput)?.project.rootPath;
+  const entries: ProposalPreviewEntry[] = files.map((file) => {
+    const currentContent = rootPath === undefined || file.action === "create"
+      ? undefined
+      : ((): string | undefined => { try { return readFileSync(join(rootPath, file.path), "utf8"); } catch { return undefined; } })();
+    return {
+      path: file.path,
+      action: file.action as ProposalPreviewEntry["action"],
+      ...(file.content !== undefined ? { proposedContent: file.content } : {}),
+      ...(currentContent !== undefined ? { currentContent } : {}),
+    };
+  });
+
+  const review = buildProposalReview(entries);
+  const checks = await buildReviewChecks(context, report);
+
+  for (;;) {
+    for (const line of renderReadyToApply(review, checks)) terminal.print(line);
+    terminal.print();
+    const choice = (await terminal.ask("Review", ["View diff", "Apply", "Reject"]))
+      .trim()
+      .toLowerCase();
+
+    if (choice === "1" || choice === "view diff" || choice === "view" || choice === "diff") {
+      await browseReviewDiffs(terminal, review);
+      continue;
+    }
+
+    if (choice === "2" || choice === "apply" || choice === "a") {
+      const confirm = (await terminal.ask("Apply these exact changes?", ["yes", "no"]))
+        .trim()
+        .toLowerCase();
+      if (!confirm.startsWith("y")) continue;
+      const outcome = await context.runner.approve(executionId, "approved from the CLI");
+      terminal.print();
+      terminal.print(outcome.message);
+      return true;
+    }
+
+    if (choice === "3" || choice === "reject" || choice === "r") {
+      const outcome = await context.runner.reject(executionId, "rejected from the CLI");
+      terminal.print();
+      terminal.print(outcome.message);
+      return false;
+    }
+
+    terminal.print();
+    terminal.print("Choose View diff, Apply, or Reject.");
+  }
+}
+
+/** Per-file diff navigation; viewing never approves anything. */
+async function browseReviewDiffs(
+  terminal: Terminal,
+  review: ReturnType<typeof buildProposalReview>,
+): Promise<void> {
+  for (;;) {
+    for (const line of renderReviewFileList(review)) terminal.print(line);
+    terminal.print("  Back");
+    terminal.print();
+    const answer = (await terminal.ask("File", [...review.files.map((file) => file.path), "Back"]))
+      .trim();
+    const lowered = answer.toLowerCase();
+    if (lowered === "back" || lowered === "b" || lowered === "" || lowered === String(review.files.length + 1)) return;
+    const numeric = Number.parseInt(answer, 10);
+    const file = Number.isInteger(numeric) && numeric >= 1 && numeric <= review.files.length
+      ? review.files[numeric - 1]
+      : review.files.find((candidate) => candidate.path.toLowerCase() === lowered);
+    if (file === undefined) {
+      terminal.print();
+      terminal.print("Choose one of the files shown, or Back.");
+      continue;
+    }
+    terminal.print();
+    for (const line of file.diff) terminal.print(line);
+    terminal.print();
+  }
+}
+
+/**
+ * Truthful validation summary: each label appears only when the underlying
+ * check demonstrably ran and passed before this screen. Reaching a stored
+ * proposal at the approval gate already proves deterministic path and
+ * content validation passed — the storing capability throws otherwise.
+ */
+async function buildReviewChecks(
+  context: CliContext,
+  report: Awaited<ReturnType<CliContext["runner"]["explain"]>>,
+): Promise<ReviewCheck[]> {
+  const checks: ReviewCheck[] = [{ label: "Safe paths" }, { label: "Proposal validated" }];
+  const coverage = await readCoverageArtifact(context, report);
+  if (coverage !== undefined && coverage.targets.every((target) => coverage.result.some((entry) => entry.targetId === target.id))) {
+    checks.push({ label: "Design covered" });
+  }
+  // The compile outcome is stamped on the exact proposal artifact this
+  // approval binds to (its `moduleValidation` summary fact) — read it from
+  // there, not from a secondary record that may be absent at the approval
+  // checkpoint.
+  const proposalMetadata = await context.artifactInspection
+    .getMetadata("proposed-file-changes")
+    .catch(() => undefined);
+  if (proposalMetadata?.["moduleValidation"] === "passed") {
+    checks.push({ label: "Build checked" });
+  }
+  return checks;
 }
 
 /**

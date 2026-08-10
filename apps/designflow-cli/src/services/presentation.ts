@@ -282,6 +282,15 @@ export interface ProductRunResultFacts {
 
 /** A bounded, product-level completion view for the interactive shell. */
 export function renderProductRunResult(facts: ProductRunResultFacts): string[] {
+  if (facts.status === "rejected") {
+    return [
+      "",
+      "Changes rejected",
+      "",
+      "No files were changed.",
+    ];
+  }
+
   if (facts.status === "cancelled") {
     return [
       "",

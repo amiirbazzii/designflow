@@ -21,14 +21,16 @@ export interface ProposalPreviewEntry {
   readonly currentContent?: string;
 }
 
-function splitLines(value: string): string[] {
-  const lines = value.split("\n");
+export function splitLines(value: string): string[] {
+  // Display-only CRLF normalization: a CRLF/LF-only difference must not
+  // render as a whole-file change. The proposal content itself is untouched.
+  const lines = value.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
   if (lines[lines.length - 1] === "") lines.pop();
   return lines.slice(0, MAX_DIFF_INPUT_LINES);
 }
 
 /** Minimal LCS line diff — exact, deterministic, no formatting normalization. */
-function diffLines(current: string[], proposed: string[]): string[] {
+export function diffLines(current: string[], proposed: string[]): string[] {
   const rows = current.length;
   const cols = proposed.length;
   const table: number[] = new Array((rows + 1) * (cols + 1)).fill(0);
