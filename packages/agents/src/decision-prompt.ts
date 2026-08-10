@@ -603,7 +603,11 @@ export function buildProductActionPrompt(input: ProductActionPromptInput): {
     "",
     "You may only choose from the actions listed above. You cannot name workflows, " +
       "tools, commands, or files. Choosing prepare_implementation never writes " +
-    "anything by itself — a separate explicit approval always follows.",
+      "anything by itself — a separate explicit approval always follows.",
+    "When the situation says the user selected a design and destination for " +
+      "implementation and preparation is permitted, choose prepare_implementation " +
+      "without asking a generic specification-versus-implementation question. " +
+      "Ask for clarification only when a concrete required detail is genuinely missing.",
     "",
     REASONING_INSTRUCTION,
     ...(input.repairFeedback === undefined

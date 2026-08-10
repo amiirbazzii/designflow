@@ -5,6 +5,8 @@ import {
   executionResultSchema,
   executionRequestOptionsSchema,
   executionErrorSchema,
+  boundedAttemptDiagnostics,
+  proposalAttemptDiagnosticSchema,
 } from "./execution-contract";
 
 describe("Execution Contract Schemas", () => {
@@ -207,5 +209,48 @@ describe("Execution Contract Schemas", () => {
       const parsed = executionErrorSchema.safeParse(error);
       expect(parsed.success).toBe(false);
     });
+  });
+});
+
+// ── Phase 7D: bounded attempt diagnostics ────────────────────────
+
+describe("boundedAttemptDiagnostics", () => {
+  test("keeps fact fields for every attempt and preserves order", () => {
+    const result = boundedAttemptDiagnostics([
+      { attempt: 1, code: "ERR_A", message: "first", path: "src/a.jsx", operation: "modify" },
+      { attempt: 2, code: "ERR_B", message: "second", targetId: "frame:n1", targetKind: "frame", fact: "a fact" },
+      { attempt: 3, code: "ERR_C", message: "third", compileErrorSummary: "src/a.jsx: No matching export" },
+    ])!;
+    expect(result.length).toBe(3);
+    expect(result.map((d) => d.attempt)).toEqual([1, 2, 3]);
+    expect(result[0]).toEqual({ attempt: 1, code: "ERR_A", message: "first", path: "src/a.jsx", operation: "modify" });
+    expect(result[1]!.fact).toBe("a fact");
+    expect(result[2]!.compileErrorSummary).toBe("src/a.jsx: No matching export");
+  });
+
+  test("truncates oversized strings to the schema bounds", () => {
+    const result = boundedAttemptDiagnostics([
+      { attempt: 1, code: "ERR_LONG", message: "m".repeat(5000), compileErrorSummary: "c".repeat(5000) },
+    ])!;
+    expect(result[0]!.message.length).toBe(600);
+    expect(result[0]!.compileErrorSummary!.length).toBe(1200);
+    expect(proposalAttemptDiagnosticSchema.safeParse(result[0]).success).toBe(true);
+  });
+
+  test("caps the list at 12 entries and drops malformed ones", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ attempt: i + 1, code: "ERR", message: "m" }));
+    expect(boundedAttemptDiagnostics(many)!.length).toBe(12);
+    expect(boundedAttemptDiagnostics([{ notAnAttempt: true }, null, "text"])).toBeUndefined();
+    expect(boundedAttemptDiagnostics([])).toBeUndefined();
+    expect(boundedAttemptDiagnostics("not-an-array")).toBeUndefined();
+  });
+
+  test("executionErrorSchema accepts bounded attemptDiagnostics", () => {
+    const parsed = executionErrorSchema.safeParse({
+      code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED",
+      message: "The proposal remained invalid after 3 bounded attempts",
+      attemptDiagnostics: [{ attempt: 1, code: "ERR_A", message: "m" }],
+    });
+    expect(parsed.success).toBe(true);
   });
 });

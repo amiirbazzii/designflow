@@ -48,7 +48,17 @@ const CONTENT_INTEGRITY_FACTS: Readonly<Record<string, string>> = {
   ERR_PROPOSAL_NOOP_MODIFY: "proposed modify content is identical to the current file",
 };
 
-interface ProposalAttemptFailure { readonly attempt: number; readonly code: string; readonly path?: string; readonly operation?: string; readonly diagnostics?: readonly ProposedModuleDiagnostic[]; readonly targetId?: string; readonly targetKind?: string; readonly fact?: string; }
+interface ProposalAttemptFailure { readonly attempt: number; readonly code: string; readonly message: string; readonly path?: string; readonly operation?: string; readonly diagnostics?: readonly ProposedModuleDiagnostic[]; readonly targetId?: string; readonly targetKind?: string; readonly fact?: string; }
+
+/** Bounded compiler-fact summary — first few diagnostic messages, truncated; never a full compiler log. */
+function compileErrorSummaryOf(diagnostics: readonly ProposedModuleDiagnostic[] | undefined): string | undefined {
+  if (diagnostics === undefined || diagnostics.length === 0) return undefined;
+  const summary = diagnostics
+    .slice(0, 3)
+    .map((d) => (d.file !== undefined ? `${d.file}: ${d.message}` : d.message))
+    .join(" | ");
+  return summary.length > 1200 ? summary.slice(0, 1200) : summary;
+}
 
 /** Typed, fact-only feedback for a regeneration attempt — never a rewritten operation. */
 function buildProposalRepairFeedback(options: {
@@ -65,6 +75,7 @@ function buildProposalRepairFeedback(options: {
     maxAttempts: MAX_CORRECTION_PROPOSAL_ATTEMPTS,
     validationErrors: options.failures.map((failure) => ({
       code: failure.code,
+      message: failure.message,
       ...(failure.diagnostics !== undefined ? { moduleDiagnostics: failure.diagnostics } : {}),
       ...(failure.operation !== undefined ? { operation: failure.operation } : {}),
       ...(failure.targetId !== undefined ? { targetId: failure.targetId } : {}),
@@ -96,7 +107,7 @@ export const invokeImplementationAgentStage4Capability: Capability<unknown, Capa
     let repairFeedback: Record<string, unknown> | undefined;
     for (let attempt = 1; attempt <= MAX_CORRECTION_PROPOSAL_ATTEMPTS; attempt += 1) {
       if (context.signal?.aborted === true) throw new DesignFlowError("ERR_PROPOSAL_ATTEMPT_CANCELLED", "Proposal generation was cancelled; no further attempt will start.", { attempt });
-      const outcome = await requireAgents(context).invoke({ agentId: "implementation-agent", objective: "Produce a structured implementation proposal for the registered project", input: { designSpecification: spec, projectContext: project, designSystemMapping: mapping, coveragePlan, ...(repairFeedback !== undefined ? { proposalRepairFeedback: repairFeedback } : {}) }, attempt }, context.signal);
+      const outcome = await requireAgents(context).invoke({ agentId: "implementation-agent", objective: "Produce a structured implementation proposal for the registered project", input: { designSpecification: spec, projectContext: project, designSystemMapping: mapping, coveragePlan, ...(requested.destination !== undefined ? { destination: requested.destination } : {}), ...(repairFeedback !== undefined ? { proposalRepairFeedback: repairFeedback } : {}) }, attempt }, context.signal);
       if (outcome.type === "failure") throw new Error(`Implementation Agent failed: ${outcome.code}`);
       const value = generatedImplementationSchema.parse(outcome.output);
       // Deterministic pre-validation of the exact proposal this output would
@@ -125,7 +136,9 @@ export const invokeImplementationAgentStage4Capability: Capability<unknown, Capa
         failures.push({
           attempt,
           code,
+          message: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
           ...(failedPath !== undefined ? { path: failedPath } : {}),
+          ...(typeof metadata?.operation === "string" ? { operation: metadata.operation } : {}),
           ...(diagnostics !== undefined ? { diagnostics } : {}),
           ...(typeof metadata?.targetId === "string" ? { targetId: metadata.targetId } : {}),
           ...(typeof metadata?.targetKind === "string" ? { targetKind: metadata.targetKind } : {}),
@@ -137,7 +150,7 @@ export const invokeImplementationAgentStage4Capability: Capability<unknown, Capa
             attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS && REPAIRABLE_PROPOSAL_ERROR_CODES.has(code)
               ? `The proposal remained invalid after ${MAX_CORRECTION_PROPOSAL_ATTEMPTS} bounded attempts; no approval was requested and no files were changed.`
               : (error instanceof Error ? error.message : String(error)),
-            { attempts: attempt, attemptsExhausted: attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS, failures: failures.map((f) => ({ attempt: f.attempt, code: f.code, ...(f.path !== undefined ? { path: f.path } : {}) })) },
+            { attempts: attempt, attemptsExhausted: attempt === MAX_CORRECTION_PROPOSAL_ATTEMPTS, failures: failures.map((f) => ({ attempt: f.attempt, code: f.code, message: f.message, ...(f.path !== undefined ? { path: f.path } : {}), ...(f.operation !== undefined ? { operation: f.operation } : {}), ...(f.targetId !== undefined ? { targetId: f.targetId } : {}), ...(f.targetKind !== undefined ? { targetKind: f.targetKind } : {}), ...(f.fact !== undefined ? { fact: f.fact } : {}), ...(compileErrorSummaryOf(f.diagnostics) !== undefined ? { compileErrorSummary: compileErrorSummaryOf(f.diagnostics) } : {}) })) },
           );
         }
         repairFeedback = buildProposalRepairFeedback({ attempt, failures, project, root });

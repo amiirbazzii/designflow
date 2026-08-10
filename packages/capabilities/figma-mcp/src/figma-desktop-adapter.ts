@@ -73,6 +73,7 @@ export async function buildFigmaDesktopSourceSnapshot(
   context: CapabilityContext,
   options: {
     readonly parsedSource: ParsedFigmaSource;
+    readonly sourceKind?: "current-selection" | "figma-url";
     readonly captureScreenshots: boolean;
     readonly screenshotArtifactIdPrefix: string;
     readonly now: () => string;
@@ -89,12 +90,32 @@ export async function buildFigmaDesktopSourceSnapshot(
 
   const capabilities = await discoverFigmaMcpCapabilities(client, context.signal);
   const warnings: FigmaSnapshotWarning[] = [];
-  // The official Desktop server is selection-oriented. Its `nodeId` field is
-  // not a REST-style arbitrary node lookup; requesting an unselected node is
-  // rejected by the server. Read the authenticated current selection first,
-  // then enforce any URL node-id binding below.
-  const metadata = await callDesktopTool(client, DESKTOP_TOOLS.metadata, {}, context.signal);
-  const selection = parseDesktopSelection(metadata);
+  const sourceKind = options.sourceKind ?? "current-selection";
+  const requestedNodeId = options.parsedSource.nodeIds[0];
+  if (sourceKind === "figma-url" && requestedNodeId === undefined) {
+    throw new DesignFlowError(
+      "ERR_FIGMA_NODE_NOT_FOUND",
+      "A pasted Figma URL must identify a specific node for Desktop MCP retrieval",
+      { requested: options.parsedSource.fileKey },
+    );
+  }
+
+  // Desktop MCP accepts nodeId on metadata/design-context/variable/screenshot
+  // calls. Only current-selection mode reads the implicit selection; a pasted
+  // URL is bound to the parsed node instead.
+  const metadata = await callDesktopTool(
+    client,
+    DESKTOP_TOOLS.metadata,
+    sourceKind === "figma-url" ? { nodeId: requestedNodeId } : {},
+    context.signal,
+  );
+  const metadataText = textFromContent(metadata);
+  const outlineRoot = sourceKind === "figma-url" && requestedNodeId !== undefined
+    ? parseDesktopMetadataOutline(metadataText, requestedNodeId)
+    : undefined;
+  const selection = outlineRoot === undefined
+    ? parseDesktopSelection(metadata)
+    : { id: outlineRoot.id, name: outlineRoot.name, type: outlineRoot.type };
   if (selection === undefined) {
     throw new DesignFlowError(
       "ERR_FIGMA_DESKTOP_SELECTION_UNAVAILABLE",
@@ -103,11 +124,19 @@ export async function buildFigmaDesktopSourceSnapshot(
     );
   }
 
-  if (options.parsedSource.nodeIds.length > 0 && !options.parsedSource.nodeIds.includes(selection.id)) {
+  if (sourceKind === "current-selection" && options.parsedSource.nodeIds.length > 0 && !options.parsedSource.nodeIds.includes(selection.id)) {
     throw new DesignFlowError(
       "ERR_FIGMA_NODE_NOT_FOUND",
-      `Figma Desktop MCP returned a different selected node than requested`,
+      "Figma Desktop MCP returned a different selected node than requested",
       { requested: options.parsedSource.nodeIds, selected: selection.id },
+    );
+  }
+
+  if (sourceKind === "figma-url" && requestedNodeId !== undefined && selection.id !== requestedNodeId) {
+    throw new DesignFlowError(
+      "ERR_FIGMA_NODE_NOT_FOUND",
+      "Figma Desktop MCP did not return the node requested by the pasted URL",
+      { requested: [requestedNodeId], selected: selection.id },
     );
   }
 
@@ -117,23 +146,25 @@ export async function buildFigmaDesktopSourceSnapshot(
 
   // The metadata outline carries the full selected subtree — parse it into a
   // real node tree rather than reducing the selection to a single identity node.
-  const outlineRoot = parseDesktopMetadataOutline(textFromContent(metadata), selection.id);
+  const resolvedOutlineRoot = outlineRoot ?? parseDesktopMetadataOutline(metadataText, selection.id);
   const normalized = normalizeFigmaNodeTree(
-    outlineRoot ?? { id: selection.id, name: selection.name, type: selection.type },
+    resolvedOutlineRoot ?? { id: selection.id, name: selection.name, type: selection.type },
   );
   warnings.push(...normalized.warnings);
-  if (outlineRoot === undefined) {
+  if (resolvedOutlineRoot === undefined) {
     warnings.push({
       code: "METADATA_OUTLINE_UNPARSED",
       message: "Figma Desktop MCP metadata did not contain a parseable node outline; only the selection identity was retained",
       nodeId: selection.id,
     });
   }
-  warnings.push({
-    code: "DESKTOP_MCP_SELECTION_SCOPE",
-    message: "The official Desktop MCP server supplied the current selection, not a full file document",
-    nodeId: selection.id,
-  });
+  if (sourceKind === "current-selection") {
+    warnings.push({
+      code: "DESKTOP_MCP_SELECTION_SCOPE",
+      message: "The official Desktop MCP server supplied the current selection, not a full file document",
+      nodeId: selection.id,
+    });
+  }
 
   const desktopNodeArgs = {
     nodeId: selection.id,

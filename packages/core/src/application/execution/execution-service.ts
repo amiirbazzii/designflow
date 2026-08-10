@@ -35,6 +35,7 @@ import {
   type AgentInvocationService,
   type McpClient,
   DesignFlowError,
+  boundedAttemptDiagnostics,
 } from "@designflow/sdk";
 
 import { CapabilityRegistry } from "../../registry";
@@ -881,6 +882,9 @@ export class ExecutionService
       engineResult.success ? "completed" : "failed",
     );
 
+    const attemptDiagnostics = engineResult.error instanceof DesignFlowError
+      ? extractAttemptDiagnostics(engineResult.error)
+      : undefined;
     const error = engineResult.error !== undefined
       ? {
           code: engineResult.error instanceof DesignFlowError
@@ -891,6 +895,7 @@ export class ExecutionService
           message: engineResult.error instanceof Error
             ? engineResult.error.message
             : String(engineResult.error),
+          ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
         }
       : undefined;
 
@@ -1024,6 +1029,40 @@ export class ExecutionService
 
     return workflowPackage;
   }
+}
+
+/**
+ * Bounded per-attempt validator facts from a failed engine result. The
+ * facts may sit directly on the error (`failures`), on a wrapped child
+ * error (`childError.attemptDiagnostics`), or one level down inside the
+ * engine's `failedErrors` map — never anything unbounded.
+ */
+function extractAttemptDiagnostics(
+  error: DesignFlowError,
+): ReturnType<typeof boundedAttemptDiagnostics> {
+  const fromError = (candidate: unknown): ReturnType<typeof boundedAttemptDiagnostics> => {
+    if (candidate instanceof DesignFlowError) {
+      const direct = boundedAttemptDiagnostics(candidate.metadata["failures"]);
+      if (direct !== undefined) return direct;
+      const child = candidate.metadata["childError"];
+      if (typeof child === "object" && child !== null) {
+        return boundedAttemptDiagnostics(
+          (child as Record<string, unknown>)["attemptDiagnostics"],
+        );
+      }
+    }
+    return undefined;
+  };
+  const direct = fromError(error);
+  if (direct !== undefined) return direct;
+  const failedErrors = error.metadata["failedErrors"];
+  if (typeof failedErrors === "object" && failedErrors !== null) {
+    for (const nested of Object.values(failedErrors as Record<string, unknown>)) {
+      const found = fromError(nested);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
 }
 
 async function hashApprovalPayload(value: unknown): Promise<string> {

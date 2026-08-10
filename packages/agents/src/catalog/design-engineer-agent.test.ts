@@ -77,6 +77,27 @@ function runtimeWith(options: {
 }
 
 describe("the deterministic strategy", () => {
+  test("product-shell implementation intent selects implementation without write consent", async () => {
+    const result = await runtimeWith({
+      tools: classifierTool("page"),
+      strategy: deterministicDesignEngineerStrategy,
+    }).decide({
+      ...TASK,
+      request: "Implement the selected design at /expenses in the detected project. Prepare reviewed implementation changes.",
+      input: {
+        ...(TASK.input as object),
+        project: { id: "p1", name: "Fixture", rootPath: "/tmp/fixture" },
+        destination: { label: "/expenses", kind: "page", path: "/expenses" },
+        implementationIntent: true,
+      },
+    });
+
+    expect(result.decision).toMatchObject({
+      type: "run_workflow",
+      workflowId: "design-to-code-implementation",
+    });
+  });
+
   test("a consented project selects implementation; a project alone does not", async () => {
     const withConsent = await runtimeWith({
       tools: classifierTool("page"),
@@ -222,6 +243,17 @@ describe("the model-backed coordinator: intent interpretation over product actio
     input: { ...(TASK.input as object), project: { id: "p1", name: "Fixture" }, projectWriteConsent: true },
   };
 
+  const PRODUCT_INTENT = {
+    ...TASK,
+    request: "Implement the selected design at /expenses in the detected project. Prepare reviewed implementation changes.",
+    input: {
+      ...(TASK.input as object),
+      project: { id: "p1", name: "Fixture", rootPath: "/tmp/fixture" },
+      destination: { label: "/expenses", kind: "page", path: "/expenses" },
+      implementationIntent: true,
+    },
+  };
+
   test("an eligible specification request performs exactly one coordinator model call and routes to specification", async () => {
     const models = productModel(spec);
     const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide({
@@ -239,6 +271,16 @@ describe("the model-backed coordinator: intent interpretation over product actio
 
     expect(models.seen).toHaveLength(1);
     expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-implementation" });
+  });
+
+  test("product-shell implementation intent keeps the Coordinator on implementation", async () => {
+    const models = productModel(impl);
+    const result = await runtimeWith({ models, strategy: modelDesignEngineerStrategy }).decide(PRODUCT_INTENT);
+
+    expect(models.seen).toHaveLength(1);
+    expect(result.decision).toMatchObject({ type: "run_workflow", workflowId: "design-to-code-implementation" });
+    expect(models.seen[0]?.messages.map((message) => message.content).join("\n"))
+      .toContain("the user selected a design and destination for implementation: true");
   });
 
   test("the model chooses specification even when implementation is available", async () => {

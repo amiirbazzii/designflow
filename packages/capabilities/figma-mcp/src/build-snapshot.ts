@@ -36,6 +36,7 @@ import { buildFigmaDesktopSourceSnapshot } from "./figma-desktop-adapter";
 
 export interface BuildSnapshotOptions {
   readonly parsedSource: ParsedFigmaSource;
+  readonly sourceKind?: "current-selection" | "figma-url";
   readonly captureScreenshots: boolean;
   readonly screenshotArtifactIdPrefix: string;
   readonly now: () => string;

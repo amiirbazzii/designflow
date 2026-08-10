@@ -269,6 +269,71 @@ describe("Figma Desktop MCP adapter", () => {
     })).rejects.toMatchObject({ code: "ERR_FIGMA_NODE_NOT_FOUND" });
   });
 
+  test("pasted URL retrieves its node even when Desktop has a different current selection", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools,
+      results: {
+        get_metadata: [
+          { type: "text", text: "Currently selected nodes:\n- 9:9: Unrelated selection" },
+          {
+            type: "text",
+            text: '<frame id="1026:6098" name="iPhone 16 Pro Max - 14" x="0" y="0" width="440" height="1092"><text id="1026:6100" name="Add New Expense" x="20" y="20" width="200" height="32" /></frame>',
+          },
+        ],
+        get_design_context: [{ type: "text", text: '<div className="bg-white flex" data-node-id="1026:6098"><p className="text-[20px]" data-node-id="1026:6100">Add New Expense</p></div>' }],
+        get_variable_defs: [{ type: "text", text: "{}" }],
+      },
+    });
+
+    const snapshot = await buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+
+    expect(snapshot.source.resolvedFrames).toEqual([{ id: "1026:6098", name: "iPhone 16 Pro Max - 14", path: ["iPhone 16 Pro Max - 14"] }]);
+    expect(snapshot.nodes.map((node) => node.id)).toEqual(["1026:6098", "1026:6100"]);
+    expect(snapshot.nodes.find((node) => node.id === "1026:6100")?.characters).toBe("Add New Expense");
+    expect(snapshot.sourceProvenance).toMatchObject({ requestedFileKey: "E958ARSSBoJjblLhxZQVSU", requestedNodeId: "1026:6098", resolvedNodeId: "1026:6098" });
+    expect(client.calls[0]?.arguments).toEqual({ nodeId: "1026:6098" });
+    expect(client.calls[1]?.arguments).toMatchObject({ nodeId: "1026:6098" });
+  });
+
+  test("pasted URL rejects a returned node that is not the requested node", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }],
+      results: { get_metadata: [{ type: "text", text: "Currently selected nodes:\n- 9:9: Other" }] },
+    });
+
+    await expect(buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    })).rejects.toMatchObject({ code: "ERR_FIGMA_NODE_NOT_FOUND" });
+  });
+
+  test("pasted URL identity-only evidence still fails normalization", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }],
+      results: { get_metadata: [{ type: "text", text: "Currently selected nodes:\n- 1026:6098: iPhone 16 Pro Max - 14" }] },
+    });
+
+    await expect(buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    })).rejects.toMatchObject({ code: "ERR_FIGMA_EVIDENCE_INSUFFICIENT" });
+  });
+
   test("stops before implementation when the selected node name does not match the requested frame", async () => {
     const client = new InMemoryMcpClient({
       serverIdentity: "figma-desktop-mcp",

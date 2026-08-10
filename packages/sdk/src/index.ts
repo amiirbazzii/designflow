@@ -685,6 +685,8 @@ export {
   executionRequestOptionsSchema,
   executionResultSchema,
   executionErrorSchema,
+  proposalAttemptDiagnosticSchema,
+  boundedAttemptDiagnostics,
 } from "./execution-contract";
 
 export type {
@@ -692,6 +694,7 @@ export type {
   ExecutionRequestOptions,
   ExecutionResult,
   ExecutionErrorDetail,
+  ProposalAttemptDiagnostic,
   ExecutionContract,
   ExecutionRuntimeOptions,
 } from "./execution-contract";

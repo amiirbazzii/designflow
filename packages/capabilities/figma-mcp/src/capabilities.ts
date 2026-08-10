@@ -112,6 +112,7 @@ const retrieveSnapshotInputSchema = z
      */
     refreshFigmaSource: z.boolean().default(false),
     sourceMode: z.enum(["placeholder", "rest", "mcp-stdio", "mcp-desktop"]).default("placeholder"),
+    sourceKind: z.enum(["current-selection", "figma-url"]).default("current-selection"),
     serverIdentity: z.string().min(1).optional(),
     requestedNodeId: z.string().min(1).optional(),
   })
@@ -171,6 +172,7 @@ export const retrieveFigmaSourceSnapshotCapability: Capability<unknown, Capabili
 
     const snapshot = await buildFigmaSourceSnapshot(context, {
       parsedSource,
+      sourceKind: parsedNodeInput.sourceKind,
       captureScreenshots: parsedNodeInput.captureScreenshots,
       screenshotArtifactIdPrefix: "figma-screenshot",
       now: () => new Date().toISOString(),

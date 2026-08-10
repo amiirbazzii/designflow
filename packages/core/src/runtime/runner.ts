@@ -5,6 +5,8 @@ import {
   type ExecutionEvent,
   type ExecutionEventPublisher,
   executionEventSchema,
+  DesignFlowError,
+  boundedAttemptDiagnostics,
 } from "@designflow/sdk";
 
 import { CapabilityExecutionError } from "./errors";
@@ -69,10 +71,16 @@ export class CapabilityRunner {
       );
       output = result;
     } catch (error) {
+      const attemptDiagnostics =
+        error instanceof DesignFlowError
+          ? boundedAttemptDiagnostics(error.metadata["failures"])
+          : undefined;
       await this.publishEvent(context.executionId, "capability.failed", {
         capabilityId: capability.id,
         attempt: lastAttempt,
         error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof DesignFlowError ? { errorCode: error.code } : {}),
+        ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
       });
       throw error;
     }

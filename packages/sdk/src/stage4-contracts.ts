@@ -40,7 +40,7 @@ export type SafeProjectCommand = z.infer<typeof safeProjectCommandSchema>;
 export const projectImplementationContextV1Schema = z.object({
   schemaVersion: z.literal("1"),
   project: z.object({ id: z.string().min(1), rootIdentity: z.string().min(1), contextFingerprint: z.string().min(1) }).strict(),
-  runtime: z.object({ framework: z.string().min(1), frameworkVersion: z.string().optional(), language: z.enum(["typescript", "javascript"]), packageManager: z.string().min(1), monorepo: z.boolean() }).strict(),
+  runtime: z.object({ framework: z.string().min(1), frameworkVersion: z.string().optional(), language: z.enum(["typescript", "javascript"]), packageManager: z.string().min(1), monorepo: z.boolean(), dependencies: z.array(z.string().min(1)).max(200).optional() }).strict(),
   structure: z.object({ sourceRoots: z.array(z.string().min(1)), routeRoots: z.array(z.string().min(1)), publicAssetRoots: z.array(z.string().min(1)), aliases: z.record(z.string()) }).strict(),
   styling: z.object({ strategies: z.array(z.string().min(1)), primaryStrategy: z.string().optional(), evidence: z.array(z.string().min(1)) }).strict(),
   designSystem: z.object({ tokenSources: z.array(tokenSourceReferenceSchema), tokens: z.array(normalizedProjectTokenSchema), componentSources: z.array(componentSourceReferenceSchema), components: z.array(existingComponentReferenceSchema) }).strict(),

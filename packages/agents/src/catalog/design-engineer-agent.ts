@@ -124,13 +124,14 @@ function wantsImplementation(task: AgentTask, context: AgentContext): boolean {
   const input = task.input;
   if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
   const record = input as Record<string, unknown>;
-  // Project presence is where changes COULD go, never permission to prepare
-  // them: implementation routing additionally requires the host-collected,
-  // user-visible journey consent. The later exact-proposal approval remains
-  // a separate, unbypassed gate.
+  // Project presence is where changes COULD go, never permission to apply
+  // them. The normal product shell supplies implementationIntent after the
+  // user chooses a design and destination; explicit CLI callers retain
+  // projectWriteConsent for compatibility. Exact-proposal approval remains a
+  // separate, unbypassed gate.
   return (
     (typeof record.projectId === "string" || typeof record.project === "object")
-    && record.projectWriteConsent === true
+    && (record.implementationIntent === true || record.projectWriteConsent === true)
   );
 }
 
@@ -152,6 +153,7 @@ interface DesignRoutingFacts {
   readonly specificationAvailable: boolean;
   readonly implementationAvailable: boolean;
   readonly projectSelected: boolean;
+  readonly implementationIntent: boolean;
   readonly projectWriteConsent: boolean;
 }
 
@@ -163,6 +165,7 @@ function buildRoutingFacts(task: AgentTask, context: AgentContext): DesignRoutin
     specificationAvailable: wantsRealFigmaSpecification(task, context),
     implementationAvailable: wantsImplementation(task, context),
     projectSelected: typeof input.projectId === "string" || typeof input.project === "object",
+    implementationIntent: input.implementationIntent === true,
     projectWriteConsent: input.projectWriteConsent === true,
   };
 }
@@ -398,7 +401,7 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
     return {
       type: "request_clarification",
       question: facts.projectSelected
-        ? "Preparing implementation changes needs your explicit go-ahead for the selected project. Run again and confirm when asked, or ask for a design specification instead."
+        ? "Preparing implementation changes needs a selected project and implementation intent. Select a project and destination, or ask for a design specification instead."
         : "Preparing implementation changes needs a registered project. Select one with --project (see `designflow projects`), or ask for a design specification instead.",
       reasoningSummary: "The request asks for implementation, but its prerequisites (project and explicit consent) are not in place.",
     };
@@ -425,12 +428,11 @@ export const deterministicDesignEngineerStrategy: DesignEngineerStrategy = async
     };
   }
 
-  // Defaults: journey consent is an explicit, user-visible product choice
-  // ("Prepare changes for this project?" answered yes this run) — it is the
-  // intent signal for form-style requests that carry no prose. Without it,
-  // the read-only specification journey is the default.
+  // Defaults: implementation intent is an explicit product choice in the bare
+  // shell (design plus destination), while explicit CLI callers may still
+  // provide projectWriteConsent. Neither is approval to apply files.
   if (facts.implementationAvailable) {
-    return runFor("prepare_implementation", task, "A registered project was selected and implementation was explicitly consented to this run, so the implementation journey will be used.");
+    return runFor("prepare_implementation", task, "A registered project and implementation destination were selected, so the implementation journey will be used.");
   }
 
   return runFor("create_specification", task,
@@ -558,7 +560,8 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
   const promptFacts: ProductActionFact[] = [
     { key: "a real Figma design source is connected", value: facts.specificationAvailable },
     { key: "a registered project is selected", value: facts.projectSelected },
-    { key: "the user explicitly consented this run to preparing project changes", value: facts.projectWriteConsent },
+    { key: "the user selected a design and destination for implementation", value: facts.implementationIntent },
+    { key: "the user explicitly consented this run to preparing project changes through the advanced CLI", value: facts.projectWriteConsent },
     { key: "preparing implementation changes is currently permitted", value: facts.implementationAvailable },
     ...(classification !== null
       ? [{ key: "a deterministic classifier read the request as", value: classification.taskType }]
@@ -665,7 +668,7 @@ export const modelDesignEngineerStrategy: DesignEngineerStrategy = async (
       return {
         type: "request_clarification",
         question:
-          "Preparing implementation changes needs a registered project and your explicit go-ahead. Select a project and confirm when asked, or ask for a design specification instead.",
+          "Preparing implementation changes needs a registered project and selected destination. Select those prerequisites, or ask for a design specification instead.",
         reasoningSummary: "The model chose implementation, but its prerequisites are not in place.",
       };
     }

@@ -43,6 +43,7 @@ export const implementationAgentManifest: AgentManifest = agentManifestSchema.pa
     "Follow observed framework and conventions; prefer existing components and tokens only when confidence is sufficient. " +
     "Output only schema-valid structured proposals with reasons, assumptions, and unresolved questions. " +
     "Never invent packages, emit absolute or traversal paths, request shell execution, claim validation passed, or claim files were written. " +
+    "Every import in a proposed executable file MUST resolve to exactly one of: a package named in the installed dependency list, an existing project file listed in the context, or another file included in this same proposal. Never import any other package or file — if the design needs a helper component, include that file in the proposal. " +
     "Use action 'modify' only for a relative path listed in the project context's component sources or file evidence; any new file must use action 'create' with a project-relative path. " +
     "If the project context already lists a file at the exact target path, that path MUST use action 'modify', never 'create'. " +
     "Preserve accessibility and public APIs, and distinguish observed facts, inferred conventions, design facts, mapping decisions, and assumptions. " +
@@ -71,6 +72,12 @@ interface ImplementationInput {
   readonly proposalRepairFeedback?: unknown;
   /** Host-derived required design surface (MVP-4O); passed through verbatim. */
   readonly coveragePlan?: unknown;
+  /** The shell-selected destination, when the normal product path supplied it. */
+  readonly destination?: { readonly label: string; readonly kind: string; readonly path?: string; readonly sourcePath?: string } | undefined;
+  /** Installed package names from the inspected project — the only packages a proposal may import. */
+  readonly installedDependencies?: readonly string[];
+  /** Known existing project file paths (component and token sources) a proposal may import or modify. */
+  readonly existingProjectFiles?: readonly string[];
 }
 
 export type ImplementationStrategy = (
@@ -92,7 +99,7 @@ function readInput(request: AgentInvocationRequest): ImplementationInput {
     ]);
   }
 
-  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping, proposalRepairFeedback: raw?.proposalRepairFeedback, coveragePlan: raw?.coveragePlan };
+  if (project.success) return { designSpecification: spec.data, projectContext: project.data, designSystemMapping: raw?.designSystemMapping, proposalRepairFeedback: raw?.proposalRepairFeedback, coveragePlan: raw?.coveragePlan, destination: raw?.destination as ImplementationInput["destination"] };
   if (!stage4Project.success) throw new SpecializedAgentOutputInvalidError("implementation-agent", ["project context could not be normalized"]);
   const context = stage4Project.data;
   return {
@@ -100,6 +107,16 @@ function readInput(request: AgentInvocationRequest): ImplementationInput {
     designSystemMapping: raw?.designSystemMapping,
     proposalRepairFeedback: raw?.proposalRepairFeedback,
     coveragePlan: raw?.coveragePlan,
+    destination: raw?.destination as ImplementationInput["destination"],
+    ...(context.runtime.dependencies !== undefined
+      ? { installedDependencies: context.runtime.dependencies }
+      : {}),
+    existingProjectFiles: [
+      ...new Set([
+        ...context.designSystem.componentSources.map((source) => source.path),
+        ...context.designSystem.tokenSources.map((source) => source.path),
+      ]),
+    ].sort(),
     projectContext: {
       schemaVersion: context.schemaVersion,
       projectId: context.project.id,
@@ -214,7 +231,7 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
   context,
   manifest,
 ) => {
-  const { designSpecification, projectContext, designSystemMapping, proposalRepairFeedback, coveragePlan } = readInput(request);
+  const { designSpecification, projectContext, designSystemMapping, proposalRepairFeedback, coveragePlan, destination, installedDependencies, existingProjectFiles } = readInput(request);
 
   return generateValidatedModelOutput({
     agentId: "implementation-agent",
@@ -227,6 +244,13 @@ export const modelImplementationStrategy: ImplementationStrategy = async (
           `Objective: ${request.objective}\n\n` +
           `Design specification:\n${JSON.stringify(designSpecification)}\n\n` +
           `Project context:\n${JSON.stringify(projectContext)}` +
+          (destination !== undefined ? `\n\nSelected implementation destination:\n${JSON.stringify(destination)}` : "") +
+          (installedDependencies !== undefined
+            ? `\n\nInstalled dependencies — the ONLY packages any proposed file may import:\n${JSON.stringify(installedDependencies)}`
+            : "") +
+          (existingProjectFiles !== undefined && existingProjectFiles.length > 0
+            ? `\n\nExisting project files you may import or modify (any other imported file must be created in this proposal):\n${JSON.stringify(existingProjectFiles)}`
+            : "") +
           `\n\nDesign-system mapping:\n${JSON.stringify(designSystemMapping ?? null)}` +
           (coveragePlan !== undefined
             ? `\n\nRequired design coverage plan (every requiredTargets entry must be satisfied by coverageClaims):\n${JSON.stringify(coveragePlan)}`

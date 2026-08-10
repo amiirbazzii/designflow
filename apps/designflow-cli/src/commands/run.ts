@@ -73,6 +73,11 @@ export async function runCommand(
 
   const selectedProjectId = options?.projectId;
   const isDesignEngineer = worker.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID);
+  const productShellImplementation =
+    options?.productExperience === true &&
+    isDesignEngineer &&
+    options.design !== undefined &&
+    options.destination !== undefined;
 
   // Deterministic prerequisite: the supported Design Engineer journey works
   // from a real, configured Figma source. Without one there is nothing
@@ -134,37 +139,44 @@ export async function runCommand(
 
   terminal.print();
 
-  const input = await collectInput(terminal, resolved, options?.design);
+  const input = productShellImplementation
+    ? buildInteractiveImplementationInput(options.design!, options.destination!)
+    : await collectInput(terminal, resolved, options?.design);
 
   if (isDesignEngineer && figmaAvailable) {
-    // Journey consent (distinct from proposal approval): a selected project
-    // is where changes COULD go, never permission to prepare them. Consent
-    // is explicit, per-run, and answered at the terminal — a piped
-    // invocation must supply it just as deliberately.
-    let consentedProject: { id: string; name: string; rootPath: string } | undefined;
+    // The normal product shell has already collected the user's two product
+    // decisions: design and destination. That is intent to prepare a
+    // proposal, not permission to write files. Explicit `run` callers retain
+    // the older, separately collected preparation consent for compatibility.
+    let implementationProject: { id: string; name: string; rootPath: string } | undefined;
     if (selectedProjectId !== undefined) {
       const project = await context.projects.getProject(selectedProjectId).catch(() => null);
       if (project === null || project.rootPath === undefined) {
         terminal.print("A registered project with an accessible root is required before implementation.");
         return 1;
       }
-      terminal.print();
-      terminal.print(`Prepare implementation changes for "${project.name}"?`);
-      terminal.print("DesignFlow will propose exact file changes; nothing is written");
-      terminal.print("until you approve that exact proposal.");
-      const consent = (await terminal.ask("Prepare changes for this project?", ["yes", "no"])).trim().toLowerCase();
-      if (consent.startsWith("y")) {
-        consentedProject = { id: project.id, name: project.name, rootPath: project.rootPath };
+      if (productShellImplementation) {
+        implementationProject = { id: project.id, name: project.name, rootPath: project.rootPath };
       } else {
-        terminal.print("Continuing with a design specification only — no project changes will be proposed.");
+        terminal.print();
+        terminal.print(`Prepare implementation changes for "${project.name}"?`);
+        terminal.print("DesignFlow will propose exact file changes; nothing is written");
+        terminal.print("until you approve that exact proposal.");
+        const consent = (await terminal.ask("Prepare changes for this project?", ["yes", "no"])).trim().toLowerCase();
+        if (consent.startsWith("y")) {
+          implementationProject = { id: project.id, name: project.name, rootPath: project.rootPath };
+        } else {
+          terminal.print("Continuing with a design specification only — no project changes will be proposed.");
+        }
       }
     }
 
-    if (consentedProject !== undefined) {
+    if (implementationProject !== undefined) {
       input.enabled = true;
-      input.project = consentedProject;
-      input.projectWriteConsent = true;
-      input.stateDirectory = join(context.home.layout.home, "projects", consentedProject.id, "runs");
+      input.project = implementationProject;
+      if (productShellImplementation) input.implementationIntent = true;
+      else input.projectWriteConsent = true;
+      input.stateDirectory = join(context.home.layout.home, "projects", implementationProject.id, "runs");
       input.implementationAgentVersion = "0.1.0";
       input.implementationAgentModelProfileId = "implementation-default";
     }
@@ -173,8 +185,11 @@ export async function runCommand(
     // implementation journeys — always from the validated availability
     // result, never from a raw flag.
     input.figmaSourceMode = context.figmaSourceMode;
-    input.refreshFigmaSource = options?.noCache === true || consentedProject !== undefined;
-    if (consentedProject === undefined) input.refreshFigmaSource = true;
+    if (options?.design !== undefined) {
+      input.figmaSourceKind = options.design.kind === "current-selection" ? "current-selection" : "figma-url";
+    }
+    input.refreshFigmaSource = options?.noCache === true || implementationProject !== undefined;
+    if (implementationProject === undefined) input.refreshFigmaSource = true;
     if (options?.noCache === true) input.figmaCacheBypass = randomUUID();
     input.captureScreenshots = true;
     input.figmaAgentVersion = "0.1.0";
@@ -256,6 +271,25 @@ export async function collectInput(
   }
 
   return input;
+}
+
+/**
+ * The bare product shell has already collected the user's design and
+ * destination decisions. It synthesizes implementation intent here so the
+ * coordinator receives a truthful request without another generic question.
+ * `implementationIntent` is deliberately distinct from the explicit CLI's
+ * `projectWriteConsent`: neither value authorizes proposal application.
+ */
+export function buildInteractiveImplementationInput(
+  design: InteractiveDesign,
+  destination: DestinationCandidate,
+): Record<string, unknown> {
+  return {
+    request: `Implement the selected design at ${destination.label} in the detected project. Prepare reviewed implementation changes. Do not modify the project without exact proposal approval.`,
+    designFile: design.designFile,
+    frames: [...design.frames],
+    destination: { ...destination },
+  };
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   figmaSourceSnapshotSchema,
   generatedImplementationSchema,
   projectImplementationContextSchema,
+  projectImplementationContextV1Schema,
   visualValidationReportSchema,
   type SpecializedAgentContext,
 } from "@designflow/sdk";
@@ -16,6 +17,7 @@ import {
 import {
   deterministicImplementationStrategy,
   implementationAgentManifest,
+  modelImplementationStrategy,
 } from "./implementation-agent";
 import {
   deterministicVisualValidationStrategy,
@@ -228,5 +230,71 @@ describe("Visual Validation Agent", () => {
 
     expect(report.passed).toBe(false);
     expect(report.discrepancies).toHaveLength(1);
+  });
+});
+
+// ── Phase 7D: import-composition facts reach the model prompt ────
+
+describe("Phase 7D implementation prompt facts", () => {
+  const SPEC7D = designSpecificationSchema.parse({
+    sourceIdentity: { designFile: "homepage.fig" },
+    frames: ["brand/Header"],
+    hierarchy: [{ id: "node-0", name: "Header" }],
+    designTokens: { colors: [], spacing: [], typography: [] },
+    components: [{ name: "Header", role: "FRAME" }],
+    layoutBehavior: [],
+    responsiveAssumptions: [],
+    assets: [],
+    interactions: [],
+    accessibilityNotes: [],
+    ambiguities: [],
+    agentVersion: "0.1.0",
+  });
+
+  const V1_CONTEXT = projectImplementationContextV1Schema.parse({
+    schemaVersion: "1",
+    project: { id: "p1", rootIdentity: "root-1", contextFingerprint: "fp-1" },
+    runtime: { framework: "react", language: "javascript", packageManager: "npm", monorepo: false, dependencies: ["react", "react-dom", "vite"] },
+    structure: { sourceRoots: ["src"], routeRoots: [], publicAssetRoots: [], aliases: {} },
+    styling: { strategies: ["css"], evidence: ["css"] },
+    designSystem: { tokenSources: [], tokens: [], componentSources: [{ path: "src/pages/Home.jsx", exportedNames: ["Home"] }], components: [] },
+    conventions: { naming: [], fileLayout: [], exports: [], props: [], testing: [], accessibility: [] },
+    commands: {},
+    warnings: [],
+  });
+
+  test("the model prompt carries the installed dependency list, existing files, and the import constraint", async () => {
+    const captured: Array<{ role: string; content: string }> = [];
+    const context = {
+      ...EMPTY_CONTEXT,
+      model: {
+        generate: async (request: { messages: Array<{ role: string; content: string }> }) => {
+          captured.push(...request.messages);
+          return {
+            type: "success" as const,
+            output: {
+              files: [{ path: "src/pages/NewPage.jsx", action: "create", content: "export default function NewPage() { return null; }\n", reason: "test" }],
+              assumptions: [],
+              unresolvedItems: [],
+              coverageClaims: [],
+            },
+          };
+        },
+      },
+    } as never;
+
+    await modelImplementationStrategy(
+      { agentId: "implementation-agent", objective: "test", input: { designSpecification: SPEC7D, projectContext: V1_CONTEXT }, attempt: 1 },
+      context,
+      implementationAgentManifest,
+    );
+
+    const system = captured.find((message) => message.role === "system")!;
+    expect(system.content).toContain("MUST resolve to exactly one of");
+    const user = captured.find((message) => message.role === "user")!;
+    expect(user.content).toContain("Installed dependencies — the ONLY packages any proposed file may import");
+    expect(user.content).toContain("\"react-dom\"");
+    expect(user.content).toContain("Existing project files you may import or modify");
+    expect(user.content).toContain("src/pages/Home.jsx");
   });
 });

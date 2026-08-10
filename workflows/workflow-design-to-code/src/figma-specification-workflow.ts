@@ -43,6 +43,7 @@ export const designToCodeFigmaSpecificationWorkflow: WorkflowDefinition = {
         captureScreenshots: { $workflowInput: "captureScreenshots" },
         refreshFigmaSource: { $workflowInput: "refreshFigmaSource" },
         sourceMode: { $workflowInput: "figmaSourceMode" },
+        sourceKind: { $workflowInput: "figmaSourceKind" },
         serverIdentity: { $workflowInput: "figmaServerIdentity" },
       },
       produces: ["figma-source-snapshot"],

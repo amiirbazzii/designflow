@@ -18,6 +18,7 @@ import { buildTimeline } from "./timeline";
 import { summarizeArtifacts } from "./artifacts";
 import { ExecutionNotFoundError } from "./errors";
 import {
+  boundedAttemptDiagnostics,
   readExecutionLineage,
   type ArtifactRegistry,
   type ExecutionEvent,
@@ -358,7 +359,9 @@ function failureReasonOf(
     if (event?.type !== "execution.failed") continue;
 
     const reason = event.payload?.reason ?? event.payload?.error;
-    if (typeof reason === "string" && reason.length > 0) return reason;
+    if (typeof reason === "string" && reason.length > 0) {
+      return `${reason}${attemptSummaryOf(event.payload?.attemptDiagnostics)}`;
+    }
 
     const failedSteps = event.payload?.failedSteps;
     if (Array.isArray(failedSteps) && failedSteps.length > 0) {
@@ -369,6 +372,24 @@ function failureReasonOf(
   }
 
   return undefined;
+}
+
+/**
+ * Renders the bounded per-attempt validator facts a failed proposal loop
+ * persisted on its `execution.failed` event — sanitized upstream, so this
+ * only formats what already passed the fact-only diagnostic schema.
+ */
+function attemptSummaryOf(value: unknown): string {
+  const diagnostics = boundedAttemptDiagnostics(value);
+  if (diagnostics === undefined) return "";
+  const lines = diagnostics.map((d) => {
+    const where = [
+      ...(d.operation !== undefined ? [d.operation] : []),
+      ...(d.path !== undefined ? [d.path] : []),
+    ].join(" ");
+    return `attempt ${d.attempt}: ${d.code}${where.length > 0 ? ` (${where})` : ""} — ${d.message}`;
+  });
+  return ` [${lines.join("; ")}]`;
 }
 
 /** The one-sentence answer to "what happened?". */

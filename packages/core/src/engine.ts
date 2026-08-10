@@ -39,6 +39,7 @@ import {
   type ExecutionPolicy,
   type PolicyEvaluator,
   DesignFlowError,
+  boundedAttemptDiagnostics,
   stage6FailpointForNode,
   terminateAtStage6Failpoint,
 } from "@designflow/sdk";
@@ -304,6 +305,9 @@ export class ExecutionEngine {
                   ? { agentId: firstError.metadata["agentId"] }
                   : {}),
                 reason: safeFailureReason(firstError.message),
+                ...(attemptDiagnosticsOf(firstError) !== undefined
+                  ? { attemptDiagnostics: attemptDiagnosticsOf(firstError) }
+                  : {}),
               }
             : {}),
         });
@@ -1688,6 +1692,25 @@ function readProgressCheckpoint(
     completedNodeIds: completedNodeIds.data,
     completedArtifacts: completedArtifacts.data,
   };
+}
+
+/**
+ * Bounded per-attempt validator facts carried by a failed step's error —
+ * either directly (a proposal loop's `failures` metadata) or via a failed
+ * child execution's already-sanitized `attemptDiagnostics`.
+ */
+function attemptDiagnosticsOf(
+  error: DesignFlowError,
+): ReturnType<typeof boundedAttemptDiagnostics> {
+  const direct = boundedAttemptDiagnostics(error.metadata["failures"]);
+  if (direct !== undefined) return direct;
+  const child = error.metadata["childError"];
+  if (typeof child === "object" && child !== null) {
+    return boundedAttemptDiagnostics(
+      (child as Record<string, unknown>)["attemptDiagnostics"],
+    );
+  }
+  return undefined;
 }
 
 function safeFailureReason(message: string): string {

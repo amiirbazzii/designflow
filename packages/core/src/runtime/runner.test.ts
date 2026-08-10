@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CapabilityRunner } from "./runner";
 import { CapabilityExecutionError } from "./errors";
 import { InMemoryEventPublisher } from "../events";
-import type { Capability, CapabilityContext } from "@designflow/sdk";
+import { DesignFlowError, type Capability, type CapabilityContext } from "@designflow/sdk";
 
 const createMockLogger = () => ({
   info: () => {},
@@ -230,5 +230,37 @@ describe("CapabilityRunner", () => {
     }
 
     expect(caught).toBeDefined();
+  });
+});
+
+// ── Phase 7D: capability.failed carries bounded attempt diagnostics ──
+
+describe("Phase 7D capability failure diagnostics", () => {
+  test("a DesignFlowError with failures metadata persists errorCode and bounded attemptDiagnostics on capability.failed", async () => {
+    const publisher = new InMemoryEventPublisher();
+    const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+    publisher.subscribe((event) => { events.push(event); });
+    const runner = new CapabilityRunner(publisher);
+    const failing = createMockCapability({
+      execute: async () => {
+        throw new DesignFlowError("ERR_PROPOSAL_ATTEMPTS_EXHAUSTED", "The proposal remained invalid after 3 bounded attempts", {
+          attempts: 3,
+          attemptsExhausted: true,
+          failures: [
+            { attempt: 1, code: "ERR_PROPOSAL_TARGET_MISSING", message: "missing", path: "src/a.jsx", operation: "modify" },
+            { attempt: 2, code: "ERR_PROPOSAL_TARGET_EXISTS", message: "exists", path: "src/b.jsx", operation: "create" },
+            { attempt: 3, code: "ERR_PROPOSAL_MODULE_COMPILE_FAILED", message: "compile", compileErrorSummary: "src/c.jsx: No matching export" },
+          ],
+        });
+      },
+    });
+
+    await expect(runner.run(failing, { value: "x" }, createMockContext())).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
+    const failed = events.find((event) => event.type === "capability.failed")!;
+    expect(failed.payload!.errorCode).toBe("ERR_PROPOSAL_ATTEMPTS_EXHAUSTED");
+    const diagnostics = failed.payload!.attemptDiagnostics as Array<Record<string, unknown>>;
+    expect(diagnostics.map((d) => d.attempt)).toEqual([1, 2, 3]);
+    expect(diagnostics[0]!.path).toBe("src/a.jsx");
+    expect(diagnostics[2]!.compileErrorSummary).toBe("src/c.jsx: No matching export");
   });
 });

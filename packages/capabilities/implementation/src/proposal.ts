@@ -36,16 +36,16 @@ export function validateProposedFileChanges(proposal: ProposedFileChanges, root:
     // nonexistent modify target is diagnosed as the missing file it is.
     if (checkTargetExistence) {
       const exists = ((): boolean => { try { return lstatSync(target).isFile(); } catch { return false; } })();
-      if ((file.action === "modify" || file.action === "delete") && !exists) throw new ImplementationError("ERR_PROPOSAL_TARGET_MISSING", `Proposed ${file.action} targets a file that does not exist in the project: ${file.path}`);
-      if (file.action === "create" && exists) throw new ImplementationError("ERR_PROPOSAL_TARGET_EXISTS", `Proposed create targets a file that already exists in the project: ${file.path}`);
+      if ((file.action === "modify" || file.action === "delete") && !exists) throw new ImplementationError("ERR_PROPOSAL_TARGET_MISSING", `Proposed ${file.action} targets a file that does not exist in the project: ${file.path}`, { path: file.path, operation: file.action, fact: "target does not exist as a regular file" });
+      if (file.action === "create" && exists) throw new ImplementationError("ERR_PROPOSAL_TARGET_EXISTS", `Proposed create targets a file that already exists in the project: ${file.path}`, { path: file.path, operation: file.action, fact: "target already exists as a regular file" });
     }
     if (file.action === "modify" && !file.expectedBaseHash) throw new ImplementationError("ERR_TARGET_FILE_CHANGED", `Modified file lacks an expected base hash: ${file.path}`);
-    if ((file.action === "create" || file.action === "modify") && file.content === undefined && file.patch === undefined) throw new ImplementationError("ERR_PROPOSAL_INVALID", `File proposal has no content or patch: ${file.path}`);
+    if ((file.action === "create" || file.action === "modify") && file.content === undefined && file.patch === undefined) throw new ImplementationError("ERR_PROPOSAL_INVALID", `File proposal has no content or patch: ${file.path}`, { path: file.path, operation: file.action, fact: "create/modify actions require content or a patch" });
     // Content integrity for executable sources: empty/whitespace-only content
     // is a destructive no-op that would blank (or create) a module the rest
     // of the pipeline can only judge syntactically — an empty module compiles.
     // There is deliberately NO minimum-length rule: `export {};` is valid.
-    if ((file.action === "create" || file.action === "modify") && isExecutableSourcePath(normalized) && file.content !== undefined && file.content.trim().length === 0) throw new ImplementationError("ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT", `Executable source proposals must contain non-whitespace source content: ${file.path}`);
+    if ((file.action === "create" || file.action === "modify") && isExecutableSourcePath(normalized) && file.content !== undefined && file.content.trim().length === 0) throw new ImplementationError("ERR_PROPOSAL_EMPTY_EXECUTABLE_CONTENT", `Executable source proposals must contain non-whitespace source content: ${file.path}`, { path: file.path, operation: file.action, fact: "executable source proposals must contain non-whitespace source content" });
     // A modify whose proposed bytes equal the current trusted bytes changes
     // nothing and must not consume an approval. Exact equality only — a
     // formatting-only change that alters bytes is a real proposal. Skipped
@@ -53,7 +53,7 @@ export function validateProposedFileChanges(proposal: ProposedFileChanges, root:
     // partial apply legitimately sees its own already-written content).
     if (checkTargetExistence && file.action === "modify" && file.content !== undefined) {
       const current = ((): string | undefined => { try { return readFileSync(target, "utf8"); } catch { return undefined; } })();
-      if (current !== undefined && current === file.content) throw new ImplementationError("ERR_PROPOSAL_NOOP_MODIFY", `Proposed modify content is identical to the current file: ${file.path}`);
+      if (current !== undefined && current === file.content) throw new ImplementationError("ERR_PROPOSAL_NOOP_MODIFY", `Proposed modify content is identical to the current file: ${file.path}`, { path: file.path, operation: file.action, fact: "proposed modify content is identical to the current file" });
     }
     const bytes = Buffer.byteLength(file.content ?? file.patch ?? ""); total += bytes; if (bytes > limits.maxFileBytes) throw new ImplementationError("ERR_PROPOSAL_TOO_LARGE", `Proposed file exceeds ${limits.maxFileBytes} bytes: ${file.path}`);
     if (total > limits.maxTotalBytes) throw new ImplementationError("ERR_PROPOSAL_TOO_LARGE", `Proposed changes exceed ${limits.maxTotalBytes} bytes.`);

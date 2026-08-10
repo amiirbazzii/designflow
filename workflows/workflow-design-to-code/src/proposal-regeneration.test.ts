@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ArtifactRef, ArtifactStore, CapabilityContext } from "@designflow/sdk";
+import { boundedAttemptDiagnostics, type ArtifactRef, type ArtifactStore, type CapabilityContext } from "@designflow/sdk";
 import { inspectRegisteredProject } from "@designflow/capability-implementation";
 
 import {
@@ -70,7 +70,7 @@ async function contextFor(root: string, invocations: unknown[], outputs: Array<R
 }
 
 function workflowInput(root: string) {
-  return { enabled: true as const, designFile: "file.fig", frames: [], project: { id: "p1", name: "Fixture", rootPath: root }, stateDirectory: join(root, ".state"), captureScreenshots: false, refreshFigmaSource: false, allowFixtureNames: false, figmaAgentVersion: "0.1.0", implementationAgentVersion: "0.1.0", implementationAgentModelProfileId: "implementation-default" };
+  return { enabled: true as const, designFile: "file.fig", frames: [], project: { id: "p1", name: "Fixture", rootPath: root }, destination: { label: "New page", kind: "new-page" as const }, stateDirectory: join(root, ".state"), captureScreenshots: false, refreshFigmaSource: false, allowFixtureNames: false, figmaAgentVersion: "0.1.0", implementationAgentVersion: "0.1.0", implementationAgentModelProfileId: "implementation-default" };
 }
 
 function agentOutput(files: Array<{ path: string; action: "create" | "modify"; content?: string }>): Record<string, unknown> {
@@ -90,6 +90,7 @@ describe("bounded proposal regeneration", () => {
     const output = await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
 
     expect(invocations.length).toBe(2);
+    expect((invocations[0] as { input: { destination?: unknown } }).input.destination).toEqual({ label: "New page", kind: "new-page" });
     const second = invocations[1] as { attempt: number; input: { proposalRepairFeedback?: { attempt: number; maxAttempts: number; validationErrors: Array<{ code: string; path?: string; fact?: string }> } } };
     expect(second.attempt).toBe(2);
     const feedback = second.input.proposalRepairFeedback!;
@@ -97,6 +98,8 @@ describe("bounded proposal regeneration", () => {
     expect(feedback.validationErrors[0]!.code).toBe("ERR_PROPOSAL_TARGET_EXISTS");
     expect(feedback.validationErrors[0]!.path).toBe("src/components/Existing.jsx");
     expect(feedback.validationErrors[0]!.fact).toBe("target already exists as a regular file");
+    expect(feedback.validationErrors[0]!.message).toContain("Proposed create targets a file that already exists");
+    expect(feedback.validationErrors[0]!.operation).toBe("create");
     // Facts only — the feedback never dictates a rewritten operation.
     expect(JSON.stringify(feedback)).not.toContain("change create to modify");
 
@@ -310,6 +313,114 @@ describe("MVP-4O coverage in the bounded loop", () => {
     await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
     expect(invocations.length).toBe(3);
     expect(existsSync(join(root, "src/only.css"))).toBe(false);
+    await rm(root, { recursive: true, force: true });
+  });
+});
+
+describe("Phase 7D bounded per-attempt diagnostic persistence", () => {
+  test("exhausted error carries bounded fact diagnostics for attempts 1, 2, and 3", async () => {
+    const root = await fixtureRoot();
+    const invocations: unknown[] = [];
+    const context = await contextFor(root, invocations, [
+      agentOutput([{ path: "src/components/Missing.jsx", action: "modify" }]),
+      agentOutput([{ path: "src/components/Existing.jsx", action: "create" }]),
+      agentOutput([{ path: "src/components/Missing.jsx", action: "modify" }]),
+    ]);
+
+    let caught: unknown;
+    try {
+      await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
+    } catch (error) {
+      caught = error;
+    }
+
+    const metadata = (caught as { code: string; metadata: Record<string, unknown> });
+    expect(metadata.code).toBe("ERR_PROPOSAL_ATTEMPTS_EXHAUSTED");
+    const failures = metadata.metadata.failures as Array<Record<string, unknown>>;
+    expect(failures.map((f) => f.attempt)).toEqual([1, 2, 3]);
+    expect(failures.every((f) => typeof f.code === "string" && (f.code as string).length > 0)).toBe(true);
+    expect(failures.every((f) => typeof f.message === "string" && (f.message as string).length > 0)).toBe(true);
+    expect(failures[0]!.path).toBe("src/components/Missing.jsx");
+    expect(failures[0]!.operation).toBe("modify");
+    expect(failures[1]!.path).toBe("src/components/Existing.jsx");
+    expect(failures[1]!.operation).toBe("create");
+
+    // The same facts survive the persistence sanitizer that events and the
+    // final execution result use.
+    const diagnostics = boundedAttemptDiagnostics(failures)!;
+    expect(diagnostics.length).toBe(3);
+    expect(diagnostics.map((d) => d.attempt)).toEqual([1, 2, 3]);
+    expect(diagnostics[0]!.path).toBe("src/components/Missing.jsx");
+    expect(diagnostics[0]!.operation).toBe("modify");
+    expect(diagnostics[1]!.code).toBe("ERR_PROPOSAL_TARGET_EXISTS");
+    expect(diagnostics.every((d) => d.message.length > 0)).toBe(true);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("no raw model output, prompts, or file contents are persisted in the exhausted metadata", async () => {
+    const root = await fixtureRoot();
+    const invocations: unknown[] = [];
+    const bad = agentOutput([{ path: "src/components/Missing.jsx", action: "modify", content: "export const SECRET_MARKER_CONTENT = 42;\n" }]);
+    const context = await contextFor(root, invocations, [bad, bad, bad]);
+
+    let caught: unknown;
+    try {
+      await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
+    } catch (error) {
+      caught = error;
+    }
+
+    const serialized = JSON.stringify((caught as { metadata: Record<string, unknown> }).metadata);
+    expect(serialized).not.toContain("SECRET_MARKER_CONTENT");
+    expect(serialized).not.toContain("proposalRepairFeedback");
+    expect(serialized).not.toContain("designSpecification");
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("compile-failure attempts persist a bounded compileErrorSummary fact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "designflow-regen-diag-compile-"));
+    await mkdir(join(root, "src/components"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "diag-compile-fixture", scripts: { build: "bun build ./designflow-proposed-entry.js --outdir=dist" } }));
+    await writeFile(join(root, "index.html"), `<script type="module" src="/src/main.jsx"></script>`);
+    await writeFile(join(root, "src/main.jsx"), `import App from "./App.jsx";\nexport default App;\n`);
+    await writeFile(join(root, "src/App.jsx"), "export default function App() { return null; }\n");
+    await writeFile(join(root, "src/components/TextField.tsx"), "export const TextField = () => null;\n");
+    const invalid = agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: `import TextField from "./components/TextField.tsx";\nexport default function GeneratedScreen() { return TextField; }\n` }]);
+    const invocations: unknown[] = [];
+    try {
+      const context = await contextFor(root, invocations, [invalid, invalid, invalid]);
+      let caught: unknown;
+      try {
+        await invokeImplementationAgentStage4Capability.execute(context, workflowInput(root));
+      } catch (error) {
+        caught = error;
+      }
+      const failures = (caught as { metadata: { failures: Array<Record<string, unknown>> } }).metadata.failures;
+      expect(failures.length).toBe(3);
+      for (const failure of failures) {
+        expect(failure.code).toBe("ERR_PROPOSAL_MODULE_COMPILE_FAILED");
+        expect(typeof failure.compileErrorSummary).toBe("string");
+        expect((failure.compileErrorSummary as string).length).toBeLessThanOrEqual(1200);
+        expect(failure.compileErrorSummary as string).toContain("No matching export");
+      }
+      const diagnostics = boundedAttemptDiagnostics(failures)!;
+      expect(diagnostics.every((d) => d.compileErrorSummary !== undefined)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an exhausted run never stores an approvable agent-output artifact", async () => {
+    const root = await fixtureRoot();
+    const invocations: unknown[] = [];
+    const bad = agentOutput([{ path: "src/components/Missing.jsx", action: "modify" }]);
+    const context = await contextFor(root, invocations, [bad, bad, bad]);
+    await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED" });
+    const saved = (context.artifactStore as unknown as { saved: Map<string, unknown> }).saved;
+    for (const payload of saved.values()) {
+      const record = payload as Record<string, unknown>;
+      expect(record.implementationVersion).toBeUndefined();
+    }
     await rm(root, { recursive: true, force: true });
   });
 });
