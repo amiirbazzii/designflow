@@ -2,8 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { dispatch } from "../cli";
 import { createCliContext } from "./cli-runner";
 import { readManagedGatewayConfig } from "./managed-gateway-config";
+import { ScriptedTerminal } from "../ui/terminal";
 
 const homes: string[] = [];
 
@@ -11,6 +13,8 @@ afterEach(() => {
   delete process.env["DESIGNFLOW_HOME"];
   delete process.env["DESIGNFLOW_AI_GATEWAY_URL"];
   delete process.env["DESIGNFLOW_AI_GATEWAY_TOKEN"];
+  delete process.env["DESIGNFLOW_SUPABASE_URL"];
+  delete process.env["DESIGNFLOW_SUPABASE_PUBLISHABLE_KEY"];
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
@@ -72,6 +76,49 @@ describe("readManagedGatewayConfig", () => {
     try {
       expect(context.aiStatus()).toBe("sign-in-required");
       expect(context.modelAssignments.every((assignment) => assignment.providerId === "designflow-managed")).toBe(true);
+    } finally {
+      context.close();
+    }
+  });
+
+  test("bare interactive Google sign-in uses the built-in Supabase origin", async () => {
+    const home = mkdtempSync(join(tmpdir(), "designflow-google-default-"));
+    homes.push(home);
+    process.env["DESIGNFLOW_HOME"] = home;
+    // Reproduce a stale shell override from the pre-launch scaffold. The
+    // normal product path must still resolve the canonical built-in project.
+    process.env["DESIGNFLOW_SUPABASE_URL"] = "https://project.supabase.co";
+    delete process.env["DESIGNFLOW_SUPABASE_PUBLISHABLE_KEY"];
+
+    let authorizationUrl = "";
+    const context = createCliContext({
+      databasePath: join(home, "runs.json"),
+      autoConnectFigmaDesktop: true,
+      authClientOverrides: {
+        openBrowser: async (url) => {
+          authorizationUrl = url;
+          return true;
+        },
+        callbackServerFactory: async () => ({
+          redirectUri: "http://127.0.0.1:53682/auth/callback",
+          result: Promise.resolve({ code: "oauth-code" }),
+          close: async () => {},
+        }),
+        fetchImpl: async () => new Response(JSON.stringify({
+          access_token: "supabase-access-token",
+          refresh_token: "supabase-refresh-token",
+          expires_in: 3_600,
+          user: { id: "user-1" },
+        }), { status: 200 }),
+      },
+    });
+
+    try {
+      const terminal = new ScriptedTerminal(["", "q"]);
+      await dispatch([], context, terminal);
+      expect(new URL(authorizationUrl).origin).toBe("https://qmgvvonyqzpgnnmtwohb.supabase.co");
+      expect(new URL(authorizationUrl).pathname).toBe("/auth/v1/authorize");
+      expect(terminal.transcript).toContain("AI\n  Connected");
     } finally {
       context.close();
     }

@@ -9,7 +9,6 @@ export type OAuthCallbackFailureCode =
   | "cancelled"
   | "timeout"
   | "port-unavailable"
-  | "state-mismatch"
   | "invalid-callback";
 
 export interface OAuthCallbackResult {
@@ -23,7 +22,6 @@ export interface OAuthCallbackServer {
 }
 
 export interface OAuthCallbackServerOptions {
-  readonly state: string;
   readonly signal?: AbortSignal;
   /** Test-only timeout/port seams. Production uses the fixed callback port. */
   readonly timeoutMs?: number;
@@ -102,13 +100,6 @@ export async function createOAuthCallbackServer(
     if (request.method !== "GET" || parsed.pathname !== GOOGLE_CALLBACK_PATH) {
       response.statusCode = 404;
       response.end();
-      return;
-    }
-
-    const returnedState = parsed.searchParams.get("state");
-    if (returnedState !== options.state) {
-      respond(response, false);
-      finish(new OAuthCallbackError("state-mismatch", "Google sign-in could not be verified."));
       return;
     }
 

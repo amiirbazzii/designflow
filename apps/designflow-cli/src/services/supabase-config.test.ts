@@ -28,6 +28,12 @@ describe("Supabase public configuration", () => {
     });
   });
 
+  test("ignores the old project placeholder and uses the built-in project", () => {
+    expect(readSupabasePublicConfig({
+      DESIGNFLOW_SUPABASE_URL: "https://project.supabase.co",
+    }).url).toBe("https://qmgvvonyqzpgnnmtwohb.supabase.co");
+  });
+
   test("rejects non-HTTPS remote overrides", () => {
     expect(() => readSupabasePublicConfig({ DESIGNFLOW_SUPABASE_URL: "http://example.test" }))
       .toThrow("must use HTTPS");

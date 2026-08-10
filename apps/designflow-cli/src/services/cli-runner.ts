@@ -144,7 +144,7 @@ import { initializeHome, type HomeState } from "./home";
 import { readModelProfileOverrides } from "./model-config";
 import { readManagedGatewayConfig } from "./managed-gateway-config";
 import { readSupabasePublicConfig } from "./supabase-config";
-import { SupabaseAuthClient } from "./supabase-auth";
+import { SupabaseAuthClient, type SupabaseAuthClientOptions } from "./supabase-auth";
 import {
   AuthSessionService,
   type AuthClient,
@@ -566,6 +566,11 @@ export interface CliContextOptions {
   readonly authClient?: AuthClient;
   /** Test-only wall clock for persisted auth expiry. */
   readonly authNowOverride?: () => number;
+  /** Test-only transport seams; URL and publishable key always come from the canonical public config. */
+  readonly authClientOverrides?: Pick<
+    SupabaseAuthClientOptions,
+    "fetchImpl" | "openBrowser" | "callbackServerFactory" | "oauthTimeoutMs"
+  >;
   /** Non-persisted capability collaborators for deterministic host tests. */
   readonly capabilityConfig?: Readonly<Record<string, unknown>>;
   /** Bare interactive mode may probe the documented Figma Desktop endpoint. */
@@ -604,6 +609,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     sessionFile: home.layout.authSessionFile,
     client: options?.authClient ?? new SupabaseAuthClient({
       ...publicSupabaseConfig,
+      ...options?.authClientOverrides,
       ...(options?.signal !== undefined ? { signal: options.signal } : {}),
       ...(options?.authNowOverride !== undefined ? { now: options.authNowOverride } : {}),
     }),

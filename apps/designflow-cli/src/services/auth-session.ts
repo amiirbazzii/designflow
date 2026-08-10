@@ -41,7 +41,6 @@ export type AuthFailureCode =
   | "port-unavailable"
   | "cancelled"
   | "timeout"
-  | "state-mismatch"
   | "invalid-callback"
   | "auth-required"
   | "unavailable";
@@ -255,7 +254,6 @@ function safeAuthError(error: unknown, fallback: string): AuthSessionError {
     code === "port-unavailable" ||
     code === "cancelled" ||
     code === "timeout" ||
-    code === "state-mismatch" ||
     code === "invalid-callback" ||
     code === "auth-required" ||
     code === "unavailable"

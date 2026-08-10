@@ -20,7 +20,6 @@ const DEFAULT_AUTH_TIMEOUT_MS = 10_000;
 
 export interface OAuthCallbackServerFactory {
   (options: {
-    readonly state: string;
     readonly signal?: AbortSignal;
     readonly timeoutMs?: number;
   }): Promise<OAuthCallbackServer>;
@@ -70,12 +69,10 @@ export class SupabaseAuthClient implements AuthClient {
 
   public async signInWithGoogle(onBrowserFallback?: (url: string) => void): Promise<AuthSession> {
     const verifier = randomBytes(32).toString("base64url");
-    const state = randomBytes(32).toString("base64url");
     const challenge = createHash("sha256").update(verifier).digest("base64url");
     let callback: OAuthCallbackServer | undefined;
     try {
       callback = await this.callbackServerFactory({
-        state,
         ...(this.signal !== undefined ? { signal: this.signal } : {}),
         timeoutMs: this.oauthTimeoutMs,
       });
@@ -84,7 +81,6 @@ export class SupabaseAuthClient implements AuthClient {
       authorizationUrl.searchParams.set("redirect_to", callback.redirectUri);
       authorizationUrl.searchParams.set("code_challenge", challenge);
       authorizationUrl.searchParams.set("code_challenge_method", "S256");
-      authorizationUrl.searchParams.set("state", state);
 
       const opened = await this.openBrowser(authorizationUrl.toString());
       if (!opened) {
@@ -100,7 +96,7 @@ export class SupabaseAuthClient implements AuthClient {
     } catch (error) {
       if (error instanceof AuthSessionError) throw error;
       const code = (error as { code?: unknown }).code;
-      if (code === "cancelled" || code === "timeout" || code === "port-unavailable" || code === "state-mismatch" || code === "invalid-callback") {
+      if (code === "cancelled" || code === "timeout" || code === "port-unavailable" || code === "invalid-callback") {
         throw new AuthSessionError(String((error as { message?: unknown }).message ?? "Sign-in could not be completed."), code);
       }
       throw new AuthSessionError("Sign-in is temporarily unavailable.", "unavailable");

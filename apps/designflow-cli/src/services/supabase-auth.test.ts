@@ -27,10 +27,7 @@ describe("SupabaseAuthClient Google PKCE", () => {
         authorizationUrl = url;
         return true;
       },
-      callbackServerFactory: async (options) => {
-        expect(options.state.length).toBeGreaterThan(20);
-        return sessionServer();
-      },
+      callbackServerFactory: async () => sessionServer(),
       fetchImpl: async (_url, init) => {
         tokenBody = JSON.parse(String(init?.body));
         return new Response(JSON.stringify({
@@ -47,6 +44,7 @@ describe("SupabaseAuthClient Google PKCE", () => {
     const parsed = new URL(authorizationUrl);
 
     expect(parsed.searchParams.get("provider")).toBe("google");
+    expect(parsed.searchParams.has("state")).toBe(false);
     expect(parsed.searchParams.get("redirect_to")).toBe(`http://127.0.0.1:${GOOGLE_CALLBACK_PORT}${GOOGLE_CALLBACK_PATH}`);
     expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
     expect(parsed.searchParams.get("code_challenge")?.length).toBeGreaterThan(20);
@@ -77,6 +75,24 @@ describe("SupabaseAuthClient Google PKCE", () => {
 
     await client.signInWithGoogle((url) => { fallback = url; });
     expect(fallback).toContain("provider=google");
+    expect(new URL(fallback).searchParams.has("state")).toBe(false);
+  });
+
+  test("rejects a failed authorization-code exchange safely", async () => {
+    const client = new SupabaseAuthClient({
+      url: "https://project.supabase.co",
+      publishableKey: "sb_publishable-test",
+      callbackServerFactory: async () => sessionServer(),
+      fetchImpl: async (_url, init) => {
+        expect(JSON.parse(String(init?.body))).toMatchObject({ auth_code: "oauth-code" });
+        return new Response("invalid authorization code", { status: 400 });
+      },
+    });
+
+    await expect(client.signInWithGoogle()).rejects.toMatchObject({
+      code: "unavailable",
+      message: "Sign-in is temporarily unavailable.",
+    });
   });
 
   test("maps callback cancellation, timeout and revoked refresh safely", async () => {
