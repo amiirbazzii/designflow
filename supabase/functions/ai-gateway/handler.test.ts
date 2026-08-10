@@ -37,6 +37,15 @@ describe("ai-gateway Edge Function handler", () => {
     expect(clientSource).not.toContain("OPENROUTER_API_KEY");
   });
 
+  test("disables the legacy platform JWT pre-check and keeps auth in the function", () => {
+    const configSource = readFileSync(
+      fileURLToPath(new URL("../../config.toml", import.meta.url)),
+      "utf8",
+    );
+    expect(configSource).toMatch(/\[functions\.ai-gateway\][\s\S]*verify_jwt\s*=\s*false/);
+    expect(configSource).not.toMatch(/\[functions\.ai-gateway\][\s\S]*verify_jwt\s*=\s*true/);
+  });
+
   test("requires a bearer token and has no permanent unauthenticated mode", async () => {
     const result = await handleAiGatewayRequest(new Request("https://gateway.test", { method: "POST", body: JSON.stringify(REQUEST) }), {
       openRouterApiKey: "server-only-secret",

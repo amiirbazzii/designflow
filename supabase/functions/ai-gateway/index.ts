@@ -10,6 +10,6 @@ Deno.serve((request: Request) => handleAiGatewayRequest(request, {
   supabaseUrl: Deno.env.get("SUPABASE_URL"),
   supabasePublishableKey: Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY"),
   // This seam is intentionally opt-in and is for local Supabase development
-  // only. Deployed functions keep Supabase JWT verification enabled.
+  // only. Deployed functions still require the explicit auth validation above.
   allowLocalDev: Deno.env.get("AI_GATEWAY_ALLOW_LOCAL_DEV") === "true",
 }));

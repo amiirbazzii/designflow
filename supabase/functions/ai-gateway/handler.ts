@@ -9,7 +9,7 @@ import {
   parseGatewayRequest,
   buildOpenRouterBody,
   type GatewayErrorPayload,
-} from "./contract";
+} from "./contract.ts";
 
 export interface GatewayHandlerOptions {
   readonly openRouterApiKey: string | undefined;
