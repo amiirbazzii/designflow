@@ -99,6 +99,7 @@ async function readJsonBody(response: Response): Promise<unknown> {
 
 function gatewayError(status: number, body: unknown): Error {
   const code = readGatewayCode(body);
+  if (code === "ERR_MODEL_ROUTE_NOT_FOUND") return new DesignFlowError("ERR_MODEL_ROUTE_NOT_FOUND", "The managed AI gateway has no route for this profile.");
   if (code === "ERR_MODEL_AUTHENTICATION" || status === 401 || status === 403) return new DesignFlowError("ERR_MODEL_AUTHENTICATION", "The managed AI gateway rejected the session.");
   if (code === "ERR_MODEL_RATE_LIMITED" || status === 429) return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.");
   if (code === "ERR_MODEL_TIMEOUT" || status === 408 || status === 504) return new DesignFlowError("ERR_MODEL_TIMEOUT", "The managed AI gateway timed out.");

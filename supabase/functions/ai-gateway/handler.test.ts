@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { handleAiGatewayRequest } from "./handler";
+import { MANAGED_MODEL, MANAGED_MODEL_ROUTES } from "./contract";
 
 const REQUEST = {
   requestId: "gateway-1",
@@ -92,6 +93,72 @@ describe("ai-gateway Edge Function handler", () => {
     });
     expect(JSON.stringify(body)).not.toContain("server-only-secret");
     expect(JSON.stringify(upstreamBody)).not.toContain("filesystem");
+  });
+
+  test("routes every Design Engineer profile to the server-owned launch model", async () => {
+    const designEngineerProfiles = [
+      "design-engineer-coordinator-default",
+      "figma-specification-default",
+      "implementation-default",
+      "visual-validation-default",
+      "visual-correction-default",
+    ];
+
+    expect(designEngineerProfiles.every((profileId) => MANAGED_MODEL_ROUTES[profileId] === MANAGED_MODEL)).toBe(true);
+
+    for (const [index, profileId] of designEngineerProfiles.entries()) {
+      let upstreamBody: Record<string, unknown> | undefined;
+      const result = await handleAiGatewayRequest(request({
+        ...REQUEST,
+        requestId: `route-${index}`,
+        profileId,
+        model: "anthropic/claude-3.5-haiku",
+        fallbackModels: ["arbitrary-expensive-model"],
+        providerRouting: { order: ["arbitrary-provider"], allowFallbacks: true },
+      }), {
+        openRouterApiKey: "server-only-secret",
+        allowLocalDev: true,
+        fetchImpl: async (_url, init) => {
+          upstreamBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return new Response(JSON.stringify({
+            id: "upstream-route",
+            choices: [{ message: { content: JSON.stringify({ decision: "run" }) } }],
+          }), { status: 200 });
+        },
+      });
+
+      expect(result.status).toBe(200);
+      expect(upstreamBody?.model).toBe(MANAGED_MODEL);
+      expect(upstreamBody?.models).toBeUndefined();
+      expect(upstreamBody?.provider).toBeUndefined();
+      expect((await result.json() as Record<string, unknown>).model).toBe(MANAGED_MODEL);
+    }
+  });
+
+  test("rejects unknown managed profiles before provider forwarding", async () => {
+    let upstreamCalled = false;
+    const result = await handleAiGatewayRequest(request({
+      ...REQUEST,
+      profileId: "unknown-production-profile",
+      model: "arbitrary-expensive-model",
+    }), {
+      openRouterApiKey: "server-only-secret",
+      allowLocalDev: true,
+      fetchImpl: async () => {
+        upstreamCalled = true;
+        return new Response("must not reach upstream", { status: 200 });
+      },
+    });
+
+    expect(result.status).toBe(400);
+    expect(await result.json()).toEqual({
+      error: {
+        code: "ERR_MODEL_ROUTE_NOT_FOUND",
+        message: "no managed model route is configured for this profile",
+        retryable: false,
+      },
+    });
+    expect(upstreamCalled).toBe(false);
   });
 
   test("validates an authenticated Supabase user before forwarding to OpenRouter", async () => {

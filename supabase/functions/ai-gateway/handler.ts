@@ -7,6 +7,7 @@ import {
   OPENROUTER_ENDPOINT,
   normalizeOpenRouterResponse,
   parseGatewayRequest,
+  routeManagedRequest,
   buildOpenRouterBody,
   type GatewayErrorPayload,
 } from "./contract.ts";
@@ -57,6 +58,8 @@ export async function handleAiGatewayRequest(
 
   const parsed = parseGatewayRequest(raw);
   if (!parsed.ok) return json({ error: { code: "ERR_MODEL_RESPONSE_INVALID", message: "request shape is invalid", retryable: false } }, 400);
+  const routed = routeManagedRequest(parsed.value);
+  if (routed instanceof GatewayFailure) return json(errorPayload(routed), routed.status);
   if (options.openRouterApiKey === undefined || options.openRouterApiKey.trim().length === 0) {
     return json({ error: { code: "ERR_MODEL_PROVIDER_FAILED", message: "managed provider is unavailable", retryable: true } }, 503);
   }
@@ -76,7 +79,7 @@ export async function handleAiGatewayRequest(
         Authorization: `Bearer ${options.openRouterApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(buildOpenRouterBody(parsed.value)),
+      body: JSON.stringify(buildOpenRouterBody(routed)),
       signal: upstreamController.signal,
     });
   } catch {
@@ -105,7 +108,7 @@ export async function handleAiGatewayRequest(
   }
 
   try {
-    return json(normalizeOpenRouterResponse(upstreamBody, parsed.value, Math.max(0, (options.now ?? Date.now)() - startedAt)), 200);
+    return json(normalizeOpenRouterResponse(upstreamBody, routed, Math.max(0, (options.now ?? Date.now)() - startedAt)), 200);
   } catch (error) {
     const failure = error instanceof GatewayFailure
       ? error

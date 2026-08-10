@@ -6,6 +6,29 @@ export const MAX_MESSAGE_LENGTH = 64 * 1024;
 export const MAX_FALLBACK_MODELS = 8;
 export const MAX_PROFILE_ID_LENGTH = 160;
 export const MAX_MODEL_LENGTH = 240;
+export const MANAGED_MODEL = "openai/gpt-4o-mini";
+
+/**
+ * Production-managed model policy. Profile ids are the stable identity that
+ * the existing model runtime already sends on every request; the client model
+ * field is advisory and is replaced by this map for every known route.
+ *
+ * The five Design Engineer profiles are the launch policy. The remaining
+ * shipped profiles are explicit compatibility routes so enabling the managed
+ * provider does not turn existing non-Design-Engineer commands into an
+ * arbitrary-model proxy or an accidental model-unavailable failure.
+ */
+export const MANAGED_MODEL_ROUTES: Readonly<Record<string, string>> = Object.freeze({
+  "design-engineer-coordinator-default": MANAGED_MODEL,
+  "figma-specification-default": MANAGED_MODEL,
+  "implementation-default": MANAGED_MODEL,
+  "visual-validation-default": MANAGED_MODEL,
+  "visual-correction-default": MANAGED_MODEL,
+  "design-engineer-default": MANAGED_MODEL,
+  "qa-reviewer-default": MANAGED_MODEL,
+  "research-analyst-default": MANAGED_MODEL,
+  "product-manager-default": MANAGED_MODEL,
+});
 
 export type GatewayErrorCode =
   | "ERR_MODEL_AUTHENTICATION"
@@ -17,6 +40,7 @@ export type GatewayErrorCode =
   | "ERR_MODEL_OUTPUT_EMPTY"
   | "ERR_MODEL_OUTPUT_JSON_INVALID"
   | "ERR_MODEL_OUTPUT_TRUNCATED"
+  | "ERR_MODEL_ROUTE_NOT_FOUND"
   | "ERR_MODEL_PROVIDER_FAILED";
 
 export interface GatewayMessage {
@@ -189,6 +213,30 @@ export function buildOpenRouterBody(request: GatewayRequest): Record<string, unk
           },
         }
       : {}),
+  };
+}
+
+/**
+ * Applies the server-owned managed route. Client fallback/provider hints are
+ * deliberately discarded: Phase 5 has one configured model and no fallback
+ * chain, so an authenticated caller cannot use the gateway to select a model
+ * or provider outside this allowlist.
+ */
+export function routeManagedRequest(request: GatewayRequest): GatewayRequest | GatewayFailure {
+  const model = MANAGED_MODEL_ROUTES[request.profileId];
+  if (model === undefined) {
+    return new GatewayFailure("ERR_MODEL_ROUTE_NOT_FOUND", "no managed model route is configured for this profile", 400);
+  }
+
+  return {
+    requestId: request.requestId,
+    profileId: request.profileId,
+    model,
+    messages: request.messages,
+    responseSchema: request.responseSchema,
+    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.maxOutputTokens !== undefined ? { maxOutputTokens: request.maxOutputTokens } : {}),
+    fallbackModels: [],
   };
 }
 

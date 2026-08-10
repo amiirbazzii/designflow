@@ -82,6 +82,17 @@ describe("ManagedGatewayProvider", () => {
     });
   });
 
+  test("preserves the bounded unknown-route classification", async () => {
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      fetchImpl: async () => response({ error: { code: "ERR_MODEL_ROUTE_NOT_FOUND", message: "internal route detail", retryable: false } }, 400),
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({
+      code: "ERR_MODEL_ROUTE_NOT_FOUND",
+      message: "The managed AI gateway has no route for this profile.",
+    });
+  });
+
   test("rejects non-HTTPS remote endpoints", () => {
     expect(() => new ManagedGatewayProvider({ endpoint: "http://gateway.example.test" })).toThrow("must use HTTPS");
   });
