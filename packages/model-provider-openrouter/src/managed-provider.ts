@@ -99,16 +99,28 @@ async function readJsonBody(response: Response): Promise<unknown> {
 
 function gatewayError(status: number, body: unknown): Error {
   const code = readGatewayCode(body);
+  const retryMetadata = retryAfterMetadataOf(body);
   if (code === "ERR_MODEL_ROUTE_NOT_FOUND") return new DesignFlowError("ERR_MODEL_ROUTE_NOT_FOUND", "The managed AI gateway has no route for this profile.");
-  if (code === "ERR_MODEL_RATE_LIMIT") return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.");
-  if (code === "ERR_MODEL_QUOTA_EXCEEDED") return new DesignFlowError("ERR_MODEL_QUOTA_EXCEEDED", "The managed AI gateway usage quota was reached.");
-  if (code === "ERR_MODEL_SERVICE_UNAVAILABLE") return new DesignFlowError("ERR_MODEL_SERVICE_UNAVAILABLE", "The managed AI gateway is temporarily unavailable.");
+  if (code === "ERR_MODEL_RATE_LIMIT") return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.", retryMetadata);
+  if (code === "ERR_MODEL_QUOTA_EXCEEDED") return new DesignFlowError("ERR_MODEL_QUOTA_EXCEEDED", "The managed AI gateway usage quota was reached.", retryMetadata);
+  if (code === "ERR_MODEL_SERVICE_UNAVAILABLE") return new DesignFlowError("ERR_MODEL_SERVICE_UNAVAILABLE", "The managed AI gateway is temporarily unavailable.", retryMetadata);
   if (code === "ERR_MODEL_AUTHENTICATION" || status === 401 || status === 403) return new DesignFlowError("ERR_MODEL_AUTHENTICATION", "The managed AI gateway rejected the session.");
-  if (code === "ERR_MODEL_RATE_LIMITED" || status === 429) return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.");
+  if (code === "ERR_MODEL_RATE_LIMITED" || status === 429) return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.", retryMetadata);
   if (code === "ERR_MODEL_TIMEOUT" || status === 408 || status === 504) return new DesignFlowError("ERR_MODEL_TIMEOUT", "The managed AI gateway timed out.");
   if (code === "ERR_MODEL_UNAVAILABLE" || status === 404 || status >= 500) return new DesignFlowError("ERR_MODEL_UNAVAILABLE", "The managed AI gateway or requested model is unavailable.");
   if (code === "ERR_MODEL_SCHEMA_UNSUPPORTED" || status === 400) return new DesignFlowError("ERR_MODEL_SCHEMA_UNSUPPORTED", "The managed gateway rejected the requested output schema.");
   return new DesignFlowError("ERR_MODEL_PROVIDER_FAILED", "The managed AI gateway request failed.");
+}
+
+const MAX_RETRY_AFTER_SECONDS = 86_400;
+
+function retryAfterMetadataOf(body: unknown): Record<string, unknown> | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const error = (body as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return undefined;
+  const value = (error as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return { retryAfterSeconds: Math.min(Math.ceil(value), MAX_RETRY_AFTER_SECONDS) };
 }
 
 function readGatewayCode(body: unknown): string | undefined {

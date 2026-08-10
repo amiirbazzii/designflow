@@ -263,4 +263,38 @@ describe("Phase 7D capability failure diagnostics", () => {
     expect(diagnostics[0]!.path).toBe("src/a.jsx");
     expect(diagnostics[2]!.compileErrorSummary).toBe("src/c.jsx: No matching export");
   });
+
+  test("a DesignFlowError with retryAfterSeconds metadata persists a bounded value on capability.failed", async () => {
+    const publisher = new InMemoryEventPublisher();
+    const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+    publisher.subscribe((event) => { events.push(event); });
+    const runner = new CapabilityRunner(publisher);
+    const failing = createMockCapability({
+      execute: async () => {
+        throw new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.", {
+          retryAfterSeconds: 42.4,
+        });
+      },
+    });
+
+    await expect(runner.run(failing, { value: "x" }, createMockContext())).rejects.toMatchObject({ code: "ERR_MODEL_RATE_LIMITED" });
+    const failed = events.find((event) => event.type === "capability.failed")!;
+    expect(failed.payload!.retryAfterSeconds).toBe(43);
+  });
+
+  test("malformed retryAfterSeconds metadata is dropped from capability.failed", async () => {
+    const publisher = new InMemoryEventPublisher();
+    const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+    publisher.subscribe((event) => { events.push(event); });
+    const runner = new CapabilityRunner(publisher);
+    const failing = createMockCapability({
+      execute: async () => {
+        throw new DesignFlowError("ERR_MODEL_RATE_LIMITED", "rate limited", { retryAfterSeconds: "soon" });
+      },
+    });
+
+    await runner.run(failing, { value: "x" }, createMockContext()).catch(() => undefined);
+    const failed = events.find((event) => event.type === "capability.failed")!;
+    expect(failed.payload!.retryAfterSeconds).toBeUndefined();
+  });
 });

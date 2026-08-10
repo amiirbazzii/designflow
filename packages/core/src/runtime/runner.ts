@@ -75,12 +75,15 @@ export class CapabilityRunner {
         error instanceof DesignFlowError
           ? boundedAttemptDiagnostics(error.metadata["failures"])
           : undefined;
+      const retryAfterSeconds =
+        error instanceof DesignFlowError ? boundedRetryAfterSeconds(error.metadata["retryAfterSeconds"]) : undefined;
       await this.publishEvent(context.executionId, "capability.failed", {
         capabilityId: capability.id,
         attempt: lastAttempt,
         error: error instanceof Error ? error.message : String(error),
         ...(error instanceof DesignFlowError ? { errorCode: error.code } : {}),
         ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
+        ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
       });
       throw error;
     }
@@ -261,4 +264,11 @@ export class CapabilityRunner {
       signal.addEventListener("abort", onAbort, { once: true });
     });
   }
+}
+
+const MAX_RETRY_AFTER_SECONDS = 86_400;
+
+function boundedRetryAfterSeconds(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.min(Math.ceil(value), MAX_RETRY_AFTER_SECONDS);
 }

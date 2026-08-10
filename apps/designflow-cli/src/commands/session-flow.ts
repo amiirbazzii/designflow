@@ -558,9 +558,9 @@ async function presentVisualResult(
   const proposalMetadata = await context.artifactInspection
     .getMetadata("proposed-file-changes")
     .catch(() => undefined);
-  const unreachable = typeof proposalMetadata?.["unreachableChangedFiles"] === "number"
-    ? (proposalMetadata["unreachableChangedFiles"] as number)
-    : undefined;
+  // The workflow persists the reachability facts as file lists; older
+  // summaries carried plain counts. Accept both shapes.
+  const unreachable = countOf(proposalMetadata?.["unreachableChangedFiles"]);
 
   const preparation = await prepareCorrectionReadonly(context, executionId, originalInput);
   const implementation = readImplementationInput(originalInput);
@@ -807,6 +807,12 @@ async function readCoverageArtifact(context: CliContext, report: Awaited<ReturnT
   } catch {
     return undefined;
   }
+}
+
+function countOf(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  if (Array.isArray(value)) return value.length;
+  return undefined;
 }
 
 async function renderImplementationPreview(context: CliContext, terminal: Terminal, executionId: string, originalInput?: unknown): Promise<void> {

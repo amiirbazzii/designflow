@@ -82,6 +82,30 @@ describe("ManagedGatewayProvider", () => {
     });
   });
 
+  test("carries a bounded retryAfterSeconds from the gateway error body", async () => {
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      fetchImpl: async () =>
+        response({ error: { code: "ERR_MODEL_RATE_LIMITED", message: "detail", retryable: true, retryAfterSeconds: 42.4 } }, 429),
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({
+      code: "ERR_MODEL_RATE_LIMITED",
+      metadata: { retryAfterSeconds: 43 },
+    });
+  });
+
+  test("drops malformed or negative retryAfterSeconds values", async () => {
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      fetchImpl: async () =>
+        response({ error: { code: "ERR_MODEL_QUOTA_EXCEEDED", message: "detail", retryable: true, retryAfterSeconds: -5 } }, 429),
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({
+      code: "ERR_MODEL_QUOTA_EXCEEDED",
+      metadata: {},
+    });
+  });
+
   test("preserves the bounded unknown-route classification", async () => {
     const provider = new ManagedGatewayProvider({
       endpoint: "https://project.supabase.co/functions/v1/ai-gateway",

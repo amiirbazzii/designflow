@@ -171,6 +171,25 @@ describe("Phase 10 post-apply visual result UX", () => {
     expect(terminal.transcript).toContain("not connected to the rendered application");
   });
 
+  test("reachability persisted as file lists (the live workflow shape) is surfaced too", async () => {
+    const terminal = new ScriptedTerminal(["Finish"]);
+    const context = contextFor({
+      payloads: {
+        ...APPLIED_BASE,
+        "stage-5-summary": { overallStatus: "fail", referenceMode: "real-reference" },
+      },
+      metadata: {
+        "proposed-file-changes": {
+          moduleValidation: "passed",
+          unreachableChangedFiles: ["src/components/Button.jsx", "src/components/Button.css"],
+          reachableChangedFiles: [],
+        },
+      },
+    });
+    await runCommand(context, terminal, "design-engineer", runOptions());
+    expect(terminal.transcript).toContain("not connected to the rendered application");
+  });
+
   test("Details exposes bounded metrics and eligibility, never artifact internals", async () => {
     const terminal = new ScriptedTerminal(["Details", "Finish"]);
     const context = contextFor({
