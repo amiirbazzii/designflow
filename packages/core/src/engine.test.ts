@@ -492,3 +492,71 @@ describe("ExecutionEngine with DAG execution", () => {
     expect(result.artifacts).toHaveLength(1);
   });
 });
+
+// ── Phase 9: capability agent invocations carry run identity ────
+
+describe("Phase 9 scoped agent invoker", () => {
+  test("context.agents.invoke carries executionId and capabilityId as metadata", async () => {
+    const captured: Array<Record<string, unknown> | undefined> = [];
+    const registry = new CapabilityRegistry();
+    const repository = new InMemoryExecutionRepository();
+    const engine = new ExecutionEngine({
+      registry,
+      logger: createMockLogger(),
+      artifactStore: createMockArtifactStore(),
+      executionRepository: repository,
+      eventPublisher: new InMemoryEventPublisher(),
+      agentInvoker: {
+        invoke: async (request) => {
+          captured.push(request.metadata);
+          return {
+            type: "success",
+            agentId: "implementation-agent",
+            agentVersion: "0.1.0",
+            output: {},
+            attempt: request.attempt ?? 1,
+          } as never;
+        },
+      },
+    });
+
+    const capability: Capability<unknown, unknown> = {
+      ...createMockCapability("cap-agent"),
+      execute: async (context, _input) => {
+        await context.agents!.invoke({
+          agentId: "implementation-agent",
+          objective: "test",
+          input: {},
+          attempt: 1,
+        });
+        // A caller-supplied value must win over the injected identity.
+        await context.agents!.invoke({
+          agentId: "implementation-agent",
+          objective: "test",
+          input: {},
+          attempt: 2,
+          metadata: { capabilityId: "caller-override" },
+        });
+        return { artifactRef: { id: "artifact-agent", type: "test" } };
+      },
+    };
+    engine.getRegistry().register(capability);
+
+    const executionId = crypto.randomUUID();
+    await repository.create({ executionId, workflowId: "wf-agent", status: "running", startedAt: Date.now() });
+
+    const definition = {
+      id: "wf-agent",
+      name: "agent",
+      description: "",
+      nodes: [{ id: "A", capabilityId: "cap-agent", inputMap: {} }],
+      metadata: {},
+    };
+    const result = await engine.run(definition, createExecution(executionId, "wf-agent"));
+
+    expect(result.success).toBe(true);
+    expect(captured.length).toBe(2);
+    expect(captured[0]).toMatchObject({ executionId, capabilityId: "cap-agent" });
+    expect(captured[1]).toMatchObject({ executionId, capabilityId: "caller-override" });
+  });
+});

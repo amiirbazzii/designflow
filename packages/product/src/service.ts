@@ -96,6 +96,9 @@ export class ProductExecutionService {
       ...(failureReasonOf(events) !== undefined
         ? { failureReason: failureReasonOf(events) }
         : {}),
+      ...(failureFactsOf(events) !== undefined
+        ? { failure: failureFactsOf(events) }
+        : {}),
     });
   }
 
@@ -372,6 +375,47 @@ function failureReasonOf(
   }
 
   return undefined;
+}
+
+/**
+ * Bounded structured facts about a persisted failure, for stage-aware
+ * product presentation. Read models only: the last `execution.failed`
+ * payload plus the last `capability.failed` payload — never re-derived.
+ */
+function failureFactsOf(
+  events: readonly ExecutionEvent[],
+): Record<string, unknown> | undefined {
+  const executionFailed = [...events].reverse().find((event) => event.type === "execution.failed");
+  const capabilityFailed = [...events].reverse().find((event) => event.type === "capability.failed");
+  if (executionFailed === undefined && capabilityFailed === undefined) return undefined;
+
+  const errorCode =
+    typeof executionFailed?.payload?.errorCode === "string"
+      ? executionFailed.payload.errorCode
+      : typeof capabilityFailed?.payload?.errorCode === "string"
+        ? capabilityFailed.payload.errorCode
+        : undefined;
+  const failedCapabilityId =
+    typeof capabilityFailed?.payload?.capabilityId === "string"
+      ? capabilityFailed.payload.capabilityId
+      : undefined;
+  const attemptDiagnostics =
+    boundedAttemptDiagnostics(executionFailed?.payload?.attemptDiagnostics) ??
+    boundedAttemptDiagnostics(capabilityFailed?.payload?.attemptDiagnostics);
+  const retryAfterRaw =
+    executionFailed?.payload?.retryAfterSeconds ?? capabilityFailed?.payload?.retryAfterSeconds;
+  const retryAfterSeconds =
+    typeof retryAfterRaw === "number" && Number.isFinite(retryAfterRaw) && retryAfterRaw >= 0
+      ? retryAfterRaw
+      : undefined;
+
+  const facts = {
+    ...(errorCode !== undefined ? { errorCode } : {}),
+    ...(failedCapabilityId !== undefined ? { failedCapabilityId } : {}),
+    ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
+    ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+  };
+  return Object.keys(facts).length > 0 ? facts : undefined;
 }
 
 /**

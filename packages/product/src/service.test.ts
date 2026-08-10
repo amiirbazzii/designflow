@@ -766,3 +766,50 @@ describe("InMemoryExecutionEventCollector", () => {
     expect(await collector.listEvents("exec-1")).toEqual([]);
   });
 });
+
+// ── Phase 9: structured failure facts on the overview ───────────
+
+describe("Phase 9 overview failure facts", () => {
+  test("a failed run exposes errorCode, failed capability, and bounded attempt diagnostics", async () => {
+    const harness = createHarness();
+    harness.repository.add(record({ status: "failed" }));
+    feed(harness.collector, [
+      event("execution.started", 0, { workflowId: "design-to-code" }),
+      event("capability.failed", 900, {
+        capabilityId: "invoke-implementation-agent",
+        attempt: 1,
+        error: "The proposal remained invalid after 3 bounded attempts",
+        errorCode: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED",
+        attemptDiagnostics: [
+          { attempt: 1, code: "ERR_UNSAFE_PATH", message: "unsafe", path: "../x.jsx", operation: "create" },
+          { attempt: 2, code: "ERR_PROPOSAL_TARGET_EXISTS", message: "exists", path: "src/App.jsx", operation: "create" },
+        ],
+      }),
+      event("execution.failed", 1000, {
+        workflowId: "design-to-code",
+        errorCode: "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED",
+        reason: "The proposal remained invalid after 3 bounded attempts",
+        attemptDiagnostics: [
+          { attempt: 1, code: "ERR_UNSAFE_PATH", message: "unsafe", path: "../x.jsx", operation: "create" },
+          { attempt: 2, code: "ERR_PROPOSAL_TARGET_EXISTS", message: "exists", path: "src/App.jsx", operation: "create" },
+        ],
+      }),
+    ]);
+
+    const overview = await harness.service.getOverview("exec-1");
+
+    expect(overview.failure).toBeDefined();
+    expect(overview.failure!.errorCode).toBe("ERR_PROPOSAL_ATTEMPTS_EXHAUSTED");
+    expect(overview.failure!.failedCapabilityId).toBe("invoke-implementation-agent");
+    expect(overview.failure!.attemptDiagnostics!.map((d) => d.attempt)).toEqual([1, 2]);
+    expect(overview.failure!.attemptDiagnostics![0]!.path).toBe("../x.jsx");
+  });
+
+  test("a completed run has no failure facts", async () => {
+    const harness = createHarness();
+    harness.repository.add(record());
+    feed(harness.collector, incrementalRun());
+    const overview = await harness.service.getOverview("exec-1");
+    expect(overview.failure).toBeUndefined();
+  });
+});

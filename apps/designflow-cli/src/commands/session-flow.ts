@@ -36,6 +36,10 @@ import { join } from "node:path";
 
 import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
 import {
+  buildProductFailure,
+  renderProductFailure,
+} from "../services/failure-presentation";
+import {
   buildProposalReview,
   renderReadyToApply,
   renderReviewFileList,
@@ -289,11 +293,46 @@ async function report(
       }
     }
 
+    // Phase 9: a failed run gets the curated, mutation-aware failure screen
+    // built from persisted facts. Rejection and cancellation keep their own
+    // distinct product outcomes below.
+    if (
+      overview.state === "failed" &&
+      overview.status !== "rejected" &&
+      overview.status !== "cancelled"
+    ) {
+      const failure = buildProductFailure({
+        status: overview.status,
+        errorCode: overview.failure?.errorCode,
+        failedCapabilityId: overview.failure?.failedCapabilityId,
+        attemptDiagnostics: overview.failure?.attemptDiagnostics,
+        retryAfterSeconds: overview.failure?.retryAfterSeconds,
+        hasApplication: hasApplication,
+        hasSnapshot,
+        validationFailed,
+        rollbackTriggered,
+        executionId,
+      });
+      for (const line of renderProductFailure(failure)) terminal.print(line);
+      if (options.interactive === true && failure.technicalDetails.length > 0) {
+        terminal.print();
+        const details = (await terminal.ask("View technical details?", ["no", "yes"]))
+          .trim()
+          .toLowerCase();
+        if (details.startsWith("y")) {
+          terminal.print();
+          terminal.print(heading("Technical details"));
+          for (const line of failure.technicalDetails) terminal.print(line);
+        }
+      }
+      return 1;
+    }
+
     terminal.print(
       renderProductRunResult({
         state: overview.state,
         status: overview.status,
-        hasImplementation: artifacts.some((artifact) => artifact.artifactId === "file-application-result"),
+        hasImplementation: hasApplication,
         hasSpecification: artifacts.some(
           (artifact) =>
             artifact.artifactId === "design-specification" ||

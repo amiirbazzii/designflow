@@ -1,5 +1,6 @@
 // packages/product/src/schemas.ts
 import { z } from "zod";
+import { proposalAttemptDiagnosticSchema } from "@designflow/sdk";
 
 /**
  * Product-facing read models.
@@ -62,6 +63,18 @@ export const executionOverviewSchema = z.object({
   summary: z.string().min(1),
   /** Present when the execution stopped on an error. */
   failureReason: z.string().optional(),
+  /** Bounded structured facts about the failure, when one was persisted. */
+  failure: z
+    .object({
+      errorCode: z.string().min(1).optional(),
+      /** The capability that failed, for stage-aware presentation. */
+      failedCapabilityId: z.string().min(1).optional(),
+      /** Phase 7D bounded per-attempt validator facts. */
+      attemptDiagnostics: z.array(proposalAttemptDiagnosticSchema).max(12).optional(),
+      /** Provider-supplied bounded retry interval, when one was recorded. */
+      retryAfterSeconds: z.number().nonnegative().optional(),
+    })
+    .optional(),
 });
 
 export type ExecutionOverview = z.infer<typeof executionOverviewSchema>;

@@ -1084,7 +1084,13 @@ export class ExecutionEngine {
       artifactStore: lineageStore,
       config: { ...this.capabilityConfig, ...(context.metadata ?? {}) },
       signal: context.signal,
-      ...(this.agentInvoker !== undefined ? { agents: this.agentInvoker } : {}),
+      // The invoker is wrapped so every specialized-agent invocation carries
+      // the run and capability identity as safe trace metadata — the trace
+      // pipeline already records both when present, and a capability author
+      // should not have to remember to thread them.
+      ...(this.agentInvoker !== undefined
+        ? { agents: scopedAgentInvoker(this.agentInvoker, context.runId, capabilityId) }
+        : {}),
       ...(this.mcpClient !== undefined ? { mcp: this.mcpClient } : {}),
     };
 
@@ -1691,6 +1697,29 @@ function readProgressCheckpoint(
     kind: "progress",
     completedNodeIds: completedNodeIds.data,
     completedArtifacts: completedArtifacts.data,
+  };
+}
+
+/**
+ * Wraps the host's agent invoker so every invocation from a capability
+ * carries the run and capability identity as trace metadata. Caller-supplied
+ * request metadata wins on conflict — the wrapper adds identity, never
+ * overrides intent.
+ */
+function scopedAgentInvoker(
+  invoker: AgentInvocationService,
+  executionId: string,
+  capabilityId: string,
+): AgentInvocationService {
+  return {
+    invoke: (request, signal) =>
+      invoker.invoke(
+        {
+          ...request,
+          metadata: { executionId, capabilityId, ...request.metadata },
+        },
+        signal,
+      ),
   };
 }
 
