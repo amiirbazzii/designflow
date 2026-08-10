@@ -40,6 +40,11 @@ import {
   renderProductFailure,
 } from "../services/failure-presentation";
 import {
+  buildVisualResult,
+  renderVisualResult,
+  type VisualResultFacts,
+} from "../services/visual-result";
+import {
   buildProposalReview,
   renderReadyToApply,
   renderReviewFileList,
@@ -328,6 +333,12 @@ async function report(
       return 1;
     }
 
+    // Phase 10: a successfully applied implementation continues into the
+    // visual result instead of ending at a generic completion banner.
+    if (overview.state === "ready" && hasApplication) {
+      return presentVisualResult(context, terminal, executionId, originalInput, options);
+    }
+
     terminal.print(
       renderProductRunResult({
         state: overview.state,
@@ -502,6 +513,180 @@ async function report(
   );
 }
 
+/**
+ * Phase 10: the post-apply product journey — truthful Checking facts, the
+ * visual result derived from persisted Stage-5 evidence, and the opt-in
+ * Improve / Finish / Details interaction. Improve authorizes preparing one
+ * bounded correction proposal through the existing correction path; exact
+ * correction approval still happens later, inside that path.
+ */
+async function presentVisualResult(
+  context: CliContext,
+  terminal: Terminal,
+  executionId: string,
+  originalInput: unknown,
+  options: {
+    readonly interactive?: boolean;
+    readonly visualCorrection?: "off" | "once";
+  },
+): Promise<number> {
+  const report = await context.runner.explain(executionId);
+  const payloadOf = async (artifactId: string): Promise<unknown> => {
+    const summary = report.artifacts.find((artifact) => artifact.artifactId === artifactId);
+    if (summary === undefined) return undefined;
+    try {
+      return (await context.artifactInspection.getPayload(summary)).payload;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const preview = (await payloadOf("preview-runtime-record")) as { status?: string } | undefined;
+  const captured = report.artifacts.some((artifact) => artifact.artifactId === "implementation-screenshot-evidence");
+  const stageSummary = (await payloadOf("stage-5-summary")) as
+    | { overallStatus?: VisualResultFacts["overallStatus"]; referenceMode?: string; critical?: number; major?: number; minor?: number }
+    | undefined;
+  const visualReport = (await payloadOf("visual-validation-report")) as
+    | { findings?: Array<{ explanation?: string; severity?: string }> }
+    | undefined;
+  const metrics = (await payloadOf("image-comparison-metrics")) as
+    | { viewportResults?: Array<{ viewport?: { id?: string }; status?: string; metrics?: { pixelMismatchRatio?: number; overlapCoverage?: number } }> }
+    | undefined;
+  // Reachability counts ride on the proposal artifact's own summary — the
+  // module-validation record is a secondary artifact whose registry
+  // metadata does not carry them (same reason as the Build-checked fact).
+  const proposalMetadata = await context.artifactInspection
+    .getMetadata("proposed-file-changes")
+    .catch(() => undefined);
+  const unreachable = typeof proposalMetadata?.["unreachableChangedFiles"] === "number"
+    ? (proposalMetadata["unreachableChangedFiles"] as number)
+    : undefined;
+
+  const preparation = await prepareCorrectionReadonly(context, executionId, originalInput);
+  const implementation = readImplementationInput(originalInput);
+  const referenceLabel = implementation?.frames?.[0] ?? implementation?.designFile;
+
+  const detailMetrics: string[] = [];
+  if (stageSummary?.referenceMode !== undefined) detailMetrics.push(`Reference mode: ${stageSummary.referenceMode}`);
+  if (stageSummary !== undefined) {
+    detailMetrics.push(`Findings: critical ${stageSummary.critical ?? 0}, major ${stageSummary.major ?? 0}, minor ${stageSummary.minor ?? 0}`);
+  }
+  for (const viewport of metrics?.viewportResults ?? []) {
+    const parts = [
+      `${viewport.viewport?.id ?? "viewport"}: ${viewport.status ?? "unknown"}`,
+      ...(viewport.metrics?.pixelMismatchRatio !== undefined
+        ? [`mismatch ${(viewport.metrics.pixelMismatchRatio * 100).toFixed(1)}%`]
+        : []),
+      ...(viewport.metrics?.overlapCoverage !== undefined
+        ? [`overlap ${(viewport.metrics.overlapCoverage * 100).toFixed(0)}%`]
+        : []),
+    ];
+    detailMetrics.push(parts.join("  ·  "));
+  }
+  if (unreachable !== undefined) detailMetrics.push(`Unreachable changed files: ${unreachable}`);
+  detailMetrics.push(`Correction eligibility: ${preparation.eligibility.status}`);
+
+  const result = buildVisualResult({
+    overallStatus: stageSummary?.overallStatus,
+    findingSummaries: (visualReport?.findings ?? [])
+      .map((finding) => finding.explanation)
+      .filter((explanation): explanation is string => typeof explanation === "string" && explanation.length > 0),
+    correctionEligible: preparation.eligibility.status === "eligible",
+    actionableFindingCount: preparation.eligibility.actionableFindingCount,
+    previewReady: preview?.status === "ready",
+    captured,
+    compared: stageSummary !== undefined,
+    unreachableChangedFiles: unreachable,
+    referenceLabel,
+    detailMetrics,
+  });
+
+  terminal.print();
+  terminal.print("Checking");
+  terminal.print();
+  if (preview?.status === "ready") terminal.print("✓ Preview opened");
+  if (captured) terminal.print("✓ Implementation captured");
+  if (stageSummary !== undefined) terminal.print("✓ Compared with design");
+  if (stageSummary === undefined && preview?.status !== "ready" && !captured) {
+    terminal.print("Visual checking did not run.");
+  }
+
+  for (const line of renderVisualResult(result)) terminal.print(line);
+
+  if (options.interactive !== true || options.visualCorrection === "off") {
+    terminal.print();
+    return 0;
+  }
+
+  for (;;) {
+    terminal.print();
+    const choices = result.offerImprove ? ["Improve", "Finish", "Details"] : ["Finish", "Details"];
+    const answer = (await terminal.ask("Visual result", choices)).trim().toLowerCase();
+
+    if (answer === "details" || answer === "d" || answer === String(choices.length)) {
+      terminal.print();
+      terminal.print(heading("Details"));
+      for (const line of result.detailLines) terminal.print(line);
+      continue;
+    }
+
+    if (result.offerImprove && (answer === "improve" || answer === "i" || answer === "1")) {
+      return offerVisualCorrection(context, terminal, executionId, originalInput, {
+        interactive: true,
+        productAuthorized: true,
+        ...(options.visualCorrection !== undefined
+          ? { visualCorrection: options.visualCorrection }
+          : {}),
+      });
+    }
+
+    // Finish (default): accept the applied state, no further mutation.
+    terminal.print();
+    terminal.print("Finished. Your approved changes remain in place.");
+    terminal.print();
+    return 0;
+  }
+}
+
+/** Read-only correction eligibility, shared by the visual result and Improve. */
+async function prepareCorrectionReadonly(
+  context: CliContext,
+  executionId: string,
+  originalInput: unknown,
+): Promise<Awaited<ReturnType<typeof prepareVisualCorrection>>> {
+  const implementation = readImplementationInput(originalInput);
+  let currentProjectFingerprint: string | undefined;
+  let currentProjectRootIdentity: string | undefined;
+  if (implementation !== undefined) {
+    try {
+      const inspected = inspectRegisteredProject(implementation.project);
+      currentProjectFingerprint = inspected.project.contextFingerprint;
+      currentProjectRootIdentity = inspected.project.rootIdentity;
+    } catch {
+      currentProjectFingerprint = undefined;
+    }
+  }
+  const parent = (await context.feedbackLoopParents.get(projectParentId(executionId))) ?? null;
+  const visualCorrectionProfileId = context.roleModelProfiles.find(
+    (profile) => profile.roleId === "visual-correction",
+  )?.profileId;
+  return prepareVisualCorrection({
+    executionId,
+    originalInput,
+    run: await context.runner.explain(executionId),
+    inspection: context.artifactInspection,
+    artifactStore: context.artifactStore,
+    parent,
+    ...(currentProjectFingerprint !== undefined ? { currentProjectFingerprint } : {}),
+    ...(currentProjectRootIdentity !== undefined ? { currentProjectRootIdentity } : {}),
+    ...(visualCorrectionProfileId !== undefined ? { modelProfileId: visualCorrectionProfileId } : {}),
+    correctionWorkflowRegistered: context
+      .listWorkflows()
+      .some((workflow) => workflow.workflowId === FEEDBACK_LOOP_WORKFLOW_ID),
+    pendingApproval: (await context.runner.pendingApproval(executionId)) !== null,
+  });
+}
+
 async function offerVisualCorrection(
   context: CliContext,
   terminal: Terminal,
@@ -510,6 +695,13 @@ async function offerVisualCorrection(
   options: {
     readonly interactive?: boolean;
     readonly visualCorrection?: "off" | "once";
+    /**
+     * Phase 10: the user already chose Improve on the visual-result screen —
+     * that choice IS the product authorization to prepare one bounded
+     * correction, so the legacy beta consent prompt is skipped. Exact
+     * correction approval still happens inside the correction path.
+     */
+    readonly productAuthorized?: boolean;
   },
 ): Promise<number> {
   const implementation = readImplementationInput(originalInput);
@@ -553,7 +745,7 @@ async function offerVisualCorrection(
   });
 
   if (preparation.eligibility.status !== "eligible") {
-    if (options.visualCorrection === "once") {
+    if (options.visualCorrection === "once" || options.productAuthorized === true) {
       terminal.print();
       terminal.print(`${VISUAL_CORRECTION_BETA_LABEL} unavailable`);
       terminal.print(preparation.eligibility.reason);
@@ -561,7 +753,7 @@ async function offerVisualCorrection(
     return 0;
   }
 
-  const explicit = options.visualCorrection === "once";
+  const explicit = options.visualCorrection === "once" || options.productAuthorized === true;
   if (!explicit && options.interactive !== true) return 0;
 
   if (!explicit) {

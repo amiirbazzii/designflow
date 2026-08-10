@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
+import { buildProposalReview } from "../services/proposal-review";
 import {
   FEEDBACK_LOOP_WORKFLOW_ID,
   inspectRegisteredProject,
@@ -486,12 +487,13 @@ function mappingOutcomes(value: unknown): string[] {
   });
 }
 
-function changePreviews(value: unknown, rootPath?: string): string[] {
+/** The exact correction entries the review, counts, and approval all share. */
+function correctionEntries(value: unknown, rootPath?: string): ProposalPreviewEntry[] {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return [];
   const candidate = (value as Record<string, unknown>)["changes"];
   if (!Array.isArray(candidate)) return [];
-  const entries: ProposalPreviewEntry[] = candidate.flatMap((item) => {
+  return candidate.flatMap((item) => {
     if (typeof item !== "object" || item === null || Array.isArray(item))
       return [];
     const record = item as Record<string, unknown>;
@@ -524,7 +526,10 @@ function changePreviews(value: unknown, rootPath?: string): string[] {
       ...(currentContent !== undefined ? { currentContent } : {}),
     }];
   });
-  return renderProposalPreview(entries);
+}
+
+function changePreviews(value: unknown, rootPath?: string): string[] {
+  return renderProposalPreview(correctionEntries(value, rootPath));
 }
 
 function readInput(path: string): unknown {
@@ -679,8 +684,18 @@ async function runCorrectionIteration(
         ? undefined
         : (await context.artifactInspection.getPayload(changes)).payload;
     terminal.print();
-    terminal.print("Correction proposal");
+    terminal.print("Ready to improve");
     terminal.print("──────────────────────────────────────────────");
+    {
+      // Deterministic counts from the same exact entries the bounded diff
+      // and the approval bind to — never model-supplied numbers.
+      const review = buildProposalReview(correctionEntries(changesPayload, input.project.rootPath));
+      if (review.totals.fileCount > 0) {
+        terminal.print(`${review.totals.fileCount} file${review.totals.fileCount === 1 ? "" : "s"} changed`);
+        terminal.print(`+${review.totals.additions}  -${review.totals.deletions}`);
+        terminal.print();
+      }
+    }
     terminal.print(`Iteration: ${iteration} of ${limit}`);
     terminal.print(
       `Findings: ${countField(planPayload, "selectedFindingIds") || numberField(planPayload, "findings")}`,
@@ -941,7 +956,7 @@ export async function runParentLoop(
 ): Promise<number> {
   let parent = initialParent;
   let current = parseFeedbackLoopInput(parent.input);
-  terminal.print("Visual correction (Beta)");
+  terminal.print("Improving");
   terminal.print("──────────────────────────────────────────────");
   while (true) {
     // Root cancellation: an interrupted loop starts no further iteration.
@@ -1298,8 +1313,8 @@ function printCorrectionSummary(
   terminal.print();
   terminal.print(
     parent.finalStatus === "pass" || parent.finalStatus === "pass_with_findings"
-      ? "Visual correction beta"
-      : "Visual correction stopped",
+      ? "Improvement result"
+      : "Improvement stopped",
   );
   if (iteration === undefined) {
     terminal.print("No correction iteration was started.");
