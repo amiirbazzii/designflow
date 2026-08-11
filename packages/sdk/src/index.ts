@@ -752,6 +752,20 @@ export type {
   ApprovalManager,
 } from "./approval";
 
+// ── Approval Mode ──────────────────────────────────────────────
+export {
+  approvalModeSchema,
+  approvalAuthorizationSchema,
+  approvalAuthorizationFromInput,
+  stripApprovalModeInput,
+  APPROVAL_AUTHORIZATION_METADATA_KEY,
+} from "./approval-mode";
+
+export type {
+  ApprovalMode,
+  ApprovalAuthorization,
+} from "./approval-mode";
+
 // ── Workflow Composition ────────────────────────────────────────
 export {
   workflowInvocationSchema,

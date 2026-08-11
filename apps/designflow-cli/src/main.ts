@@ -226,6 +226,7 @@ async function main(): Promise<number> {
                   startAction.projectId,
                   startAction.design,
                   startAction.destination,
+                  startAction.approvalMode,
                   {
                     onProgress: (progress) => {
                       bridge.progress(progress);

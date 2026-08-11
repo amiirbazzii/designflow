@@ -183,6 +183,9 @@ function describe(event: ExecutionEvent, count: number): Narration | null {
     case "execution.approval_approved":
       return { kind: "approval", message: "Approved, resuming" };
 
+    case "execution.approval_auto_approved":
+      return { kind: "approval", message: "Approved automatically by DesignFlow, resuming" };
+
     case "execution.approval_rejected":
       return { kind: "approval", message: "Approval rejected" };
 

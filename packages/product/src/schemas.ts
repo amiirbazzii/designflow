@@ -220,6 +220,7 @@ export const executionProgressSchema = z.object({
   currentStep: z.string().min(1).optional(),
   /** Ordered steps with their state, for rendering a checklist. */
   steps: z.array(progressStepSchema),
+  approval: z.enum(["waiting", "manual", "automatic"]).optional(),
 });
 
 export type ExecutionProgress = z.infer<typeof executionProgressSchema>;

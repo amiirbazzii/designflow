@@ -79,6 +79,7 @@ export {
   buildSessionRuntimeFromContext,
   setDesignSelection,
   setDestinationSelection,
+  setApprovalMode,
   setActiveStage,
   DESIGNFLOW_WORKFLOW_STAGES,
 } from "./ui/tui/model";
@@ -90,6 +91,7 @@ export type {
   SessionViewFacts,
   ViewStatus,
   WorkflowStageView,
+  ApprovalMode,
 } from "./ui/tui/model";
 export {
   initialNavigationState,

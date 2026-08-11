@@ -135,6 +135,7 @@ export function Sidebar({
         <Text color={session.destination.status === "ready" ? designFlowTheme.success : designFlowTheme.muted}>
           {session.destination.status === "ready" ? "✓" : "·"} {session.destination.value ?? session.destination.label}
         </Text>
+        <Text color={designFlowTheme.accent}>{session.approval.mode === "designflow" ? "↗" : "·"} {session.approval.mode === "designflow" ? "DesignFlow approvals" : "Manual approval"}</Text>
       </Box>
     </Box>
   );
@@ -219,6 +220,8 @@ export function MainPanel({
           navigation={navigation}
           visibleCount={destinationVisibleCount}
         />
+      ) : navigation.view === "approval-mode" ? (
+        <ApprovalModeView navigation={navigation} />
       ) : navigation.view === "ready-to-run" ? (
         <ReadyToRunView session={session} />
       ) : navigation.view === "execution" ? (
@@ -252,6 +255,7 @@ export function StartView({
         <ReadinessRow label="AI" value={session.ai.label} status={session.ai.status} />
         <ReadinessRow label="Design" value={session.design.label} status={session.design.status} />
         <ReadinessRow label="Destination" value={session.destination.value ?? session.destination.label} status={session.destination.status} />
+        <ReadinessRow label="Approval" value={session.approval.mode === "designflow" ? "DesignFlow handles approvals" : "Review changes myself"} status="ready" />
       </Box>
 
       <Box marginTop={2}>
@@ -345,6 +349,37 @@ export function DestinationSelectionView({
     </Box>
   );
 }
+
+export function ApprovalModeView({ navigation }: { readonly navigation: TuiNavigationState }): React.JSX.Element {
+  const options = [
+    {
+      label: "Review changes myself",
+      detail: "You will review every proposed code change before DesignFlow writes it.",
+    },
+    {
+      label: "Let DesignFlow handle approvals",
+      detail: "DesignFlow may apply validated changes within this run's selected scope. Unsafe changes still stop for review.",
+    },
+  ];
+  const selected = options[navigation.approvalOption] ?? options[0]!;
+  return (
+    <Box flexDirection="column">
+      <Text bold color={designFlowTheme.textPrimary}>Approval mode</Text>
+      <Text color={designFlowTheme.textSecondary}>Choose who authorizes validated changes.</Text>
+      <Box flexDirection="column" marginTop={2}>
+        {options.map((option, index) => (
+          <Text key={option.label} color={index === navigation.approvalOption ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
+            {index === navigation.approvalOption ? "›" : " "} {option.label}
+          </Text>
+        ))}
+      </Box>
+      <Box marginTop={2} flexDirection="column">
+        <Text color={designFlowTheme.textSecondary}>{selected.detail}</Text>
+        {navigation.approvalMode === "designflow" && <Text color={designFlowTheme.warning}>AI agents cannot approve their own work.</Text>}
+      </Box>
+    </Box>
+  );
+}
 export function ReadyToRunView({
   session,
 }: {
@@ -380,6 +415,9 @@ export function HelpView(): React.JSX.Element {
         <Text><Text color={designFlowTheme.accent}>Esc</Text>  go back</Text>
         <Text><Text color={designFlowTheme.accent}>q</Text>  quit when not editing text</Text>
         <Text><Text color={designFlowTheme.accent}>Ctrl+C</Text>  request safe cancellation</Text>
+        <Text color={designFlowTheme.textSecondary}>Approval modes</Text>
+        <Text>Review changes myself — you approve each proposed change.</Text>
+        <Text>Let DesignFlow handle approvals — only validated in-scope changes may be auto-approved; AI agents cannot approve their own work.</Text>
       </Box>
     </Box>
   );
@@ -404,8 +442,10 @@ export function StatusBar({
         ? "↑↓ Navigate   Enter Select   Esc Back"
         : view === "figma-url-entry"
           ? "Enter Continue   Esc Back"
-          : view === "destination-selection"
+      : view === "destination-selection"
             ? "↑↓ Navigate   Enter Select   Esc Back"
+        : view === "approval-mode"
+          ? "↑↓ Navigate   Enter Select   Esc Back"
       : view === "ready-to-run"
               ? "Enter Start   Esc Change destination   ? Help   q Quit"
               : view === "execution"

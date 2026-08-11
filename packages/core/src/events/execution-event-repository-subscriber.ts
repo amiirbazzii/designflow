@@ -25,6 +25,7 @@ const EVENT_TO_PHASE: Partial<
   "execution.policy_denied": "failed",
   "execution.waiting_approval": "waiting_approval",
   "execution.approval_approved": "approval_approved",
+  "execution.approval_auto_approved": "approval_approved",
   "execution.approval_rejected": "approval_rejected",
   "workflow.child_started": "executing",
   "workflow.child_completed": "executing",

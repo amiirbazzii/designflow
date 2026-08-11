@@ -71,6 +71,7 @@ export function buildProgress(
   let completedCount = 0;
   let terminal = false;
   let planTotal = plannedTotal;
+  let approval: "waiting" | "manual" | "automatic" | undefined;
 
   for (const event of events) {
     switch (event.type) {
@@ -158,6 +159,21 @@ export function buildProgress(
         terminal = true;
         break;
 
+      case "execution.waiting_approval":
+        approval = "waiting";
+        break;
+
+      case "execution.approval_auto_approved":
+        approval = "automatic";
+        break;
+
+      case "execution.approval_approved":
+        // Managed approval resumes through the same approval continuation and
+        // therefore also emits the generic approved event. Preserve the more
+        // specific automatic state for the TUI.
+        if (approval !== "automatic") approval = "manual";
+        break;
+
       default:
         break;
     }
@@ -198,6 +214,7 @@ export function buildProgress(
         status: "pending" as const,
       })),
     ],
+    ...(approval === undefined ? {} : { approval }),
   });
 }
 

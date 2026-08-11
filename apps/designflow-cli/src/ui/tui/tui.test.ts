@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Key } from "ink";
 import {
   buildSessionView,
+  setApprovalMode,
   setActiveStage,
   setDesignSelection,
   setDestinationSelection,
@@ -15,6 +16,8 @@ import {
   enterDesignSelection,
   enterDestinationSelection,
   enterUrlEntry,
+  enterApprovalMode,
+  setApprovalOption,
   initialNavigationState,
   keepSelectionVisible,
   moveListSelection,
@@ -110,6 +113,18 @@ describe("DesignFlow TUI presentation model", () => {
 });
 
 describe("DesignFlow TUI selection navigation", () => {
+  test("approval mode defaults to manual and is selected before ready-to-run", () => {
+    const session = buildSessionView({ figma: "connected", ai: "connected" });
+    const approval = enterApprovalMode(initialNavigationState());
+
+    expect(session.approval.mode).toBe("manual");
+    expect(approval.view).toBe("approval-mode");
+    expect(approval.approvalOption).toBe(0);
+    const managed = setApprovalOption(approval, 1);
+    expect(managed.approvalMode).toBe("designflow");
+    expect(setApprovalMode(session, managed.approvalMode).approval.mode).toBe("designflow");
+  });
+
   test("Start enters design selection and Esc follows the back hierarchy", () => {
     const start = initialNavigationState();
     const design = enterDesignSelection(start);
@@ -124,7 +139,8 @@ describe("DesignFlow TUI selection navigation", () => {
     expect(design.view).toBe("design-selection");
     expect(navigateBack(url).view).toBe("design-selection");
     expect(navigateBack(destination).view).toBe("design-selection");
-    expect(navigateBack({ ...destination, view: "ready-to-run" }).view).toBe("destination-selection");
+    expect(navigateBack({ ...destination, view: "ready-to-run" }).view).toBe("approval-mode");
+    expect(navigateBack({ ...destination, view: "approval-mode" }).view).toBe("destination-selection");
     expect(navigateBack(design).view).toBe("start");
   });
 

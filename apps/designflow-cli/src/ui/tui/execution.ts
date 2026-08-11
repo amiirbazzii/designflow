@@ -147,7 +147,23 @@ export function applyExecutionProgress(
       ...(activeStage === undefined ? {} : { activeStage }),
       stages,
     },
-    activity: activity.slice(-12),
+    activity: progress.approval === "waiting"
+      ? [{
+          actor: "designflow" as const,
+          title: session.approval.mode === "designflow" ? "Needs your review" : "Review required",
+          detail: session.approval.mode === "designflow"
+            ? "DesignFlow could not safely approve this proposal automatically."
+            : "Review the validated proposal before it is applied.",
+          state: "running" as const,
+        }]
+      : progress.approval === "automatic"
+        ? [...activity, { actor: "designflow" as const, title: "Approved automatically", detail: "DesignFlow approved this validated proposal within the selected scope.", state: "completed" as const }].slice(-12)
+        : activity.slice(-12),
+    approval: progress.approval === "waiting" && session.approval.mode === "designflow"
+      ? { ...session.approval, status: "needs-review" }
+      : progress.approval === "automatic"
+        ? { ...session.approval, mode: "designflow", status: "approved" }
+        : session.approval,
     checks: checks.slice(-8),
     ...(activeStep?.attempt === undefined ? {} : {
       attempt: {

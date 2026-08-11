@@ -225,6 +225,43 @@ describe("the clarification loop", () => {
     expect(result.session.executionId).toBe("exec-1");
   });
 
+  test("persists the user approval mode and strips agent-supplied approval controls", async () => {
+    const runner = starter();
+    const service = new AgentSessionService({
+      store: new InMemorySessionStore(),
+      workers: registry([worker()]),
+      router: new WorkerTaskRouter({
+        workers: registry([worker()]),
+        agents: scriptedAgent([{
+          type: "run_workflow",
+          workflowId: "design-to-code",
+          input: { approvalMode: "manual", destination: { path: "/agent-choice" } },
+        }]),
+      }),
+      runner,
+      generateId: () => "session-approval",
+    });
+
+    await service.startSession({
+      workerId: "design-engineer",
+      request: "build it",
+      input: {
+        approvalMode: "designflow",
+        approvalSelectedAt: 42,
+        project: { id: "project-1" },
+        destination: { path: "/add" },
+      },
+    });
+
+    expect(runner.started).toHaveLength(1);
+    expect(runner.started[0]?.input).toEqual({ destination: { path: "/agent-choice" } });
+    expect(runner.started[0]?.metadata?.designflowApproval).toMatchObject({
+      mode: "designflow",
+      selectedAt: 42,
+      scope: { projectId: "project-1", destination: "/add" },
+    });
+  });
+
   test("a decline closes the session without starting a workflow", async () => {
     const { service, runner } = harness({
       decisions: [{ type: "decline", reason: "not possible" }],

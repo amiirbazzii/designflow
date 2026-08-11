@@ -1,11 +1,13 @@
 import type { DestinationCandidate } from "../../services/destinations";
 import type { InteractiveDesign } from "../../services/figma-selection";
+import type { ApprovalMode } from "./model";
 
 export type TuiView =
   | "start"
   | "design-selection"
   | "figma-url-entry"
   | "destination-selection"
+  | "approval-mode"
   | "ready-to-run"
   | "execution"
   | "output-viewer"
@@ -18,6 +20,8 @@ export interface TuiNavigationState {
   readonly outputId?: string;
   readonly outputScrollOffset: number;
   readonly outputDetails: boolean;
+  readonly approvalOption: number;
+  readonly approvalMode: ApprovalMode;
   readonly designOption: number;
   readonly design?: InteractiveDesign | undefined;
   readonly urlValue: string;
@@ -37,6 +41,8 @@ export function initialNavigationState(): TuiNavigationState {
     outputReturnView: "execution",
     outputScrollOffset: 0,
     outputDetails: false,
+    approvalOption: 0,
+    approvalMode: "manual",
     designOption: 0,
     urlValue: "",
     urlCursor: 0,
@@ -99,6 +105,23 @@ export function setDestinationCandidates(
     loading: null,
     error: candidates.length === 0 ? "No destination suggestions available." : undefined,
   };
+}
+
+export function enterApprovalMode(state: TuiNavigationState): TuiNavigationState {
+  return {
+    ...state,
+    view: "approval-mode",
+    approvalOption: state.approvalMode === "manual" ? 0 : 1,
+    error: undefined,
+  };
+}
+
+export function setApprovalOption(
+  state: TuiNavigationState,
+  option: number,
+): TuiNavigationState {
+  const approvalMode: ApprovalMode = option === 1 ? "designflow" : "manual";
+  return { ...state, approvalOption: option, approvalMode };
 }
 
 export function moveListSelection(
@@ -225,7 +248,8 @@ export function closeHelp(state: TuiNavigationState): TuiNavigationState {
 export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   if (state.view === "help") return closeHelp(state);
   if (state.view === "output-viewer") return closeOutput(state);
-  if (state.view === "ready-to-run") return { ...state, view: "destination-selection", error: undefined };
+  if (state.view === "ready-to-run") return { ...state, view: "approval-mode", error: undefined };
+  if (state.view === "approval-mode") return { ...state, view: "destination-selection", error: undefined };
   if (state.view === "destination-selection") return enterDesignSelection(state);
   if (state.view === "figma-url-entry") return enterDesignSelection(state);
   if (state.view === "design-selection") return { ...state, view: "start", error: undefined };

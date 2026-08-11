@@ -1,4 +1,4 @@
-import type { ProjectIdentity } from "@designflow/sdk";
+import type { ApprovalMode, ProjectIdentity } from "@designflow/sdk";
 import type { ArtifactSummary } from "@designflow/product";
 import type { CliContext } from "../../services/cli-runner";
 import {
@@ -16,6 +16,8 @@ export type ViewStatus =
   | "not-configured"
   | "not-detected"
   | "idle";
+
+export type { ApprovalMode } from "@designflow/sdk";
 
 export type ActivityActor =
   | "designflow"
@@ -65,7 +67,11 @@ export interface DesignFlowSessionView {
     readonly label: string;
     readonly status: ViewStatus;
   };
-  readonly approvalMode?: "manual";
+  readonly approval: {
+    readonly mode: ApprovalMode;
+    readonly status: "selected" | "approved" | "needs-review";
+    readonly scopeSummary: string;
+  };
   readonly workflow: {
     readonly status: ViewStatus;
     readonly activeStage?: string;
@@ -177,7 +183,11 @@ export function buildSessionView(facts: SessionViewFacts): DesignFlowSessionView
             kind: facts.destination.kind,
             status: "ready",
           },
-    approvalMode: "manual",
+    approval: {
+      mode: "manual",
+      status: "selected",
+      scopeSummary: "Validated changes in this run's selected project and destination",
+    },
     workflow: {
       status: "idle",
       stages: DESIGNFLOW_WORKFLOW_STAGES,
@@ -210,6 +220,20 @@ export function setDestinationSelection(
       value: destination.path ?? destination.label,
       kind: destination.kind,
       status: "ready",
+    },
+  };
+}
+
+export function setApprovalMode(
+  session: DesignFlowSessionView,
+  mode: ApprovalMode,
+): DesignFlowSessionView {
+  return {
+    ...session,
+    approval: {
+      ...session.approval,
+      mode,
+      status: "selected",
     },
   };
 }

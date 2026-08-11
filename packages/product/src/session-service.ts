@@ -12,6 +12,9 @@ import {
   startSessionRequestSchema,
   withEffectiveSessionStatus,
   withReuseIdentity,
+  approvalAuthorizationFromInput,
+  stripApprovalModeInput,
+  APPROVAL_AUTHORIZATION_METADATA_KEY,
   DesignFlowError,
   NOOP_SESSION_OBSERVER,
   type AgentDecision,
@@ -520,13 +523,23 @@ export class AgentSessionService {
 
     if (decision.type === "run_workflow") {
       const reuseIdentity = await this.buildReuseIdentity(session, knowledgeContext);
+      const originalInput = session.originalInput;
+      const selectedAt = Date.parse(session.createdAt);
+      const approvalAuthorization = approvalAuthorizationFromInput(
+        originalInput,
+        Number.isFinite(selectedAt) ? selectedAt : Date.now(),
+      );
+      const executionInput = stripApprovalModeInput(
+        decision.input ?? originalInput,
+      );
 
       const execution = await this.runner.start({
         workflowId: decision.workflowId,
-        input: decision.input ?? session.originalInput,
-        ...(reuseIdentity !== undefined
-          ? { metadata: withReuseIdentity({}, reuseIdentity) }
-          : {}),
+        input: executionInput,
+        metadata: {
+          ...(reuseIdentity === undefined ? {} : withReuseIdentity({}, reuseIdentity)),
+          [APPROVAL_AUTHORIZATION_METADATA_KEY]: approvalAuthorization,
+        },
       });
 
       if (traceId !== undefined && this.traces !== undefined) {

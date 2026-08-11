@@ -26,7 +26,7 @@ import {
   type CliContext,
 } from "../services/cli-runner";
 import type { ExecutionProgress } from "@designflow/product";
-import type { ProjectIdentity, SessionResult } from "@designflow/sdk";
+import type { ApprovalMode, ProjectIdentity, SessionResult } from "@designflow/sdk";
 import { runCommand } from "./run";
 import { AuthSessionError } from "../services/auth-session";
 
@@ -56,6 +56,7 @@ export function interactiveRunOptionsForProjectId(
   projectId: string | undefined,
   destination: DestinationCandidate,
   design: InteractiveDesign,
+  approvalMode: ApprovalMode = "manual",
 ): {
   interactive: true;
   offerArtifactView: true;
@@ -63,6 +64,7 @@ export function interactiveRunOptionsForProjectId(
   projectId?: string;
   destination: DestinationCandidate;
   design: InteractiveDesign;
+  approvalMode: ApprovalMode;
 } {
   return {
     interactive: true,
@@ -71,6 +73,7 @@ export function interactiveRunOptionsForProjectId(
     ...(projectId === undefined ? {} : { projectId }),
     destination,
     design,
+    approvalMode,
   };
 }
 
@@ -87,6 +90,7 @@ export async function runSelectedDesignEngineer(
   projectId: string | undefined,
   design: InteractiveDesign,
   destination: DestinationCandidate,
+  approvalMode: ApprovalMode = "manual",
   hooks: {
     readonly onProgress?: (progress: ExecutionProgress) => void;
     readonly onSessionResult?: (result: SessionResult) => void;
@@ -107,7 +111,7 @@ export async function runSelectedDesignEngineer(
     terminal,
     workerId,
     {
-      ...interactiveRunOptionsForProjectId(projectId, destination, design),
+      ...interactiveRunOptionsForProjectId(projectId, destination, design, approvalMode),
       ...(hooks.onProgress === undefined ? {} : { onProgress: hooks.onProgress }),
       ...(hooks.onSessionResult === undefined ? {} : { onSessionResult: hooks.onSessionResult }),
     },

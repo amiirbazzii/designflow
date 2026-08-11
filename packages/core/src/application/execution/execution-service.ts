@@ -36,6 +36,8 @@ import {
   type McpClient,
   DesignFlowError,
   boundedAttemptDiagnostics,
+  approvalAuthorizationSchema,
+  APPROVAL_AUTHORIZATION_METADATA_KEY,
 } from "@designflow/sdk";
 
 import { CapabilityRegistry } from "../../registry";
@@ -348,7 +350,7 @@ export class ExecutionService
           return await this.markCancelled(executionId, params.workflowId);
         }
 
-        return await this.finalizeResult(executionId, params.workflowId, engineResult);
+        return await this.finalizeResult(executionId, params.workflowId, engineResult, rootSignal);
       } finally {
         rootSignal?.removeEventListener("abort", onRootAbort);
       }
@@ -611,6 +613,7 @@ export class ExecutionService
             record.executionId,
             record.workflowId,
             engineResult,
+            runtime?.signal,
           );
         } catch (error) {
           if (error instanceof ExecutionCancelledError || runtime?.signal?.aborted === true) {
@@ -813,6 +816,7 @@ export class ExecutionService
       error: unknown;
       pendingApproval: PendingChildApproval | PendingNodeApproval | undefined;
     },
+    signal?: AbortSignal,
   ): Promise<ExecutionResult> {
     const artifacts = engineResult.artifacts.map((a) => ({
       id: a.id,
@@ -836,6 +840,44 @@ export class ExecutionService
         }),
       });
       await this.appendEvent(executionId, "waiting_approval");
+
+      if (await this.canAutomaticallyApprove(workflowId, pending, finalBinding, executionId, signal)) {
+        if (signal?.aborted === true) return this.markCancelled(executionId, workflowId);
+        await this.approvalManager!.approve(
+          approvalRequest.id,
+          "DesignFlow-managed automatic approval",
+        );
+        await this.executionRepository.update(executionId, {
+          metadata: await this.mergeRecordMetadata(executionId, {
+            automaticApproval: {
+              mode: "designflow",
+              decision: "automatic",
+              approvalId: approvalRequest.id,
+              ...(typeof binding.proposalArtifactId === "string" ? { proposalArtifactId: binding.proposalArtifactId } : {}),
+              ...(typeof binding.proposalVersion === "number" ? { proposalVersion: binding.proposalVersion } : {}),
+              ...(typeof binding.proposalHash === "string" ? { proposalHash: binding.proposalHash } : {}),
+            },
+          }),
+        });
+        await this.eventPublisher.publish({
+          id: crypto.randomUUID(),
+          executionId,
+          type: "execution.approval_auto_approved",
+          timestamp: Date.now(),
+          payload: {
+            workflowId,
+            approvalId: approvalRequest.id,
+            decision: "automatic",
+            reason: "User selected DesignFlow-managed approvals; deterministic gates passed.",
+          },
+        });
+        if (signal !== undefined && signal.aborted) return this.markCancelled(executionId, workflowId);
+        return this.resumeAfterApproval(
+          approvalRequest.id,
+          signal === undefined ? {} : { signal },
+        );
+      }
+
       const pendingResult: ExecutionResult = { executionId, workflowId, status: "pending_approval", artifacts, error: { code: "ERR_APPROVAL_REQUIRED", message: pending.message } };
       return executionResultSchema.parse(pendingResult);
     }
@@ -908,6 +950,32 @@ export class ExecutionService
     };
 
     return executionResultSchema.parse(result);
+  }
+
+  private async canAutomaticallyApprove(
+    workflowId: string,
+    pending: PendingNodeApproval,
+    binding: Record<string, unknown>,
+    executionId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    if (signal?.aborted === true || this.policy === undefined) return false;
+    const record = await this.executionRepository.get(executionId);
+    const parsedAuthorization = approvalAuthorizationSchema.safeParse(
+      record?.metadata?.[APPROVAL_AUTHORIZATION_METADATA_KEY],
+    );
+    if (!parsedAuthorization.success || parsedAuthorization.data.mode !== "designflow") return false;
+    if (parsedAuthorization.data.scope.projectId !== binding.projectId) return false;
+    if (parsedAuthorization.data.scope.destination === undefined) return false;
+    const rule = this.policy.rules.find((candidate) => {
+      if (candidate.type !== "require_approval" || typeof candidate.target === "string" || candidate.target === undefined) return false;
+      return (candidate.target.workflowId === undefined || candidate.target.workflowId === workflowId)
+        && (candidate.target.nodeId === pending.nodeId || candidate.target.capabilityId === pending.capabilityId);
+    });
+    const modes = rule?.metadata?.approvalModes;
+    const allowedByPolicy = Array.isArray(modes) && modes.includes("designflow") && rule?.metadata?.designflowManaged === true;
+    if (!allowedByPolicy) return false;
+    return typeof binding.projectId === "string" && typeof binding.proposalHash === "string";
   }
 
   private async mergeRecordMetadata(

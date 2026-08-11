@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ExecutionProgress } from "@designflow/product";
 import { applyExecutionProgress, applyExecutionReport, applyExecutionUpdate, applySessionResult } from "./execution";
-import { buildSessionView } from "./model";
+import { buildSessionView, setApprovalMode } from "./model";
 
 const progress = (steps: ExecutionProgress["steps"]): ExecutionProgress => ({
   completed: steps.filter((step) => step.status === "done").length,
@@ -39,6 +39,20 @@ describe("live workflow presentation adapter", () => {
 
     expect(next.activity.map((item) => item.actor)).toEqual(["implementation-ai", "designflow"]);
     expect(next.checks).toEqual([{ id: "run-project-validation", label: "Run project validation", status: "running" }]);
+  });
+
+  test("shows managed-mode escalation as review required rather than an automatic approval", () => {
+    const session = setApprovalMode(buildSessionView({ figma: "connected", ai: "connected" }), "designflow");
+    const next = applyExecutionProgress(session, {
+      completed: 0,
+      total: 1,
+      percent: 0,
+      steps: [],
+      approval: "waiting",
+    });
+
+    expect(next.approval.status).toBe("needs-review");
+    expect(next.activity[0]).toMatchObject({ actor: "designflow", title: "Needs your review" });
   });
 
   test("does not mutate the source presentation model", () => {

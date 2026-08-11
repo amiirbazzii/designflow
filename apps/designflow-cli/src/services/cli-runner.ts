@@ -842,7 +842,10 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     events.push(event);
     seen.set(event.executionId, events);
 
-    if (!event.type.startsWith("capability.")) return;
+    const isApprovalProgress = event.type === "execution.waiting_approval"
+      || event.type === "execution.approval_approved"
+      || event.type === "execution.approval_auto_approved";
+    if (!event.type.startsWith("capability.") && !isApprovalProgress) return;
 
     const progress = buildProgress(
       events,

@@ -68,6 +68,56 @@ const createWorkflowPackage = (
   load: () => {},
 });
 
+function createManagedApprovalFixture() {
+  const artifacts = new Map<string, { artifact: { id: string; type: string }; data: unknown }>([
+    ["proposal-payload", {
+      artifact: { id: "proposal-payload", type: "implementation-proposal" },
+      data: {
+        projectId: "project-1",
+        baseProjectFingerprint: "fingerprint-1",
+        files: [],
+        packageChanges: [],
+        commandsRequested: [],
+      },
+    }],
+    ["context-payload", {
+      artifact: { id: "context-payload", type: "project-context" },
+      data: { project: { id: "project-1", rootIdentity: "root-1" } },
+    }],
+  ]);
+  const artifactStore: ArtifactStore = {
+    save: async (_data) => ({ id: `saved-${artifacts.size + 1}`, type: "test", metadata: { payloadId: "unused" } }),
+    get: async (id) => artifacts.get(id) ?? null,
+    exists: async (id) => artifacts.has(id),
+  };
+  let writes = 0;
+  const capability = (id: string, artifactId: string, payloadId: string): Capability<unknown, unknown> => ({
+    id,
+    name: id,
+    description: id,
+    type: "pure",
+    inputSchema: passthroughSchema,
+    outputSchema: passthroughSchema,
+    execute: async () => {
+      if (id === "write-cap") writes += 1;
+      return { artifactRef: { id: artifactId, type: id, version: 1, metadata: { payloadId } } };
+    },
+  });
+  return { artifactStore, capability, getWrites: () => writes };
+}
+
+function managedApprovalRequest(mode: "manual" | "designflow" = "designflow") {
+  return {
+    designflowApproval: {
+      schemaVersion: "1",
+      mode,
+      selectedAt: 1,
+      source: "user",
+      scope: { projectId: "project-1", destination: "/add" },
+    },
+  };
+}
+
 // ── Tests ───────────────────────────────────────────────────────
 
 describe("ExecutionService", () => {
@@ -1443,6 +1493,157 @@ describe("ExecutionService", () => {
       expect(rejectEvents.length).toBe(1);
       expect(rejectEvents[0].payload?.comment).toBe("Rejected by reviewer");
       expect(rejectEvents[0].payload?.resolvedAt).toBeGreaterThan(0);
+    });
+
+    test("DesignFlow-managed mode auto-approves only the exact validated proposal", async () => {
+      const fixture = createManagedApprovalFixture();
+      capabilityRegistry.register(fixture.capability("proposal-cap", "proposal", "proposal-payload"));
+      capabilityRegistry.register(fixture.capability("context-cap", "context", "context-payload"));
+      capabilityRegistry.register(fixture.capability("write-cap", "applied", "applied-payload"));
+
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "proposal-node", capabilityId: "proposal-cap", inputMap: {} },
+        { id: "context-node", capabilityId: "context-cap", inputMap: {} },
+        { id: "write-node", capabilityId: "write-cap", inputMap: {}, execution: { dependsOn: ["proposal-node", "context-node"] } },
+      ];
+      const resolver: WorkflowResolver = (id) => id === "test-wf" ? workflow : undefined;
+      const policy: ExecutionPolicy = {
+        id: "managed-policy",
+        name: "Managed approval policy",
+        rules: [{
+          id: "managed-approval",
+          type: "require_approval",
+          target: { workflowId: "test-wf", nodeId: "write-node", capabilityId: "write-cap" },
+          metadata: {
+            proposalArtifactId: "proposal",
+            projectContextArtifactId: "context",
+            approvalModes: ["manual", "designflow"],
+            designflowManaged: true,
+          },
+        }],
+      };
+      const receivedEvents: ExecutionEvent[] = [];
+      eventPublisher.subscribe((event) => receivedEvents.push(event));
+      const service = new ExecutionService({
+        workflowResolver: resolver,
+        capabilityRegistry,
+        logger,
+        artifactStore: fixture.artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf", metadata: managedApprovalRequest() });
+
+      expect(result.status).toBe("completed");
+      expect(fixture.getWrites()).toBe(1);
+      expect(receivedEvents.some((event) => event.type === "execution.approval_auto_approved")).toBe(true);
+      const record = await executionRepository.get(result.executionId);
+      expect(record?.metadata?.automaticApproval).toMatchObject({ mode: "designflow", decision: "automatic" });
+    });
+
+    test("manual mode remains pending for the same policy and proposal", async () => {
+      const fixture = createManagedApprovalFixture();
+      capabilityRegistry.register(fixture.capability("proposal-cap", "proposal", "proposal-payload"));
+      capabilityRegistry.register(fixture.capability("context-cap", "context", "context-payload"));
+      capabilityRegistry.register(fixture.capability("write-cap", "applied", "applied-payload"));
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "proposal-node", capabilityId: "proposal-cap", inputMap: {} },
+        { id: "context-node", capabilityId: "context-cap", inputMap: {} },
+        { id: "write-node", capabilityId: "write-cap", inputMap: {}, execution: { dependsOn: ["proposal-node", "context-node"] } },
+      ];
+      const policy: ExecutionPolicy = {
+        id: "managed-policy",
+        name: "Managed approval policy",
+        rules: [{
+          id: "managed-approval",
+          type: "require_approval",
+          target: { workflowId: "test-wf", nodeId: "write-node", capabilityId: "write-cap" },
+          metadata: {
+            proposalArtifactId: "proposal",
+            projectContextArtifactId: "context",
+            approvalModes: ["manual", "designflow"],
+            designflowManaged: true,
+          },
+        }],
+      };
+      const service = new ExecutionService({
+        workflowResolver: (id) => id === "test-wf" ? workflow : undefined,
+        capabilityRegistry,
+        logger,
+        artifactStore: fixture.artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf", metadata: managedApprovalRequest("manual") });
+
+      expect(result.status).toBe("pending_approval");
+      expect(fixture.getWrites()).toBe(0);
+    });
+
+    test("cancellation observed before automatic continuation prevents apply", async () => {
+      const fixture = createManagedApprovalFixture();
+      capabilityRegistry.register(fixture.capability("proposal-cap", "proposal", "proposal-payload"));
+      capabilityRegistry.register(fixture.capability("context-cap", "context", "context-payload"));
+      capabilityRegistry.register(fixture.capability("write-cap", "applied", "applied-payload"));
+      const workflow = createWorkflowPackage("test-wf");
+      workflow.definition.nodes = [
+        { id: "proposal-node", capabilityId: "proposal-cap", inputMap: {} },
+        { id: "context-node", capabilityId: "context-cap", inputMap: {} },
+        { id: "write-node", capabilityId: "write-cap", inputMap: {}, execution: { dependsOn: ["proposal-node", "context-node"] } },
+      ];
+      const policy: ExecutionPolicy = {
+        id: "managed-policy",
+        name: "Managed approval policy",
+        rules: [{
+          id: "managed-approval",
+          type: "require_approval",
+          target: { workflowId: "test-wf", nodeId: "write-node", capabilityId: "write-cap" },
+          metadata: {
+            proposalArtifactId: "proposal",
+            projectContextArtifactId: "context",
+            approvalModes: ["manual", "designflow"],
+            designflowManaged: true,
+          },
+        }],
+      };
+      const controller = new AbortController();
+      const baseApprovalManager = approvalManager;
+      const cancellingApprovalManager = {
+        createRequest: baseApprovalManager.createRequest.bind(baseApprovalManager),
+        get: baseApprovalManager.get.bind(baseApprovalManager),
+        reject: baseApprovalManager.reject.bind(baseApprovalManager),
+        approve: async (approvalId: string, comment?: string) => {
+          const approved = await baseApprovalManager.approve(approvalId, comment);
+          controller.abort();
+          return approved;
+        },
+      };
+      const service = new ExecutionService({
+        workflowResolver: (id) => id === "test-wf" ? workflow : undefined,
+        capabilityRegistry,
+        logger,
+        artifactStore: fixture.artifactStore,
+        executionRepository,
+        eventPublisher,
+        policyEvaluator,
+        policy,
+        approvalManager: cancellingApprovalManager,
+      });
+
+      const result = await service.execute({ workflowId: "test-wf", metadata: managedApprovalRequest() }, { signal: controller.signal });
+
+      expect(result.status).toBe("cancelled");
+      expect(fixture.getWrites()).toBe(0);
     });
   });
 });

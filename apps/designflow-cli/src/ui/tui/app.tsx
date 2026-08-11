@@ -5,6 +5,7 @@ import type { InteractiveDesign } from "../../services/figma-selection";
 import {
   setDesignSelection,
   setDestinationSelection,
+  setApprovalMode,
   setExecutionStatus,
   type DesignFlowSessionView as SessionView,
 } from "./model";
@@ -14,6 +15,7 @@ import {
   deleteUrlText,
   enterDesignSelection,
   enterDestinationSelection,
+  enterApprovalMode,
   enterUrlEntry,
   initialNavigationState,
   keepSelectionVisible,
@@ -25,6 +27,7 @@ import {
   setOutputScrollOffset,
   toggleOutputDetails,
   setDestinationCandidates,
+  setApprovalOption,
   setUrlError,
   updateUrlText,
   type TuiNavigationState,
@@ -41,7 +44,7 @@ import {
 import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtifactReader } from "./artifact-viewer";
 
 export type TuiAction =
-  | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate }
+  | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
   | { readonly type: "quit" };
 
 export interface TuiSelectionHandlers {
@@ -217,6 +220,13 @@ export function App({
         return;
       }
       setSession((current) => setDestinationSelection(current, destination));
+      setNavigation((current) => enterApprovalMode({ ...current, error: undefined }));
+      return;
+    }
+
+    if (navigation.view === "approval-mode") {
+      const mode = navigation.approvalOption === 1 ? "designflow" : "manual";
+      setSession((current) => setApprovalMode(current, mode));
       setNavigation((current) => ({ ...current, view: "ready-to-run", error: undefined }));
       return;
     }
@@ -225,7 +235,7 @@ export function App({
       const destination = navigation.destinationCandidates[navigation.destinationIndex];
       if (destination === undefined || handoffStarted.current) return;
       handoffStarted.current = true;
-      const action = { type: "start" as const, ...(projectId === undefined ? {} : { projectId }), design: navigation.design, destination };
+      const action = { type: "start" as const, ...(projectId === undefined ? {} : { projectId }), design: navigation.design, destination, approvalMode: navigation.approvalMode };
       onAction(action);
       setExecutionStarted(true);
       setSession((current) => setExecutionStatus(current, "active", { actor: "designflow", title: "Starting Design Engineer", state: "running" }));
@@ -432,6 +442,11 @@ export function App({
           destinationScrollOffset: keepSelectionVisible(index, current.destinationScrollOffset, visibleCount),
         };
       });
+      return;
+    }
+
+    if (navigation.view === "approval-mode" && interaction.focusArea === "main" && (action === "up" || action === "down")) {
+      setNavigation((current) => setApprovalOption(current, moveListSelection(current.approvalOption, 2, action === "up" ? -1 : 1)));
       return;
     }
 

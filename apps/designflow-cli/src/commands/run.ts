@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
 import type { DestinationCandidate } from "../services/destinations";
-import type { SessionResult, WorkerInputField } from "@designflow/sdk";
+import type { ApprovalMode, SessionResult, WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";
 import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
 import { CLI_VERSION } from "../version";
@@ -55,6 +55,8 @@ export async function runCommand(
     readonly destination?: DestinationCandidate;
     /** A shell-selected Figma source; explicit commands keep their prompts. */
     readonly design?: InteractiveDesign;
+    /** Per-run approval authorization selected by the product TUI. */
+    readonly approvalMode?: ApprovalMode;
     readonly noCache?: boolean;
     readonly visualCorrection?: "off" | "once";
     readonly onProgress?: (progress: Parameters<Parameters<CliContext["onProgress"]>[0]>[0]) => void;
@@ -142,7 +144,7 @@ export async function runCommand(
   terminal.print();
 
   const input = productShellImplementation
-    ? buildInteractiveImplementationInput(options.design!, options.destination!)
+    ? buildInteractiveImplementationInput(options.design!, options.destination!, options.approvalMode ?? "manual")
     : await collectInput(terminal, resolved, options?.design);
 
   if (isDesignEngineer && figmaAvailable) {
@@ -288,12 +290,15 @@ export async function collectInput(
 export function buildInteractiveImplementationInput(
   design: InteractiveDesign,
   destination: DestinationCandidate,
+  approvalMode: ApprovalMode = "manual",
 ): Record<string, unknown> {
   return {
     request: `Implement the selected design at ${destination.label} in the detected project. Prepare reviewed implementation changes. Do not modify the project without exact proposal approval.`,
     designFile: design.designFile,
     frames: [...design.frames],
     destination: { ...destination },
+    approvalMode,
+    approvalSelectedAt: Date.now(),
   };
 }
 

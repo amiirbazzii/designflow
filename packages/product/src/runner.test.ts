@@ -504,6 +504,16 @@ describe("progress model", () => {
     });
   });
 
+  test("preserves automatic approval after the generic continuation event", () => {
+    const progress = buildProgress([
+      event("execution.waiting_approval", 0, { approvalId: "approval-1" }),
+      event("execution.approval_auto_approved", 1, { approvalId: "approval-1", decision: "automatic" }),
+      event("execution.approval_approved", 2, { approvalId: "approval-1" }),
+    ]);
+
+    expect(progress.approval).toBe("automatic");
+  });
+
   test("humanizes capability ids", () => {
     expect(humanizeCapabilityId("cap-extract-design-tokens")).toBe(
       "Extract design tokens",
