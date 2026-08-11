@@ -3,6 +3,7 @@
 import { createInterface } from "node:readline";
 import { dispatch } from "./cli";
 import { runSelectedDesignEngineer } from "./commands/interactive";
+import { offerVisualCorrection } from "./commands/session-flow";
 import {
   createCliContext,
   type CliContext,
@@ -194,6 +195,8 @@ async function main(): Promise<number> {
         let commandCode: number;
         if (useTui) {
           let tuiCommandCode = 0;
+          let tuiExecutionId: string | undefined;
+          let tuiOriginalInput: unknown;
           await runTuiShell(
             context,
             {
@@ -234,9 +237,12 @@ async function main(): Promise<number> {
                     },
                     onSessionResult: (result) => {
                       executionId = result.session.executionId;
+                      tuiExecutionId = executionId;
+                      tuiOriginalInput = result.session.originalInput;
                       bridge.result(result);
                       refreshArtifactReport();
                     },
+                    onReview: (request) => bridge.review(request),
                   },
                 );
               } catch (error) {
@@ -247,6 +253,30 @@ async function main(): Promise<number> {
                 else if (executionId !== undefined) bridge.report(await context!.runner.explain(executionId));
               }
               return tuiCommandCode;
+            },
+            async (bridge) => {
+              if (tuiExecutionId === undefined || tuiOriginalInput === undefined) return 1;
+              const tuiTerminal: Terminal = {
+                print: () => undefined,
+                ask: (question, options) => bridge.ask(question, options),
+              };
+              const code = await offerVisualCorrection(
+                context!,
+                tuiTerminal,
+                tuiExecutionId,
+                tuiOriginalInput,
+                {
+                  interactive: true,
+                  productAuthorized: true,
+                  onReview: (request) => bridge.review({
+                    ...request,
+                    workflowId: "feedback-loop",
+                    reason: "DesignFlow requires review of the bounded correction proposal.",
+                  }),
+                },
+              );
+              bridge.report(await context!.runner.explain(tuiExecutionId));
+              return code;
             },
           );
           commandCode = tuiCommandCode;

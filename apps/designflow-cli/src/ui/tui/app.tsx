@@ -30,7 +30,14 @@ import {
   setApprovalOption,
   setUrlError,
   updateUrlText,
+  openProposalReview,
+  openDiffView,
+  closeDiffView,
+  setDiffScrollOffset,
+  moveReviewAction,
+  moveReviewFile,
   type TuiNavigationState,
+  type TuiReviewRequest,
 } from "./navigation";
 import { isCompactTerminal, mapTuiKey, reduceTuiInteraction, type TuiInteractionState } from "./keys";
 import { Shell } from "./components";
@@ -61,6 +68,7 @@ export interface TuiAppProps {
   readonly onAction: (action: TuiAction) => void;
   readonly onStart: (action: Extract<TuiAction, { readonly type: "start" }>, bridge: TuiExecutionBridge) => Promise<number>;
   readonly onInterrupt: () => void;
+  readonly onImprove?: (bridge: TuiExecutionBridge) => Promise<number>;
 }
 
 export function App({
@@ -71,6 +79,7 @@ export function App({
   onAction,
   onStart,
   onInterrupt,
+  onImprove,
 }: TuiAppProps): React.JSX.Element {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -89,6 +98,7 @@ export function App({
   const [prompt, setPrompt] = useState<{ readonly question: string; readonly options?: readonly string[]; readonly value: string }>();
   const promptResolver = useRef<((value: string) => void) | undefined>();
   const promptRejecter = useRef<(() => void) | undefined>();
+  const reviewResolver = useRef<((value: "approve" | "reject") => void) | undefined>();
   const executionBridge = useRef<TuiExecutionBridge | undefined>();
   const cancellationRequested = useRef(false);
   const destinationRequest = useRef(0);
@@ -163,6 +173,28 @@ export function App({
   };
 
   const activate = (): void => {
+    if (navigation.view === "visual-result") {
+      const visual = session.outputs.find((output) => output.kind === "visual-validation");
+      if (visual?.status === "available") setNavigation((current) => openOutput(current, visual.id));
+      else if (onImprove !== undefined) void onImprove(executionBridge.current!).catch(() => undefined);
+      return;
+    }
+    if (navigation.view === "proposal-review" || navigation.view === "correction-review") {
+      if (navigation.reviewActionIndex === 0) {
+        setNavigation((current) => openDiffView(current));
+      } else if (navigation.reviewActionIndex === 1) {
+        reviewResolver.current?.("approve");
+        reviewResolver.current = undefined;
+        setNavigation((current) => ({ ...current, view: "applying" }));
+        setSession((current) => ({ ...current, activity: [{ actor: "designflow", title: "Applying changes…", state: "running" }] }));
+      } else {
+        reviewResolver.current?.("reject");
+        reviewResolver.current = undefined;
+        setNavigation((current) => ({ ...current, view: "final-result" }));
+        setSession((current) => ({ ...current, finalResult: { status: "failure", summary: "Proposal rejected. No project files were changed." } }));
+      }
+      return;
+    }
     if (navigation.view === "start") {
       if (session.project.status !== "ready") return;
       setNavigation((current) => enterDesignSelection(current));
@@ -244,8 +276,22 @@ export function App({
         update: (nextSession) => setSession(nextSession),
         progress: (progress) => setSession((current) => applyExecutionProgress(current, progress)),
         result: (result) => setSession((current) => applySessionResult(current, result)),
-        report: (report) => setSession((current) => applyExecutionReport(current, report)),
+        report: (report) => {
+          setSession((current) => applyExecutionReport(current, report));
+          const root = typeof report === "object" && report !== null ? report as { overview?: { state?: unknown }; artifacts?: unknown[] } : undefined;
+          const artifacts = root?.artifacts ?? [];
+          const hasVisualResult = artifacts.some((artifact) => typeof artifact === "object" && artifact !== null && ((artifact as { artifactId?: unknown }).artifactId === "stage-5-summary" || (artifact as { artifactId?: unknown }).artifactId === "visual-validation-report"));
+          if (root?.overview?.state === "ready") {
+            setNavigation((current) => ({ ...current, view: hasVisualResult ? "visual-result" : "final-result" }));
+            if (hasVisualResult) {
+              const visualIndex = session.outputs.findIndex((output) => output.kind === "visual-validation");
+              if (visualIndex >= 0) setInteraction((current) => ({ ...current, selectedOutput: visualIndex }));
+            }
+          }
+        },
         cancelled: () => {
+          reviewResolver.current?.("reject");
+          reviewResolver.current = undefined;
           promptRejecter.current?.();
           promptRejecter.current = undefined;
           promptResolver.current = undefined;
@@ -257,10 +303,17 @@ export function App({
           promptRejecter.current = reject;
           setPrompt({ question, ...(options === undefined ? {} : { options }), value: "" });
         }),
+        review: (request: TuiReviewRequest) => new Promise((resolve) => {
+          reviewResolver.current = resolve;
+          setNavigation((current) => openProposalReview(current, request));
+        }),
       };
       executionBridge.current = bridge;
       void onStart(action, bridge)
-        .then(() => setExecutionFinished(true))
+        .then(() => {
+          setExecutionFinished(true);
+          setNavigation((current) => current.view === "execution" ? { ...current, view: "final-result" } : current);
+        })
         .catch((error: unknown) => {
           if (cancellationRequested.current) {
             setExecutionFinished(true);
@@ -274,6 +327,7 @@ export function App({
             finalResult: { status: "failure", summary: "The workflow did not complete." },
           }));
           setExecutionFinished(true);
+          setNavigation((current) => ({ ...current, view: "final-result" }));
         });
     }
   };
@@ -367,6 +421,26 @@ export function App({
       return;
     }
 
+    if (navigation.view === "diff-view") {
+      const review = navigation.review?.review;
+      const file = review?.files[navigation.reviewFileIndex];
+      const maximum = Math.max(0, (file?.diff.length ?? 0) - viewerVisibleLines);
+      const home = input === "\u001b[H" || input === "\u001bOH";
+      const end = input === "\u001b[F" || input === "\u001bOF";
+      const diffAction = mapTuiKey(input, key);
+      if (diffAction === "back") setNavigation((current) => closeDiffView(current));
+      else if (key.upArrow || input === "k") setNavigation((current) => setDiffScrollOffset(current, current.diffScrollOffset - 1, maximum));
+      else if (key.downArrow || input === "j") setNavigation((current) => setDiffScrollOffset(current, current.diffScrollOffset + 1, maximum));
+      else if (key.pageUp) setNavigation((current) => setDiffScrollOffset(current, current.diffScrollOffset - viewerVisibleLines, maximum));
+      else if (key.pageDown) setNavigation((current) => setDiffScrollOffset(current, current.diffScrollOffset + viewerVisibleLines, maximum));
+      else if (home) setNavigation((current) => setDiffScrollOffset(current, 0, maximum));
+      else if (end) setNavigation((current) => setDiffScrollOffset(current, maximum, maximum));
+      else if (input === "[") setNavigation((current) => moveReviewFile(current, -1));
+      else if (input === "]") setNavigation((current) => moveReviewFile(current, 1));
+      else if (diffAction === "help") setNavigation((current) => openHelp(current));
+      return;
+    }
+
     if (navigation.view === "figma-url-entry") {
       if (key.escape) {
         setNavigation((current) => navigateBack(current));
@@ -375,6 +449,22 @@ export function App({
       } else {
         handleUrlInput(input, key);
       }
+      return;
+    }
+
+    if (navigation.view === "visual-result" && input.toLowerCase() === "i" && onImprove !== undefined && executionBridge.current !== undefined) {
+      setExecutionFinished(false);
+      setNavigation((current) => ({ ...current, view: "execution" }));
+      void onImprove(executionBridge.current)
+        .then(() => {
+          setExecutionFinished(true);
+          setNavigation((current) => ({ ...current, view: "visual-result" }));
+        })
+        .catch((error: unknown) => {
+          setExecutionFinished(true);
+          setSession((current) => ({ ...current, diagnostics: [error instanceof Error ? error.message : "Improvement could not start."], finalResult: { status: "failure", summary: "Improvement could not start." } }));
+          setNavigation((current) => ({ ...current, view: "final-result" }));
+        });
       return;
     }
 
@@ -420,6 +510,11 @@ export function App({
         ...current,
         designOption: moveListSelection(current.designOption, 2, action === "up" ? -1 : 1),
       }));
+      return;
+    }
+
+    if ((navigation.view === "proposal-review" || navigation.view === "correction-review") && interaction.focusArea === "main" && (action === "up" || action === "down")) {
+      setNavigation((current) => moveReviewAction(current, action === "up" ? -1 : 1));
       return;
     }
 

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
-import { buildProposalReview } from "../services/proposal-review";
+import { buildProposalReview, type ProposalReview, type ReviewCheck } from "../services/proposal-review";
 import {
   FEEDBACK_LOOP_WORKFLOW_ID,
   inspectRegisteredProject,
@@ -645,6 +645,14 @@ async function runCorrectionIteration(
       approvalId: string,
     ) => Promise<void>;
     onApproved?: (executionId: string) => Promise<void>;
+    onReview?: (request: {
+      readonly executionId: string;
+      readonly approvalId: string;
+      readonly iteration: number;
+      readonly maximumIterations: number;
+      readonly review: ProposalReview;
+      readonly checks: readonly ReviewCheck[];
+    }) => Promise<"approve" | "reject">;
   },
 ): Promise<{
   executionId: string;
@@ -683,13 +691,13 @@ async function runCorrectionIteration(
       changes === undefined
         ? undefined
         : (await context.artifactInspection.getPayload(changes)).payload;
+    const review = buildProposalReview(correctionEntries(changesPayload, input.project.rootPath));
     terminal.print();
     terminal.print("Ready to improve");
     terminal.print("──────────────────────────────────────────────");
     {
       // Deterministic counts from the same exact entries the bounded diff
       // and the approval bind to — never model-supplied numbers.
-      const review = buildProposalReview(correctionEntries(changesPayload, input.project.rootPath));
       if (review.totals.fileCount > 0) {
         terminal.print(`${review.totals.fileCount} file${review.totals.fileCount === 1 ? "" : "s"} changed`);
         terminal.print(`+${review.totals.additions}  -${review.totals.deletions}`);
@@ -726,11 +734,17 @@ async function runCorrectionIteration(
     terminal.print();
     terminal.print("No files have been changed yet.");
     terminal.print();
-    const answer = await terminal.ask(
-      "Approve these exact correction changes?",
-      ["approve", "reject"],
-    );
-    if (!answer.trim().toLowerCase().startsWith("a")) {
+    const decision = hooks?.onReview === undefined
+      ? ((await terminal.ask("Approve these exact correction changes?", ["approve", "reject"])).trim().toLowerCase().startsWith("a") ? "approve" : "reject")
+      : await hooks.onReview({
+          executionId,
+          approvalId: pending.approvalId,
+          iteration,
+          maximumIterations: limit,
+          review,
+          checks: [],
+        });
+    if (decision === "reject") {
       await context.runner.reject(executionId, "rejected from the Stage 6 CLI");
       terminal.print("Feedback loop stopped.");
       terminal.print("Status: rejected");
@@ -953,6 +967,7 @@ export async function runParentLoop(
   context: CliContext,
   terminal: Terminal,
   initialParent: FeedbackLoopParentRecordV1,
+  hooks?: Parameters<typeof runCorrectionIteration>[5],
 ): Promise<number> {
   let parent = initialParent;
   let current = parseFeedbackLoopInput(parent.input);
@@ -1176,6 +1191,7 @@ export async function runParentLoop(
               : [...parent.childExecutionIds, executionId],
           });
         },
+        ...(hooks?.onReview === undefined ? {} : { onReview: hooks.onReview }),
       },
     );
     if (!parent.childExecutionIds.includes(result.executionId)) {

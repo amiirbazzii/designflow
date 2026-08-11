@@ -48,6 +48,7 @@ import {
   buildProposalReview,
   renderReadyToApply,
   renderReviewFileList,
+  type ProposalReview,
   type ReviewCheck,
 } from "../services/proposal-review";
 
@@ -149,6 +150,7 @@ export async function finishSession(
     readonly interactive?: boolean;
     readonly offerArtifactView?: boolean;
     readonly productExperience?: boolean;
+    readonly onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">;
     readonly visualCorrection?: "off" | "once";
   } = {},
 ): Promise<number> {
@@ -175,6 +177,7 @@ export async function finishSession(
     executionId,
     result.session.originalInput,
     options.productExperience === true,
+    options.onReview,
   );
 
   if (approved === false) {
@@ -216,12 +219,13 @@ async function resolveApproval(
   executionId: string,
   originalInput?: unknown,
   productExperience = false,
+  onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">,
 ): Promise<boolean | undefined> {
   const pending = await context.runner.pendingApproval(executionId);
   if (pending === null) return undefined;
 
   if (productExperience && pending.workflowId === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) {
-    const reviewed = await resolveProductImplementationReview(context, terminal, executionId, originalInput);
+    const reviewed = await resolveProductImplementationReview(context, terminal, executionId, originalInput, onReview, pending.reason);
     if (reviewed !== undefined) return reviewed;
     // No proposal artifact to review — fall through to the legacy prompt.
   }
@@ -252,6 +256,48 @@ async function resolveApproval(
   terminal.print(outcome.message);
 
   return approved;
+}
+
+export interface ProductReviewRequest {
+  readonly executionId: string;
+  readonly workflowId: string;
+  readonly reason: string;
+  readonly review: ProposalReview;
+  readonly checks: readonly ReviewCheck[];
+}
+
+/**
+ * Builds the product review from the exact stored proposal and the registered
+ * project contents. This is shared by the legacy terminal renderer and the
+ * TUI so neither presentation can create a second proposal representation.
+ */
+export async function buildProductReview(
+  context: CliContext,
+  executionId: string,
+  originalInput?: unknown,
+): Promise<{ readonly review: ProposalReview; readonly checks: readonly ReviewCheck[] } | undefined> {
+  const report = await context.runner.explain(executionId);
+  const proposal = report.artifacts.find((artifact) => artifact.artifactId === "proposed-file-changes");
+  if (proposal === undefined) return undefined;
+
+  const detail = await context.artifactInspection.getPayload(proposal);
+  const payload = detail.payload as { files?: Array<{ path: string; action: string; content?: string }> };
+  const files = Array.isArray(payload.files) ? payload.files : [];
+  if (files.length === 0) return undefined;
+
+  const rootPath = readImplementationInput(originalInput)?.project.rootPath;
+  const entries: ProposalPreviewEntry[] = files.map((file) => {
+    const currentContent = rootPath === undefined || file.action === "create"
+      ? undefined
+      : ((): string | undefined => { try { return readFileSync(join(rootPath, file.path), "utf8"); } catch { return undefined; } })();
+    return {
+      path: file.path,
+      action: file.action as ProposalPreviewEntry["action"],
+      ...(file.content !== undefined ? { proposedContent: file.content } : {}),
+      ...(currentContent !== undefined ? { currentContent } : {}),
+    };
+  });
+  return { review: buildProposalReview(entries), checks: await buildReviewChecks(context, report) };
 }
 
 async function report(
@@ -689,7 +735,7 @@ async function prepareCorrectionReadonly(
   });
 }
 
-async function offerVisualCorrection(
+export async function offerVisualCorrection(
   context: CliContext,
   terminal: Terminal,
   executionId: string,
@@ -704,6 +750,14 @@ async function offerVisualCorrection(
      * correction approval still happens inside the correction path.
      */
     readonly productAuthorized?: boolean;
+    readonly onReview?: (request: {
+      readonly executionId: string;
+      readonly approvalId: string;
+      readonly iteration: number;
+      readonly maximumIterations: number;
+      readonly review: ProposalReview;
+      readonly checks: readonly ReviewCheck[];
+    }) => Promise<"approve" | "reject">;
   },
 ): Promise<number> {
   const implementation = readImplementationInput(originalInput);
@@ -774,7 +828,7 @@ async function offerVisualCorrection(
   if (preparation.input === undefined) return 0;
   const correctionParent =
     parent ?? (await createOrLoadParent(context, preparation.input));
-  return runParentLoop(context, terminal, correctionParent);
+  return runParentLoop(context, terminal, correctionParent, options.onReview === undefined ? undefined : { onReview: options.onReview });
 }
 
 interface CoverageDisplay {
@@ -888,31 +942,22 @@ async function resolveProductImplementationReview(
   terminal: Terminal,
   executionId: string,
   originalInput?: unknown,
+  onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">,
+  reason = "DesignFlow requires review of the validated proposal.",
 ): Promise<boolean | undefined> {
-  const report = await context.runner.explain(executionId);
-  const proposal = report.artifacts.find((artifact) => artifact.artifactId === "proposed-file-changes");
-  if (proposal === undefined) return undefined;
+  const prepared = await buildProductReview(context, executionId, originalInput);
+  if (prepared === undefined) return undefined;
+  const { review, checks } = prepared;
 
-  const detail = await context.artifactInspection.getPayload(proposal);
-  const payload = detail.payload as { files?: Array<{ path: string; action: string; content?: string }> };
-  const files = Array.isArray(payload.files) ? payload.files : [];
-  if (files.length === 0) return undefined;
-
-  const rootPath = readImplementationInput(originalInput)?.project.rootPath;
-  const entries: ProposalPreviewEntry[] = files.map((file) => {
-    const currentContent = rootPath === undefined || file.action === "create"
-      ? undefined
-      : ((): string | undefined => { try { return readFileSync(join(rootPath, file.path), "utf8"); } catch { return undefined; } })();
-    return {
-      path: file.path,
-      action: file.action as ProposalPreviewEntry["action"],
-      ...(file.content !== undefined ? { proposedContent: file.content } : {}),
-      ...(currentContent !== undefined ? { currentContent } : {}),
-    };
-  });
-
-  const review = buildProposalReview(entries);
-  const checks = await buildReviewChecks(context, report);
+  if (onReview !== undefined) {
+    const decision = await onReview({ executionId, workflowId: EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, reason, review, checks });
+    if (decision === "approve") {
+      await context.runner.approve(executionId, "approved from the DesignFlow TUI");
+      return true;
+    }
+    await context.runner.reject(executionId, "rejected from the DesignFlow TUI");
+    return false;
+  }
 
   for (;;) {
     for (const line of renderReadyToApply(review, checks)) terminal.print(line);

@@ -1,6 +1,15 @@
 import type { DestinationCandidate } from "../../services/destinations";
 import type { InteractiveDesign } from "../../services/figma-selection";
 import type { ApprovalMode } from "./model";
+import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
+
+export interface TuiReviewRequest {
+  readonly executionId: string;
+  readonly workflowId: string;
+  readonly reason: string;
+  readonly review: ProposalReview;
+  readonly checks: readonly ReviewCheck[];
+}
 
 export type TuiView =
   | "start"
@@ -10,6 +19,13 @@ export type TuiView =
   | "approval-mode"
   | "ready-to-run"
   | "execution"
+  | "proposal-review"
+  | "diff-view"
+  | "applying"
+  | "validation-result"
+  | "visual-result"
+  | "correction-review"
+  | "final-result"
   | "output-viewer"
   | "help";
 
@@ -20,6 +36,11 @@ export interface TuiNavigationState {
   readonly outputId?: string;
   readonly outputScrollOffset: number;
   readonly outputDetails: boolean;
+  readonly review?: TuiReviewRequest;
+  readonly reviewActionIndex: number;
+  readonly reviewFileIndex: number;
+  readonly diffScrollOffset: number;
+  readonly diffReturnView: Exclude<TuiView, "help" | "diff-view" | "output-viewer">;
   readonly approvalOption: number;
   readonly approvalMode: ApprovalMode;
   readonly designOption: number;
@@ -41,6 +62,10 @@ export function initialNavigationState(): TuiNavigationState {
     outputReturnView: "execution",
     outputScrollOffset: 0,
     outputDetails: false,
+    reviewActionIndex: 0,
+    reviewFileIndex: 0,
+    diffScrollOffset: 0,
+    diffReturnView: "proposal-review",
     approvalOption: 0,
     approvalMode: "manual",
     designOption: 0,
@@ -198,6 +223,49 @@ export function openHelp(state: TuiNavigationState): TuiNavigationState {
   return { ...state, view: "help", helpReturnView: state.view };
 }
 
+export function openProposalReview(
+  state: TuiNavigationState,
+  review: TuiReviewRequest,
+): TuiNavigationState {
+  return {
+    ...state,
+    view: "proposal-review",
+    review,
+    reviewActionIndex: 0,
+    reviewFileIndex: 0,
+    diffScrollOffset: 0,
+    error: undefined,
+  };
+}
+
+export function openDiffView(state: TuiNavigationState): TuiNavigationState {
+  if (state.review === undefined) return state;
+  return { ...state, view: "diff-view", diffReturnView: "proposal-review", diffScrollOffset: 0 };
+}
+
+export function closeDiffView(state: TuiNavigationState): TuiNavigationState {
+  return state.view === "diff-view"
+    ? { ...state, view: state.diffReturnView, diffScrollOffset: 0 }
+    : state;
+}
+
+export function setDiffScrollOffset(
+  state: TuiNavigationState,
+  offset: number,
+  maximum: number,
+): TuiNavigationState {
+  return { ...state, diffScrollOffset: Math.min(Math.max(0, offset), Math.max(0, maximum)) };
+}
+
+export function moveReviewAction(state: TuiNavigationState, delta: -1 | 1): TuiNavigationState {
+  return { ...state, reviewActionIndex: moveListSelection(state.reviewActionIndex, 3, delta) };
+}
+
+export function moveReviewFile(state: TuiNavigationState, delta: -1 | 1): TuiNavigationState {
+  const count = state.review?.review.files.length ?? 0;
+  return { ...state, reviewFileIndex: moveListSelection(state.reviewFileIndex, count, delta), diffScrollOffset: 0 };
+}
+
 export function openOutput(
   state: TuiNavigationState,
   outputId: string,
@@ -248,6 +316,12 @@ export function closeHelp(state: TuiNavigationState): TuiNavigationState {
 export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   if (state.view === "help") return closeHelp(state);
   if (state.view === "output-viewer") return closeOutput(state);
+  if (state.view === "diff-view") return closeDiffView(state);
+  if (state.view === "proposal-review" || state.view === "correction-review") {
+    const { review: _review, ...withoutReview } = state;
+    return { ...withoutReview, view: "execution" };
+  }
+  if (state.view === "final-result" || state.view === "visual-result" || state.view === "validation-result") return { ...state, view: "execution" };
   if (state.view === "ready-to-run") return { ...state, view: "approval-mode", error: undefined };
   if (state.view === "approval-mode") return { ...state, view: "destination-selection", error: undefined };
   if (state.view === "destination-selection") return enterDesignSelection(state);

@@ -28,6 +28,7 @@ import {
 import type { ExecutionProgress } from "@designflow/product";
 import type { ApprovalMode, ProjectIdentity, SessionResult } from "@designflow/sdk";
 import { runCommand } from "./run";
+import type { ProductReviewRequest } from "./session-flow";
 import { AuthSessionError } from "../services/auth-session";
 
 export function interactiveRunOptions(
@@ -94,6 +95,7 @@ export async function runSelectedDesignEngineer(
   hooks: {
     readonly onProgress?: (progress: ExecutionProgress) => void;
     readonly onSessionResult?: (result: SessionResult) => void;
+    readonly onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">;
   } = {},
 ): Promise<number> {
   const workerId = designEngineerWorkerId(context);
@@ -114,6 +116,7 @@ export async function runSelectedDesignEngineer(
       ...interactiveRunOptionsForProjectId(projectId, destination, design, approvalMode),
       ...(hooks.onProgress === undefined ? {} : { onProgress: hooks.onProgress }),
       ...(hooks.onSessionResult === undefined ? {} : { onSessionResult: hooks.onSessionResult }),
+      ...(hooks.onReview === undefined ? {} : { onReview: hooks.onReview }),
     },
   );
 }

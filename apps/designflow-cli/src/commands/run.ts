@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
 import type { DestinationCandidate } from "../services/destinations";
 import type { ApprovalMode, SessionResult, WorkerInputField } from "@designflow/sdk";
-import { clarify, finishSession, watchProgress } from "./session-flow";
+import { clarify, finishSession, watchProgress, type ProductReviewRequest } from "./session-flow";
 import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
 import { CLI_VERSION } from "../version";
 import type { InteractiveDesign } from "../services/figma-selection";
@@ -61,6 +61,7 @@ export async function runCommand(
     readonly visualCorrection?: "off" | "once";
     readonly onProgress?: (progress: Parameters<Parameters<CliContext["onProgress"]>[0]>[0]) => void;
     readonly onSessionResult?: (result: SessionResult) => void;
+    readonly onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">;
   },
 ): Promise<number> {
   await context.refreshAiSession();
@@ -232,6 +233,7 @@ export async function runCommand(
     ...(options?.visualCorrection !== undefined
       ? { visualCorrection: options.visualCorrection }
       : {}),
+    ...(options?.onReview === undefined ? {} : { onReview: options.onReview }),
   });
 }
 

@@ -15,6 +15,7 @@ export type TuiStartHandler = (
   action: Extract<TuiAction, { readonly type: "start" }>,
   bridge: TuiExecutionBridge,
 ) => Promise<number>;
+export type TuiImproveHandler = (bridge: TuiExecutionBridge) => Promise<number>;
 
 const ALT_SCREEN_ENTER = "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l";
 const ALT_SCREEN_EXIT = "\u001b[?25h\u001b[?1049l";
@@ -28,6 +29,7 @@ export async function runTuiShell(
   },
   onInterrupt: () => void,
   onStart: TuiStartHandler,
+  onImprove?: TuiImproveHandler,
 ): Promise<TuiAction> {
   const runtime = await buildSessionRuntimeFromContext(context);
   const handlers: TuiSelectionHandlers = {
@@ -57,6 +59,7 @@ export async function runTuiShell(
             );
       },
     },
+    onImprove,
   );
 }
 
@@ -72,6 +75,7 @@ export async function runTuiShellWithView(
   projectId?: string,
   onStart?: TuiStartHandler,
   artifactReader?: TuiArtifactReader,
+  onImprove?: TuiImproveHandler,
 ): Promise<TuiAction> {
   (streams.writeControl ?? ((value: string) => safeWrite(streams.output, value)))(ALT_SCREEN_ENTER);
 
@@ -92,6 +96,7 @@ export async function runTuiShellWithView(
       },
       onStart: onStart ?? (async () => 0),
       onInterrupt,
+      ...(onImprove === undefined ? {} : { onImprove }),
     }),
     {
       stdin: streams.input,

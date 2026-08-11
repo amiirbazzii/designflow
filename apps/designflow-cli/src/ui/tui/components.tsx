@@ -7,6 +7,7 @@ import { ExecutionView } from "./execution-view";
 import { CompactView } from "./compact-view";
 import { visibleUrlWindow } from "./url-window";
 import { OutputViewer } from "./output-viewer";
+import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view";
 import type { ArtifactViewerDocument } from "./artifact-viewer";
 export { visibleUrlWindow } from "./url-window";
 
@@ -226,6 +227,18 @@ export function MainPanel({
         <ReadyToRunView session={session} />
       ) : navigation.view === "execution" ? (
         <ExecutionView session={session} prompt={executionPrompt} />
+      ) : navigation.view === "proposal-review" || navigation.view === "correction-review" ? (
+        navigation.review === undefined ? <Text color={designFlowTheme.warning}>Proposal review is unavailable.</Text> : <ProposalReviewView request={navigation.review} selectedAction={navigation.reviewActionIndex} />
+      ) : navigation.view === "diff-view" ? (
+        navigation.review === undefined ? <Text color={designFlowTheme.warning}>Diff is unavailable.</Text> : <DiffView review={navigation.review.review} fileIndex={navigation.reviewFileIndex} scrollOffset={navigation.diffScrollOffset} visibleLines={Math.max(1, viewerVisibleLines)} />
+      ) : navigation.view === "applying" ? (
+        <LifecycleResultView title="Applying" sessionLines={["✓ Snapshot and validation are controlled by DesignFlow.", "● Applying changes…"]} />
+      ) : navigation.view === "validation-result" ? (
+        <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
+      ) : navigation.view === "visual-result" ? (
+        <LifecycleResultView title="Visual result" sessionLines={[session.finalResult?.summary ?? "Visual validation complete.", "Visual validation report is available in Outputs."]} actions={["View report"]} />
+      ) : navigation.view === "final-result" ? (
+        <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} />
       ) : navigation.view === "output-viewer" ? (
         <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={viewerScrollOffset} visibleLines={viewerVisibleLines} details={viewerDetails} />
       ) : (
@@ -395,6 +408,7 @@ export function ReadyToRunView({
         <ReadinessRow label="Project" value={session.project.name} status={session.project.status} />
         <ReadinessRow label="Figma" value={session.figma.label} status={session.figma.status} />
         <ReadinessRow label="AI" value={session.ai.label} status={session.ai.status} />
+        <ReadinessRow label="Approval" value={session.approval.mode === "designflow" ? "DesignFlow handles approvals" : "Review changes myself"} status="ready" />
       </Box>
       <Box marginTop={2}>
         <Text color={designFlowTheme.accentStrong} bold>[ Start Design Engineer ]</Text>
@@ -448,9 +462,15 @@ export function StatusBar({
           ? "↑↓ Navigate   Enter Select   Esc Back"
       : view === "ready-to-run"
               ? "Enter Start   Esc Change destination   ? Help   q Quit"
-              : view === "execution"
+      : view === "execution"
                 ? "? Help   Ctrl+C Cancel   q Quit when complete"
-                : view === "output-viewer"
+                : view === "proposal-review" || view === "correction-review"
+                  ? "↑↓ Navigate   Enter Select   d View diff   Esc Back"
+                  : view === "diff-view"
+                    ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   [/] File   Esc Back"
+                    : view === "final-result" || view === "visual-result" || view === "validation-result"
+                      ? "Enter View report   i Improve   Tab Outputs   q Quit"
+              : view === "output-viewer"
                   ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   d Details   Esc Back"
               : "Enter Start   ? Help   q Quit";
 

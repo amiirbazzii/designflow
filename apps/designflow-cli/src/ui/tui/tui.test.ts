@@ -27,7 +27,14 @@ import {
   setOutputScrollOffset,
   setDestinationCandidates,
   updateUrlText,
+  openProposalReview,
+  openDiffView,
+  closeDiffView,
+  setDiffScrollOffset,
+  moveReviewAction,
+  moveReviewFile,
 } from "./navigation";
+import { buildProposalReview } from "../../services/proposal-review";
 
 const key = (overrides: Partial<Key> = {}): Key => ({
   upArrow: false,
@@ -205,6 +212,26 @@ describe("DesignFlow TUI selection navigation", () => {
 });
 
 describe("DesignFlow TUI theme and keyboard contract", () => {
+  test("keeps proposal review and canonical diff navigation inside the TUI", () => {
+    const request = {
+      executionId: "run-1",
+      workflowId: "design-to-code",
+      reason: "review",
+      review: buildProposalReview([
+        { path: "src/App.tsx", action: "modify", currentContent: "old\n", proposedContent: "new\n" },
+      ]),
+      checks: [{ label: "Scope" }],
+    };
+    const opened = openProposalReview(initialNavigationState(), request);
+    expect(opened.view).toBe("proposal-review");
+    expect(openDiffView(opened).view).toBe("diff-view");
+    expect(moveReviewAction(opened, 1).reviewActionIndex).toBe(1);
+    expect(moveReviewFile(openDiffView(opened), 1).reviewFileIndex).toBe(0);
+    expect(setDiffScrollOffset(openDiffView(opened), 100, 2).diffScrollOffset).toBe(2);
+    expect(closeDiffView(openDiffView(opened)).view).toBe("proposal-review");
+    expect(navigateBack(opened).view).toBe("execution");
+  });
+
   test("uses blue as the semantic accent", () => {
     expect(designFlowTheme.accent).toBe("blue");
     expect(designFlowTheme.focus).toBe("blue");
