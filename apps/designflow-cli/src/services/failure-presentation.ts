@@ -20,6 +20,8 @@ export interface ProductFailureFacts {
   readonly failedCapabilityId?: string | undefined;
   readonly attemptDiagnostics?: readonly ProposalAttemptDiagnostic[] | undefined;
   readonly retryAfterSeconds?: number | undefined;
+  /** Bounded sanitized engine failure message, exactly as persisted. */
+  readonly underlyingMessage?: string | undefined;
   /** Persisted proof that approved files were written. */
   readonly hasApplication: boolean;
   /** Persisted proof a rollback snapshot exists. */
@@ -234,11 +236,32 @@ export function buildProductFailure(facts: ProductFailureFacts): ProductFailure 
   };
 }
 
+/**
+ * Belt-and-braces redaction for the Details surface. Persisted messages are
+ * already sanitized at the engine boundary; this strips anything that still
+ * looks like a credential before it can render.
+ */
+export function redactDetailLine(line: string): string {
+  return line
+    .replace(/\b(token|secret|password|api[-_]?key|authorization|bearer|cookie)\b(\s*[:=]\s*|\s+)\S+/gi, "$1$2[redacted]")
+    .replace(/\b(sk-[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_.-]{10,})\b/g, "[redacted]");
+}
+
 /** Bounded safe facts for the Details action. Never prompts, output, or secrets. */
 function technicalDetailLines(facts: ProductFailureFacts): string[] {
   const lines: string[] = [];
   if (facts.errorCode !== undefined) lines.push(`Error code: ${facts.errorCode}`);
-  if (facts.failedCapabilityId !== undefined) lines.push(`Failed step: ${facts.failedCapabilityId}`);
+  if (facts.failedCapabilityId !== undefined) {
+    const label = stageSuffix(facts);
+    lines.push(
+      label !== undefined
+        ? `Failed step: ${label} (${facts.failedCapabilityId})`
+        : `Failed step: ${facts.failedCapabilityId}`,
+    );
+  }
+  if (facts.underlyingMessage !== undefined && facts.underlyingMessage.trim().length > 0) {
+    lines.push(`Problem: ${redactDetailLine(facts.underlyingMessage.slice(0, 400))}`);
+  }
   if (facts.retryAfterSeconds !== undefined) lines.push(`Retry after: ${facts.retryAfterSeconds}s`);
   for (const diagnostic of facts.attemptDiagnostics ?? []) {
     lines.push(
@@ -246,12 +269,13 @@ function technicalDetailLines(facts: ProductFailureFacts): string[] {
         (diagnostic.operation !== undefined ? ` · ${diagnostic.operation}` : "") +
         (diagnostic.path !== undefined ? ` · ${diagnostic.path}` : ""),
     );
-    if (diagnostic.message.length > 0) lines.push(`  ${diagnostic.message.slice(0, 300)}`);
+    if (diagnostic.message.length > 0) lines.push(`  ${redactDetailLine(diagnostic.message.slice(0, 300))}`);
     if (diagnostic.compileErrorSummary !== undefined) {
-      lines.push(`  ${diagnostic.compileErrorSummary.slice(0, 600)}`);
+      lines.push(`  ${redactDetailLine(diagnostic.compileErrorSummary.slice(0, 600))}`);
     }
   }
   if (facts.executionId !== undefined) lines.push(`Run id: ${facts.executionId}`);
+  lines.push(...mutationLines(facts).map((line) => line === "No files were changed." ? "Your project files were not changed." : line));
   return lines;
 }
 

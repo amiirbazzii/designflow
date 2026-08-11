@@ -294,6 +294,9 @@ export function applyExecutionReport(
     status: typeof overview.status === "string" ? overview.status : "failed",
     errorCode: typeof failure?.errorCode === "string" ? failure.errorCode : undefined,
     failedCapabilityId: typeof failure?.failedCapabilityId === "string" ? failure.failedCapabilityId : undefined,
+    underlyingMessage: typeof failure?.message === "string" ? failure.message : undefined,
+    executionId: typeof overview.executionId === "string" ? overview.executionId : undefined,
+    retryAfterSeconds: typeof failure?.retryAfterSeconds === "number" ? failure.retryAfterSeconds : undefined,
     hasApplication: artifacts.some((artifact) => artifact.artifactId === "file-application-result"),
     hasSnapshot: artifacts.some((artifact) => artifact.artifactId === "project-snapshot"),
     validationFailed: false,
@@ -302,6 +305,7 @@ export function applyExecutionReport(
   });
   return {
     ...applyExecutionUpdate(session, { status: "failed", diagnostics: [productFailure.title, ...productFailure.lines.filter((line) => line.trim().length > 0).slice(0, 8)] }),
+    technicalDetails: productFailure.technicalDetails,
     outputs,
   };
 }

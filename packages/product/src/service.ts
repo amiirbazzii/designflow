@@ -409,9 +409,18 @@ function failureFactsOf(
       ? retryAfterRaw
       : undefined;
 
+  const rawMessage =
+    typeof capabilityFailed?.payload?.error === "string" && capabilityFailed.payload.error.length > 0
+      ? capabilityFailed.payload.error
+      : typeof executionFailed?.payload?.reason === "string" && executionFailed.payload.reason.length > 0
+        ? executionFailed.payload.reason
+        : undefined;
+  const message = rawMessage?.slice(0, 500);
+
   const facts = {
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(failedCapabilityId !== undefined ? { failedCapabilityId } : {}),
+    ...(message !== undefined ? { message } : {}),
     ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
     ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
   };

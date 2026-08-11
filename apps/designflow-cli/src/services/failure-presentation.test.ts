@@ -184,3 +184,58 @@ describe("validation-environment failure presentation", () => {
     expect(output).not.toContain("compile");
   });
 });
+
+describe("Phase 6B technical details (DF-TUI-06)", () => {
+  const FIGMA_MESSAGE =
+    "No node could be found for the provided nodeId: 1026:6098. Make sure the Figma desktop app is open and the document containing the node is the active tab.";
+
+  test("details expose error code, humanized failed step, safe cause, run id, and mutation truth", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_MCP_TOOL_FAILED",
+      failedCapabilityId: "retrieve-figma-source-snapshot",
+      underlyingMessage: FIGMA_MESSAGE,
+      executionId: "c6fda8f4-9862-4aee-a900-df3e71f15e32",
+    });
+    const details = failure.technicalDetails.join("\n");
+    expect(details).toContain("Error code: ERR_MCP_TOOL_FAILED");
+    expect(details).toContain("Failed step: retrieving the design source (retrieve-figma-source-snapshot)");
+    expect(details).toContain("Problem: No node could be found for the provided nodeId: 1026:6098");
+    expect(details).toContain("Run id: c6fda8f4-9862-4aee-a900-df3e71f15e32");
+    expect(details).toContain("Your project files were not changed.");
+  });
+
+  test("the generic summary stays concise: the underlying cause lives only behind Details", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_MCP_TOOL_FAILED",
+      failedCapabilityId: "retrieve-figma-source-snapshot",
+      underlyingMessage: FIGMA_MESSAGE,
+    });
+    const summary = renderProductFailure(failure).join("\n");
+    expect(summary).not.toContain("nodeId: 1026:6098");
+    expect(failure.title).toBe("Could not finish retrieving the design source.");
+  });
+
+  test("credential-looking fragments are redacted from detail lines", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_MCP_TOOL_FAILED",
+      failedCapabilityId: "retrieve-figma-source-snapshot",
+      underlyingMessage: "request failed: token=abc123secretvalue bearer eyJhbGciOiJIUzI1NiIsInR5cCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0 sk-or-v1-abcdef1234567890",
+    });
+    const details = failure.technicalDetails.join("\n");
+    expect(details).toContain("[redacted]");
+    expect(details).not.toContain("abc123secretvalue");
+    expect(details).not.toContain("eyJhbGciOiJIUzI1NiIsInR5cCJ9");
+    expect(details).not.toContain("sk-or-v1-abcdef1234567890");
+  });
+
+  test("missing optional facts fail gracefully: no undefined lines, mutation truth always present", () => {
+    const failure = buildProductFailure({ ...BASE });
+    expect(failure.technicalDetails.some((line) => line.includes("undefined"))).toBe(false);
+    expect(failure.technicalDetails.join("\n")).toContain("Your project files were not changed.");
+    expect(failure.technicalDetails.join("\n")).not.toContain("Error code:");
+    expect(failure.technicalDetails.join("\n")).not.toContain("Problem:");
+  });
+});

@@ -112,6 +112,10 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
     expect(stdout).not.toContain("FAIL ");
     expect(stdout).toContain("PASS failure-message");
     expect(stdout).toContain("PASS enter-opens-details");
+    expect(stdout).toContain("PASS details-error-code");
+    expect(stdout).toContain("PASS details-failed-step");
+    expect(stdout).toContain("PASS details-problem");
+    expect(stdout).toContain("PASS details-run-id");
     expect(stdout).toContain("PASS back-to-start");
     expect(stdout).toContain("PASS new-run-startable");
     expect(stdout).toContain("PASS q-quits");

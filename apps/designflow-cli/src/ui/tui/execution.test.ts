@@ -118,3 +118,40 @@ describe("live workflow presentation adapter", () => {
     expect(failed.activity[0]).toMatchObject({ actor: "designflow", title: "Needs attention", state: "failed" });
   });
 });
+
+describe("Phase 6B technical details reach the session view (DF-TUI-06)", () => {
+  test("a failed report populates technicalDetails with code, step, safe cause, and run id", () => {
+    const failed = applyExecutionReport(session(), {
+      overview: {
+        executionId: "c6fda8f4-9862-4aee-a900-df3e71f15e32",
+        state: "failed",
+        status: "failed",
+        failure: {
+          errorCode: "ERR_MCP_TOOL_FAILED",
+          failedCapabilityId: "retrieve-figma-source-snapshot",
+          message: "No node could be found for the provided nodeId: 1026:6098. Make sure the Figma desktop app is open and the document containing the node is the active tab.",
+        },
+      },
+      artifacts: [],
+    });
+    const details = failed.technicalDetails.join("\n");
+    expect(details).toContain("Error code: ERR_MCP_TOOL_FAILED");
+    expect(details).toContain("retrieve-figma-source-snapshot");
+    expect(details).toContain("nodeId: 1026:6098");
+    expect(details).toContain("Run id: c6fda8f4-9862-4aee-a900-df3e71f15e32");
+    // the concise outcome summary must not absorb the technical cause
+    expect(failed.diagnostics.join("\n")).not.toContain("nodeId: 1026:6098");
+    // presenting a report never mutates workflow forward state
+    expect(failed.workflow.status).toBe("unavailable");
+    expect(failed.finalResult?.status).toBe("failure");
+  });
+
+  test("a failed report without failure facts leaves technicalDetails bounded and safe", () => {
+    const failed = applyExecutionReport(session(), {
+      overview: { state: "failed", status: "failed" },
+      artifacts: [],
+    });
+    expect(Array.isArray(failed.technicalDetails)).toBe(true);
+    expect(failed.technicalDetails.some((line) => line.includes("undefined"))).toBe(false);
+  });
+});

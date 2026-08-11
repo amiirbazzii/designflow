@@ -32,9 +32,12 @@ export function terminalOutcomeActions(
   return [
     ...(hasReport
       ? [{ id: "view-report" as const, label: "View report", shortcut: "enter" as const, menu: true }]
-      : hasDetails
-        ? [{ id: "view-details" as const, label: "View details", shortcut: "enter" as const, menu: true }]
-        : []),
+      : []),
+    // Details must stay reachable even when a report exists: the report is
+    // the produced artifact, Details is the failure diagnosis.
+    ...(hasDetails
+      ? [{ id: "view-details" as const, label: "View details", shortcut: "enter" as const, menu: true }]
+      : []),
     ...(hasOutputs
       ? [{ id: "outputs" as const, label: "Outputs", shortcut: "tab" as const, menu: false }]
       : []),

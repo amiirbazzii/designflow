@@ -85,6 +85,8 @@ export interface DesignFlowSessionView {
   };
   readonly checks: readonly CheckView[];
   readonly diagnostics: readonly string[];
+  /** Bounded safe technical facts for the Details view (Phase 9 curated). */
+  readonly technicalDetails: readonly string[];
   readonly finalResult?: {
     readonly status: "success" | "failure";
     readonly summary: string;
@@ -196,6 +198,7 @@ export function buildSessionView(facts: SessionViewFacts): DesignFlowSessionView
     activity: [{ actor: "designflow", title: "Ready to start", state: "completed" }],
     checks: [],
     diagnostics: [],
+    technicalDetails: [],
   };
 }
 

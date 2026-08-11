@@ -283,7 +283,11 @@ export function MainPanel({
       ) : navigation.view === "needs-attention" ? (
         <LifecycleResultView title={terminalOutcome?.title ?? "Needs attention"} sessionLines={outcomeLines(session, true)} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "diagnostics-view" ? (
-        <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
+        <LifecycleResultView
+          title="Details"
+          sessionLines={(session.technicalDetails.length > 0 ? session.technicalDetails : session.diagnostics)
+            .slice(navigation.outputScrollOffset, navigation.outputScrollOffset + Math.max(1, viewerVisibleLines))}
+        />
       ) : navigation.view === "final-result" ? (
         <LifecycleResultView title={terminalOutcome?.title ?? (session.finalResult?.status === "failure" ? "Needs attention" : "Done")} sessionLines={outcomeLines(session, session.finalResult?.status === "failure")} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "output-viewer" ? (

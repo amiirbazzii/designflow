@@ -116,8 +116,19 @@ if SCENARIO in ("design-source-failure", "model-unreachable"):
     journey_to_outcome()
     if SCENARIO == "design-source-failure":
         check("failure-message", "retrieving the design source" in screen())
+    if "View report" in screen()[-2500:]:
+        send(DOWN, 0.6)  # move the outcome menu from View report to View details
     send(ENTER, 3.0)
     check("enter-opens-details", "Details" in screen()[-1600:])
+    if SCENARIO == "design-source-failure":
+        recent = screen()[-2500:]
+        check("details-error-code", "Error code:" in recent)
+        check("details-failed-step", "retrieve-figma-source-snapshot" in recent)
+        check("details-problem", "Problem: " in recent)
+        check("details-run-id", "Run id:" in recent)
+        if os.environ.get("PTY_DEBUG") == "1":
+            print("--- details screen ---")
+            print(recent)
     send(ESC, 2.0)
     check("esc-returns-outcome", "Back to start" in screen()[-1600:])
     send(TAB, 1.0)   # outputs focus must not trap input

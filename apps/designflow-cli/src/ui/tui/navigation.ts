@@ -380,6 +380,7 @@ export function openDiagnosticsView(state: TuiNavigationState): TuiNavigationSta
   return {
     ...state,
     view: "diagnostics-view",
+    outputScrollOffset: 0,
     diagnosticsReturnView: returnView === "diagnostics-view" ? state.diagnosticsReturnView : returnView,
   };
 }

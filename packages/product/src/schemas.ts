@@ -69,6 +69,8 @@ export const executionOverviewSchema = z.object({
       errorCode: z.string().min(1).optional(),
       /** The capability that failed, for stage-aware presentation. */
       failedCapabilityId: z.string().min(1).optional(),
+      /** Bounded sanitized failure message, exactly as persisted in events. */
+      message: z.string().min(1).max(500).optional(),
       /** Phase 7D bounded per-attempt validator facts. */
       attemptDiagnostics: z.array(proposalAttemptDiagnosticSchema).max(12).optional(),
       /** Provider-supplied bounded retry interval, when one was recorded. */

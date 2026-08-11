@@ -580,6 +580,7 @@ export function App({
         ...current,
         workflow: { ...current.workflow, status: "idle" },
         diagnostics: [],
+        technicalDetails: [],
       }));
       setNavigation((current) => ({ ...current, view: "start", outcomeActionIndex: 0 }));
     } else if (actionId === "quit") {
@@ -718,7 +719,13 @@ export function App({
 
     if (navigation.view === "diagnostics-view") {
       const detailsAction = mapTuiKey(input, key);
+      const detailLines = session.technicalDetails.length > 0 ? session.technicalDetails : session.diagnostics;
+      const detailsMaximum = Math.max(0, detailLines.length - viewerVisibleLines);
       if (detailsAction === "back") setNavigation((current) => navigateBack(current));
+      else if (key.upArrow || input === "k") setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset - 1, detailsMaximum));
+      else if (key.downArrow || input === "j") setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset + 1, detailsMaximum));
+      else if (key.pageUp) setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset - viewerVisibleLines, detailsMaximum));
+      else if (key.pageDown) setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset + viewerVisibleLines, detailsMaximum));
       else if (detailsAction === "help") setNavigation((current) => openHelp(current));
       else if (detailsAction === "quit") {
         onAction({ type: "quit" });

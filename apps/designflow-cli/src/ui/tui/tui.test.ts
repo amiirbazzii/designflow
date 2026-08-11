@@ -410,7 +410,7 @@ describe("DesignFlow TUI theme and keyboard contract", () => {
     const actions = terminalOutcomeActions(latestAvailableOutput(failed.outputs) !== undefined, failed.diagnostics.length > 0);
 
     expect(needsAttention.view).toBe("needs-attention");
-    expect(actions.map((action) => action.label)).toEqual(["View report", "Back to start", "Quit"]);
+    expect(actions.map((action) => action.label)).toEqual(["View report", "View details", "Back to start", "Quit"]);
     expect(terminalOutcomeStatusHint(true, true, true)).toContain("Enter View report");
     expect(terminalOutcomeStatusHint(true, true, true)).toContain("Tab Outputs");
     expect(moveOutcomeAction(needsAttention, 1, actions.length).outcomeActionIndex).toBe(1);
