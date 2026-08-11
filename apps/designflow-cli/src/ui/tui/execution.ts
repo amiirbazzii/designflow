@@ -1,10 +1,11 @@
-import type { ExecutionProgress } from "@designflow/product";
+import type { ArtifactSummary, ExecutionProgress } from "@designflow/product";
 import type { SessionResult } from "@designflow/sdk";
 import type {
   ActivityActor,
   ActivityView,
   CheckView,
   DesignFlowSessionView,
+  OutputView,
   WorkflowStageView,
 } from "./model";
 import { buildProductFailure } from "../../services/failure-presentation";
@@ -238,11 +239,19 @@ export function applyExecutionReport(
   const root = record(report);
   const overview = record(root?.overview);
   if (overview === undefined) return session;
-  const artifacts = Array.isArray(root?.artifacts) ? root.artifacts : [];
+  const artifacts = Array.isArray(root?.artifacts)
+    ? root.artifacts
+      .map((artifact) => record(artifact))
+      .filter((artifact): artifact is Record<string, unknown> => artifact !== undefined)
+      .flatMap((artifact) => {
+        const parsed = safeArtifactSummary(artifact);
+        return parsed === undefined ? [] : [parsed];
+      })
+    : [];
   const outputEntries = artifacts
-    .map((artifact) => outputForArtifact(String(record(artifact)?.artifactId ?? "")))
-    .filter((output): output is { readonly id: string; readonly label: string; readonly status: "available" } => output !== undefined);
-  const outputs = [...new Map([...session.outputs, ...outputEntries].map((output) => [output.id, output])).values()];
+    .map(outputForArtifact)
+    .filter((output): output is OutputView => output !== undefined);
+  const outputs = mergeOutputs(session.outputs, outputEntries);
   const state = typeof overview.state === "string" ? overview.state : "";
   if (state === "ready") {
     return {
@@ -264,8 +273,8 @@ export function applyExecutionReport(
     status: typeof overview.status === "string" ? overview.status : "failed",
     errorCode: typeof failure?.errorCode === "string" ? failure.errorCode : undefined,
     failedCapabilityId: typeof failure?.failedCapabilityId === "string" ? failure.failedCapabilityId : undefined,
-    hasApplication: artifacts.some((artifact) => record(artifact)?.artifactId === "file-application-result"),
-    hasSnapshot: artifacts.some((artifact) => record(artifact)?.artifactId === "project-snapshot"),
+    hasApplication: artifacts.some((artifact) => artifact.artifactId === "file-application-result"),
+    hasSnapshot: artifacts.some((artifact) => artifact.artifactId === "project-snapshot"),
     validationFailed: false,
     rollbackTriggered: false,
     ...(attemptDiagnostics.length > 0 ? { attemptDiagnostics } : {}),
@@ -276,17 +285,97 @@ export function applyExecutionReport(
   };
 }
 
-export function outputForArtifact(artifactId: string): { readonly id: string; readonly label: string; readonly status: "available" } | undefined {
-  const labels: Readonly<Record<string, string>> = {
-    "design-specification": "Specification",
-    "stage-3-summary": "Specification",
-    "stage-2-summary": "Design understanding",
-    "implementation-validation": "Validation report",
-    "proposed-file-changes": "Proposal",
-    "stage-4-summary": "Implementation proposal",
-    "stage-5-summary": "Visual validation",
-    "stage-6-summary": "Correction proposal",
+const OUTPUT_DEFINITIONS: Readonly<Record<string, {
+  readonly label: string;
+  readonly kind: OutputView["kind"];
+  readonly stage: string;
+  readonly viewerType: OutputView["viewerType"];
+  readonly priority: number;
+}>> = {
+  "design-specification": { label: "Specification", kind: "specification", stage: "Specification", viewerType: "specification", priority: 5 },
+  "stage-3-summary": { label: "Specification", kind: "specification", stage: "Specification", viewerType: "specification", priority: 1 },
+  "stage-2-summary": { label: "Project analysis", kind: "project-analysis", stage: "Understanding", viewerType: "project-analysis", priority: 1 },
+  "project-implementation-context": { label: "Project analysis", kind: "project-analysis", stage: "Project analysis", viewerType: "project-analysis", priority: 5 },
+  "design-system-mapping": { label: "Design system", kind: "component-mapping", stage: "Project analysis", viewerType: "component-mapping", priority: 5 },
+  "implementation-plan": { label: "Proposal", kind: "proposal", stage: "Implementation", viewerType: "proposal", priority: 2 },
+  "proposed-file-changes": { label: "Proposal", kind: "proposal", stage: "Implementation", viewerType: "proposal", priority: 5 },
+  "stage-4-summary": { label: "Proposal", kind: "proposal", stage: "Implementation", viewerType: "proposal", priority: 1 },
+  "implementation-validation": { label: "Validation", kind: "validation", stage: "Validation", viewerType: "validation", priority: 5 },
+  "visual-validation-report": { label: "Visual validation", kind: "visual-validation", stage: "Visual check", viewerType: "visual-validation", priority: 5 },
+  "stage-5-summary": { label: "Visual validation", kind: "visual-validation", stage: "Visual check", viewerType: "visual-validation", priority: 1 },
+  "correction-plan": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 3 },
+  "proposed-correction-changes": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 5 },
+  "feedback-loop-report": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 4 },
+  "stage-6-summary": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 1 },
+};
+
+function safeArtifactSummary(value: Record<string, unknown>): ArtifactSummary | undefined {
+  if (typeof value.artifactId !== "string" || typeof value.name !== "string" || typeof value.type !== "string") return undefined;
+  if (value.status !== "created" && value.status !== "reused" && value.status !== "removed" && value.status !== "unchanged") return undefined;
+  return {
+    artifactId: value.artifactId,
+    name: value.name,
+    type: value.type,
+    status: value.status,
+    ...(typeof value.version === "number" ? { version: value.version } : {}),
+    ...(typeof value.createdBy === "string" ? { createdBy: value.createdBy } : {}),
+    dependencies: Array.isArray(value.dependencies) ? value.dependencies.filter((item): item is string => typeof item === "string") : [],
   };
-  const label = labels[artifactId];
-  return label === undefined ? undefined : { id: artifactId, label, status: "available" };
+}
+
+export function outputForArtifact(artifact: ArtifactSummary): OutputView | undefined {
+  if (artifact.status === "removed" || artifact.name === artifact.artifactId) return undefined;
+  const definition = OUTPUT_DEFINITIONS[artifact.artifactId];
+  if (definition !== undefined) {
+    return {
+      id: artifact.artifactId,
+      label: definition.label,
+      kind: definition.kind,
+      stage: definition.stage,
+      viewerType: definition.viewerType,
+      status: "available",
+      artifactRef: {
+        artifactId: artifact.artifactId,
+        type: artifact.type,
+        ...(artifact.version === undefined ? {} : { version: artifact.version }),
+      },
+      artifactSummary: artifact,
+    };
+  }
+  return {
+    id: artifact.artifactId,
+    label: stripControlCharacters(artifact.name).slice(0, 80),
+    kind: "unknown",
+    stage: "Output",
+    viewerType: "unknown",
+    status: "available",
+    artifactRef: {
+      artifactId: artifact.artifactId,
+      type: artifact.type,
+      ...(artifact.version === undefined ? {} : { version: artifact.version }),
+    },
+    artifactSummary: artifact,
+  };
+}
+
+function mergeOutputs(existing: readonly OutputView[], incoming: readonly OutputView[]): readonly OutputView[] {
+  const all = new Map<string, OutputView>();
+  for (const output of [...existing, ...incoming]) {
+    const key = output.viewerType === "unknown" ? output.id : output.viewerType;
+    const current = all.get(key);
+    if (current === undefined || preferenceOf(output) >= preferenceOf(current)) all.set(key, output);
+  }
+  return [...all.values()];
+}
+
+function preferenceOf(output: OutputView): number {
+  const artifactId = output.artifactRef?.artifactId;
+  return artifactId === undefined ? 0 : OUTPUT_DEFINITIONS[artifactId]?.priority ?? 0;
+}
+
+function stripControlCharacters(value: string): string {
+  return Array.from(value).filter((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code >= 32 && code !== 127;
+  }).join("");
 }

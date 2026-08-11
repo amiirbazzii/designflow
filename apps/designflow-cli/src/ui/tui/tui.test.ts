@@ -20,6 +20,8 @@ import {
   moveListSelection,
   moveUrlCursor,
   navigateBack,
+  openOutput,
+  setOutputScrollOffset,
   setDestinationCandidates,
   updateUrlText,
 } from "./navigation";
@@ -205,7 +207,7 @@ describe("DesignFlow TUI theme and keyboard contract", () => {
   });
 
   test("opens and closes help, then preserves focus navigation", () => {
-    const initial = { helpOpen: false, focusArea: "main" as const, selectedStage: 0 };
+    const initial = { helpOpen: false, focusArea: "main" as const, selectedStage: 0, selectedOutput: 0 };
     const open = reduceTuiInteraction(initial, "help", 7);
     const closed = reduceTuiInteraction(open, "back", 7);
     const focused = reduceTuiInteraction(closed, "next-focus", 7);
@@ -215,6 +217,20 @@ describe("DesignFlow TUI theme and keyboard contract", () => {
     expect(closed.helpOpen).toBe(false);
     expect(focused.focusArea).toBe("workflow");
     expect(moved.selectedStage).toBe(1);
+  });
+
+  test("cycles workflow, outputs, and main focus and clamps viewer scroll", () => {
+    const initial = { helpOpen: false, focusArea: "workflow" as const, selectedStage: 0, selectedOutput: 0 };
+    const outputs = reduceTuiInteraction(initial, "next-focus", 7);
+    const main = reduceTuiInteraction(outputs, "next-focus", 7);
+    expect(outputs.focusArea).toBe("outputs");
+    expect(main.focusArea).toBe("main");
+
+    const opened = openOutput(initialNavigationState(), "specification-artifact");
+    expect(opened.view).toBe("output-viewer");
+    expect(setOutputScrollOffset(opened, 99, 4).outputScrollOffset).toBe(4);
+    expect(setOutputScrollOffset(opened, -1, 4).outputScrollOffset).toBe(0);
+    expect(navigateBack(opened).view).toBe("start");
   });
 
   test("has a sane compact mode boundary", () => {

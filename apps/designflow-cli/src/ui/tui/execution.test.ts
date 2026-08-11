@@ -69,9 +69,13 @@ describe("live workflow presentation adapter", () => {
   test("adds output entries only for real artifacts and uses curated failure wording", () => {
     const ready = applyExecutionReport(session(), {
       overview: { state: "ready", status: "completed" },
-      artifacts: [{ artifactId: "design-specification" }, { artifactId: "unknown-internal-payload" }],
+      artifacts: [
+        { artifactId: "design-specification", name: "Specification", type: "design.specification", status: "created", dependencies: [] },
+        { artifactId: "unknown-internal-payload", name: "Internal payload", type: "internal.payload", status: "created", dependencies: [] },
+      ],
     });
-    expect(ready.outputs).toEqual([{ id: "design-specification", label: "Specification", status: "available" }]);
+    expect(ready.outputs.map((output) => output.label)).toEqual(["Specification", "Internal payload"]);
+    expect(ready.outputs[0]).toMatchObject({ kind: "specification", viewerType: "specification", artifactRef: { artifactId: "design-specification" } });
 
     const failed = applyExecutionReport(session(), {
       overview: {

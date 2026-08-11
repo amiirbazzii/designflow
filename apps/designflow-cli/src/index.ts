@@ -85,6 +85,8 @@ export {
 export type {
   DesignFlowSessionView,
   OutputView,
+  OutputKind,
+  OutputViewerType,
   SessionViewFacts,
   ViewStatus,
   WorkflowStageView,

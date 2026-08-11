@@ -204,6 +204,17 @@ async function main(): Promise<number> {
             () => coordinator.interrupt(),
             async (startAction, bridge) => {
               let executionId: string | undefined;
+              let reportRefreshPending = false;
+              const refreshArtifactReport = (): void => {
+                if (executionId === undefined || reportRefreshPending) return;
+                reportRefreshPending = true;
+                void context!.runner.explain(executionId)
+                  .then((report) => bridge.report(report))
+                  .catch(() => undefined)
+                  .finally(() => {
+                    reportRefreshPending = false;
+                  });
+              };
               const tuiTerminal: Terminal = {
                 print: () => undefined,
                 ask: (question, options) => bridge.ask(question, options),
@@ -216,10 +227,14 @@ async function main(): Promise<number> {
                   startAction.design,
                   startAction.destination,
                   {
-                    onProgress: (progress) => bridge.progress(progress),
+                    onProgress: (progress) => {
+                      bridge.progress(progress);
+                      refreshArtifactReport();
+                    },
                     onSessionResult: (result) => {
                       executionId = result.session.executionId;
                       bridge.result(result);
+                      refreshArtifactReport();
                     },
                   },
                 );

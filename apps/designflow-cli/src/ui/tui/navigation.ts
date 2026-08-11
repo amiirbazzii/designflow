@@ -8,11 +8,16 @@ export type TuiView =
   | "destination-selection"
   | "ready-to-run"
   | "execution"
+  | "output-viewer"
   | "help";
 
 export interface TuiNavigationState {
   readonly view: TuiView;
   readonly helpReturnView: Exclude<TuiView, "help">;
+  readonly outputReturnView: Exclude<TuiView, "help" | "output-viewer">;
+  readonly outputId?: string;
+  readonly outputScrollOffset: number;
+  readonly outputDetails: boolean;
   readonly designOption: number;
   readonly design?: InteractiveDesign | undefined;
   readonly urlValue: string;
@@ -29,6 +34,9 @@ export function initialNavigationState(): TuiNavigationState {
   return {
     view: "start",
     helpReturnView: "start",
+    outputReturnView: "execution",
+    outputScrollOffset: 0,
+    outputDetails: false,
     designOption: 0,
     urlValue: "",
     urlCursor: 0,
@@ -167,12 +175,56 @@ export function openHelp(state: TuiNavigationState): TuiNavigationState {
   return { ...state, view: "help", helpReturnView: state.view };
 }
 
+export function openOutput(
+  state: TuiNavigationState,
+  outputId: string,
+): TuiNavigationState {
+  const returnView = state.view === "help" ? state.helpReturnView : state.view;
+  return {
+    ...state,
+    view: "output-viewer",
+    outputReturnView: returnView === "output-viewer" ? state.outputReturnView : returnView,
+    outputId,
+    outputScrollOffset: 0,
+    outputDetails: false,
+    error: undefined,
+  };
+}
+
+export function closeOutput(state: TuiNavigationState): TuiNavigationState {
+  if (state.view !== "output-viewer") return state;
+  return {
+    ...state,
+    view: state.outputReturnView,
+    outputScrollOffset: 0,
+    outputDetails: false,
+  };
+}
+
+export function setOutputScrollOffset(
+  state: TuiNavigationState,
+  offset: number,
+  maximum: number,
+): TuiNavigationState {
+  return {
+    ...state,
+    outputScrollOffset: Math.min(Math.max(0, offset), Math.max(0, maximum)),
+  };
+}
+
+export function toggleOutputDetails(state: TuiNavigationState): TuiNavigationState {
+  return state.view === "output-viewer"
+    ? { ...state, outputDetails: !state.outputDetails }
+    : state;
+}
+
 export function closeHelp(state: TuiNavigationState): TuiNavigationState {
   return state.view === "help" ? { ...state, view: state.helpReturnView } : state;
 }
 
 export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   if (state.view === "help") return closeHelp(state);
+  if (state.view === "output-viewer") return closeOutput(state);
   if (state.view === "ready-to-run") return { ...state, view: "destination-selection", error: undefined };
   if (state.view === "destination-selection") return enterDesignSelection(state);
   if (state.view === "figma-url-entry") return enterDesignSelection(state);

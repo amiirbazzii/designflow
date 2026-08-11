@@ -20,7 +20,10 @@ import {
   moveListSelection,
   moveUrlCursor,
   navigateBack,
+  openOutput,
   openHelp,
+  setOutputScrollOffset,
+  toggleOutputDetails,
   setDestinationCandidates,
   setUrlError,
   updateUrlText,
@@ -35,6 +38,7 @@ import {
   applySessionResult,
   type TuiExecutionBridge,
 } from "./execution";
+import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtifactReader } from "./artifact-viewer";
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate }
@@ -50,6 +54,7 @@ export interface TuiAppProps {
   readonly session: SessionView;
   readonly projectId?: string;
   readonly handlers: TuiSelectionHandlers;
+  readonly artifactReader: TuiArtifactReader;
   readonly onAction: (action: TuiAction) => void;
   readonly onStart: (action: Extract<TuiAction, { readonly type: "start" }>, bridge: TuiExecutionBridge) => Promise<number>;
   readonly onInterrupt: () => void;
@@ -59,6 +64,7 @@ export function App({
   session: initialSession,
   projectId,
   handlers,
+  artifactReader,
   onAction,
   onStart,
   onInterrupt,
@@ -72,7 +78,9 @@ export function App({
     helpOpen: false,
     focusArea: "main",
     selectedStage: 0,
+    selectedOutput: 0,
   });
+  const [viewerDocument, setViewerDocument] = useState<ArtifactViewerDocument | undefined>();
   const [executionStarted, setExecutionStarted] = useState(false);
   const [executionFinished, setExecutionFinished] = useState(false);
   const [prompt, setPrompt] = useState<{ readonly question: string; readonly options?: readonly string[]; readonly value: string }>();
@@ -92,6 +100,37 @@ export function App({
       stdout.off("resize", onResize);
     };
   }, [stdout]);
+
+  useEffect(() => {
+    setInteraction((current) => ({
+      ...current,
+      selectedOutput: Math.min(current.selectedOutput, Math.max(0, session.outputs.length - 1)),
+    }));
+  }, [session.outputs]);
+
+  useEffect(() => {
+    if (navigation.view !== "output-viewer" || navigation.outputId === undefined) {
+      setViewerDocument(undefined);
+      return;
+    }
+    const output = session.outputs.find((candidate) => candidate.id === navigation.outputId);
+    if (output === undefined) {
+      setViewerDocument(undefined);
+      return;
+    }
+    let current = true;
+    setViewerDocument(undefined);
+    void artifactReader.read(output)
+      .then((detail) => {
+        if (current) setViewerDocument(buildArtifactViewerDocument(output, detail));
+      })
+      .catch(() => {
+        if (current) setViewerDocument(buildArtifactViewerDocument(output, undefined));
+      });
+    return () => {
+      current = false;
+    };
+  }, [artifactReader, navigation.outputId, navigation.view, session.outputs]);
 
   const loadDestinations = (design: InteractiveDesign): void => {
     const requestId = destinationRequest.current + 1;
@@ -251,6 +290,11 @@ export function App({
     }
   };
 
+  const compact = isCompactTerminal(size.columns, size.rows);
+  const visibleCount = Math.max(1, size.rows - (compact ? 8 : 14));
+  const viewerVisibleLines = Math.max(1, size.rows - (compact ? 8 : 10));
+  const viewerMaximum = Math.max(0, (viewerDocument?.lines.length ?? 0) - viewerVisibleLines);
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
       onInterrupt();
@@ -277,6 +321,38 @@ export function App({
         setPrompt((current) => current === undefined ? current : { ...current, value: current.value.slice(0, -1) });
       } else if (input.length > 0 && key.ctrl !== true && key.meta !== true) {
         setPrompt((current) => current === undefined ? current : { ...current, value: current.value + input });
+      }
+      return;
+    }
+
+    if (navigation.view === "output-viewer") {
+      const outputAction = mapTuiKey(input, key);
+      const home = input === "\u001b[H" || input === "\u001bOH";
+      const end = input === "\u001b[F" || input === "\u001bOF";
+      if (outputAction === "back") {
+        setNavigation((current) => navigateBack(current));
+      } else if (outputAction === "help") {
+        setNavigation((current) => openHelp(current));
+      } else if (outputAction === "next-focus" || outputAction === "previous-focus") {
+        setInteraction((current) => reduceTuiInteraction(current, outputAction, session.workflow.stages.length));
+      } else if (key.upArrow || input === "k") {
+        setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset - 1, viewerMaximum));
+      } else if (key.downArrow || input === "j") {
+        setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset + 1, viewerMaximum));
+      } else if (key.pageUp) {
+        setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset - viewerVisibleLines, viewerMaximum));
+      } else if (key.pageDown) {
+        setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset + viewerVisibleLines, viewerMaximum));
+      } else if (home) {
+        setNavigation((current) => setOutputScrollOffset(current, 0, viewerMaximum));
+      } else if (end) {
+        setNavigation((current) => setOutputScrollOffset(current, viewerMaximum, viewerMaximum));
+      } else if (input === "d") {
+        setNavigation((current) => toggleOutputDetails(current));
+      }
+      if (outputAction === "quit" && (!executionStarted || executionFinished)) {
+        onAction({ type: "quit" });
+        exit();
       }
       return;
     }
@@ -318,6 +394,10 @@ export function App({
     }
     if (action === "activate") {
       if (interaction.focusArea === "main") activate();
+      else if (interaction.focusArea === "outputs") {
+        const output = session.outputs[interaction.selectedOutput];
+        if (output?.status === "available") setNavigation((current) => openOutput(current, output.id));
+      }
       return;
     }
     if (action === "next-focus" || action === "previous-focus") {
@@ -329,6 +409,14 @@ export function App({
       setNavigation((current) => ({
         ...current,
         designOption: moveListSelection(current.designOption, 2, action === "up" ? -1 : 1),
+      }));
+      return;
+    }
+
+    if (interaction.focusArea === "outputs" && (action === "up" || action === "down")) {
+      setInteraction((current) => ({
+        ...current,
+        selectedOutput: Math.min(Math.max(0, current.selectedOutput + (action === "up" ? -1 : 1)), Math.max(0, session.outputs.length - 1)),
       }));
       return;
     }
@@ -350,8 +438,7 @@ export function App({
     setInteraction((current) => reduceTuiInteraction(current, action, session.workflow.stages.length));
   });
 
-  const compact = isCompactTerminal(size.columns, size.rows);
-  const visibleCount = Math.max(1, size.rows - (compact ? 8 : 14));
+  const selectedOutput = session.outputs[interaction.selectedOutput];
 
   return (
     <Shell
@@ -360,8 +447,12 @@ export function App({
       helpOpen={navigation.view === "help"}
       focusArea={interaction.focusArea}
       selectedStage={interaction.selectedStage}
+      selectedOutput={interaction.selectedOutput}
       compact={compact}
       destinationVisibleCount={visibleCount}
+      viewerDocument={viewerDocument}
+      viewerVisibleLines={viewerVisibleLines}
+      selectedOutputView={selectedOutput}
       executionPrompt={prompt}
     />
   );

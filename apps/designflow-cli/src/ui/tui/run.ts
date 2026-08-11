@@ -9,6 +9,7 @@ import {
 } from "../../services/figma-selection";
 import { findDestinationCandidates } from "../../services/destinations";
 import type { TuiExecutionBridge } from "./execution";
+import type { TuiArtifactReader } from "./artifact-viewer";
 
 export type TuiStartHandler = (
   action: Extract<TuiAction, { readonly type: "start" }>,
@@ -38,7 +39,25 @@ export async function runTuiShell(
     parseFigmaUrl: designFromUrl,
     getDestinations: () => findDestinationCandidates(context, runtime.project),
   };
-  return runTuiShellWithView(runtime.session, streams, onInterrupt, handlers, runtime.project?.id, onStart);
+  return runTuiShellWithView(
+    runtime.session,
+    streams,
+    onInterrupt,
+    handlers,
+    runtime.project?.id,
+    onStart,
+    {
+      read: async (output) => {
+        if (output.artifactSummary === undefined) throw new Error("Artifact summary unavailable.");
+        return output.artifactSummary.version === undefined
+          ? context.artifactInspection.getPayload(output.artifactSummary)
+          : context.artifactInspection.getPayloadAtVersion(
+              output.artifactSummary,
+              output.artifactSummary.version,
+            );
+      },
+    },
+  );
 }
 
 export async function runTuiShellWithView(
@@ -52,6 +71,7 @@ export async function runTuiShellWithView(
   handlers: TuiSelectionHandlers,
   projectId?: string,
   onStart?: TuiStartHandler,
+  artifactReader?: TuiArtifactReader,
 ): Promise<TuiAction> {
   (streams.writeControl ?? ((value: string) => safeWrite(streams.output, value)))(ALT_SCREEN_ENTER);
 
@@ -61,6 +81,12 @@ export async function runTuiShellWithView(
       session,
       ...(projectId === undefined ? {} : { projectId }),
       handlers,
+      artifactReader: artifactReader ?? {
+        read: async (output) => {
+          if (output.artifactSummary === undefined) throw new Error("Artifact summary unavailable.");
+          return { summary: output.artifactSummary, payload: undefined };
+        },
+      },
       onAction: (nextAction: TuiAction) => {
         action = nextAction;
       },

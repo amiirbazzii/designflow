@@ -27,8 +27,9 @@ export function mapTuiKey(input: string, key: Key): TuiKeyAction {
 
 export interface TuiInteractionState {
   readonly helpOpen: boolean;
-  readonly focusArea: "workflow" | "main";
+  readonly focusArea: "workflow" | "outputs" | "main";
   readonly selectedStage: number;
+  readonly selectedOutput: number;
 }
 
 export function reduceTuiInteraction(
@@ -39,16 +40,28 @@ export function reduceTuiInteraction(
   if (action === "help") return { ...state, helpOpen: true };
   if (action === "back" && state.helpOpen) return { ...state, helpOpen: false };
   if (action === "next-focus") {
-    return { ...state, focusArea: state.focusArea === "workflow" ? "main" : "workflow" };
+    return {
+      ...state,
+      focusArea: state.focusArea === "workflow" ? "outputs" : state.focusArea === "outputs" ? "main" : "workflow",
+    };
   }
   if (action === "previous-focus") {
-    return { ...state, focusArea: state.focusArea === "workflow" ? "main" : "workflow" };
+    return {
+      ...state,
+      focusArea: state.focusArea === "main" ? "outputs" : state.focusArea === "outputs" ? "workflow" : "main",
+    };
   }
   if (action === "up" && state.focusArea === "workflow") {
     return { ...state, selectedStage: Math.max(0, state.selectedStage - 1) };
   }
   if (action === "down" && state.focusArea === "workflow") {
     return { ...state, selectedStage: Math.min(Math.max(0, stageCount - 1), state.selectedStage + 1) };
+  }
+  if (action === "up" && state.focusArea === "outputs") {
+    return { ...state, selectedOutput: Math.max(0, state.selectedOutput - 1) };
+  }
+  if (action === "down" && state.focusArea === "outputs") {
+    return { ...state, selectedOutput: Math.max(0, state.selectedOutput + 1) };
   }
   return state;
 }

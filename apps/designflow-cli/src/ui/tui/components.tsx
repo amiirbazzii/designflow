@@ -6,16 +6,22 @@ import type { TuiNavigationState, TuiView } from "./navigation";
 import { ExecutionView } from "./execution-view";
 import { CompactView } from "./compact-view";
 import { visibleUrlWindow } from "./url-window";
+import { OutputViewer } from "./output-viewer";
+import type { ArtifactViewerDocument } from "./artifact-viewer";
 export { visibleUrlWindow } from "./url-window";
 
 export interface ShellProps {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
   readonly helpOpen: boolean;
-  readonly focusArea: "workflow" | "main";
+  readonly focusArea: "workflow" | "outputs" | "main";
   readonly selectedStage: number;
+  readonly selectedOutput: number;
   readonly compact: boolean;
   readonly destinationVisibleCount: number;
+  readonly viewerDocument?: ArtifactViewerDocument | undefined;
+  readonly viewerVisibleLines: number;
+  readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
 }
 
@@ -25,8 +31,12 @@ export function Shell({
   helpOpen,
   focusArea,
   selectedStage,
+  selectedOutput,
   compact,
   destinationVisibleCount,
+  viewerDocument,
+  viewerVisibleLines,
+  selectedOutputView,
   executionPrompt,
 }: ShellProps): React.JSX.Element {
   return (
@@ -38,7 +48,12 @@ export function Shell({
         <CompactView
           session={session}
           navigation={navigation}
+          focusArea={focusArea}
           destinationVisibleCount={destinationVisibleCount}
+          selectedOutput={selectedOutput}
+          viewerDocument={viewerDocument}
+          viewerVisibleLines={viewerVisibleLines}
+          selectedOutputView={selectedOutputView}
           executionPrompt={executionPrompt}
         />
       ) : (
@@ -47,13 +62,19 @@ export function Shell({
             session={session}
             focusArea={focusArea}
             selectedStage={selectedStage}
+            selectedOutput={selectedOutput}
           />
           <MainPanel
             session={session}
-          navigation={navigation}
-          focusArea={focusArea}
-          destinationVisibleCount={destinationVisibleCount}
-          executionPrompt={executionPrompt}
+            navigation={navigation}
+            focusArea={focusArea}
+            destinationVisibleCount={destinationVisibleCount}
+            selectedOutputView={selectedOutputView}
+            viewerDocument={viewerDocument}
+            viewerVisibleLines={viewerVisibleLines}
+            viewerScrollOffset={navigation.outputScrollOffset}
+            viewerDetails={navigation.outputDetails}
+            executionPrompt={executionPrompt}
           />
         </Box>
       )}
@@ -84,10 +105,12 @@ export function Sidebar({
   session,
   focusArea,
   selectedStage,
+  selectedOutput,
 }: {
   readonly session: DesignFlowSessionView;
-  readonly focusArea: "workflow" | "main";
+  readonly focusArea: "workflow" | "outputs" | "main";
   readonly selectedStage: number;
+  readonly selectedOutput: number;
 }): React.JSX.Element {
   return (
     <Box
@@ -96,13 +119,13 @@ export function Sidebar({
       paddingX={1}
       borderStyle="single"
       borderRight
-      borderColor={focusArea === "workflow" ? designFlowTheme.focus : designFlowTheme.border}
+      borderColor={focusArea === "workflow" || focusArea === "outputs" ? designFlowTheme.focus : designFlowTheme.border}
     >
       <Text bold color={designFlowTheme.textSecondary}>WORKFLOW</Text>
       <WorkflowList stages={session.workflow.stages} selectedStage={selectedStage} />
       <Box marginTop={1} flexDirection="column">
         <Text bold color={designFlowTheme.textSecondary}>OUTPUTS</Text>
-        <OutputsList session={session} />
+        <OutputsList session={session} selectedOutput={selectedOutput} focused={focusArea === "outputs"} />
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text bold color={designFlowTheme.textSecondary}>SELECTION</Text>
@@ -135,8 +158,12 @@ export function WorkflowList({
 }
 export function OutputsList({
   session,
+  selectedOutput,
+  focused,
 }: {
   readonly session: DesignFlowSessionView;
+  readonly selectedOutput: number;
+  readonly focused: boolean;
 }): React.JSX.Element {
   if (session.outputs.length === 0) {
     return <Text color={designFlowTheme.muted}>No outputs yet</Text>;
@@ -144,9 +171,9 @@ export function OutputsList({
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      {session.outputs.map((output) => (
-        <Text key={output.id} color={output.status === "available" ? designFlowTheme.textPrimary : designFlowTheme.muted}>
-          {output.label}
+      {session.outputs.map((output, index) => (
+        <Text key={output.id} color={index === selectedOutput && focused ? designFlowTheme.accentStrong : output.status === "available" ? designFlowTheme.textPrimary : designFlowTheme.muted}>
+          {index === selectedOutput && focused ? "›" : " "} {output.status === "available" ? "✓" : "○"} {output.label}
         </Text>
       ))}
     </Box>
@@ -157,12 +184,22 @@ export function MainPanel({
   navigation,
   focusArea,
   destinationVisibleCount,
+  selectedOutputView,
+  viewerDocument,
+  viewerVisibleLines,
+  viewerScrollOffset,
+  viewerDetails,
   executionPrompt,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
-  readonly focusArea: "workflow" | "main";
+  readonly focusArea: "workflow" | "outputs" | "main";
   readonly destinationVisibleCount: number;
+  readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
+  readonly viewerDocument?: ArtifactViewerDocument | undefined;
+  readonly viewerVisibleLines: number;
+  readonly viewerScrollOffset: number;
+  readonly viewerDetails: boolean;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
 }): React.JSX.Element {
   return (
@@ -186,6 +223,8 @@ export function MainPanel({
         <ReadyToRunView session={session} />
       ) : navigation.view === "execution" ? (
         <ExecutionView session={session} prompt={executionPrompt} />
+      ) : navigation.view === "output-viewer" ? (
+        <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={viewerScrollOffset} visibleLines={viewerVisibleLines} details={viewerDetails} />
       ) : (
         <StartView session={session} focused={focusArea === "main"} />
       )}
@@ -356,7 +395,9 @@ export function StatusBar({
   readonly view: TuiView;
 }): React.JSX.Element {
   const hint = compact
-    ? "Compact mode — resize for the full shell"
+    ? view === "output-viewer"
+      ? "Compact viewer — ↑↓/jk Scroll   PgUp/PgDn   Home/End   Esc Back"
+      : "Compact mode — resize for the full shell"
     : helpOpen
       ? "Esc Close help"
       : view === "design-selection"
@@ -369,6 +410,8 @@ export function StatusBar({
               ? "Enter Start   Esc Change destination   ? Help   q Quit"
               : view === "execution"
                 ? "? Help   Ctrl+C Cancel   q Quit when complete"
+                : view === "output-viewer"
+                  ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   d Details   Esc Back"
               : "Enter Start   ? Help   q Quit";
 
   return (

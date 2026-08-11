@@ -1,4 +1,5 @@
 import type { ProjectIdentity } from "@designflow/sdk";
+import type { ArtifactSummary } from "@designflow/product";
 import type { CliContext } from "../../services/cli-runner";
 import {
   detectCurrentProject,
@@ -93,8 +94,29 @@ export interface WorkflowStageView {
 export interface OutputView {
   readonly id: string;
   readonly label: string;
-  readonly status: "available" | "pending";
+  readonly kind: OutputKind;
+  readonly stage: string;
+  readonly viewerType: OutputViewerType;
+  readonly status: "available" | "pending" | "unavailable";
+  readonly artifactRef?: {
+    readonly artifactId: string;
+    readonly type: string;
+    readonly version?: number;
+  };
+  readonly artifactSummary?: ArtifactSummary;
 }
+
+export type OutputKind =
+  | "specification"
+  | "project-analysis"
+  | "component-mapping"
+  | "proposal"
+  | "validation"
+  | "visual-validation"
+  | "correction"
+  | "unknown";
+
+export type OutputViewerType = OutputKind;
 
 export interface SessionViewFacts {
   readonly project?: {
