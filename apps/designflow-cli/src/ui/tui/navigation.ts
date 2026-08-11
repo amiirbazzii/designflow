@@ -46,6 +46,7 @@ export interface TuiNavigationState {
   readonly view: TuiView;
   readonly helpReturnView: Exclude<TuiView, "help">;
   readonly outputReturnView: Exclude<TuiView, "help" | "output-viewer">;
+  readonly diagnosticsReturnView: Exclude<TuiView, "help" | "diagnostics-view">;
   readonly outputId?: string;
   readonly outputScrollOffset: number;
   readonly outputDetails: boolean;
@@ -77,6 +78,7 @@ export function initialNavigationState(): TuiNavigationState {
     view: "start",
     helpReturnView: "start",
     outputReturnView: "execution",
+    diagnosticsReturnView: "needs-attention",
     outputScrollOffset: 0,
     outputDetails: false,
     reviewActionIndex: 0,
@@ -374,7 +376,12 @@ export function openNeedsAttention(state: TuiNavigationState): TuiNavigationStat
 }
 
 export function openDiagnosticsView(state: TuiNavigationState): TuiNavigationState {
-  return { ...state, view: "diagnostics-view" };
+  const returnView = state.view === "help" ? state.helpReturnView : state.view;
+  return {
+    ...state,
+    view: "diagnostics-view",
+    diagnosticsReturnView: returnView === "diagnostics-view" ? state.diagnosticsReturnView : returnView,
+  };
 }
 
 export function moveOutcomeAction(
@@ -391,7 +398,7 @@ export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   if (state.view === "sign-in-required") return { ...state, view: "start", authError: undefined, authBrowserFallback: undefined };
   if (state.view === "output-viewer") return closeOutput(state);
   if (state.view === "diff-view") return closeDiffView(state);
-  if (state.view === "diagnostics-view") return { ...state, view: "needs-attention" };
+  if (state.view === "diagnostics-view") return { ...state, view: state.diagnosticsReturnView };
   if (state.view === "needs-attention") return { ...state, view: "start", outcomeActionIndex: 0 };
   if (state.view === "proposal-review" || state.view === "correction-review") {
     const { review: _review, ...withoutReview } = state;

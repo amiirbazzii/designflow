@@ -78,7 +78,16 @@ import {
 import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtifactReader } from "./artifact-viewer";
 import type { VisualResultView } from "../../services/visual-result";
 import { stripBracketedPasteMarkers } from "./url-window";
-import { latestAvailableOutput, terminalOutcomeActions, type TerminalOutcomeActionId } from "./outcome";
+import {
+  latestAvailableOutput,
+  terminalOutcomeActionForShortcut,
+  terminalOutcomeActions,
+  terminalOutcomeFromSession,
+  terminalOutcomeMenuActions,
+  type TerminalOutcomeActionId,
+  type TerminalOutcomeKind,
+  type TerminalOutcomeView,
+} from "./outcome";
 import { canStartDesignEngineer, requiresInteractiveAuthentication, type TuiAuthController } from "./auth";
 
 export type TuiAction =
@@ -238,12 +247,17 @@ export function App({
   }, [artifactReader, navigation.outputId, navigation.view, session.outputs]);
 
   useEffect(() => {
-    if (navigation.view !== "execution" || session.finalResult === undefined || session.workflow.status === "active") return;
+    // A terminal failure can arrive before the final report/cleanup promise
+    // settles. Once the TUI knows execution ended, it must leave the execution
+    // input lock even if the last workflow-status callback was incomplete.
+    if (navigation.view !== "execution" || (!executionFinished && session.workflow.status !== "unavailable")) return;
     setNavigation((current) => {
       if (current.view !== "execution") return current;
-      return session.workflow.status === "unavailable" ? openNeedsAttention(current) : { ...current, view: "final-result", outcomeActionIndex: 0 };
+      return session.finalResult?.status === "success"
+        ? { ...current, view: "final-result", outcomeActionIndex: 0 }
+        : openNeedsAttention(current);
     });
-  }, [navigation.view, session.finalResult, session.workflow.status]);
+  }, [executionFinished, navigation.view, session.finalResult?.status, session.workflow.status]);
 
   const loadDestinations = (design: InteractiveDesign): void => {
     const requestId = destinationRequest.current + 1;
@@ -389,8 +403,21 @@ export function App({
       const bridge: TuiExecutionBridge = {
         update: (nextSession) => setSession(nextSession),
         progress: (progress) => setSession((current) => applyExecutionProgress(current, progress)),
-        result: (result) => setSession((current) => applySessionResult(current, result)),
-        report: (report) => setSession((current) => applyExecutionReport(current, report)),
+        result: (result) => {
+          if (result.session.status === "failed" || result.session.status === "declined" || result.session.status === "cancelled") {
+            setExecutionFinished(true);
+          }
+          setSession((current) => applySessionResult(current, result));
+        },
+        report: (report) => {
+          const root = typeof report === "object" && report !== null
+            ? report as { readonly overview?: { readonly state?: unknown; readonly status?: unknown } }
+            : undefined;
+          if (root?.overview?.state === "failed" || root?.overview?.status === "cancelled") {
+            setExecutionFinished(true);
+          }
+          setSession((current) => applyExecutionReport(current, report));
+        },
         cancelled: () => {
           reviewResolver.current?.("reject");
           reviewResolver.current = undefined;
@@ -398,6 +425,7 @@ export function App({
           promptRejecter.current = undefined;
           promptResolver.current = undefined;
           setPrompt(undefined);
+          setExecutionFinished(true);
           setSession((current) => applyExecutionUpdate(current, { status: "cancelled" }));
         },
         ask: (question, options) => new Promise<string>((resolve, reject) => {
@@ -428,7 +456,6 @@ export function App({
       void onStart(action, bridge)
         .then(() => {
           setExecutionFinished(true);
-          setNavigation((current) => current.view === "execution" ? { ...current, view: "final-result" } : current);
         })
         .catch((error: unknown) => {
           if (cancellationRequested.current) {
@@ -476,7 +503,15 @@ export function App({
   const viewerVisibleLines = Math.max(1, size.rows - (compact ? 8 : 10));
   const viewerMaximum = Math.max(0, (viewerDocument?.lines.length ?? 0) - viewerVisibleLines);
   const executionBusy = executionStarted && !executionFinished && navigation.view === "execution" && session.workflow.status === "active" && session.finalResult === undefined;
-  const terminalOutcomeView = navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && session.finalResult !== undefined);
+  const isTerminalOutcomeView = navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && (executionFinished || session.workflow.status === "unavailable"));
+  const terminalOutcomeKind: TerminalOutcomeKind = session.finalResult?.status === "success"
+    ? "completed"
+    : session.finalResult?.summary.startsWith("Cancelled") === true
+      ? "cancelled"
+      : "needs-attention";
+  const terminalOutcome: TerminalOutcomeView | undefined = isTerminalOutcomeView
+    ? terminalOutcomeFromSession(session, terminalOutcomeKind)
+    : undefined;
 
   const activateTerminalOutcome = (actionId: TerminalOutcomeActionId): void => {
     if (actionId === "view-report") {
@@ -484,6 +519,8 @@ export function App({
       if (output !== undefined) setNavigation((current) => openOutput(current, output.id));
     } else if (actionId === "view-details") {
       setNavigation((current) => openDiagnosticsView(current));
+    } else if (actionId === "outputs") {
+      setInteraction((current) => ({ ...current, focusArea: "outputs" }));
     } else if (actionId === "back-to-start") {
       setNavigation((current) => ({ ...current, view: "start", outcomeActionIndex: 0 }));
     } else if (actionId === "quit") {
@@ -603,7 +640,7 @@ export function App({
 
     if (navigation.view === "diagnostics-view") {
       const detailsAction = mapTuiKey(input, key);
-      if (detailsAction === "back") setNavigation((current) => ({ ...current, view: "needs-attention" }));
+      if (detailsAction === "back") setNavigation((current) => navigateBack(current));
       else if (detailsAction === "help") setNavigation((current) => openHelp(current));
       else if (detailsAction === "quit") {
         onAction({ type: "quit" });
@@ -662,18 +699,27 @@ export function App({
       return;
     }
     if (action === "quit") {
-      if (executionBusy) return;
-      onAction({ type: "quit" });
-      exit();
+      if (isTerminalOutcomeView) {
+        const quit = terminalOutcomeActionForShortcut(terminalOutcome?.actions ?? [], "quit");
+        if (quit !== undefined) activateTerminalOutcome(quit.id);
+      } else if (!executionBusy) {
+        onAction({ type: "quit" });
+        exit();
+      }
       return;
     }
     if (action === "back") {
-      setNavigation((current) => terminalOutcomeView && current.view === "execution" ? { ...current, view: "start", outcomeActionIndex: 0 } : navigateBack(current));
+      if (isTerminalOutcomeView) {
+        const back = terminalOutcomeActionForShortcut(terminalOutcome?.actions ?? [], "back");
+        if (back !== undefined) activateTerminalOutcome(back.id);
+      } else {
+        setNavigation((current) => navigateBack(current));
+      }
       return;
     }
     if (action === "activate") {
-      if (terminalOutcomeView && interaction.focusArea === "main") {
-        const actions = terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0);
+      if (isTerminalOutcomeView && interaction.focusArea === "main") {
+        const actions = terminalOutcomeMenuActions(terminalOutcome?.actions ?? terminalOutcomeActions(false, false));
         const selected = actions[navigation.outcomeActionIndex];
         if (selected !== undefined) activateTerminalOutcome(selected.id);
       } else if (interaction.focusArea === "main") activate();
@@ -684,16 +730,16 @@ export function App({
       return;
     }
     if (action === "next-focus" || action === "previous-focus") {
-      if (terminalOutcomeView && action === "next-focus" && session.outputs.length > 0) {
-        setInteraction((current) => ({ ...current, focusArea: "outputs" }));
+      if (isTerminalOutcomeView && action === "next-focus" && terminalOutcomeActionForShortcut(terminalOutcome?.actions ?? [], "tab") !== undefined && interaction.focusArea === "main") {
+        activateTerminalOutcome("outputs");
       } else {
         setInteraction((current) => reduceTuiInteraction(current, action, session.workflow.stages.length));
       }
       return;
     }
 
-    if (terminalOutcomeView && interaction.focusArea === "main" && (action === "up" || action === "down")) {
-      const count = terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).length;
+    if (isTerminalOutcomeView && interaction.focusArea === "main" && (action === "up" || action === "down")) {
+      const count = terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).length;
       setNavigation((current) => moveOutcomeAction(current, action === "up" ? -1 : 1, count));
       return;
     }
@@ -760,6 +806,7 @@ export function App({
       visualResult={visualResult}
       terminalColumns={size.columns}
       executionBusy={executionBusy}
+      terminalOutcome={terminalOutcome}
     />
   );
 }

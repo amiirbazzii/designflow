@@ -12,7 +12,7 @@ import type { ArtifactViewerDocument } from "./artifact-viewer";
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
 import type { TuiPromptState } from "./text-input";
-import { latestAvailableOutput, terminalOutcomeActions, terminalOutcomeStatusHint, visualResultStatusHint } from "./outcome";
+import { terminalOutcomeMenuActions, terminalOutcomeStatusHintForActions, visualResultStatusHint, type TerminalOutcomeView } from "./outcome";
 import { AuthView } from "./auth-view";
 export { visibleUrlWindow } from "./url-window";
 
@@ -32,6 +32,7 @@ export interface ShellProps {
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
   readonly executionBusy: boolean;
+  readonly terminalOutcome?: TerminalOutcomeView | undefined;
 }
 
 export function Shell({
@@ -50,10 +51,11 @@ export function Shell({
   visualResult,
   terminalColumns,
   executionBusy,
+  terminalOutcome,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
-      <Header session={session} />
+      <Header session={session} executionBusy={executionBusy} terminalOutcome={terminalOutcome} />
       {helpOpen ? (
         <HelpView />
       ) : compact ? (
@@ -69,6 +71,7 @@ export function Shell({
           executionPrompt={executionPrompt}
           visualResult={visualResult}
           terminalColumns={terminalColumns}
+          terminalOutcome={terminalOutcome}
         />
       ) : (
         <Box flexGrow={1} flexDirection="row" overflow="hidden">
@@ -91,17 +94,16 @@ export function Shell({
             executionPrompt={executionPrompt}
             visualResult={visualResult}
             terminalColumns={terminalColumns}
+            terminalOutcome={terminalOutcome}
           />
         </Box>
       )}
-      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} authRequired={session.ai.status === "pending"} canImprove={visualResult?.canImprove === true} hasVisualReport={visualResult?.reportAvailable === true} hasReport={latestAvailableOutput(session.outputs) !== undefined} hasDetails={session.diagnostics.length > 0} hasOutputs={session.outputs.length > 0} executionBusy={executionBusy} terminalOutcome={navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && session.finalResult !== undefined)} />
+      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} authRequired={session.ai.status === "pending"} canImprove={visualResult?.canImprove === true} hasVisualReport={visualResult?.reportAvailable === true} hasOutputs={session.outputs.length > 0} executionBusy={executionBusy} terminalOutcome={terminalOutcome} />
     </Box>
   );
 }
-export function Header({ session }: { readonly session: DesignFlowSessionView }): React.JSX.Element {
-  const status = session.ai.status === "pending"
-    ? "Sign in required"
-    : session.project.status === "ready" ? "Ready" : "Needs attention";
+export function Header({ session, executionBusy, terminalOutcome }: { readonly session: DesignFlowSessionView; readonly executionBusy: boolean; readonly terminalOutcome?: TerminalOutcomeView | undefined }): React.JSX.Element {
+  const status = headerStatus(session, executionBusy, terminalOutcome);
 
   return (
     <Box
@@ -113,11 +115,29 @@ export function Header({ session }: { readonly session: DesignFlowSessionView })
     >
       <Text bold color={designFlowTheme.accentStrong}>DesignFlow</Text>
       <Text color={designFlowTheme.textSecondary}>{session.project.name}</Text>
-      <Text color={status === "Ready" ? designFlowTheme.success : designFlowTheme.warning}>
+      <Text color={status === "Ready" || status === "Done" ? designFlowTheme.success : status === "Running" ? designFlowTheme.accent : designFlowTheme.warning}>
         {status}
       </Text>
     </Box>
   );
+}
+
+export function headerStatus(
+  session: DesignFlowSessionView,
+  executionBusy: boolean,
+  terminalOutcome?: TerminalOutcomeView,
+): "Ready" | "Running" | "Needs attention" | "Cancelled" | "Done" | "Sign in required" {
+  return session.ai.status === "pending"
+    ? "Sign in required"
+    : terminalOutcome?.kind === "completed"
+      ? "Done"
+      : terminalOutcome?.kind === "cancelled"
+        ? "Cancelled"
+        : terminalOutcome !== undefined || session.workflow.status === "unavailable"
+          ? "Needs attention"
+          : executionBusy || session.workflow.status === "active"
+            ? "Running"
+            : session.project.status === "ready" ? "Ready" : "Needs attention";
 }
 export function Sidebar({
   session,
@@ -211,6 +231,7 @@ export function MainPanel({
   executionPrompt,
   visualResult,
   terminalColumns,
+  terminalOutcome,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -224,6 +245,7 @@ export function MainPanel({
   readonly executionPrompt?: TuiPromptState | undefined;
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
+  readonly terminalOutcome?: TerminalOutcomeView | undefined;
 }): React.JSX.Element {
   return (
     <Box
@@ -259,11 +281,11 @@ export function MainPanel({
       ) : navigation.view === "visual-result" ? (
         <VisualResultPanel result={visualResult} />
       ) : navigation.view === "needs-attention" ? (
-        <LifecycleResultView title="Needs attention" sessionLines={outcomeLines(session, true)} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+        <LifecycleResultView title={terminalOutcome?.title ?? "Needs attention"} sessionLines={outcomeLines(session, true)} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "diagnostics-view" ? (
         <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
       ) : navigation.view === "final-result" ? (
-        <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={outcomeLines(session, session.finalResult?.status === "failure")} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+        <LifecycleResultView title={terminalOutcome?.title ?? (session.finalResult?.status === "failure" ? "Needs attention" : "Done")} sessionLines={outcomeLines(session, session.finalResult?.status === "failure")} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "output-viewer" ? (
         <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={viewerScrollOffset} visibleLines={viewerVisibleLines} details={viewerDetails} />
       ) : navigation.view === "sign-in-required" || navigation.view === "signing-in" ? (
@@ -477,8 +499,6 @@ export function StatusBar({
   authRequired,
   canImprove,
   hasVisualReport,
-  hasReport,
-  hasDetails,
   hasOutputs,
   executionBusy,
   terminalOutcome,
@@ -489,13 +509,11 @@ export function StatusBar({
   readonly authRequired: boolean;
   readonly canImprove?: boolean;
   readonly hasVisualReport: boolean;
-  readonly hasReport: boolean;
-  readonly hasDetails: boolean;
   readonly hasOutputs: boolean;
   readonly executionBusy: boolean;
-  readonly terminalOutcome: boolean;
+  readonly terminalOutcome?: TerminalOutcomeView | undefined;
 }): React.JSX.Element {
-  const outcomeHint = terminalOutcomeStatusHint(hasReport, hasDetails, hasOutputs);
+  const outcomeHint = terminalOutcomeStatusHintForActions(terminalOutcome?.actions ?? []);
   const diagnosticsHint = "? Help   Esc Back   q Quit";
   const hint = compact
     ? view === "diagnostics-view"
@@ -504,7 +522,7 @@ export function StatusBar({
         ? "Enter Sign in   ? Help   q Quit"
         : view === "signing-in"
           ? "Ctrl+C Cancel   ? Help   q Quit"
-      : terminalOutcome
+      : terminalOutcome !== undefined
       ? outcomeHint
       : view === "output-viewer"
       ? "Compact viewer — ↑↓/jk Scroll   PgUp/PgDn   Home/End   Esc Back"

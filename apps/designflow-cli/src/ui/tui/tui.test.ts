@@ -149,6 +149,8 @@ describe("DesignFlow TUI selection navigation", () => {
     const managed = setApprovalOption(approval, 1);
     expect(managed.approvalMode).toBe("designflow");
     expect(setApprovalMode(session, managed.approvalMode).approval.mode).toBe("designflow");
+    expect(enterApprovalMode({ ...managed, view: "destination-selection" }).approvalOption).toBe(1);
+    expect(enterApprovalMode({ ...setApprovalOption(managed, 0), view: "destination-selection" }).approvalOption).toBe(0);
   });
 
   test("Start enters design selection and Esc follows the back hierarchy", () => {

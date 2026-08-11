@@ -12,7 +12,7 @@ import { renderVisibleUrlWindow, urlInputContentWidth, visibleUrlWindow } from "
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
 import type { TuiPromptState } from "./text-input";
-import { latestAvailableOutput, terminalOutcomeActions } from "./outcome";
+import { terminalOutcomeMenuActions, type TerminalOutcomeView } from "./outcome";
 
 export function CompactView({
   session,
@@ -26,6 +26,7 @@ export function CompactView({
   executionPrompt,
   visualResult,
   terminalColumns,
+  terminalOutcome,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -38,6 +39,7 @@ export function CompactView({
   readonly executionPrompt?: TuiPromptState | undefined;
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
+  readonly terminalOutcome?: TerminalOutcomeView | undefined;
 }): React.JSX.Element {
   return <Box flexGrow={1} flexDirection="column" paddingX={1}>
     <Text color={designFlowTheme.warning}>Compact terminal mode</Text>
@@ -54,11 +56,11 @@ export function CompactView({
       : navigation.view === "applying" ? <LifecycleResultView title="Applying" sessionLines={["● Applying changes…"]} />
       : navigation.view === "validation-result" ? <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
       : navigation.view === "visual-result" ? <VisualResultPanel result={visualResult} compact />
-      : navigation.view === "needs-attention" ? <LifecycleResultView title="Needs attention" sessionLines={session.diagnostics.length > 0 ? [...session.diagnostics.slice(0, 8), "No new mutation is started from this screen."] : ["The workflow needs attention.", "No new mutation is started from this screen."]} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+      : navigation.view === "needs-attention" ? <LifecycleResultView title={terminalOutcome?.title ?? "Needs attention"} sessionLines={session.diagnostics.length > 0 ? [...session.diagnostics.slice(0, 8), "No new mutation is started from this screen."] : ["The workflow needs attention.", "No new mutation is started from this screen."]} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       : navigation.view === "sign-in-required" ? <AuthView navigation={navigation} signingIn={false} />
       : navigation.view === "signing-in" ? <AuthView navigation={navigation} signingIn />
       : navigation.view === "diagnostics-view" ? <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
-      : navigation.view === "final-result" ? <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+      : navigation.view === "final-result" ? <LifecycleResultView title={terminalOutcome?.title ?? (session.finalResult?.status === "failure" ? "Needs attention" : "Done")} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       : <Box flexDirection="column"><Text bold>{session.ai.status === "pending" ? "Sign in required" : "Ready to start"}</Text><Text>{session.ai.status === "pending" ? "Sign in before starting Design Engineer." : "Press Enter to select a design."}</Text></Box>}
   </Box>;
 }
