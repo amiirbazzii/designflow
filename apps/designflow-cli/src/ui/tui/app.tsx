@@ -89,6 +89,19 @@ import {
   type TerminalOutcomeView,
 } from "./outcome";
 import { canStartDesignEngineer, requiresInteractiveAuthentication, type TuiAuthController } from "./auth";
+import { appendFileSync } from "node:fs";
+
+// TEMPORARY diagnostics for the Phase 6B input-lifecycle investigation.
+// Active only when DESIGNFLOW_TUI_TRACE names a file; removed before release.
+function trace(event: string, fields: Record<string, unknown>): void {
+  const target = process.env["DESIGNFLOW_TUI_TRACE"];
+  if (target === undefined || target.length === 0) return;
+  try {
+    appendFileSync(target, `${JSON.stringify({ t: Date.now(), event, ...fields })}\n`);
+  } catch {
+    // diagnostics never break the app
+  }
+}
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
@@ -150,11 +163,33 @@ export function App({
   const promptRejecter = useRef<(() => void) | undefined>();
   const reviewResolver = useRef<((value: "approve" | "reject") => void) | undefined>();
   const executionBridge = useRef<TuiExecutionBridge | undefined>();
+  const executionDoneRef = useRef(false);
   const cancellationRequested = useRef(false);
   const destinationRequest = useRef(0);
   const handoffStarted = useRef(false);
   const rawInputRef = useRef<string | undefined>();
   const authRequestRef = useRef(0);
+
+  // One input owner: a pending ask() may only capture keys while the
+  // execution view renders it. Once the run is over, any pending or late
+  // question is answered with its default ("" — callers treat empty as
+  // decline/save-and-stop) so the interactive terminal outcome keeps input.
+  const resolvePendingPrompt = (): void => {
+    const resolve = promptResolver.current;
+    promptResolver.current = undefined;
+    promptRejecter.current = undefined;
+    if (resolve !== undefined) {
+      trace("prompt-flushed", {});
+      resolve("");
+    }
+    setPrompt(undefined);
+  };
+
+  const finishExecution = (): void => {
+    executionDoneRef.current = true;
+    setExecutionFinished(true);
+    resolvePendingPrompt();
+  };
 
   const authenticationRequired = (): boolean =>
     auth !== undefined
@@ -397,7 +432,9 @@ export function App({
       handoffStarted.current = true;
       const action = { type: "start" as const, ...(projectId === undefined ? {} : { projectId }), design: navigation.design, destination, approvalMode: navigation.approvalMode };
       onAction(action);
+      executionDoneRef.current = false;
       setExecutionStarted(true);
+      setExecutionFinished(false);
       setSession((current) => setExecutionStatus(current, "active", { actor: "designflow", title: "Starting Design Engineer", state: "running" }));
       setNavigation((current) => ({ ...current, view: "execution", error: undefined }));
       const bridge: TuiExecutionBridge = {
@@ -405,7 +442,7 @@ export function App({
         progress: (progress) => setSession((current) => applyExecutionProgress(current, progress)),
         result: (result) => {
           if (result.session.status === "failed" || result.session.status === "declined" || result.session.status === "cancelled") {
-            setExecutionFinished(true);
+            finishExecution();
           }
           setSession((current) => applySessionResult(current, result));
         },
@@ -414,7 +451,7 @@ export function App({
             ? report as { readonly overview?: { readonly state?: unknown; readonly status?: unknown } }
             : undefined;
           if (root?.overview?.state === "failed" || root?.overview?.status === "cancelled") {
-            setExecutionFinished(true);
+            finishExecution();
           }
           setSession((current) => applyExecutionReport(current, report));
         },
@@ -425,10 +462,18 @@ export function App({
           promptRejecter.current = undefined;
           promptResolver.current = undefined;
           setPrompt(undefined);
-          setExecutionFinished(true);
+          finishExecution();
           setSession((current) => applyExecutionUpdate(current, { status: "cancelled" }));
         },
         ask: (question, options) => new Promise<string>((resolve, reject) => {
+          trace("bridge-ask", { question, options, done: executionDoneRef.current });
+          // A question that arrives after the run already reached a terminal
+          // outcome has no screen to render on; answering with the default
+          // keeps the interactive outcome as the only input owner.
+          if (executionDoneRef.current) {
+            resolve("");
+            return;
+          }
           promptResolver.current = resolve;
           promptRejecter.current = reject;
           setPrompt({ question, ...(options === undefined ? {} : { options }), value: "", cursorIndex: 0, viewportStart: 0, optionIndex: 0 });
@@ -442,7 +487,7 @@ export function App({
           setNavigation((current) => ({ ...current, view: "visual-result" }));
         },
         authRequired: (message) => {
-          setExecutionFinished(true);
+          finishExecution();
           setSession((current) => ({
             ...current,
             ai: { status: "pending", label: "Sign-in required" },
@@ -455,11 +500,11 @@ export function App({
       executionBridge.current = bridge;
       void onStart(action, bridge)
         .then(() => {
-          setExecutionFinished(true);
+          finishExecution();
         })
         .catch((error: unknown) => {
           if (cancellationRequested.current) {
-            setExecutionFinished(true);
+            finishExecution();
             return;
           }
           setSession((current) => ({
@@ -469,7 +514,7 @@ export function App({
             diagnostics: [error instanceof Error ? error.message : "The workflow did not complete."],
             finalResult: { status: "failure", summary: "The workflow did not complete." },
           }));
-          setExecutionFinished(true);
+          finishExecution();
           setNavigation((current) => openNeedsAttention(current));
         });
     }
@@ -522,6 +567,20 @@ export function App({
     } else if (actionId === "outputs") {
       setInteraction((current) => ({ ...current, focusArea: "outputs" }));
     } else if (actionId === "back-to-start") {
+      // Returning to start ends the previous run's lifecycle entirely so the
+      // next journey can start a fresh execution.
+      handoffStarted.current = false;
+      cancellationRequested.current = false;
+      executionDoneRef.current = false;
+      resolvePendingPrompt();
+      setExecutionStarted(false);
+      setExecutionFinished(false);
+      setInteraction((current) => ({ ...current, focusArea: "main", selectedStage: 0, selectedOutput: 0 }));
+      setSession(({ finalResult: _previousResult, ...current }) => ({
+        ...current,
+        workflow: { ...current.workflow, status: "idle" },
+        diagnostics: [],
+      }));
       setNavigation((current) => ({ ...current, view: "start", outcomeActionIndex: 0 }));
     } else if (actionId === "quit") {
       onAction({ type: "quit" });
@@ -532,6 +591,19 @@ export function App({
   useInput((input, key) => {
     const rawInput = rawInputRef.current;
     rawInputRef.current = undefined;
+    trace("useInput", {
+      input: JSON.stringify(input),
+      raw: JSON.stringify(rawInput),
+      view: navigation.view,
+      focusArea: interaction.focusArea,
+      prompt: prompt !== undefined,
+      executionBusy,
+      isTerminalOutcomeView,
+      outcomeActionIndex: navigation.outcomeActionIndex,
+      executionFinished,
+      workflowStatus: session.workflow.status,
+      finalResult: session.finalResult?.status,
+    });
     if (key.ctrl && input === "c") {
       onInterrupt();
       if (!executionBusy) {
@@ -545,7 +617,13 @@ export function App({
       return;
     }
 
-    if (prompt !== undefined) {
+    if (prompt !== undefined && navigation.view !== "execution") {
+      // Invariant: a prompt may only capture input while it is rendered
+      // (execution view). Anything else is a desynced legacy question —
+      // self-heal by answering its default and handle this key normally.
+      trace("prompt-desync", { view: navigation.view });
+      resolvePendingPrompt();
+    } else if (prompt !== undefined) {
       if (prompt.options !== undefined) {
         if (key.upArrow || rawInput === "\u001b[A") {
           setPrompt((current) => current === undefined ? current : { ...current, optionIndex: Math.max(0, current.optionIndex - 1) });
@@ -669,15 +747,16 @@ export function App({
     }
 
     if (navigation.view === "visual-result" && input.toLowerCase() === "i" && visualResult?.canImprove === true && onImprove !== undefined && executionBridge.current !== undefined) {
+      executionDoneRef.current = false;
       setExecutionFinished(false);
       setNavigation((current) => ({ ...current, view: "execution" }));
       void onImprove(executionBridge.current)
         .then(() => {
-          setExecutionFinished(true);
+          finishExecution();
           setNavigation((current) => ({ ...current, view: "visual-result" }));
         })
         .catch((error: unknown) => {
-          setExecutionFinished(true);
+          finishExecution();
           setSession((current) => ({ ...current, diagnostics: [error instanceof Error ? error.message : "Improvement could not start."], finalResult: { status: "failure", summary: "Improvement could not start." } }));
           setNavigation((current) => ({ ...current, view: "final-result" }));
         });
@@ -721,6 +800,7 @@ export function App({
       if (isTerminalOutcomeView && interaction.focusArea === "main") {
         const actions = terminalOutcomeMenuActions(terminalOutcome?.actions ?? terminalOutcomeActions(false, false));
         const selected = actions[navigation.outcomeActionIndex];
+        trace("outcome-activate", { menuCount: actions.length, index: navigation.outcomeActionIndex, selected: selected?.id });
         if (selected !== undefined) activateTerminalOutcome(selected.id);
       } else if (interaction.focusArea === "main") activate();
       else if (interaction.focusArea === "outputs") {
