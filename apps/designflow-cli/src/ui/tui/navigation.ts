@@ -22,6 +22,8 @@ export interface TuiReviewRequest {
 
 export type TuiView =
   | "start"
+  | "sign-in-required"
+  | "signing-in"
   | "design-selection"
   | "figma-url-entry"
   | "destination-selection"
@@ -65,6 +67,8 @@ export interface TuiNavigationState {
   readonly destinationIndex: number;
   readonly destinationScrollOffset: number;
   readonly loading: "current-selection" | "destinations" | null;
+  readonly authError?: string | undefined;
+  readonly authBrowserFallback?: string | undefined;
   readonly error?: string | undefined;
 }
 
@@ -91,6 +95,36 @@ export function initialNavigationState(): TuiNavigationState {
     destinationScrollOffset: 0,
     loading: null,
   };
+}
+
+export function openSignInRequired(
+  state: TuiNavigationState,
+  authError?: string,
+): TuiNavigationState {
+  return {
+    ...state,
+    view: "sign-in-required",
+    authError,
+    authBrowserFallback: undefined,
+    error: undefined,
+  };
+}
+
+export function openSigningIn(state: TuiNavigationState): TuiNavigationState {
+  return {
+    ...state,
+    view: "signing-in",
+    authError: undefined,
+    authBrowserFallback: undefined,
+    error: undefined,
+  };
+}
+
+export function setAuthBrowserFallback(
+  state: TuiNavigationState,
+  url: string,
+): TuiNavigationState {
+  return { ...state, authBrowserFallback: url };
 }
 
 export function enterDesignSelection(
@@ -353,6 +387,8 @@ export function moveOutcomeAction(
 
 export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   if (state.view === "help") return closeHelp(state);
+  if (state.view === "signing-in") return openSignInRequired(state);
+  if (state.view === "sign-in-required") return { ...state, view: "start", authError: undefined, authBrowserFallback: undefined };
   if (state.view === "output-viewer") return closeOutput(state);
   if (state.view === "diff-view") return closeDiffView(state);
   if (state.view === "diagnostics-view") return { ...state, view: "needs-attention" };

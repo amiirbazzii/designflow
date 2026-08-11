@@ -10,6 +10,7 @@ import {
 import { findDestinationCandidates } from "../../services/destinations";
 import type { TuiExecutionBridge } from "./execution";
 import type { TuiArtifactReader } from "./artifact-viewer";
+import type { TuiAuthController } from "./auth";
 
 export type TuiStartHandler = (
   action: Extract<TuiAction, { readonly type: "start" }>,
@@ -60,6 +61,10 @@ export async function runTuiShell(
       },
     },
     onImprove,
+    {
+      status: context.aiStatus,
+      signInWithGoogle: context.signInWithGoogle,
+    },
   );
 }
 
@@ -76,6 +81,7 @@ export async function runTuiShellWithView(
   onStart?: TuiStartHandler,
   artifactReader?: TuiArtifactReader,
   onImprove?: TuiImproveHandler,
+  auth?: TuiAuthController,
 ): Promise<TuiAction> {
   (streams.writeControl ?? ((value: string) => safeWrite(streams.output, value)))(ALT_SCREEN_ENTER);
 
@@ -96,6 +102,7 @@ export async function runTuiShellWithView(
       },
       onStart: onStart ?? (async () => 0),
       onInterrupt,
+      ...(auth === undefined ? {} : { auth }),
       ...(onImprove === undefined ? {} : { onImprove }),
     }),
     {

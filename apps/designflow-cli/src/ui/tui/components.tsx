@@ -13,6 +13,7 @@ import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
 import type { TuiPromptState } from "./text-input";
 import { latestAvailableOutput, terminalOutcomeActions, terminalOutcomeStatusHint, visualResultStatusHint } from "./outcome";
+import { AuthView } from "./auth-view";
 export { visibleUrlWindow } from "./url-window";
 
 export interface ShellProps {
@@ -93,12 +94,14 @@ export function Shell({
           />
         </Box>
       )}
-      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} canImprove={visualResult?.canImprove === true} hasVisualReport={visualResult?.reportAvailable === true} hasReport={latestAvailableOutput(session.outputs) !== undefined} hasDetails={session.diagnostics.length > 0} hasOutputs={session.outputs.length > 0} executionBusy={executionBusy} terminalOutcome={navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && session.finalResult !== undefined)} />
+      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} authRequired={session.ai.status === "pending"} canImprove={visualResult?.canImprove === true} hasVisualReport={visualResult?.reportAvailable === true} hasReport={latestAvailableOutput(session.outputs) !== undefined} hasDetails={session.diagnostics.length > 0} hasOutputs={session.outputs.length > 0} executionBusy={executionBusy} terminalOutcome={navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && session.finalResult !== undefined)} />
     </Box>
   );
 }
 export function Header({ session }: { readonly session: DesignFlowSessionView }): React.JSX.Element {
-  const status = session.project.status === "ready" ? "Ready" : "Needs attention";
+  const status = session.ai.status === "pending"
+    ? "Sign in required"
+    : session.project.status === "ready" ? "Ready" : "Needs attention";
 
   return (
     <Box
@@ -263,6 +266,8 @@ export function MainPanel({
         <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={outcomeLines(session, session.finalResult?.status === "failure")} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "output-viewer" ? (
         <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={viewerScrollOffset} visibleLines={viewerVisibleLines} details={viewerDetails} />
+      ) : navigation.view === "sign-in-required" || navigation.view === "signing-in" ? (
+        <AuthView navigation={navigation} signingIn={navigation.view === "signing-in"} />
       ) : (
         <StartView session={session} focused={focusArea === "main"} />
       )}
@@ -277,11 +282,12 @@ export function StartView({
   readonly session: DesignFlowSessionView;
   readonly focused: boolean;
 }): React.JSX.Element {
-  const canStart = session.project.status === "ready";
+  const canStart = session.project.status === "ready" && session.ai.status === "ready";
+  const authRequired = session.ai.status === "pending";
 
   return (
     <Box flexDirection="column" width="100%">
-      <Text bold color={designFlowTheme.textPrimary}>Ready to start</Text>
+      <Text bold color={designFlowTheme.textPrimary}>{authRequired ? "Sign in required" : "Ready to start"}</Text>
       <Text color={designFlowTheme.textSecondary}>Prepare the next DesignFlow run.</Text>
 
       <Box flexDirection="column" marginTop={2}>
@@ -295,13 +301,13 @@ export function StartView({
 
       <Box marginTop={2}>
         <Text color={focused ? designFlowTheme.accentStrong : designFlowTheme.textSecondary} bold={focused}>
-          {focused ? "[" : " "} {canStart ? "Start Design Engineer" : "Run from a project directory"} {focused ? "]" : " "}
+          {focused ? "[" : " "} {canStart ? "Start Design Engineer" : authRequired ? "Sign in to start Design Engineer" : "Run from a project directory"} {focused ? "]" : " "}
         </Text>
       </Box>
 
       {!canStart && (
         <Box marginTop={1}>
-          <Text color={designFlowTheme.warning}>Open DesignFlow from a supported project to begin.</Text>
+          <Text color={designFlowTheme.warning}>{authRequired ? "Sign in before starting Design Engineer." : "Open DesignFlow from a supported project to begin."}</Text>
         </Box>
       )}
     </Box>
@@ -457,6 +463,8 @@ export function HelpView(): React.JSX.Element {
         <Text color={designFlowTheme.textSecondary}>Approval modes</Text>
         <Text>Review changes myself — you approve each proposed change.</Text>
         <Text>Let DesignFlow handle approvals — only validated in-scope changes may be auto-approved; AI agents cannot approve their own work.</Text>
+        <Text color={designFlowTheme.textSecondary}>Sign in</Text>
+        <Text>DesignFlow uses your account to access its managed AI service. Existing sessions are reused automatically.</Text>
       </Box>
     </Box>
   );
@@ -466,6 +474,7 @@ export function StatusBar({
   compact,
   helpOpen,
   view,
+  authRequired,
   canImprove,
   hasVisualReport,
   hasReport,
@@ -477,6 +486,7 @@ export function StatusBar({
   readonly compact: boolean;
   readonly helpOpen: boolean;
   readonly view: TuiView;
+  readonly authRequired: boolean;
   readonly canImprove?: boolean;
   readonly hasVisualReport: boolean;
   readonly hasReport: boolean;
@@ -490,17 +500,27 @@ export function StatusBar({
   const hint = compact
     ? view === "diagnostics-view"
       ? diagnosticsHint
+      : view === "sign-in-required"
+        ? "Enter Sign in   ? Help   q Quit"
+        : view === "signing-in"
+          ? "Ctrl+C Cancel   ? Help   q Quit"
       : terminalOutcome
       ? outcomeHint
       : view === "output-viewer"
       ? "Compact viewer — ↑↓/jk Scroll   PgUp/PgDn   Home/End   Esc Back"
-      : "Compact mode — resize for the full shell"
+      : authRequired
+        ? "Enter Sign in   ? Help   q Quit"
+        : "Compact mode — resize for the full shell"
     : helpOpen
       ? "Esc Close help"
       : view === "design-selection"
         ? "↑↓ Navigate   Enter Select   Esc Back"
         : view === "figma-url-entry"
           ? "Enter Continue   Esc Back"
+      : view === "sign-in-required"
+        ? "Enter Sign in   ? Help   q Quit"
+      : view === "signing-in"
+        ? "Ctrl+C Cancel   ? Help   q Quit"
       : view === "destination-selection"
             ? "↑↓ Navigate   Enter Select   Esc Back"
         : view === "approval-mode"
@@ -521,7 +541,9 @@ export function StatusBar({
                         ? outcomeHint
               : view === "output-viewer"
                   ? `↑↓/jk Scroll   PgUp/PgDn   Home/End   d Details   Esc Back${executionBusy ? "" : "   q Quit"}`
-              : "Enter Start   ? Help   q Quit";
+              : view === "start" && authRequired
+                ? "Enter Sign in   ? Help   q Quit"
+                : "Enter Start   ? Help   q Quit";
 
   return (
     <Box borderStyle="single" borderTop borderColor={designFlowTheme.border} paddingX={1}>

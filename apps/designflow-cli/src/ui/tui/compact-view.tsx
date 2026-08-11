@@ -6,6 +6,7 @@ import { designFlowTheme } from "./theme";
 import { ExecutionView } from "./execution-view";
 import { OutputViewer } from "./output-viewer";
 import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view";
+import { AuthView } from "./auth-view";
 import type { ArtifactViewerDocument } from "./artifact-viewer";
 import { renderVisibleUrlWindow, urlInputContentWidth, visibleUrlWindow } from "./url-window";
 import type { VisualResultView } from "../../services/visual-result";
@@ -54,11 +55,14 @@ export function CompactView({
       : navigation.view === "validation-result" ? <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
       : navigation.view === "visual-result" ? <VisualResultPanel result={visualResult} compact />
       : navigation.view === "needs-attention" ? <LifecycleResultView title="Needs attention" sessionLines={session.diagnostics.length > 0 ? [...session.diagnostics.slice(0, 8), "No new mutation is started from this screen."] : ["The workflow needs attention.", "No new mutation is started from this screen."]} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+      : navigation.view === "sign-in-required" ? <AuthView navigation={navigation} signingIn={false} />
+      : navigation.view === "signing-in" ? <AuthView navigation={navigation} signingIn />
       : navigation.view === "diagnostics-view" ? <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
       : navigation.view === "final-result" ? <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
-      : <Box flexDirection="column"><Text bold>Ready to start</Text><Text>Press Enter to select a design.</Text></Box>}
+      : <Box flexDirection="column"><Text bold>{session.ai.status === "pending" ? "Sign in required" : "Ready to start"}</Text><Text>{session.ai.status === "pending" ? "Sign in before starting Design Engineer." : "Press Enter to select a design."}</Text></Box>}
   </Box>;
 }
+
 
 function CompactOptions({ title, options, active }: { readonly title: string; readonly options: readonly string[]; readonly active: number }): React.JSX.Element {
   return <Box flexDirection="column"><Text bold>{title}</Text>{options.map((option, index) => <Text key={option} color={index === active ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>{index === active ? "›" : " "} {option}</Text>)}</Box>;

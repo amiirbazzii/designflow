@@ -41,6 +41,9 @@ import {
   moveOutcomeAction,
   openDiagnosticsView,
   openNeedsAttention,
+  openSignInRequired,
+  openSigningIn,
+  setAuthBrowserFallback,
   type TuiNavigationState,
   type TuiReviewRequest,
 } from "./navigation";
@@ -76,6 +79,7 @@ import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtif
 import type { VisualResultView } from "../../services/visual-result";
 import { stripBracketedPasteMarkers } from "./url-window";
 import { latestAvailableOutput, terminalOutcomeActions, type TerminalOutcomeActionId } from "./outcome";
+import { canStartDesignEngineer, requiresInteractiveAuthentication, type TuiAuthController } from "./auth";
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
@@ -96,6 +100,7 @@ export interface TuiAppProps {
   readonly onStart: (action: Extract<TuiAction, { readonly type: "start" }>, bridge: TuiExecutionBridge) => Promise<number>;
   readonly onInterrupt: () => void;
   readonly onImprove?: (bridge: TuiExecutionBridge) => Promise<number>;
+  readonly auth?: TuiAuthController;
 }
 
 export function App({
@@ -107,13 +112,20 @@ export function App({
   onStart,
   onInterrupt,
   onImprove,
+  auth,
 }: TuiAppProps): React.JSX.Element {
   const { exit } = useApp();
   const { internal_eventEmitter } = useStdin();
   const { stdout } = useStdout();
   const [size, setSize] = useState({ columns: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
   const [session, setSession] = useState<SessionView>(initialSession);
-  const [navigation, setNavigation] = useState<TuiNavigationState>(() => initialNavigationState());
+  const [navigation, setNavigation] = useState<TuiNavigationState>(() => {
+    const initial = initialNavigationState();
+    return (auth !== undefined && requiresInteractiveAuthentication(auth.status()))
+      || (auth === undefined && initialSession.ai.status === "pending" && initialSession.ai.label === "Sign-in required")
+      ? openSignInRequired(initial)
+      : initial;
+  });
   const [interaction, setInteraction] = useState<TuiInteractionState>({
     helpOpen: false,
     focusArea: "main",
@@ -133,6 +145,46 @@ export function App({
   const destinationRequest = useRef(0);
   const handoffStarted = useRef(false);
   const rawInputRef = useRef<string | undefined>();
+  const authRequestRef = useRef(0);
+
+  const authenticationRequired = (): boolean =>
+    auth !== undefined
+      ? requiresInteractiveAuthentication(auth.status())
+      : session.ai.status === "pending" && session.ai.label === "Sign-in required";
+
+  const beginSignIn = (): void => {
+    if (auth === undefined || navigation.view === "signing-in") return;
+    const requestId = authRequestRef.current + 1;
+    authRequestRef.current = requestId;
+    setNavigation((current) => openSigningIn(current));
+    void auth.signInWithGoogle((url) => {
+      if (authRequestRef.current !== requestId) return;
+      setNavigation((current) => setAuthBrowserFallback(current, url));
+    })
+      .then((status) => {
+        if (authRequestRef.current !== requestId) return;
+        if (requiresInteractiveAuthentication(status)) {
+          setNavigation((current) => openSignInRequired(current, "Sign-in is required to start Design Engineer."));
+          return;
+        }
+        setSession((current) => ({
+          ...current,
+          ai: {
+            status: status === "not-configured" ? "not-configured" : "ready",
+            label: status === "development-provider" ? "Development provider" : "Connected",
+          },
+          activity: [{ actor: "designflow", title: "Signed in", state: "completed" }],
+        }));
+        setNavigation((current) => ({ ...current, view: "start", authError: undefined, authBrowserFallback: undefined }));
+      })
+      .catch((error: unknown) => {
+        if (authRequestRef.current !== requestId) return;
+        setNavigation((current) => openSignInRequired(
+          current,
+          error instanceof Error ? error.message : "Sign-in could not be completed.",
+        ));
+      });
+  };
 
   useEffect(() => {
     const rememberRawInput = (chunk: unknown): void => {
@@ -221,6 +273,11 @@ export function App({
   };
 
   const activate = (): void => {
+    if (navigation.view === "sign-in-required") {
+      beginSignIn();
+      return;
+    }
+    if (navigation.view === "signing-in") return;
     if (navigation.view === "visual-result") {
       if (visualResult?.reportAvailable) {
         const visual = session.outputs.find((output) => output.kind === "visual-validation");
@@ -245,6 +302,10 @@ export function App({
       return;
     }
     if (navigation.view === "start") {
+      if (authenticationRequired()) {
+        setNavigation((current) => openSignInRequired(current));
+        return;
+      }
       if (session.project.status !== "ready") return;
       setNavigation((current) => enterDesignSelection(current));
       return;
@@ -313,6 +374,10 @@ export function App({
     }
 
     if (navigation.view === "ready-to-run" && navigation.design !== undefined) {
+      if (auth !== undefined && !canStartDesignEngineer(auth.status())) {
+        setNavigation((current) => openSignInRequired(current, "Sign in again before starting Design Engineer."));
+        return;
+      }
       const destination = navigation.destinationCandidates[navigation.destinationIndex];
       if (destination === undefined || handoffStarted.current) return;
       handoffStarted.current = true;
@@ -347,6 +412,16 @@ export function App({
         visual: (result: VisualResultView) => {
           setVisualResult(result);
           setNavigation((current) => ({ ...current, view: "visual-result" }));
+        },
+        authRequired: (message) => {
+          setExecutionFinished(true);
+          setSession((current) => ({
+            ...current,
+            ai: { status: "pending", label: "Sign-in required" },
+            workflow: { ...current.workflow, status: "unavailable" },
+            diagnostics: [message ?? "Sign in again to continue."],
+          }));
+          setNavigation((current) => openSignInRequired(current, message));
         },
       };
       executionBridge.current = bridge;

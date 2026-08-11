@@ -96,8 +96,18 @@ export async function runSelectedDesignEngineer(
     readonly onProgress?: (progress: ExecutionProgress) => void;
     readonly onSessionResult?: (result: SessionResult) => void;
     readonly onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">;
+    readonly onAuthRequired?: (message: string) => void;
   } = {},
 ): Promise<number> {
+  if (context.aiStatus() === "sign-in-required") {
+    const message = "Sign in required to start Design Engineer.";
+    if (hooks.onAuthRequired !== undefined) hooks.onAuthRequired(message);
+    else {
+      terminal.print();
+      terminal.print(message);
+    }
+    return 1;
+  }
   const workerId = designEngineerWorkerId(context);
   if (workerId === null) {
     terminal.print();

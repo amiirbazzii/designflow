@@ -208,6 +208,7 @@ async function main(): Promise<number> {
             async (startAction, bridge) => {
               let executionId: string | undefined;
               let reportRefreshPending = false;
+              let authRequiredNotified = false;
               const refreshVisualResult = async (report: Awaited<ReturnType<CliContext["runner"]["explain"]>>): Promise<void> => {
                 if (report.overview.state !== "ready" || executionId === undefined || tuiOriginalInput === undefined) return;
                 const visual = await buildProductVisualResultView(context!, executionId, tuiOriginalInput);
@@ -251,11 +252,23 @@ async function main(): Promise<number> {
                       refreshArtifactReport();
                     },
                     onReview: (request) => bridge.review(request),
+                    onAuthRequired: (message) => {
+                      authRequiredNotified = true;
+                      bridge.authRequired(message);
+                    },
                   },
                 );
+                if (!authRequiredNotified && context!.aiStatus() === "sign-in-required") {
+                  bridge.authRequired("Your DesignFlow session has expired. Sign in again to continue.");
+                }
               } catch (error) {
                 tuiCommandCode = 1;
-                throw error;
+                if (context!.aiStatus() === "sign-in-required") {
+                  bridge.authRequired("Your DesignFlow session has expired. Sign in again to continue.");
+                  return 1;
+                } else {
+                  throw error;
+                }
               } finally {
                 if (coordinator.interrupted) bridge.cancelled();
                 else if (executionId !== undefined) {

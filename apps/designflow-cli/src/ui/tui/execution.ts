@@ -29,6 +29,7 @@ export interface TuiExecutionBridge {
   readonly ask: (question: string, options?: readonly string[]) => Promise<string>;
   readonly review: (request: TuiReviewRequest) => Promise<"approve" | "reject">;
   readonly visual: (result: VisualResultView) => void;
+  readonly authRequired: (message?: string) => void;
 }
 
 const STAGE_ORDER = [

@@ -7,6 +7,7 @@ import { collectInput } from "./run";
 import {
   interactiveRunOptions,
   interactiveRunOptionsForProjectId,
+  runSelectedDesignEngineer,
   selectDesign,
   signInInteractive,
 } from "./interactive";
@@ -144,5 +145,17 @@ describe("interactive design selection", () => {
     expect(terminal.transcript).toContain("Open this sign-in link:");
     expect(terminal.transcript).toContain("✓ Signed in");
     expect(terminal.transcript).not.toContain("access-token");
+  });
+
+  test("invocation guard blocks Design Engineer before worker/model execution", async () => {
+    const terminal = new ScriptedTerminal();
+    const context = {
+      aiStatus: () => "sign-in-required",
+    } as unknown as CliContext;
+    const design = designFromCurrentSelection({ id: "10:1", name: "Expense Form", type: "FRAME" });
+    const destination = { label: "/add", kind: "page" as const, path: "/add" };
+
+    await expect(runSelectedDesignEngineer(context, terminal, "project-1", design, destination)).resolves.toBe(1);
+    expect(terminal.transcript).toContain("Sign in required to start Design Engineer.");
   });
 });
