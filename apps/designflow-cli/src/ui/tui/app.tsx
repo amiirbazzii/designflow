@@ -5,6 +5,7 @@ import type { InteractiveDesign } from "../../services/figma-selection";
 import {
   setDesignSelection,
   setDestinationSelection,
+  setExecutionStatus,
   type DesignFlowSessionView as SessionView,
 } from "./model";
 import {
@@ -27,6 +28,13 @@ import {
 } from "./navigation";
 import { isCompactTerminal, mapTuiKey, reduceTuiInteraction, type TuiInteractionState } from "./keys";
 import { Shell } from "./components";
+import {
+  applyExecutionProgress,
+  applyExecutionReport,
+  applyExecutionUpdate,
+  applySessionResult,
+  type TuiExecutionBridge,
+} from "./execution";
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate }
@@ -43,6 +51,7 @@ export interface TuiAppProps {
   readonly projectId?: string;
   readonly handlers: TuiSelectionHandlers;
   readonly onAction: (action: TuiAction) => void;
+  readonly onStart: (action: Extract<TuiAction, { readonly type: "start" }>, bridge: TuiExecutionBridge) => Promise<number>;
   readonly onInterrupt: () => void;
 }
 
@@ -51,6 +60,7 @@ export function App({
   projectId,
   handlers,
   onAction,
+  onStart,
   onInterrupt,
 }: TuiAppProps): React.JSX.Element {
   const { exit } = useApp();
@@ -63,6 +73,13 @@ export function App({
     focusArea: "main",
     selectedStage: 0,
   });
+  const [executionStarted, setExecutionStarted] = useState(false);
+  const [executionFinished, setExecutionFinished] = useState(false);
+  const [prompt, setPrompt] = useState<{ readonly question: string; readonly options?: readonly string[]; readonly value: string }>();
+  const promptResolver = useRef<((value: string) => void) | undefined>();
+  const promptRejecter = useRef<(() => void) | undefined>();
+  const executionBridge = useRef<TuiExecutionBridge | undefined>();
+  const cancellationRequested = useRef(false);
   const destinationRequest = useRef(0);
   const handoffStarted = useRef(false);
 
@@ -169,8 +186,46 @@ export function App({
       const destination = navigation.destinationCandidates[navigation.destinationIndex];
       if (destination === undefined || handoffStarted.current) return;
       handoffStarted.current = true;
-      onAction({ type: "start", ...(projectId === undefined ? {} : { projectId }), design: navigation.design, destination });
-      exit();
+      const action = { type: "start" as const, ...(projectId === undefined ? {} : { projectId }), design: navigation.design, destination };
+      onAction(action);
+      setExecutionStarted(true);
+      setSession((current) => setExecutionStatus(current, "active", { actor: "designflow", title: "Starting Design Engineer", state: "running" }));
+      setNavigation((current) => ({ ...current, view: "execution", error: undefined }));
+      const bridge: TuiExecutionBridge = {
+        update: (nextSession) => setSession(nextSession),
+        progress: (progress) => setSession((current) => applyExecutionProgress(current, progress)),
+        result: (result) => setSession((current) => applySessionResult(current, result)),
+        report: (report) => setSession((current) => applyExecutionReport(current, report)),
+        cancelled: () => {
+          promptRejecter.current?.();
+          promptRejecter.current = undefined;
+          promptResolver.current = undefined;
+          setPrompt(undefined);
+          setSession((current) => applyExecutionUpdate(current, { status: "cancelled" }));
+        },
+        ask: (question, options) => new Promise<string>((resolve, reject) => {
+          promptResolver.current = resolve;
+          promptRejecter.current = reject;
+          setPrompt({ question, ...(options === undefined ? {} : { options }), value: "" });
+        }),
+      };
+      executionBridge.current = bridge;
+      void onStart(action, bridge)
+        .then(() => setExecutionFinished(true))
+        .catch((error: unknown) => {
+          if (cancellationRequested.current) {
+            setExecutionFinished(true);
+            return;
+          }
+          setSession((current) => ({
+            ...current,
+            workflow: { ...current.workflow, status: "unavailable" },
+            activity: [{ actor: "designflow", title: "Needs attention", detail: error instanceof Error ? error.message : "The workflow did not complete.", state: "failed" }],
+            diagnostics: [error instanceof Error ? error.message : "The workflow did not complete."],
+            finalResult: { status: "failure", summary: "The workflow did not complete." },
+          }));
+          setExecutionFinished(true);
+        });
     }
   };
 
@@ -199,8 +254,30 @@ export function App({
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
       onInterrupt();
-      onAction({ type: "quit" });
-      exit();
+      if (!executionStarted || executionFinished) {
+        onAction({ type: "quit" });
+        exit();
+      } else {
+        cancellationRequested.current = true;
+        executionBridge.current?.cancelled();
+        setSession((current) => ({ ...current, activity: [{ actor: "designflow", title: "Cancelling…", state: "running" }] }));
+      }
+      return;
+    }
+
+    if (prompt !== undefined) {
+      if (key.return || input === "\n" || input === "\r") {
+        const answer = prompt.value.trim();
+        if (answer.length === 0) return;
+        promptResolver.current?.(answer);
+        promptResolver.current = undefined;
+        promptRejecter.current = undefined;
+        setPrompt(undefined);
+      } else if (key.backspace || input === "\b" || input === "\u007f") {
+        setPrompt((current) => current === undefined ? current : { ...current, value: current.value.slice(0, -1) });
+      } else if (input.length > 0 && key.ctrl !== true && key.meta !== true) {
+        setPrompt((current) => current === undefined ? current : { ...current, value: current.value + input });
+      }
       return;
     }
 
@@ -230,6 +307,7 @@ export function App({
       return;
     }
     if (action === "quit") {
+      if (executionStarted && !executionFinished) return;
       onAction({ type: "quit" });
       exit();
       return;
@@ -284,6 +362,7 @@ export function App({
       selectedStage={interaction.selectedStage}
       compact={compact}
       destinationVisibleCount={visibleCount}
+      executionPrompt={prompt}
     />
   );
 }

@@ -193,7 +193,8 @@ async function main(): Promise<number> {
         });
         let commandCode: number;
         if (useTui) {
-          const action = await runTuiShell(
+          let tuiCommandCode = 0;
+          await runTuiShell(
             context,
             {
               input: process.stdin,
@@ -201,24 +202,38 @@ async function main(): Promise<number> {
               writeControl,
             },
             () => coordinator.interrupt(),
+            async (startAction, bridge) => {
+              let executionId: string | undefined;
+              const tuiTerminal: Terminal = {
+                print: () => undefined,
+                ask: (question, options) => bridge.ask(question, options),
+              };
+              try {
+                tuiCommandCode = await runSelectedDesignEngineer(
+                  context!,
+                  tuiTerminal,
+                  startAction.projectId,
+                  startAction.design,
+                  startAction.destination,
+                  {
+                    onProgress: (progress) => bridge.progress(progress),
+                    onSessionResult: (result) => {
+                      executionId = result.session.executionId;
+                      bridge.result(result);
+                    },
+                  },
+                );
+              } catch (error) {
+                tuiCommandCode = 1;
+                throw error;
+              } finally {
+                if (coordinator.interrupted) bridge.cancelled();
+                else if (executionId !== undefined) bridge.report(await context!.runner.explain(executionId));
+              }
+              return tuiCommandCode;
+            },
           );
-
-          if (action.type === "start") {
-            const legacy = interactiveTerminal(() => coordinator.interrupt());
-            try {
-              commandCode = await runSelectedDesignEngineer(
-                context,
-                legacy.terminal,
-                action.projectId,
-                action.design,
-                action.destination,
-              );
-            } finally {
-              legacy.close();
-            }
-          } else {
-            commandCode = 0;
-          }
+          commandCode = tuiCommandCode;
         } else {
           commandCode = await dispatch(argv, context, terminal!);
         }

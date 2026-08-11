@@ -204,6 +204,9 @@ export const progressStepSchema = z.object({
   label: z.string().min(1),
   status: progressStepStatusSchema,
   capabilityId: z.string().min(1).optional(),
+  /** Existing runtime retry facts, when the event source records them. */
+  attempt: z.number().int().positive().optional(),
+  maxAttempts: z.number().int().positive().optional(),
 });
 
 export type ProgressStep = z.infer<typeof progressStepSchema>;

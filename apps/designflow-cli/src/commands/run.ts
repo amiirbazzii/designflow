@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
 import type { DestinationCandidate } from "../services/destinations";
-import type { WorkerInputField } from "@designflow/sdk";
+import type { SessionResult, WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress } from "./session-flow";
 import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
 import { CLI_VERSION } from "../version";
@@ -57,6 +57,8 @@ export async function runCommand(
     readonly design?: InteractiveDesign;
     readonly noCache?: boolean;
     readonly visualCorrection?: "off" | "once";
+    readonly onProgress?: (progress: Parameters<Parameters<CliContext["onProgress"]>[0]>[0]) => void;
+    readonly onSessionResult?: (result: SessionResult) => void;
   },
 ): Promise<number> {
   await context.refreshAiSession();
@@ -204,6 +206,7 @@ export async function runCommand(
   // point at which attaching this would still see every step land.
   watchProgress(context, terminal, {
     productExperience: options?.productExperience === true,
+    ...(options?.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
 
   // The collected answers are the request. What to do with them is not this
@@ -214,9 +217,11 @@ export async function runCommand(
     input,
     ...(options?.projectId !== undefined ? { projectId: options.projectId } : {}),
   });
+  options?.onSessionResult?.(started);
 
-  const result = await clarify(context, terminal, worker.name, started);
+  const result = await clarify(context, terminal, worker.name, started, options?.onSessionResult);
   if (result === null) return 1;
+  options?.onSessionResult?.(result);
 
   return finishSession(context, terminal, result, {
     interactive: options?.interactive ?? false,

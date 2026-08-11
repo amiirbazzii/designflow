@@ -3,6 +3,10 @@ import { Box, Text } from "ink";
 import type { DesignFlowSessionView, WorkflowStageView } from "./model";
 import { designFlowTheme, statusColor } from "./theme";
 import type { TuiNavigationState, TuiView } from "./navigation";
+import { ExecutionView } from "./execution-view";
+import { CompactView } from "./compact-view";
+import { visibleUrlWindow } from "./url-window";
+export { visibleUrlWindow } from "./url-window";
 
 export interface ShellProps {
   readonly session: DesignFlowSessionView;
@@ -12,6 +16,7 @@ export interface ShellProps {
   readonly selectedStage: number;
   readonly compact: boolean;
   readonly destinationVisibleCount: number;
+  readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
 }
 
 export function Shell({
@@ -22,6 +27,7 @@ export function Shell({
   selectedStage,
   compact,
   destinationVisibleCount,
+  executionPrompt,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -33,6 +39,7 @@ export function Shell({
           session={session}
           navigation={navigation}
           destinationVisibleCount={destinationVisibleCount}
+          executionPrompt={executionPrompt}
         />
       ) : (
         <Box flexGrow={1} flexDirection="row" overflow="hidden">
@@ -43,9 +50,10 @@ export function Shell({
           />
           <MainPanel
             session={session}
-            navigation={navigation}
-            focusArea={focusArea}
-            destinationVisibleCount={destinationVisibleCount}
+          navigation={navigation}
+          focusArea={focusArea}
+          destinationVisibleCount={destinationVisibleCount}
+          executionPrompt={executionPrompt}
           />
         </Box>
       )}
@@ -149,11 +157,13 @@ export function MainPanel({
   navigation,
   focusArea,
   destinationVisibleCount,
+  executionPrompt,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
   readonly focusArea: "workflow" | "main";
   readonly destinationVisibleCount: number;
+  readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
 }): React.JSX.Element {
   return (
     <Box
@@ -174,12 +184,15 @@ export function MainPanel({
         />
       ) : navigation.view === "ready-to-run" ? (
         <ReadyToRunView session={session} />
+      ) : navigation.view === "execution" ? (
+        <ExecutionView session={session} prompt={executionPrompt} />
       ) : (
         <StartView session={session} focused={focusArea === "main"} />
       )}
     </Box>
   );
 }
+
 export function StartView({
   session,
   focused,
@@ -352,8 +365,10 @@ export function StatusBar({
           ? "Enter Continue   Esc Back"
           : view === "destination-selection"
             ? "↑↓ Navigate   Enter Select   Esc Back"
-            : view === "ready-to-run"
+      : view === "ready-to-run"
               ? "Enter Start   Esc Change destination   ? Help   q Quit"
+              : view === "execution"
+                ? "? Help   Ctrl+C Cancel   q Quit when complete"
               : "Enter Start   ? Help   q Quit";
 
   return (
@@ -401,95 +416,4 @@ export function stageMarker(stage: WorkflowStageView): string {
   if (stage.status === "complete") return "✓";
   if (stage.status === "active") return "→";
   return "○";
-}
-
-export function visibleUrlWindow(
-  value: string,
-  cursor: number,
-  width: number,
-): {
-  readonly prefix: string;
-  readonly before: string;
-  readonly cursorChar: string;
-  readonly after: string;
-  readonly suffix: string;
-} {
-  const safeWidth = Math.max(12, width);
-  const hasPrefix = cursor > safeWidth - 2;
-  const hasSuffix = value.length - cursor > safeWidth - 2;
-  const start = hasPrefix ? Math.max(0, cursor - Math.floor(safeWidth / 2)) : 0;
-  const end = hasSuffix ? Math.min(value.length, start + safeWidth) : value.length;
-  const adjustedStart = Math.max(0, end === value.length ? value.length - safeWidth : start);
-  const adjustedEnd = Math.min(value.length, adjustedStart + safeWidth);
-  return {
-    prefix: adjustedStart > 0 ? "…" : "",
-    before: value.slice(adjustedStart, Math.max(adjustedStart, cursor)),
-    cursorChar: value[cursor] ?? " ",
-    after: value.slice(Math.min(value.length, cursor + 1), adjustedEnd),
-    suffix: adjustedEnd < value.length ? "…" : "",
-  };
-}
-
-function CompactView({
-  session,
-  navigation,
-  destinationVisibleCount,
-}: {
-  readonly session: DesignFlowSessionView;
-  readonly navigation: TuiNavigationState;
-  readonly destinationVisibleCount: number;
-}): React.JSX.Element {
-  return (
-    <Box flexGrow={1} flexDirection="column" paddingX={1}>
-      <Text color={designFlowTheme.warning}>Compact terminal mode</Text>
-      {navigation.view === "design-selection" ? (
-        <CompactOptions title="Select design" options={["Current Figma selection", "Paste Figma URL"]} active={navigation.designOption} />
-      ) : navigation.view === "figma-url-entry" ? (
-        <Box flexDirection="column">
-          <Text bold>Paste Figma URL</Text>
-          <Text>{visibleUrlWindow(navigation.urlValue, navigation.urlCursor, 28).before}▌</Text>
-          {navigation.urlError !== undefined && <Text color={designFlowTheme.danger}>{navigation.urlError}</Text>}
-        </Box>
-      ) : navigation.view === "destination-selection" ? (
-        <CompactOptions
-          title="Choose destination"
-          options={navigation.destinationCandidates.slice(navigation.destinationScrollOffset, navigation.destinationScrollOffset + destinationVisibleCount).map((candidate) => candidate.label)}
-          active={Math.max(0, navigation.destinationIndex - navigation.destinationScrollOffset)}
-        />
-      ) : navigation.view === "ready-to-run" ? (
-        <Box flexDirection="column">
-          <Text bold>Ready to start</Text>
-          <Text color={designFlowTheme.success}>✓ {session.design.label}</Text>
-          <Text color={designFlowTheme.success}>✓ {session.destination.value ?? session.destination.label}</Text>
-          <Text color={designFlowTheme.accentStrong}>[ Enter ] Start</Text>
-        </Box>
-      ) : (
-        <Box flexDirection="column">
-          <Text bold>Ready to start</Text>
-          <Text>Press Enter to select a design.</Text>
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function CompactOptions({
-  title,
-  options,
-  active,
-}: {
-  readonly title: string;
-  readonly options: readonly string[];
-  readonly active: number;
-}): React.JSX.Element {
-  return (
-    <Box flexDirection="column">
-      <Text bold>{title}</Text>
-      {options.map((option, index) => (
-        <Text key={option} color={index === active ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
-          {index === active ? "›" : " "} {option}
-        </Text>
-      ))}
-    </Box>
-  );
 }

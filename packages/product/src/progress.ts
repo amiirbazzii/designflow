@@ -40,6 +40,11 @@ function readIdCount(event: ExecutionEvent, key: string): number | undefined {
   return Array.isArray(value) ? value.length : undefined;
 }
 
+function readNumber(event: ExecutionEvent, key: string): number | undefined {
+  const value = event.payload?.[key];
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 /**
  * Projects the event stream into a progress model.
  *
@@ -87,6 +92,8 @@ export function buildProgress(
           label: humanizeCapabilityId(capabilityId),
           status: "active",
           capabilityId,
+          ...(readNumber(event, "attempt") === undefined ? {} : { attempt: readNumber(event, "attempt") }),
+          ...(readNumber(event, "maxAttempts") === undefined ? {} : { maxAttempts: readNumber(event, "maxAttempts") }),
         });
         break;
       }
@@ -103,13 +110,18 @@ export function buildProgress(
         if (index >= 0) {
           const step = steps[index];
           if (step !== undefined) {
-            steps[index] = { ...step, status: "done" };
+            steps[index] = {
+              ...step,
+              status: "done",
+              ...(readNumber(event, "attempt") === undefined ? {} : { attempt: readNumber(event, "attempt") }),
+            };
           }
         } else {
           steps.push({
             label: humanizeCapabilityId(capabilityId),
             status: "done",
             capabilityId,
+            ...(readNumber(event, "attempt") === undefined ? {} : { attempt: readNumber(event, "attempt") }),
           });
         }
 

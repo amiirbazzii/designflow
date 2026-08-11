@@ -8,6 +8,12 @@ import {
   designFromUrl,
 } from "../../services/figma-selection";
 import { findDestinationCandidates } from "../../services/destinations";
+import type { TuiExecutionBridge } from "./execution";
+
+export type TuiStartHandler = (
+  action: Extract<TuiAction, { readonly type: "start" }>,
+  bridge: TuiExecutionBridge,
+) => Promise<number>;
 
 const ALT_SCREEN_ENTER = "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l";
 const ALT_SCREEN_EXIT = "\u001b[?25h\u001b[?1049l";
@@ -20,6 +26,7 @@ export async function runTuiShell(
     readonly writeControl?: (value: string) => void;
   },
   onInterrupt: () => void,
+  onStart: TuiStartHandler,
 ): Promise<TuiAction> {
   const runtime = await buildSessionRuntimeFromContext(context);
   const handlers: TuiSelectionHandlers = {
@@ -31,7 +38,7 @@ export async function runTuiShell(
     parseFigmaUrl: designFromUrl,
     getDestinations: () => findDestinationCandidates(context, runtime.project),
   };
-  return runTuiShellWithView(runtime.session, streams, onInterrupt, handlers, runtime.project?.id);
+  return runTuiShellWithView(runtime.session, streams, onInterrupt, handlers, runtime.project?.id, onStart);
 }
 
 export async function runTuiShellWithView(
@@ -44,6 +51,7 @@ export async function runTuiShellWithView(
   onInterrupt: () => void,
   handlers: TuiSelectionHandlers,
   projectId?: string,
+  onStart?: TuiStartHandler,
 ): Promise<TuiAction> {
   (streams.writeControl ?? ((value: string) => safeWrite(streams.output, value)))(ALT_SCREEN_ENTER);
 
@@ -56,6 +64,7 @@ export async function runTuiShellWithView(
       onAction: (nextAction: TuiAction) => {
         action = nextAction;
       },
+      onStart: onStart ?? (async () => 0),
       onInterrupt,
     }),
     {

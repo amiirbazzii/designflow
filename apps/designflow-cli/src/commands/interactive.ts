@@ -25,7 +25,8 @@ import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
   type CliContext,
 } from "../services/cli-runner";
-import type { ProjectIdentity } from "@designflow/sdk";
+import type { ExecutionProgress } from "@designflow/product";
+import type { ProjectIdentity, SessionResult } from "@designflow/sdk";
 import { runCommand } from "./run";
 import { AuthSessionError } from "../services/auth-session";
 
@@ -86,6 +87,10 @@ export async function runSelectedDesignEngineer(
   projectId: string | undefined,
   design: InteractiveDesign,
   destination: DestinationCandidate,
+  hooks: {
+    readonly onProgress?: (progress: ExecutionProgress) => void;
+    readonly onSessionResult?: (result: SessionResult) => void;
+  } = {},
 ): Promise<number> {
   const workerId = designEngineerWorkerId(context);
   if (workerId === null) {
@@ -101,7 +106,11 @@ export async function runSelectedDesignEngineer(
     context,
     terminal,
     workerId,
-    interactiveRunOptionsForProjectId(projectId, destination, design),
+    {
+      ...interactiveRunOptionsForProjectId(projectId, destination, design),
+      ...(hooks.onProgress === undefined ? {} : { onProgress: hooks.onProgress }),
+      ...(hooks.onSessionResult === undefined ? {} : { onSessionResult: hooks.onSessionResult }),
+    },
   );
 }
 

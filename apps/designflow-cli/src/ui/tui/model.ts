@@ -16,6 +16,29 @@ export type ViewStatus =
   | "not-detected"
   | "idle";
 
+export type ActivityActor =
+  | "designflow"
+  | "coordinator"
+  | "specification-ai"
+  | "implementation-ai"
+  | "visual-validation-ai"
+  | "visual-correction-ai";
+
+export type ActivityState = "pending" | "running" | "completed" | "failed";
+
+export interface ActivityView {
+  readonly actor: ActivityActor;
+  readonly title: string;
+  readonly detail?: string;
+  readonly state: ActivityState;
+}
+
+export interface CheckView {
+  readonly id: string;
+  readonly label: string;
+  readonly status: "pending" | "running" | "passed" | "failed";
+}
+
 export interface DesignFlowSessionView {
   readonly project: {
     readonly name: string;
@@ -48,7 +71,12 @@ export interface DesignFlowSessionView {
     readonly stages: readonly WorkflowStageView[];
   };
   readonly outputs: readonly OutputView[];
-  readonly activity: readonly string[];
+  readonly activity: readonly ActivityView[];
+  readonly attempt?: {
+    readonly current: number;
+    readonly maximum: number;
+  };
+  readonly checks: readonly CheckView[];
   readonly diagnostics: readonly string[];
   readonly finalResult?: {
     readonly status: "success" | "failure";
@@ -59,7 +87,7 @@ export interface DesignFlowSessionView {
 export interface WorkflowStageView {
   readonly id: string;
   readonly label: string;
-  readonly status: "complete" | "active" | "pending";
+  readonly status: "complete" | "active" | "pending" | "needs-attention" | "failed" | "skipped";
 }
 
 export interface OutputView {
@@ -133,7 +161,8 @@ export function buildSessionView(facts: SessionViewFacts): DesignFlowSessionView
       stages: DESIGNFLOW_WORKFLOW_STAGES,
     },
     outputs: [],
-    activity: ["Ready to start"],
+    activity: [{ actor: "designflow", title: "Ready to start", state: "completed" }],
+    checks: [],
     diagnostics: [],
   };
 }
@@ -183,6 +212,18 @@ export function setActiveStage(
               : "pending",
       })),
     },
+  };
+}
+
+export function setExecutionStatus(
+  session: DesignFlowSessionView,
+  status: ViewStatus,
+  activity: ActivityView,
+): DesignFlowSessionView {
+  return {
+    ...session,
+    workflow: { ...session.workflow, status },
+    activity: [activity],
   };
 }
 

@@ -81,10 +81,12 @@ export async function clarify(
   terminal: Terminal,
   workerName: string,
   result: SessionResult,
+  onWaiting?: (result: SessionResult) => void,
 ): Promise<SessionResult | null> {
   let current = result;
 
   while (current.session.status === "waiting_for_user") {
+    onWaiting?.(current);
     terminal.print();
     terminal.print(heading(`${workerName} needs more information`));
     terminal.print(current.message ?? current.session.currentQuestion ?? "");
@@ -1093,10 +1095,18 @@ export function renderProgress(progress: {
 export function watchProgress(
   context: CliContext,
   terminal: Terminal,
-  options: { readonly productExperience?: boolean } = {},
+  options: {
+    readonly productExperience?: boolean;
+    readonly onProgress?: (progress: Parameters<Parameters<CliContext["onProgress"]>[0]>[0]) => void;
+  } = {},
 ): void {
   let lastFrame = "";
   context.onProgress((progress) => {
+    if (options.onProgress !== undefined) {
+      options.onProgress(progress);
+      return;
+    }
+
     const frame =
       options.productExperience === true
         ? renderProductProgress(progress)

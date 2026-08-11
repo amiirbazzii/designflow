@@ -7,6 +7,7 @@ export type TuiView =
   | "figma-url-entry"
   | "destination-selection"
   | "ready-to-run"
+  | "execution"
   | "help";
 
 export interface TuiNavigationState {

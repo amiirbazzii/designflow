@@ -14,11 +14,11 @@ export const designFlowTheme = {
 export type DesignFlowTheme = typeof designFlowTheme;
 
 export function statusColor(
-  status: "ready" | "active" | "pending" | "complete" | "unavailable" | "not-configured" | "not-detected" | "idle",
+  status: "ready" | "active" | "pending" | "complete" | "unavailable" | "not-configured" | "not-detected" | "idle" | "needs-attention" | "failed" | "skipped",
 ): string {
   if (status === "ready" || status === "complete") return designFlowTheme.success;
   if (status === "active") return designFlowTheme.accentStrong;
-  if (status === "unavailable" || status === "not-detected") return designFlowTheme.warning;
-  if (status === "not-configured") return designFlowTheme.danger;
+  if (status === "failed" || status === "not-configured") return designFlowTheme.danger;
+  if (status === "needs-attention" || status === "unavailable" || status === "not-detected") return designFlowTheme.warning;
   return designFlowTheme.muted;
 }
