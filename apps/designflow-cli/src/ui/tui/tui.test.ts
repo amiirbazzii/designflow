@@ -11,6 +11,7 @@ import { isCompactTerminal, mapTuiKey, reduceTuiInteraction } from "./keys";
 import { designFlowTheme, statusColor } from "./theme";
 import { shouldUseTui } from "./eligibility";
 import { stageMarker, visibleUrlWindow } from "./components";
+import { renderVisibleUrlWindow, stripBracketedPasteMarkers, urlInputBoxWidth, urlInputContentWidth } from "./url-window";
 import {
   backspaceUrlText,
   enterDesignSelection,
@@ -35,6 +36,7 @@ import {
   moveReviewFile,
 } from "./navigation";
 import { buildProposalReview } from "../../services/proposal-review";
+import { designFromUrl } from "../../services/figma-selection";
 
 const key = (overrides: Partial<Key> = {}): Key => ({
   upArrow: false,
@@ -162,6 +164,44 @@ describe("DesignFlow TUI selection navigation", () => {
     expect(state.urlValue.endsWith("?q")).toBe(false);
     expect(updateUrlText(state, "q").urlValue.endsWith("?q")).toBe(true);
     expect(visibleUrlWindow(state.urlValue, state.urlCursor, 12).cursorChar).toBeDefined();
+  });
+
+  test("keeps the real Phase 6B Figma URL on one horizontal rendered line", () => {
+    const value = "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098";
+    for (const columns of [80, 100, 120, 160]) {
+      const width = urlInputContentWidth(columns, false);
+      const rendered = renderVisibleUrlWindow(visibleUrlWindow(value, value.length, width));
+      expect(rendered).not.toContain("\n");
+      expect([...rendered].length).toBeLessThanOrEqual(width);
+      expect(rendered).toContain("QVSU/Spendly?node-id=1026-6098");
+      expect(urlInputBoxWidth(columns, false)).toBe(width + 4);
+    }
+  });
+
+  test("keeps the cursor visible and adjusts the URL viewport while moving", () => {
+    const value = "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098";
+    const width = urlInputContentWidth(80, false);
+    const atStart = renderVisibleUrlWindow(visibleUrlWindow(value, 0, width));
+    const atEnd = renderVisibleUrlWindow(visibleUrlWindow(value, value.length, width));
+    expect(atStart).toContain("https://");
+    expect(atEnd).toContain("node-id=1026-6098");
+    expect(atEnd).not.toContain("https://www.figma.com");
+  });
+
+  test("strips bracketed-paste framing without changing the URL value", () => {
+    const value = "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098";
+    expect(stripBracketedPasteMarkers(`\u001b[200~${value}\u001b[201~`)).toBe(value);
+    expect(designFromUrl(value).designFile).toBe(value);
+  });
+
+  test("keeps compact URL input on one line at narrow widths", () => {
+    const value = "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098";
+    for (const columns of [40, 55, 71]) {
+      const width = urlInputContentWidth(columns, true);
+      const rendered = renderVisibleUrlWindow(visibleUrlWindow(value, value.length, width));
+      expect(rendered).not.toContain("\n");
+      expect([...rendered].length).toBeLessThanOrEqual(width);
+    }
   });
 
   test("destination selection uses discovered candidates and keeps the active row visible", () => {

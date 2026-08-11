@@ -7,7 +7,7 @@ import { ExecutionView } from "./execution-view";
 import { OutputViewer } from "./output-viewer";
 import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view";
 import type { ArtifactViewerDocument } from "./artifact-viewer";
-import { visibleUrlWindow } from "./url-window";
+import { renderVisibleUrlWindow, urlInputContentWidth, visibleUrlWindow } from "./url-window";
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
 
@@ -22,6 +22,7 @@ export function CompactView({
   selectedOutputView,
   executionPrompt,
   visualResult,
+  terminalColumns,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -33,13 +34,14 @@ export function CompactView({
   readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
   readonly visualResult?: VisualResultView | undefined;
+  readonly terminalColumns: number;
 }): React.JSX.Element {
   return <Box flexGrow={1} flexDirection="column" paddingX={1}>
     <Text color={designFlowTheme.warning}>Compact terminal mode</Text>
     {navigation.view === "output-viewer" ? <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={navigation.outputScrollOffset} visibleLines={viewerVisibleLines} details={navigation.outputDetails} />
       : session.outputs.length > 0 && focusArea === "outputs" ? <CompactOptions title="Outputs" options={session.outputs.map((output) => `${output.status === "available" ? "✓" : "○"} ${output.label}`)} active={selectedOutput} />
       : navigation.view === "design-selection" ? <CompactOptions title="Select design" options={["Current Figma selection", "Paste Figma URL"]} active={navigation.designOption} />
-      : navigation.view === "figma-url-entry" ? <Box flexDirection="column"><Text bold>Paste Figma URL</Text><Text>{visibleUrlWindow(navigation.urlValue, navigation.urlCursor, 28).before}▌</Text>{navigation.urlError !== undefined && <Text color={designFlowTheme.danger}>{navigation.urlError}</Text>}</Box>
+      : navigation.view === "figma-url-entry" ? <Box flexDirection="column"><Text bold>Paste Figma URL</Text><Text wrap="truncate">{renderVisibleUrlWindow(visibleUrlWindow(navigation.urlValue, navigation.urlCursor, urlInputContentWidth(terminalColumns, true)))}</Text>{navigation.urlError !== undefined && <Text color={designFlowTheme.danger}>{navigation.urlError}</Text>}</Box>
       : navigation.view === "destination-selection" ? <CompactOptions title="Choose destination" options={navigation.destinationCandidates.slice(navigation.destinationScrollOffset, navigation.destinationScrollOffset + destinationVisibleCount).map((candidate) => candidate.label)} active={Math.max(0, navigation.destinationIndex - navigation.destinationScrollOffset)} />
       : navigation.view === "approval-mode" ? <CompactOptions title="Approval mode" options={["Review changes myself", "Let DesignFlow handle approvals"]} active={navigation.approvalOption} />
       : navigation.view === "ready-to-run" ? <Box flexDirection="column"><Text bold>Ready to start</Text><Text color={designFlowTheme.success}>✓ {session.design.label}</Text><Text color={designFlowTheme.success}>✓ {session.destination.value ?? session.destination.label}</Text><Text color={designFlowTheme.accent}>Approval: {session.approval.mode === "designflow" ? "DesignFlow handles approvals" : "Review changes myself"}</Text><Text color={designFlowTheme.accentStrong}>[ Enter ] Start</Text></Box>

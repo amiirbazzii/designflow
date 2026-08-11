@@ -50,6 +50,7 @@ import {
 } from "./execution";
 import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtifactReader } from "./artifact-viewer";
 import type { VisualResultView } from "../../services/visual-result";
+import { stripBracketedPasteMarkers } from "./url-window";
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
@@ -344,8 +345,9 @@ export function App({
       setNavigation((current) => moveUrlCursor(current, 1));
       return;
     }
-    if (input.length > 0 && key.ctrl !== true && key.meta !== true) {
-      setNavigation((current) => updateUrlText(current, input));
+    const text = stripBracketedPasteMarkers(input);
+    if (text.length > 0 && key.ctrl !== true && key.meta !== true) {
+      setNavigation((current) => updateUrlText(current, text));
     }
   };
 
@@ -560,6 +562,7 @@ export function App({
       selectedOutputView={selectedOutput}
       executionPrompt={prompt}
       visualResult={visualResult}
+      terminalColumns={size.columns}
     />
   );
 }

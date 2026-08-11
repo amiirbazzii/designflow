@@ -5,7 +5,7 @@ import { designFlowTheme, statusColor } from "./theme";
 import type { TuiNavigationState, TuiView } from "./navigation";
 import { ExecutionView } from "./execution-view";
 import { CompactView } from "./compact-view";
-import { visibleUrlWindow } from "./url-window";
+import { renderVisibleUrlWindow, urlInputBoxWidth, urlInputContentWidth, visibleUrlWindow } from "./url-window";
 import { OutputViewer } from "./output-viewer";
 import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view";
 import type { ArtifactViewerDocument } from "./artifact-viewer";
@@ -27,6 +27,7 @@ export interface ShellProps {
   readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
   readonly visualResult?: VisualResultView | undefined;
+  readonly terminalColumns: number;
 }
 
 export function Shell({
@@ -43,6 +44,7 @@ export function Shell({
   selectedOutputView,
   executionPrompt,
   visualResult,
+  terminalColumns,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -61,6 +63,7 @@ export function Shell({
           selectedOutputView={selectedOutputView}
           executionPrompt={executionPrompt}
           visualResult={visualResult}
+          terminalColumns={terminalColumns}
         />
       ) : (
         <Box flexGrow={1} flexDirection="row" overflow="hidden">
@@ -82,6 +85,7 @@ export function Shell({
             viewerDetails={navigation.outputDetails}
             executionPrompt={executionPrompt}
             visualResult={visualResult}
+            terminalColumns={terminalColumns}
           />
         </Box>
       )}
@@ -199,6 +203,7 @@ export function MainPanel({
   viewerDetails,
   executionPrompt,
   visualResult,
+  terminalColumns,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -211,6 +216,7 @@ export function MainPanel({
   readonly viewerDetails: boolean;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
   readonly visualResult?: VisualResultView | undefined;
+  readonly terminalColumns: number;
 }): React.JSX.Element {
   return (
     <Box
@@ -223,7 +229,7 @@ export function MainPanel({
       {navigation.view === "design-selection" ? (
         <DesignSelectionView navigation={navigation} />
       ) : navigation.view === "figma-url-entry" ? (
-        <FigmaUrlEntryView navigation={navigation} />
+        <FigmaUrlEntryView navigation={navigation} terminalColumns={terminalColumns} />
       ) : navigation.view === "destination-selection" ? (
         <DestinationSelectionView
           navigation={navigation}
@@ -319,18 +325,21 @@ export function DesignSelectionView({
 }
 export function FigmaUrlEntryView({
   navigation,
+  terminalColumns,
 }: {
   readonly navigation: TuiNavigationState;
+  readonly terminalColumns: number;
 }): React.JSX.Element {
-  const window = visibleUrlWindow(navigation.urlValue, navigation.urlCursor, 30);
+  const contentWidth = urlInputContentWidth(terminalColumns, false);
+  const window = visibleUrlWindow(navigation.urlValue, navigation.urlCursor, contentWidth);
 
   return (
     <Box flexDirection="column">
       <Text bold color={designFlowTheme.textPrimary}>Paste Figma URL</Text>
       <Text color={designFlowTheme.textSecondary}>Press Enter to continue. Your URL is validated by the existing Figma parser.</Text>
-      <Box marginTop={2} borderStyle="single" borderColor={designFlowTheme.focus} paddingX={1}>
-        <Text color={designFlowTheme.textPrimary}>
-          {window.prefix}{window.before}▌{window.cursorChar}{window.after}{window.suffix}
+      <Box marginTop={2} width={urlInputBoxWidth(terminalColumns, false)} flexGrow={0} flexShrink={0} overflow="hidden" borderStyle="single" borderColor={designFlowTheme.focus} paddingX={1}>
+        <Text color={designFlowTheme.textPrimary} wrap="truncate">
+          {renderVisibleUrlWindow(window)}
         </Text>
       </Box>
       {navigation.urlError !== undefined && <InlineMessage tone="danger">{navigation.urlError}</InlineMessage>}
