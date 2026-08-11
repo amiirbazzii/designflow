@@ -4,7 +4,12 @@ import type { CliContext, ResolvedWorker } from "../services/cli-runner";
 import { designFromCurrentSelection, type InteractiveDesign } from "../services/figma-selection";
 import { menu, ScriptedTerminal } from "../ui/terminal";
 import { collectInput } from "./run";
-import { interactiveRunOptions, selectDesign, signInInteractive } from "./interactive";
+import {
+  interactiveRunOptions,
+  interactiveRunOptionsForProjectId,
+  selectDesign,
+  signInInteractive,
+} from "./interactive";
 
 function shellContext(options: {
   readonly status: "connected" | "unavailable" | "not-configured";
@@ -89,6 +94,26 @@ describe("interactive design selection", () => {
     );
     expect(rendered).toContain("Current Figma selection — Expense Form");
     expect(rendered).toContain("Destination\n  /expenses");
+  });
+
+  test("TUI handoff carries the selected values exactly once", () => {
+    const design: InteractiveDesign = designFromCurrentSelection({
+      id: "10:1",
+      name: "Expense Form",
+      type: "FRAME",
+    });
+    const destination = { label: "/expenses", kind: "page" as const, path: "/expenses" };
+    const options = interactiveRunOptionsForProjectId("project-1", destination, design);
+
+    expect(options).toMatchObject({
+      projectId: "project-1",
+      design,
+      destination,
+      interactive: true,
+      productExperience: true,
+    });
+    expect(Object.keys(options).filter((key) => key === "design")).toHaveLength(1);
+    expect(Object.keys(options).filter((key) => key === "destination")).toHaveLength(1);
   });
 
   test("prefilled design inputs skip only the questions already answered by the shell", async () => {

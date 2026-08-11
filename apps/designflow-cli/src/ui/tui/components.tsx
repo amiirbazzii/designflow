@@ -2,29 +2,38 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { DesignFlowSessionView, WorkflowStageView } from "./model";
 import { designFlowTheme, statusColor } from "./theme";
+import type { TuiNavigationState, TuiView } from "./navigation";
 
 export interface ShellProps {
   readonly session: DesignFlowSessionView;
+  readonly navigation: TuiNavigationState;
   readonly helpOpen: boolean;
   readonly focusArea: "workflow" | "main";
   readonly selectedStage: number;
   readonly compact: boolean;
+  readonly destinationVisibleCount: number;
 }
 
 export function Shell({
   session,
+  navigation,
   helpOpen,
   focusArea,
   selectedStage,
   compact,
+  destinationVisibleCount,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
       <Header session={session} />
-      {compact ? (
-        <CompactView />
-      ) : helpOpen ? (
+      {helpOpen ? (
         <HelpView />
+      ) : compact ? (
+        <CompactView
+          session={session}
+          navigation={navigation}
+          destinationVisibleCount={destinationVisibleCount}
+        />
       ) : (
         <Box flexGrow={1} flexDirection="row" overflow="hidden">
           <Sidebar
@@ -32,14 +41,18 @@ export function Shell({
             focusArea={focusArea}
             selectedStage={selectedStage}
           />
-          <MainPanel session={session} focusArea={focusArea} />
+          <MainPanel
+            session={session}
+            navigation={navigation}
+            focusArea={focusArea}
+            destinationVisibleCount={destinationVisibleCount}
+          />
         </Box>
       )}
-      <StatusBar compact={compact} helpOpen={helpOpen} />
+      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} />
     </Box>
   );
 }
-
 export function Header({ session }: { readonly session: DesignFlowSessionView }): React.JSX.Element {
   const status = session.project.status === "ready" ? "Ready" : "Needs attention";
 
@@ -59,7 +72,6 @@ export function Header({ session }: { readonly session: DesignFlowSessionView })
     </Box>
   );
 }
-
 export function Sidebar({
   session,
   focusArea,
@@ -84,10 +96,18 @@ export function Sidebar({
         <Text bold color={designFlowTheme.textSecondary}>OUTPUTS</Text>
         <OutputsList session={session} />
       </Box>
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color={designFlowTheme.textSecondary}>SELECTION</Text>
+        <Text color={session.design.status === "ready" ? designFlowTheme.success : designFlowTheme.muted}>
+          {session.design.status === "ready" ? "✓" : "·"} {session.design.label}
+        </Text>
+        <Text color={session.destination.status === "ready" ? designFlowTheme.success : designFlowTheme.muted}>
+          {session.destination.status === "ready" ? "✓" : "·"} {session.destination.value ?? session.destination.label}
+        </Text>
+      </Box>
     </Box>
   );
 }
-
 export function WorkflowList({
   stages,
   selectedStage,
@@ -105,7 +125,6 @@ export function WorkflowList({
     </Box>
   );
 }
-
 export function OutputsList({
   session,
 }: {
@@ -125,21 +144,42 @@ export function OutputsList({
     </Box>
   );
 }
-
 export function MainPanel({
   session,
+  navigation,
   focusArea,
+  destinationVisibleCount,
 }: {
   readonly session: DesignFlowSessionView;
+  readonly navigation: TuiNavigationState;
   readonly focusArea: "workflow" | "main";
+  readonly destinationVisibleCount: number;
 }): React.JSX.Element {
   return (
-    <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2} borderColor={focusArea === "main" ? designFlowTheme.focus : undefined}>
-      <StartView session={session} focused={focusArea === "main"} />
+    <Box
+      flexGrow={1}
+      flexDirection="column"
+      paddingX={3}
+      paddingY={2}
+      borderColor={focusArea === "main" ? designFlowTheme.focus : undefined}
+    >
+      {navigation.view === "design-selection" ? (
+        <DesignSelectionView navigation={navigation} />
+      ) : navigation.view === "figma-url-entry" ? (
+        <FigmaUrlEntryView navigation={navigation} />
+      ) : navigation.view === "destination-selection" ? (
+        <DestinationSelectionView
+          navigation={navigation}
+          visibleCount={destinationVisibleCount}
+        />
+      ) : navigation.view === "ready-to-run" ? (
+        <ReadyToRunView session={session} />
+      ) : (
+        <StartView session={session} focused={focusArea === "main"} />
+      )}
     </Box>
   );
 }
-
 export function StartView({
   session,
   focused,
@@ -152,14 +192,14 @@ export function StartView({
   return (
     <Box flexDirection="column" width="100%">
       <Text bold color={designFlowTheme.textPrimary}>Ready to start</Text>
-      <Text color={designFlowTheme.textSecondary}>A calm place to prepare the next DesignFlow run.</Text>
+      <Text color={designFlowTheme.textSecondary}>Prepare the next DesignFlow run.</Text>
 
       <Box flexDirection="column" marginTop={2}>
         <ReadinessRow label="Project" value={session.project.name} status={session.project.status} />
         <ReadinessRow label="Figma" value={session.figma.label} status={session.figma.status} />
         <ReadinessRow label="AI" value={session.ai.label} status={session.ai.status} />
         <ReadinessRow label="Design" value={session.design.label} status={session.design.status} />
-        <ReadinessRow label="Destination" value={session.destination.label} status={session.destination.status} />
+        <ReadinessRow label="Destination" value={session.destination.value ?? session.destination.label} status={session.destination.status} />
       </Box>
 
       <Box marginTop={2}>
@@ -176,6 +216,105 @@ export function StartView({
     </Box>
   );
 }
+export function DesignSelectionView({
+  navigation,
+}: {
+  readonly navigation: TuiNavigationState;
+}): React.JSX.Element {
+  return (
+    <Box flexDirection="column">
+      <Text bold color={designFlowTheme.textPrimary}>Select design</Text>
+      <Text color={designFlowTheme.textSecondary}>Use the frame selected in Figma, or paste a Figma URL.</Text>
+      <Box flexDirection="column" marginTop={2}>
+        {[
+          "Current Figma selection",
+          "Paste Figma URL",
+        ].map((label, index) => (
+          <Text key={label} color={index === navigation.designOption ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
+            {index === navigation.designOption ? "›" : " "} {label}
+          </Text>
+        ))}
+      </Box>
+      {navigation.loading === "current-selection" && <InlineMessage tone="muted">Reading the current Figma selection…</InlineMessage>}
+      {navigation.error !== undefined && <InlineMessage tone="danger">{navigation.error}</InlineMessage>}
+    </Box>
+  );
+}
+export function FigmaUrlEntryView({
+  navigation,
+}: {
+  readonly navigation: TuiNavigationState;
+}): React.JSX.Element {
+  const window = visibleUrlWindow(navigation.urlValue, navigation.urlCursor, 30);
+
+  return (
+    <Box flexDirection="column">
+      <Text bold color={designFlowTheme.textPrimary}>Paste Figma URL</Text>
+      <Text color={designFlowTheme.textSecondary}>Press Enter to continue. Your URL is validated by the existing Figma parser.</Text>
+      <Box marginTop={2} borderStyle="single" borderColor={designFlowTheme.focus} paddingX={1}>
+        <Text color={designFlowTheme.textPrimary}>
+          {window.prefix}{window.before}▌{window.cursorChar}{window.after}{window.suffix}
+        </Text>
+      </Box>
+      {navigation.urlError !== undefined && <InlineMessage tone="danger">{navigation.urlError}</InlineMessage>}
+    </Box>
+  );
+}
+export function DestinationSelectionView({
+  navigation,
+  visibleCount,
+}: {
+  readonly navigation: TuiNavigationState;
+  readonly visibleCount: number;
+}): React.JSX.Element {
+  const start = navigation.destinationScrollOffset;
+  const candidates = navigation.destinationCandidates.slice(start, start + Math.max(1, visibleCount));
+
+  return (
+    <Box flexDirection="column">
+      <Text bold color={designFlowTheme.textPrimary}>Where should this design go?</Text>
+      <Text color={designFlowTheme.textSecondary}>Choose an existing destination or create a new one.</Text>
+      <Box flexDirection="column" marginTop={2}>
+        {candidates.map((candidate, offset) => {
+          const index = start + offset;
+          const active = index === navigation.destinationIndex;
+          return (
+            <Text key={`${candidate.kind}:${candidate.label}`} color={active ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
+              {active ? "›" : " "} {candidate.label}
+            </Text>
+          );
+        })}
+      </Box>
+      {navigation.loading === "destinations" && <InlineMessage tone="muted">Inspecting project destinations…</InlineMessage>}
+      {navigation.error !== undefined && <InlineMessage tone="danger">{navigation.error}</InlineMessage>}
+      {navigation.destinationCandidates.length > Math.max(1, visibleCount) && (
+        <Text color={designFlowTheme.muted}>Showing {start + 1}–{Math.min(start + Math.max(1, visibleCount), navigation.destinationCandidates.length)} of {navigation.destinationCandidates.length}</Text>
+      )}
+    </Box>
+  );
+}
+export function ReadyToRunView({
+  session,
+}: {
+  readonly session: DesignFlowSessionView;
+}): React.JSX.Element {
+  return (
+    <Box flexDirection="column">
+      <Text bold color={designFlowTheme.textPrimary}>Ready to start</Text>
+      <Text color={designFlowTheme.textSecondary}>Review the selected design and destination.</Text>
+      <Box flexDirection="column" marginTop={2}>
+        <ReadinessRow label="Design" value={session.design.label} status={session.design.status} />
+        <ReadinessRow label="Destination" value={session.destination.value ?? session.destination.label} status={session.destination.status} />
+        <ReadinessRow label="Project" value={session.project.name} status={session.project.status} />
+        <ReadinessRow label="Figma" value={session.figma.label} status={session.figma.status} />
+        <ReadinessRow label="AI" value={session.ai.label} status={session.ai.status} />
+      </Box>
+      <Box marginTop={2}>
+        <Text color={designFlowTheme.accentStrong} bold>[ Start Design Engineer ]</Text>
+      </Box>
+    </Box>
+  );
+}
 
 export function HelpView(): React.JSX.Element {
   return (
@@ -183,11 +322,11 @@ export function HelpView(): React.JSX.Element {
       <Text bold color={designFlowTheme.accentStrong}>DesignFlow help</Text>
       <Box flexDirection="column" marginTop={2}>
         <Text><Text color={designFlowTheme.accent}>Enter</Text>  activate the current selection</Text>
-        <Text><Text color={designFlowTheme.accent}>↑ / ↓</Text>  move through workflow stages</Text>
+        <Text><Text color={designFlowTheme.accent}>↑ / ↓</Text>  move through selections</Text>
         <Text><Text color={designFlowTheme.accent}>Tab</Text>  move between workflow and main areas</Text>
-        <Text><Text color={designFlowTheme.accent}>?</Text>  open this help</Text>
-        <Text><Text color={designFlowTheme.accent}>Esc</Text>  close help</Text>
-        <Text><Text color={designFlowTheme.accent}>q</Text>  quit when safe</Text>
+        <Text><Text color={designFlowTheme.accent}>?</Text>  open or close this help</Text>
+        <Text><Text color={designFlowTheme.accent}>Esc</Text>  go back</Text>
+        <Text><Text color={designFlowTheme.accent}>q</Text>  quit when not editing text</Text>
         <Text><Text color={designFlowTheme.accent}>Ctrl+C</Text>  request safe cancellation</Text>
       </Box>
     </Box>
@@ -197,15 +336,29 @@ export function HelpView(): React.JSX.Element {
 export function StatusBar({
   compact,
   helpOpen,
+  view,
 }: {
   readonly compact: boolean;
   readonly helpOpen: boolean;
+  readonly view: TuiView;
 }): React.JSX.Element {
+  const hint = compact
+    ? "Compact mode — resize for the full shell"
+    : helpOpen
+      ? "Esc Close help"
+      : view === "design-selection"
+        ? "↑↓ Navigate   Enter Select   Esc Back"
+        : view === "figma-url-entry"
+          ? "Enter Continue   Esc Back"
+          : view === "destination-selection"
+            ? "↑↓ Navigate   Enter Select   Esc Back"
+            : view === "ready-to-run"
+              ? "Enter Start   Esc Change destination   ? Help   q Quit"
+              : "Enter Start   ? Help   q Quit";
+
   return (
     <Box borderStyle="single" borderTop borderColor={designFlowTheme.border} paddingX={1}>
-      <Text color={designFlowTheme.textSecondary}>
-        {compact ? "Resize terminal for the full DesignFlow shell" : helpOpen ? "Esc Close help" : "Enter Start   ? Help   q Quit"}
-      </Text>
+      <Text color={designFlowTheme.textSecondary}>{hint}</Text>
     </Box>
   );
 }
@@ -230,18 +383,113 @@ function ReadinessRow({
   );
 }
 
+function InlineMessage({
+  tone,
+  children,
+}: {
+  readonly tone: "danger" | "muted";
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Box marginTop={1}>
+      <Text color={tone === "danger" ? designFlowTheme.danger : designFlowTheme.muted}>{children}</Text>
+    </Box>
+  );
+}
+
 export function stageMarker(stage: WorkflowStageView): string {
   if (stage.status === "complete") return "✓";
   if (stage.status === "active") return "→";
   return "○";
 }
 
-function CompactView(): React.JSX.Element {
+export function visibleUrlWindow(
+  value: string,
+  cursor: number,
+  width: number,
+): {
+  readonly prefix: string;
+  readonly before: string;
+  readonly cursorChar: string;
+  readonly after: string;
+  readonly suffix: string;
+} {
+  const safeWidth = Math.max(12, width);
+  const hasPrefix = cursor > safeWidth - 2;
+  const hasSuffix = value.length - cursor > safeWidth - 2;
+  const start = hasPrefix ? Math.max(0, cursor - Math.floor(safeWidth / 2)) : 0;
+  const end = hasSuffix ? Math.min(value.length, start + safeWidth) : value.length;
+  const adjustedStart = Math.max(0, end === value.length ? value.length - safeWidth : start);
+  const adjustedEnd = Math.min(value.length, adjustedStart + safeWidth);
+  return {
+    prefix: adjustedStart > 0 ? "…" : "",
+    before: value.slice(adjustedStart, Math.max(adjustedStart, cursor)),
+    cursorChar: value[cursor] ?? " ",
+    after: value.slice(Math.min(value.length, cursor + 1), adjustedEnd),
+    suffix: adjustedEnd < value.length ? "…" : "",
+  };
+}
+
+function CompactView({
+  session,
+  navigation,
+  destinationVisibleCount,
+}: {
+  readonly session: DesignFlowSessionView;
+  readonly navigation: TuiNavigationState;
+  readonly destinationVisibleCount: number;
+}): React.JSX.Element {
   return (
-    <Box flexGrow={1} alignItems="center" justifyContent="center" flexDirection="column">
-      <Text bold color={designFlowTheme.accentStrong}>DesignFlow</Text>
-      <Text color={designFlowTheme.warning}>Terminal too small for the full shell.</Text>
-      <Text color={designFlowTheme.textSecondary}>Minimum size: 72 columns × 18 rows.</Text>
+    <Box flexGrow={1} flexDirection="column" paddingX={1}>
+      <Text color={designFlowTheme.warning}>Compact terminal mode</Text>
+      {navigation.view === "design-selection" ? (
+        <CompactOptions title="Select design" options={["Current Figma selection", "Paste Figma URL"]} active={navigation.designOption} />
+      ) : navigation.view === "figma-url-entry" ? (
+        <Box flexDirection="column">
+          <Text bold>Paste Figma URL</Text>
+          <Text>{visibleUrlWindow(navigation.urlValue, navigation.urlCursor, 28).before}▌</Text>
+          {navigation.urlError !== undefined && <Text color={designFlowTheme.danger}>{navigation.urlError}</Text>}
+        </Box>
+      ) : navigation.view === "destination-selection" ? (
+        <CompactOptions
+          title="Choose destination"
+          options={navigation.destinationCandidates.slice(navigation.destinationScrollOffset, navigation.destinationScrollOffset + destinationVisibleCount).map((candidate) => candidate.label)}
+          active={Math.max(0, navigation.destinationIndex - navigation.destinationScrollOffset)}
+        />
+      ) : navigation.view === "ready-to-run" ? (
+        <Box flexDirection="column">
+          <Text bold>Ready to start</Text>
+          <Text color={designFlowTheme.success}>✓ {session.design.label}</Text>
+          <Text color={designFlowTheme.success}>✓ {session.destination.value ?? session.destination.label}</Text>
+          <Text color={designFlowTheme.accentStrong}>[ Enter ] Start</Text>
+        </Box>
+      ) : (
+        <Box flexDirection="column">
+          <Text bold>Ready to start</Text>
+          <Text>Press Enter to select a design.</Text>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function CompactOptions({
+  title,
+  options,
+  active,
+}: {
+  readonly title: string;
+  readonly options: readonly string[];
+  readonly active: number;
+}): React.JSX.Element {
+  return (
+    <Box flexDirection="column">
+      <Text bold>{title}</Text>
+      {options.map((option, index) => (
+        <Text key={option} color={index === active ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
+          {index === active ? "›" : " "} {option}
+        </Text>
+      ))}
     </Box>
   );
 }

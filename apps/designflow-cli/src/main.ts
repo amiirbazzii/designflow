@@ -2,7 +2,7 @@
 // apps/designflow-cli/src/main.ts
 import { createInterface } from "node:readline";
 import { dispatch } from "./cli";
-import { interactiveCommand } from "./commands/interactive";
+import { runSelectedDesignEngineer } from "./commands/interactive";
 import {
   createCliContext,
   type CliContext,
@@ -203,10 +203,16 @@ async function main(): Promise<number> {
             () => coordinator.interrupt(),
           );
 
-          if (action === "start") {
+          if (action.type === "start") {
             const legacy = interactiveTerminal(() => coordinator.interrupt());
             try {
-              commandCode = await interactiveCommand(context, legacy.terminal);
+              commandCode = await runSelectedDesignEngineer(
+                context,
+                legacy.terminal,
+                action.projectId,
+                action.design,
+                action.destination,
+              );
             } finally {
               legacy.close();
             }

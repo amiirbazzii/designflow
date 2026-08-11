@@ -1,10 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import type { Key } from "ink";
-import { buildSessionView, setActiveStage } from "./model";
+import {
+  buildSessionView,
+  setActiveStage,
+  setDesignSelection,
+  setDestinationSelection,
+} from "./model";
 import { isCompactTerminal, mapTuiKey, reduceTuiInteraction } from "./keys";
 import { designFlowTheme, statusColor } from "./theme";
 import { shouldUseTui } from "./eligibility";
-import { stageMarker } from "./components";
+import { stageMarker, visibleUrlWindow } from "./components";
+import {
+  backspaceUrlText,
+  enterDesignSelection,
+  enterDestinationSelection,
+  enterUrlEntry,
+  initialNavigationState,
+  keepSelectionVisible,
+  moveListSelection,
+  moveUrlCursor,
+  navigateBack,
+  setDestinationCandidates,
+  updateUrlText,
+} from "./navigation";
 
 const key = (overrides: Partial<Key> = {}): Key => ({
   upArrow: false,
@@ -74,6 +92,97 @@ describe("DesignFlow TUI presentation model", () => {
 
     expect(() => buildSessionView(facts)).not.toThrow();
     expect(facts.project.name).toBe("Spendly");
+  });
+
+  test("maps selected design and destination into the stable session view", () => {
+    const session = buildSessionView({ figma: "connected", ai: "connected" });
+    const design = { kind: "url" as const, label: "Pasted Figma design" };
+    const destination = { label: "/dashboard", kind: "page" as const, path: "/dashboard" };
+    const selected = setDestinationSelection(setDesignSelection(session, design), destination);
+
+    expect(selected.design).toEqual({ kind: "url", label: "Pasted Figma design", status: "ready" });
+    expect(selected.destination).toEqual({ label: "/dashboard", value: "/dashboard", kind: "page", status: "ready" });
+    expect(session.design.status).toBe("idle");
+    expect(session.destination.status).toBe("idle");
+  });
+});
+
+describe("DesignFlow TUI selection navigation", () => {
+  test("Start enters design selection and Esc follows the back hierarchy", () => {
+    const start = initialNavigationState();
+    const design = enterDesignSelection(start);
+    const url = enterUrlEntry(design);
+    const destination = enterDestinationSelection(url, {
+      kind: "url",
+      label: "Pasted Figma design",
+      designFile: "https://www.figma.com/design/abc/Home",
+      frames: [],
+    });
+
+    expect(design.view).toBe("design-selection");
+    expect(navigateBack(url).view).toBe("design-selection");
+    expect(navigateBack(destination).view).toBe("design-selection");
+    expect(navigateBack({ ...destination, view: "ready-to-run" }).view).toBe("destination-selection");
+    expect(navigateBack(design).view).toBe("start");
+  });
+
+  test("URL entry supports paste-like text, cursor movement, and backspace", () => {
+    let state = enterUrlEntry(initialNavigationState());
+    state = updateUrlText(state, "https://www.figma.com/design/abc/Home?q");
+    expect(state.urlValue.endsWith("?q")).toBe(true);
+    expect(state.urlCursor).toBe(state.urlValue.length);
+    state = moveUrlCursor(state, -1);
+    state = moveUrlCursor(state, 1);
+    state = backspaceUrlText(state);
+    expect(state.urlValue.endsWith("?q")).toBe(false);
+    expect(updateUrlText(state, "q").urlValue.endsWith("?q")).toBe(true);
+    expect(visibleUrlWindow(state.urlValue, state.urlCursor, 12).cursorChar).toBeDefined();
+  });
+
+  test("destination selection uses discovered candidates and keeps the active row visible", () => {
+    const design = {
+      kind: "current-selection" as const,
+      label: "Current Figma selection — Home",
+      designFile: "figma://selection/1",
+      frames: ["Home"],
+    };
+    const candidates = Array.from({ length: 12 }, (_, index) => ({
+      label: `/route-${index}`,
+      kind: "page" as const,
+      path: `/route-${index}`,
+    }));
+    let state = setDestinationCandidates(enterDestinationSelection(initialNavigationState(), design), candidates);
+    state = {
+      ...state,
+      destinationIndex: moveListSelection(state.destinationIndex, candidates.length, 1),
+    };
+    const offset = keepSelectionVisible(10, state.destinationScrollOffset, 4);
+
+    expect(state.destinationCandidates).toEqual(candidates);
+    expect(offset).toBe(7);
+    expect(moveListSelection(0, candidates.length, -1)).toBe(0);
+    expect(moveListSelection(11, candidates.length, 1)).toBe(11);
+  });
+
+  test("q is ordinary URL text while selection shortcuts remain available elsewhere", () => {
+    const url = updateUrlText(enterUrlEntry(initialNavigationState()), "q");
+    expect(url.urlValue).toBe("q");
+    expect(mapTuiKey("q", key())).toBe("quit");
+  });
+
+  test("empty destination results remain an inline UI error", () => {
+    const state = setDestinationCandidates(
+      enterDestinationSelection(initialNavigationState(), {
+        kind: "url",
+        label: "Pasted Figma design",
+        designFile: "https://www.figma.com/design/abc/Home",
+        frames: [],
+      }),
+      [],
+    );
+
+    expect(state.error).toBe("No destination suggestions available.");
+    expect(state.loading).toBeNull();
   });
 });
 

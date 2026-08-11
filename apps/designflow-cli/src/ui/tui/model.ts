@@ -1,8 +1,11 @@
+import type { ProjectIdentity } from "@designflow/sdk";
 import type { CliContext } from "../../services/cli-runner";
 import {
   detectCurrentProject,
   ensureCurrentProject,
 } from "../../services/current-project";
+import type { DestinationCandidate, DestinationKind } from "../../services/destinations";
+import type { InteractiveDesign, InteractiveDesignKind } from "../../services/figma-selection";
 
 export type ViewStatus =
   | "ready"
@@ -28,10 +31,13 @@ export interface DesignFlowSessionView {
     readonly label: string;
   };
   readonly design: {
+    readonly kind?: InteractiveDesignKind;
     readonly label: string;
     readonly status: ViewStatus;
   };
   readonly destination: {
+    readonly value?: string;
+    readonly kind?: DestinationKind;
     readonly label: string;
     readonly status: ViewStatus;
   };
@@ -69,8 +75,13 @@ export interface SessionViewFacts {
   };
   readonly figma: "connected" | "unavailable" | "not-configured";
   readonly ai: "connected" | "sign-in-required" | "development-provider" | "not-configured";
-  readonly design?: string;
-  readonly destination?: string;
+  readonly design?: string | Pick<InteractiveDesign, "kind" | "label">;
+  readonly destination?: string | Pick<DestinationCandidate, "label" | "kind" | "path">;
+}
+
+export interface SessionViewRuntime {
+  readonly project: ProjectIdentity | null;
+  readonly session: DesignFlowSessionView;
 }
 
 export const DESIGNFLOW_WORKFLOW_STAGES: readonly WorkflowStageView[] = [
@@ -103,10 +114,19 @@ export function buildSessionView(facts: SessionViewFacts): DesignFlowSessionView
     }),
     design: facts.design === undefined
       ? { label: "Not selected", status: "idle" }
-      : { label: facts.design, status: "ready" },
+      : typeof facts.design === "string"
+        ? { label: facts.design, status: "ready" }
+        : { kind: facts.design.kind, label: facts.design.label, status: "ready" },
     destination: facts.destination === undefined
       ? { label: "Not selected", status: "idle" }
-      : { label: facts.destination, status: "ready" },
+      : typeof facts.destination === "string"
+        ? { label: facts.destination, value: facts.destination, status: "ready" }
+        : {
+            label: facts.destination.label,
+            value: facts.destination.path ?? facts.destination.label,
+            kind: facts.destination.kind,
+            status: "ready",
+          },
     approvalMode: "manual",
     workflow: {
       status: "idle",
@@ -115,6 +135,31 @@ export function buildSessionView(facts: SessionViewFacts): DesignFlowSessionView
     outputs: [],
     activity: ["Ready to start"],
     diagnostics: [],
+  };
+}
+
+export function setDesignSelection(
+  session: DesignFlowSessionView,
+  design: Pick<InteractiveDesign, "kind" | "label">,
+): DesignFlowSessionView {
+  return {
+    ...session,
+    design: { ...design, status: "ready" },
+  };
+}
+
+export function setDestinationSelection(
+  session: DesignFlowSessionView,
+  destination: Pick<DestinationCandidate, "label" | "kind" | "path">,
+): DesignFlowSessionView {
+  return {
+    ...session,
+    destination: {
+      label: destination.label,
+      value: destination.path ?? destination.label,
+      kind: destination.kind,
+      status: "ready",
+    },
   };
 }
 
@@ -144,13 +189,21 @@ export function setActiveStage(
 export async function buildSessionViewFromContext(
   context: CliContext,
 ): Promise<DesignFlowSessionView> {
+  return (await buildSessionRuntimeFromContext(context)).session;
+}
+
+export async function buildSessionRuntimeFromContext(
+  context: CliContext,
+): Promise<SessionViewRuntime> {
   const detected = detectCurrentProject();
   const project = await ensureCurrentProject(context, detected);
 
   await context.refreshAiSession();
   await context.ensureFigmaConnection();
 
-  return buildSessionView({
+  return {
+    project,
+    session: buildSessionView({
     ...(project === null
       ? {}
       : {
@@ -161,7 +214,8 @@ export async function buildSessionViewFromContext(
         }),
     figma: context.figmaConnectionStatus(),
     ai: context.aiStatus(),
-  });
+    }),
+  };
 }
 
 function readinessLine<T extends string>(

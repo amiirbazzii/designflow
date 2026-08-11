@@ -51,6 +51,60 @@ export function interactiveRunOptions(
   };
 }
 
+export function interactiveRunOptionsForProjectId(
+  projectId: string | undefined,
+  destination: DestinationCandidate,
+  design: InteractiveDesign,
+): {
+  interactive: true;
+  offerArtifactView: true;
+  productExperience: true;
+  projectId?: string;
+  destination: DestinationCandidate;
+  design: InteractiveDesign;
+} {
+  return {
+    interactive: true,
+    offerArtifactView: true,
+    productExperience: true,
+    ...(projectId === undefined ? {} : { projectId }),
+    destination,
+    design,
+  };
+}
+
+function designEngineerWorkerId(context: CliContext): string | null {
+  return context.workers
+    .listWorkers()
+    .find((candidate) => candidate.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID))
+    ?.id ?? null;
+}
+
+export async function runSelectedDesignEngineer(
+  context: CliContext,
+  terminal: Terminal,
+  projectId: string | undefined,
+  design: InteractiveDesign,
+  destination: DestinationCandidate,
+): Promise<number> {
+  const workerId = designEngineerWorkerId(context);
+  if (workerId === null) {
+    terminal.print();
+    terminal.print("The design worker is not installed.");
+    terminal.print("Run  designflow list  to see the available workers.");
+    return 1;
+  }
+
+  terminal.print();
+  terminal.print("Starting Design Engineer...");
+  return runCommand(
+    context,
+    terminal,
+    workerId,
+    interactiveRunOptionsForProjectId(projectId, destination, design),
+  );
+}
+
 export async function selectDesign(
   context: CliContext,
   terminal: Terminal,
@@ -224,19 +278,6 @@ export async function interactiveCommand(
         continue;
       }
 
-      const worker = context.workers
-        .listWorkers()
-        .find((candidate) =>
-          candidate.workflows.includes(EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID),
-        );
-
-      if (worker === undefined) {
-        terminal.print();
-        terminal.print("The design worker is not installed.");
-        terminal.print("Run  designflow list  to see the available workers.");
-        continue;
-      }
-
       if (design === null) {
         design = await selectDesign(context, terminal);
         if (design === null) continue;
@@ -252,14 +293,7 @@ export async function interactiveCommand(
         continue;
       }
 
-      terminal.print();
-      terminal.print("Starting Design Engineer...");
-      await runCommand(
-        context,
-        terminal,
-        worker.id,
-        interactiveRunOptions(project, destination, design),
-      );
+      await runSelectedDesignEngineer(context, terminal, project?.id, design, destination);
       continue;
     }
 

@@ -76,6 +76,9 @@ export type { Terminal } from "./ui/terminal";
 export {
   buildSessionView,
   buildSessionViewFromContext,
+  buildSessionRuntimeFromContext,
+  setDesignSelection,
+  setDestinationSelection,
   setActiveStage,
   DESIGNFLOW_WORKFLOW_STAGES,
 } from "./ui/tui/model";
@@ -86,3 +89,14 @@ export type {
   ViewStatus,
   WorkflowStageView,
 } from "./ui/tui/model";
+export {
+  initialNavigationState,
+  navigateBack,
+  moveListSelection,
+  keepSelectionVisible,
+  updateUrlText,
+  backspaceUrlText,
+  deleteUrlText,
+  moveUrlCursor,
+} from "./ui/tui/navigation";
+export type { TuiNavigationState, TuiView } from "./ui/tui/navigation";

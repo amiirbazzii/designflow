@@ -1,8 +1,13 @@
 import React from "react";
 import { render } from "ink";
-import { App, type TuiAction } from "./app";
-import { buildSessionViewFromContext, type DesignFlowSessionView } from "./model";
+import { App, type TuiAction, type TuiSelectionHandlers } from "./app";
+import { buildSessionRuntimeFromContext, type DesignFlowSessionView } from "./model";
 import type { CliContext } from "../../services/cli-runner";
+import {
+  designFromCurrentSelection,
+  designFromUrl,
+} from "../../services/figma-selection";
+import { findDestinationCandidates } from "../../services/destinations";
 
 const ALT_SCREEN_ENTER = "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l";
 const ALT_SCREEN_EXIT = "\u001b[?25h\u001b[?1049l";
@@ -16,8 +21,17 @@ export async function runTuiShell(
   },
   onInterrupt: () => void,
 ): Promise<TuiAction> {
-  const session = await buildSessionViewFromContext(context);
-  return runTuiShellWithView(session, streams, onInterrupt);
+  const runtime = await buildSessionRuntimeFromContext(context);
+  const handlers: TuiSelectionHandlers = {
+    getCurrentDesign: async () => {
+      if (context.figmaConnectionStatus() !== "connected") return null;
+      const selection = await context.getCurrentFigmaSelection();
+      return selection === null ? null : designFromCurrentSelection(selection);
+    },
+    parseFigmaUrl: designFromUrl,
+    getDestinations: () => findDestinationCandidates(context, runtime.project),
+  };
+  return runTuiShellWithView(runtime.session, streams, onInterrupt, handlers, runtime.project?.id);
 }
 
 export async function runTuiShellWithView(
@@ -28,13 +42,17 @@ export async function runTuiShellWithView(
     readonly writeControl?: (value: string) => void;
   },
   onInterrupt: () => void,
+  handlers: TuiSelectionHandlers,
+  projectId?: string,
 ): Promise<TuiAction> {
   (streams.writeControl ?? ((value: string) => safeWrite(streams.output, value)))(ALT_SCREEN_ENTER);
 
-  let action: TuiAction = "quit";
+  let action: TuiAction = { type: "quit" };
   const instance = render(
     React.createElement(App, {
       session,
+      ...(projectId === undefined ? {} : { projectId }),
+      handlers,
       onAction: (nextAction: TuiAction) => {
         action = nextAction;
       },
