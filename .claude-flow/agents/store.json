@@ -27,6 +27,34 @@
       "domain": "stage5",
       "model": "inherit",
       "modelRoutedBy": "explicit"
+    },
+    "agent-1786429697525-yzbyjb": {
+      "agentId": "agent-1786429697525-yzbyjb",
+      "agentType": "researcher",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-08-11T06:28:17.525Z",
+      "domain": "cli-selection",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "agent-1786429697596-uclz3i": {
+      "agentId": "agent-1786429697596-uclz3i",
+      "agentType": "researcher",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 1,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-08-11T06:28:17.596Z",
+      "domain": "destination-discovery",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
     }
   },
   "version": "3.0.0"
