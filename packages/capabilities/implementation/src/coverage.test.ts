@@ -120,3 +120,42 @@ describe("coverage validation", () => {
     ).toThrow("unknown target");
   });
 });
+
+// ── Post-release remediation: mapping/scope consistency ──
+
+describe("trusted mapping consistency", () => {
+  test("a discovered existing component is reusable exactly as the validator authorizes it", () => {
+    const derived = plan();
+    expect(derived.trustedReusePaths).toContain("src/components/PrimaryButton.jsx");
+    const result = validateImplementationCoverage(
+      derived,
+      proposal([{ path: "src/app/add/GeneratedScreen.jsx" }]),
+      [rootClaim(["src/app/add/GeneratedScreen.jsx"]), buttonReuse("src/components/PrimaryButton.jsx")],
+    );
+    expect(result.status).toBe("passed");
+  });
+
+  test("model-visible trustedReusePaths and validator-authorized reuse scope are the same set", () => {
+    // The exact plan object handed to the Implementation Agent is the one the
+    // validator enforces — the agent can never be invited to claim a reuse
+    // path the host will reject.
+    const derived = plan();
+    for (const path of derived.trustedReusePaths) {
+      expect(() =>
+        validateImplementationCoverage(derived, proposal([{ path: "src/app/add/GeneratedScreen.jsx" }]), [
+          rootClaim(["src/app/add/GeneratedScreen.jsx"]),
+          { targetId: "component:Primary button", mode: "existing_reuse", paths: [path], supportingPaths: [] },
+        ]),
+      ).not.toThrow();
+    }
+  });
+
+  test("a reuse path outside the trusted mapping is still strictly rejected", () => {
+    expect(() =>
+      validateImplementationCoverage(plan(), proposal([{ path: "src/app/add/GeneratedScreen.jsx" }]), [
+        rootClaim(["src/app/add/GeneratedScreen.jsx"]),
+        buttonReuse("src/components/NotDiscovered.tsx"),
+      ]),
+    ).toThrow(expect.objectContaining({ code: "ERR_PROPOSAL_COVERAGE_INVALID" }));
+  });
+});

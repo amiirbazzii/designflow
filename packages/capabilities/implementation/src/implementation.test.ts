@@ -91,3 +91,20 @@ describe("Stage 4 implementation capability", () => {
 
   test("marks missing checks unavailable and never runs model-requested commands", async () => { const root = await fixture(); const context = inspectRegisteredProject({ id: "p1", name: "Fixture", rootPath: root }); const checks = await validateProject({ ...context, commands: { ...context.commands, lint: undefined, test: undefined } }, root); expect(checks.find((check) => check.name === "lint")?.status).toBe("unavailable"); expect(checks.find((check) => check.name === "build")?.status).toBe("passed"); await rm(root, { recursive: true, force: true }); });
 });
+
+// ── Post-release remediation: inspection budget must prioritize source dirs ──
+
+describe("inspection source prioritization", () => {
+  test("components survive the file budget even when early-alphabetical junk would exhaust it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "designflow-priority-"));
+    await mkdir(join(root, "assets"), { recursive: true });
+    await mkdir(join(root, "src/components"), { recursive: true });
+    for (let i = 0; i < 30; i += 1) await writeFile(join(root, "assets", `junk-${String(i).padStart(2, "0")}.json`), "{}");
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "priority", dependencies: { react: "19.0.0" } }));
+    await writeFile(join(root, "src/components/Button.tsx"), "export function Button({ label }: { label: string }) { return null; }\n");
+    const context = inspectRegisteredProject({ id: "p1", name: "Priority", rootPath: root }, { maxFiles: 10 });
+    expect(context.warnings.some((warning) => warning.code === "FILE_COUNT_LIMIT")).toBe(true);
+    expect(context.designSystem.components.map((component) => component.sourcePath)).toContain("src/components/Button.tsx");
+    await rm(root, { recursive: true, force: true });
+  });
+});

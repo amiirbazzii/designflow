@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { proposedFileChangesSchema, type ProposedFileChanges } from "@designflow/sdk";
@@ -93,6 +93,49 @@ function copyProjectInto(root: string, workspace: string): void {
   walk(root);
 }
 
+/**
+ * Materializes the project's node_modules inside the workspace so every
+ * dependency's REAL path stays under the workspace root. Build tooling that
+ * resolves symlinks (Next.js/Turbopack output file tracing) treats the
+ * workspace as its filesystem root; a symlink pointing at the registered
+ * project's node_modules escapes that root and produces malformed prefixes
+ * such as mkdir('/private/var/Users'). A copy-on-write clone (APFS clonefile
+ * on macOS, reflink on supporting Linux filesystems) keeps realpaths
+ * contained at near-zero data cost; when cloning is unsupported the legacy
+ * symlink remains as the fallback.
+ */
+export function materializeWorkspaceNodeModules(root: string, workspace: string): "cloned" | "symlinked" | "absent" {
+  const nodeModules = join(root, "node_modules");
+  if (lstatSync(nodeModules, { throwIfNoEntry: false })?.isDirectory() !== true) return "absent";
+  const destination = join(workspace, "node_modules");
+  const args = process.platform === "darwin" ? ["-Rc", nodeModules, destination] : ["-R", "--reflink=auto", nodeModules, destination];
+  const clone = spawnSync("cp", args, { stdio: "ignore", timeout: 120_000 });
+  if (clone.status === 0) return "cloned";
+  rmSync(destination, { recursive: true, force: true });
+  symlinkSync(nodeModules, destination);
+  return "symlinked";
+}
+
+/**
+ * Build-output signatures that indicate the VALIDATION WORKSPACE itself
+ * failed (permissions, disk, symlink containment) rather than the proposed
+ * code failing to compile. These must never be reported as a generated-code
+ * compile failure.
+ */
+const ENVIRONMENT_ERRNO = /(?:EACCES|EPERM|ENOSPC|EROFS)[^'"\n]*['"]([^'"\n]+)['"]/g;
+const ENVIRONMENT_SIGNATURE = /points out of the filesystem root/;
+
+/** True when build output shows the workspace itself failed: a containment
+ * escape, or a filesystem errno on a path OUTSIDE the workspace. */
+export function isEnvironmentFailureOutput(output: string, workspace: string): boolean {
+  if (ENVIRONMENT_SIGNATURE.test(output)) return true;
+  for (const match of output.matchAll(ENVIRONMENT_ERRNO)) {
+    const path = match[1]!;
+    if (path.startsWith("/") && !path.startsWith(workspace + sep) && path !== workspace) return true;
+  }
+  return false;
+}
+
 function applyProposalInto(workspace: string, proposal: ProposedFileChanges): void {
   for (const file of proposal.files) {
     if (file.action === "delete") continue;
@@ -173,11 +216,12 @@ export async function validateProposedModules(root: string, rawProposal: unknown
   const command = options.buildCommand;
   if (command === undefined)
     return { status: "unavailable", validatedFiles: modules, diagnostics: [{ message: "The project declares no safe build command, so proposed modules could not be compile-validated." }], proposalHash };
-  const workspace = mkdtempSync(join(tmpdir(), "designflow-proposed-state-"));
+  // realpath the workspace up front so macOS /var ↔ /private/var aliasing can
+  // never yield two spellings of the same root in path checks or diagnostics.
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "designflow-proposed-state-")));
   try {
     copyProjectInto(root, workspace);
-    const nodeModules = join(root, "node_modules");
-    if (lstatSync(nodeModules, { throwIfNoEntry: false })?.isDirectory() === true) symlinkSync(nodeModules, join(workspace, "node_modules"));
+    materializeWorkspaceNodeModules(root, workspace);
     applyProposalInto(workspace, proposal);
     writeSyntheticEntry(workspace, modules);
     const throwIfCancelled = (): void => { if (options.signal?.aborted === true) throw new ImplementationError("ERR_VALIDATION_CANCELLED", "Proposed-state validation was cancelled."); };
@@ -187,6 +231,16 @@ export async function validateProposedModules(root: string, rawProposal: unknown
     if (result.code === 0 && result.timedOut === false) {
       const postBuild = options.postBuild === undefined ? undefined : await options.postBuild(workspace);
       return { status: "passed", validatedFiles: modules, diagnostics: [], proposalHash, command: [command.executable, ...command.args], exitCode: result.code, durationMs: result.durationMs, ...(postBuild === undefined ? {} : { postBuild }) };
+    }
+    if (!result.timedOut && isEnvironmentFailureOutput(result.output, workspace)) {
+      // The workspace, not the proposed code, failed — never blame the
+      // proposal for an infrastructure error, and never burn a bounded
+      // regeneration attempt on it.
+      throw new ImplementationError(
+        "ERR_PROPOSED_STATE_WORKSPACE_FAILED",
+        "DesignFlow could not validate the proposed change in its temporary validation workspace.",
+        { diagnostics: boundedDiagnostics(result.output, workspace, modules) },
+      );
     }
     const diagnostics = result.timedOut
       ? [{ message: "The proposed-state build timed out." }]

@@ -5,7 +5,15 @@ import { projectImplementationContextV1Schema, type Stage4ProjectImplementationC
 import { ImplementationError } from "./errors";
 
 export interface InspectionLimits { maxFiles?: number; maxBytes?: number; maxFileBytes?: number; maxDepth?: number; }
-const DEFAULTS: Required<InspectionLimits> = { maxFiles: 500, maxBytes: 2_000_000, maxFileBytes: 100_000, maxDepth: 8 };
+const DEFAULTS: Required<InspectionLimits> = { maxFiles: 1_500, maxBytes: 2_000_000, maxFileBytes: 100_000, maxDepth: 8 };
+/**
+ * Directories walked FIRST at each level. In a mature app an alphabetical
+ * walk can exhaust the file budget on assets/config before ever reaching the
+ * source tree, silently dropping real components from the design-system
+ * context (and therefore from the trusted reuse mapping the coverage
+ * validator enforces). Source and component directories must win the budget.
+ */
+const PRIORITY_DIRECTORIES = ["src", "app", "source", "components", "pages", "lib"];
 const IGNORED = new Set([".git", "node_modules", "dist", "build", "out", "coverage", ".turbo", ".next", ".nuxt", ".svelte-kit", ".designflow"]);
 const SECRET = /(^|\.)((env($|\.)|npmrc|pypirc|ssh|aws)|secret|credential|password|private[-_.]?key)|\.(pem|key|p12|pfx)$/i;
 const SOURCE = /\.(tsx?|jsx?|vue|svelte|css|scss|sass|less|json)$/i;
@@ -40,7 +48,7 @@ export function inspectRegisteredProject(project: { id: string; name: string; ro
   const walk = (dir: string, depth: number) => {
     if (signal?.aborted) throw new ImplementationError("ERR_PROJECT_INSPECTION_ABORTED", "Project inspection was cancelled.");
     if (depth > opts.maxDepth) { warnings.push({ code: "DEPTH_LIMIT", message: `Inspection depth limit ${opts.maxDepth} reached.` }); return; }
-    let names: string[]; try { names = readdirSync(dir).sort(); } catch { warnings.push({ code: "UNREADABLE_DIRECTORY", message: "A directory could not be read.", path: posix(relative(root, dir)) }); return; }
+    let names: string[]; try { names = readdirSync(dir).sort((a, b) => { const pa = PRIORITY_DIRECTORIES.indexOf(a), pb = PRIORITY_DIRECTORIES.indexOf(b); const ra = pa === -1 ? PRIORITY_DIRECTORIES.length : pa, rb = pb === -1 ? PRIORITY_DIRECTORIES.length : pb; return ra !== rb ? ra - rb : a < b ? -1 : a > b ? 1 : 0; }); } catch { warnings.push({ code: "UNREADABLE_DIRECTORY", message: "A directory could not be read.", path: posix(relative(root, dir)) }); return; }
     for (const name of names) {
       if (files.length >= opts.maxFiles) { warnings.push({ code: "FILE_COUNT_LIMIT", message: `Inspection stopped at ${opts.maxFiles} files.` }); return; }
       if (IGNORED.has(name) || SECRET.test(name)) continue;

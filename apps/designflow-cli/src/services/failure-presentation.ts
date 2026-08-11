@@ -83,6 +83,15 @@ function curatedFor(facts: ProductFailureFacts): CuratedFailure {
           "You can start the run again from the menu — your design and destination are kept.",
         ],
       };
+    case "ERR_PROPOSED_STATE_WORKSPACE_FAILED":
+      return {
+        title: "DesignFlow could not validate the proposed change in its temporary workspace.",
+        summary: "The proposed code was not the problem — DesignFlow's own validation workspace failed to build the project copy.",
+        recovery: [
+          "Your project files were not changed.",
+          "Start the run again; if this keeps happening, check free disk space and that your temporary directory is writable.",
+        ],
+      };
     case "ERR_MODEL_AUTHENTICATION":
       return {
         title: facts.hasApplication

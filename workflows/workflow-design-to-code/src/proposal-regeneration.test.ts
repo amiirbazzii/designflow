@@ -424,3 +424,30 @@ describe("Phase 7D bounded per-attempt diagnostic persistence", () => {
     await rm(root, { recursive: true, force: true });
   });
 });
+
+// ── Post-release remediation: workspace failures never burn attempts ──
+
+describe("validation-environment failures in the bounded loop", () => {
+  test("a workspace failure aborts immediately as an environment error, consuming no regeneration attempts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "designflow-regen-env-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "regen-env-fixture", scripts: { build: "node fail-env.cjs" } }));
+    await writeFile(join(root, "fail-env.cjs"), "console.error(\"Error: EACCES: permission denied, mkdir '/private/var/Users'\"); process.exit(1);\n");
+    await writeFile(join(root, "src/App.jsx"), "export default function App() { return null; }\n");
+    const invocations: unknown[] = [];
+    try {
+      const context = await contextFor(root, invocations, [
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: "export default function GeneratedScreen() { return null; }\n" }]),
+        agentOutput([{ path: "src/GeneratedScreen.jsx", action: "create", content: "export default function GeneratedScreen() { return null; }\n" }]),
+      ]);
+      await expect(invokeImplementationAgentStage4Capability.execute(context, workflowInput(root))).rejects.toMatchObject({ code: "ERR_PROPOSED_STATE_WORKSPACE_FAILED" });
+      // The infrastructure failure is not the model's fault: exactly one
+      // invocation happened, and it was not reported as a compile failure.
+      expect(invocations.length).toBe(1);
+      expect(REPAIRABLE_PROPOSAL_ERROR_CODES.has("ERR_PROPOSED_STATE_WORKSPACE_FAILED")).toBe(false);
+      expect(existsSync(join(root, "src/GeneratedScreen.jsx"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -170,3 +170,17 @@ describe("Phase 9 recovery actions", () => {
     expect(output).toContain("design and destination are kept");
   });
 });
+
+describe("validation-environment failure presentation", () => {
+  test("a workspace failure never blames the AI's code and states no files changed", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_PROPOSED_STATE_WORKSPACE_FAILED",
+    });
+    const output = renderProductFailure(failure).join("\n");
+    expect(failure.title).toBe("DesignFlow could not validate the proposed change in its temporary workspace.");
+    expect(output).toContain("The proposed code was not the problem");
+    expect(output).toContain("Your project files were not changed.");
+    expect(output).not.toContain("compile");
+  });
+});

@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync as realpath, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { changedExecutableFiles, validateProposedModules } from "./proposed-state-validation";
+import { changedExecutableFiles, isEnvironmentFailureOutput, materializeWorkspaceNodeModules, validateProposedModules } from "./proposed-state-validation";
 
 const BUILD = { executable: "bun", args: ["build", "./designflow-proposed-entry.js", "--outdir=dist"] };
 
@@ -205,6 +205,83 @@ describe("proposed-module compile validation", () => {
       expect(result.status).toBe("failed");
       expect(result.postBuild).toBeUndefined();
       expect(runtimeStarted).toBe(false);
+      expect(lingeringWorkspaces()).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── Post-release remediation: workspace containment + environment classification ──
+
+describe("proposed-state workspace containment", () => {
+  test("node_modules is materialized with its real path INSIDE the workspace", async () => {
+    const root = fixture({ ...BASE, "node_modules/leftlib/index.js": "module.exports = 1;\n", "node_modules/leftlib/package.json": JSON.stringify({ name: "leftlib", main: "index.js" }) });
+    const workspace = mkdtempSync(join(tmpdir(), "designflow-containment-"));
+    try {
+      const mode = materializeWorkspaceNodeModules(root, realpath(workspace));
+      const containedRealpath = realpath(join(workspace, "node_modules"));
+      if (mode === "cloned") {
+        // Realpath containment is exactly what stops Next/Turbopack file
+        // tracing from climbing above the workspace into /private/var/Users.
+        expect(containedRealpath.startsWith(realpath(workspace))).toBe(true);
+        expect(readFileSync(join(workspace, "node_modules", "leftlib", "index.js"), "utf8")).toContain("module.exports");
+      } else {
+        expect(mode).toBe("symlinked");
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a build failing with an errno OUTSIDE the workspace is a workspace failure, never a compile failure", async () => {
+    const root = fixture({
+      ...BASE,
+      "package.json": JSON.stringify({ name: "env-fail", scripts: { build: "node fail-env.cjs" } }),
+      "fail-env.cjs": "console.error(\"Error: EACCES: permission denied, mkdir '/private/var/Users'\"); process.exit(1);\n",
+    });
+    try {
+      await expect(
+        validateProposedModules(root, proposal([{ path: "src/New.jsx", action: "create", content: "export default () => null;\n" }]), { buildCommand: { executable: "node", args: ["fail-env.cjs"] } }),
+      ).rejects.toMatchObject({ code: "ERR_PROPOSED_STATE_WORKSPACE_FAILED" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a genuine strict TypeScript diagnostic remains a compile failure with the exact message", async () => {
+    const root = fixture({
+      ...BASE,
+      "package.json": JSON.stringify({ name: "ts-fail", scripts: { build: "node fail-ts.cjs" } }),
+      "fail-ts.cjs": "console.error(\"Type error: Binding element 'date' implicitly has an 'any' type.\"); process.exit(1);\n",
+    });
+    try {
+      const result = await validateProposedModules(root, proposal([{ path: "src/New.jsx", action: "create", content: "export default () => null;\n" }]), { buildCommand: { executable: "node", args: ["fail-ts.cjs"] } });
+      expect(result.status).toBe("failed");
+      expect(result.diagnostics.map((d) => d.message).join("\n")).toContain("Binding element 'date' implicitly has an 'any' type.");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("environment classification requires an escape — errno on a workspace-internal path stays a compile failure", () => {
+    expect(isEnvironmentFailureOutput("Error: EACCES: permission denied, mkdir '/private/var/Users'", "/private/var/folders/x/T/ws")).toBe(true);
+    expect(isEnvironmentFailureOutput("Symlink [project]/node_modules is invalid, it points out of the filesystem root", "/ws")).toBe(true);
+    expect(isEnvironmentFailureOutput("Error: EACCES: permission denied, open '/private/var/folders/x/T/ws/dist/a.js'", "/private/var/folders/x/T/ws")).toBe(false);
+    expect(isEnvironmentFailureOutput("Type error: Binding element 'date' implicitly has an 'any' type.", "/ws")).toBe(false);
+  });
+
+  test("the original project is untouched by a validation that fails in the workspace", async () => {
+    const root = fixture({
+      ...BASE,
+      "package.json": JSON.stringify({ name: "untouched", scripts: { build: "node fail-env.cjs" } }),
+      "fail-env.cjs": "console.error(\"Error: EACCES: permission denied, mkdir '/private/var/Users'\"); process.exit(1);\n",
+    });
+    const before = snapshotTree(root);
+    try {
+      await validateProposedModules(root, proposal([{ path: "src/New.jsx", action: "create", content: "export default () => null;\n" }]), { buildCommand: { executable: "node", args: ["fail-env.cjs"] } }).catch(() => undefined);
+      expect(snapshotTree(root)).toBe(before);
       expect(lingeringWorkspaces()).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
