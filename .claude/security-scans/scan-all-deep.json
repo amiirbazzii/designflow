@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-04T13:24:04.430Z",
+  "timestamp": "2026-08-11T13:36:22.137Z",
   "target": ".",
   "depth": "deep",
   "type": "all",
@@ -14,7 +14,7 @@
     {
       "severity": "HIGH",
       "type": "Hardcoded Secret",
-      "location": "packages/product/src/artifact-inspection.test.ts:24",
+      "location": "apps/designflow-cli/src/ui/tui/artifact-viewer.test.ts:105",
       "description": "Hardcoded Password"
     }
   ]
