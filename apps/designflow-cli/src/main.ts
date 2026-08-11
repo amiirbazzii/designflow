@@ -2,6 +2,7 @@
 // apps/designflow-cli/src/main.ts
 import { createInterface } from "node:readline";
 import { dispatch } from "./cli";
+import { interactiveCommand } from "./commands/interactive";
 import {
   createCliContext,
   type CliContext,
@@ -12,6 +13,8 @@ import { ExitOutcome, resolveExitCode } from "./services/exit-outcome";
 import { SignalCoordinator } from "./services/signal-coordinator";
 import { formatError } from "./ui/errors";
 import type { Terminal } from "./ui/terminal";
+import { shouldUseTui } from "./ui/tui/eligibility";
+import { runTuiShell } from "./ui/tui/run";
 
 class TerminalInterruptedError extends Error {
   public constructor() {
@@ -40,6 +43,15 @@ function print(line = ""): void {
   } catch (error) {
     // A destroyed pipe can also throw synchronously; that exact condition
     // is the one thing safe to ignore here.
+    if ((error as { code?: unknown }).code !== "EPIPE") throw error;
+  }
+}
+
+function writeControl(value: string): void {
+  if (activePipeGuard?.isBroken("stdout") === true) return;
+  try {
+    process.stdout.write(value);
+  } catch (error) {
     if ((error as { code?: unknown }).code !== "EPIPE") throw error;
   }
 }
@@ -149,11 +161,23 @@ async function main(): Promise<number> {
   // Reading stdin for a non-interactive command would block on a pipe that
   // never closes, so only the prompting paths drain it.
   const needsInput = argv.length === 0 || argv[0] === "run" || argv[0] === "answer" || argv[0] === "feedback-loop";
+  const useTui = shouldUseTui({
+    argv,
+    stdinIsTTY: process.stdin.isTTY === true,
+    stdoutIsTTY: process.stdout.isTTY === true,
+  });
 
-  const { terminal, close } =
-    needsInput && process.stdin.isTTY !== true
-      ? await pipedTerminal(argv.length === 0 ? "q" : "")
-      : interactiveTerminal(() => coordinator.interrupt());
+  let terminal: Terminal | undefined;
+  let close = (): void => {};
+
+  if (!useTui) {
+    const interactive =
+      needsInput && process.stdin.isTTY !== true
+        ? await pipedTerminal(argv.length === 0 ? "q" : "")
+        : interactiveTerminal(() => coordinator.interrupt());
+    terminal = interactive.terminal;
+    close = interactive.close;
+  }
 
   // Built inside the guard: preparing `~/.designflow` is filesystem work, so
   // this is exactly where a permissions or disk problem surfaces, and it
@@ -167,7 +191,31 @@ async function main(): Promise<number> {
           signal,
           autoConnectFigmaDesktop: argv.length === 0,
         });
-        const commandCode = await dispatch(argv, context, terminal);
+        let commandCode: number;
+        if (useTui) {
+          const action = await runTuiShell(
+            context,
+            {
+              input: process.stdin,
+              output: process.stdout,
+              writeControl,
+            },
+            () => coordinator.interrupt(),
+          );
+
+          if (action === "start") {
+            const legacy = interactiveTerminal(() => coordinator.interrupt());
+            try {
+              commandCode = await interactiveCommand(context, legacy.terminal);
+            } finally {
+              legacy.close();
+            }
+          } else {
+            commandCode = 0;
+          }
+        } else {
+          commandCode = await dispatch(argv, context, terminal!);
+        }
         outcome.recordResult(commandCode);
         return commandCode;
       } catch (error) {

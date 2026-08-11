@@ -61,9 +61,9 @@ describe("designflow-ai package contract (CLI-only)", () => {
     expect(Object.keys(pkg.exports ?? {})).toEqual(["./package.json"]);
   });
 
-  test("no runtime dependencies were introduced; Playwright stays optional", () => {
+  test("the bundled TUI keeps only its WASM runtime asset; Playwright stays optional", () => {
     const pkg = manifest();
-    expect(pkg.dependencies).toBeUndefined();
+    expect(pkg.dependencies).toEqual({ "yoga-wasm-web": "0.3.3" });
     expect(pkg.optionalDependencies).toEqual({ playwright: "1.62.1" });
   });
 

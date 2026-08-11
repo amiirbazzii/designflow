@@ -73,3 +73,16 @@ export type { UserFacingError } from "./ui/errors";
 
 export { ScriptedTerminal } from "./ui/terminal";
 export type { Terminal } from "./ui/terminal";
+export {
+  buildSessionView,
+  buildSessionViewFromContext,
+  setActiveStage,
+  DESIGNFLOW_WORKFLOW_STAGES,
+} from "./ui/tui/model";
+export type {
+  DesignFlowSessionView,
+  OutputView,
+  SessionViewFacts,
+  ViewStatus,
+  WorkflowStageView,
+} from "./ui/tui/model";
