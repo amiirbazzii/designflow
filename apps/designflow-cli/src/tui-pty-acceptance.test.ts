@@ -66,12 +66,48 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
     for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
   });
 
-  function runScenario(scenario: string, options?: { readonly gatewayReachable?: boolean }): {
+  function runScenario(scenario: string, options?: {
+    readonly gatewayReachable?: boolean;
+    /** get_document succeeds with a small document instead of failing. */
+    readonly figmaSucceeds?: boolean;
+    /** run inside an isolated git-initialized copy of the fixture project. */
+    readonly isolatedProject?: boolean;
+  }): {
     readonly status: number | null;
     readonly stdout: string;
   } {
     const home = mkdtempSync(join(tmpdir(), "designflow-pty-"));
     homes.push(home);
+    let projectDir = projectFixture;
+    if (options?.isolatedProject === true) {
+      projectDir = mkdtempSync(join(tmpdir(), "designflow-pty-project-"));
+      homes.push(projectDir);
+      spawnSync("cp", ["-Rc", `${projectFixture}/.`, projectDir], { stdio: "ignore" });
+      spawnSync("git", ["init", "-q"], { cwd: projectDir, stdio: "ignore" });
+      spawnSync("git", ["add", "-A"], { cwd: projectDir, stdio: "ignore" });
+      spawnSync("git", ["-c", "user.email=pty@test", "-c", "user.name=pty", "commit", "-qm", "init"], { cwd: projectDir, stdio: "ignore" });
+    }
+    const figmaFixtures = options?.figmaSucceeds === true
+      ? {
+          tools: [{ name: "get_document" }],
+          toolResults: {
+            get_document: {
+              name: "Expense Form",
+              document: {
+                id: "1:2", name: "Expense Form", type: "FRAME",
+                children: [
+                  { id: "1:3", name: "Button", type: "COMPONENT", children: [] },
+                  { id: "1:4", name: "TextField", type: "COMPONENT", children: [] },
+                ],
+              },
+            },
+          },
+        }
+      : {
+          tools: [{ name: "get_document" }],
+          errorTools: ["get_document"],
+          toolResults: { get_document: "fixture: document retrieval failed" },
+        };
     writeFileSync(
       join(home, "config.json"),
       JSON.stringify({
@@ -92,15 +128,11 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
       env: {
         ...process.env,
         DESIGNFLOW_HOME: home,
-        PTY_PROJECT_DIR: projectFixture,
+        PTY_PROJECT_DIR: projectDir,
         DESIGNFLOW_AI_GATEWAY_URL:
           options?.gatewayReachable === false ? "http://127.0.0.1:9" : `http://127.0.0.1:${gatewayPort}`,
         DESIGNFLOW_AI_GATEWAY_TOKEN: "pty-test-session-token",
-        FAKE_MCP_FIXTURES: JSON.stringify({
-          tools: [{ name: "get_document" }],
-          errorTools: ["get_document"],
-          toolResults: { get_document: "fixture: document retrieval failed" },
-        }),
+        FAKE_MCP_FIXTURES: JSON.stringify(figmaFixtures),
         TERM: "xterm-256color",
       },
     });
@@ -134,6 +166,21 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
     const { status, stdout } = runScenario("ctrl-c");
     expect(stdout).not.toContain("FAIL ");
     expect(stdout).toContain("PASS ctrl-c-exits");
+    expect(status).toBe(0);
+  }, 300_000);
+
+  test("proposal review and diff own their input: d opens diff, ]/[ switch files, scroll works, Esc returns, Reject leaves files unchanged (DF-TUI-08)", () => {
+    const { status, stdout } = runScenario("proposal-review", { figmaSucceeds: true, isolatedProject: true });
+    expect(stdout).not.toContain("FAIL ");
+    expect(stdout).toContain("PASS ready-to-apply");
+    expect(stdout).toContain("PASS d-opens-diff");
+    expect(stdout).toContain("PASS bracket-next-file");
+    expect(stdout).toContain("PASS bracket-previous-file");
+    expect(stdout).toContain("PASS diff-scrolls");
+    expect(stdout).toContain("PASS esc-returns-review");
+    expect(stdout).toContain("PASS apply-selectable");
+    expect(stdout).toContain("PASS reject-selectable");
+    expect(stdout).toContain("PASS reject-no-mutation");
     expect(status).toBe(0);
   }, 300_000);
 

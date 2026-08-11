@@ -446,3 +446,46 @@ describe("TUI launch eligibility", () => {
     expect(shouldUseTui({ argv: [], stdinIsTTY: true, stdoutIsTTY: false })).toBe(false);
   });
 });
+
+describe("DF-TUI-08 review/diff input ownership", () => {
+  const request = {
+    executionId: "exec-1",
+    workflowId: "feedback-loop",
+    reason: "Bounded correction proposal review.",
+    review: {
+      files: [
+        { path: "src/components/Button.jsx", action: "create" as const, additions: 5, deletions: 0, diff: ["+++ a", "+ line"] },
+        { path: "src/components/TextField.jsx", action: "create" as const, additions: 5, deletions: 0, diff: ["+++ b", "+ line"] },
+      ],
+      totalAdditions: 10,
+      totalDeletions: 0,
+    },
+    checks: [],
+  } as never;
+
+  test("a correction diff returns to the correction review, not the proposal review", () => {
+    const correction = { ...openProposalReview(initialNavigationState(), request), view: "correction-review" as const };
+    const diff = openDiffView(correction);
+    expect(diff.view).toBe("diff-view");
+    expect(diff.diffReturnView).toBe("correction-review");
+    expect(closeDiffView(diff).view).toBe("correction-review");
+  });
+
+  test("proposal diff round-trips to the proposal review and file navigation clamps", () => {
+    const review = openProposalReview(initialNavigationState(), request);
+    const diff = openDiffView(review);
+    expect(closeDiffView(diff).view).toBe("proposal-review");
+    expect(moveReviewFile(diff, 1).reviewFileIndex).toBe(1);
+    expect(moveReviewFile(moveReviewFile(diff, 1), 1).reviewFileIndex).toBe(1);
+    expect(moveReviewFile(diff, -1).reviewFileIndex).toBe(0);
+  });
+
+  test("review action selection moves identically for proposal and correction views", () => {
+    for (const view of ["proposal-review", "correction-review"] as const) {
+      const state = { ...openProposalReview(initialNavigationState(), request), view };
+      expect(moveReviewAction(state, 1).reviewActionIndex).toBe(1);
+      expect(moveReviewAction(moveReviewAction(state, 1), 1).reviewActionIndex).toBe(2);
+      expect(moveReviewAction(state, -1).reviewActionIndex).toBe(0);
+    }
+  });
+});

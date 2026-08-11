@@ -298,7 +298,12 @@ export function openProposalReview(
 
 export function openDiffView(state: TuiNavigationState): TuiNavigationState {
   if (state.review === undefined) return state;
-  return { ...state, view: "diff-view", diffReturnView: "proposal-review", diffScrollOffset: 0 };
+  return {
+    ...state,
+    view: "diff-view",
+    diffReturnView: state.view === "correction-review" ? "correction-review" : "proposal-review",
+    diffScrollOffset: 0,
+  };
 }
 
 export function closeDiffView(state: TuiNavigationState): TuiNavigationState {

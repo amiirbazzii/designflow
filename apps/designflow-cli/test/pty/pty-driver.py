@@ -145,6 +145,56 @@ if SCENARIO in ("design-source-failure", "model-unreachable"):
             break
         time.sleep(0.25)
     check("q-quits", not alive())
+elif SCENARIO == "proposal-review":
+    # Journey to the manual-approval review (retrieval succeeds, the fake
+    # gateway produces a valid two-file proposal), then prove the review and
+    # diff views own their input — including after Tab moved sidebar focus.
+    expect("startup", "DesignFlow", 60)
+    send(ENTER, 1.5)
+    expect("design-selection", "Select design")
+    send(DOWN, 0.5)
+    send(ENTER, 1.0)
+    send(b"https://www.figma.com/design/AbCdEf123456/Test?node-id=1-2", 0.8)
+    send(ENTER, 2.0)
+    expect("destination", "estination", 20)
+    send(ENTER, 1.5)
+    send(ENTER, 1.5)  # approval: manual
+    send(ENTER, 1.0)  # start the run
+    expect("ready-to-apply", "Ready to apply", 240)
+    read_for(2.0)
+    check("checks-visible", "Build checked" in screen()[-2500:])
+    send(TAB, 0.8)  # sidebar focus must not hijack the review
+    send(TAB, 0.8)
+    send(b"d", 2.0)  # advertised shortcut opens the diff even after Tab
+    check("d-opens-diff", "Diff ·" in screen()[-5000:])
+    check("diff-file-1", "1 of 2" in screen()[-5000:])
+    send(b"]", 1.5)
+    check("bracket-next-file", "2 of 2" in screen()[-5000:])
+    send(b"]", 1.0)  # clamped at last file
+    send(b"[", 1.5)
+    check("bracket-previous-file", "1 of 2" in screen()[-5000:])
+    send(b"j", 1.2)
+    send(DOWN, 1.2)
+    send(b"\x1b[6~", 1.2)  # PgDn
+    check("diff-scrolls", "Showing" in screen()[-5000:])
+    send(b"\x1b[H", 1.0)   # Home
+    send(b"\x1b[F", 1.0)   # End
+    check("home-end-alive", alive())
+    send(ESC, 2.0)
+    check("esc-returns-review", "View diff" in screen()[-2000:])
+    send(DOWN, 0.8)
+    check("apply-selectable", "› Apply" in screen()[-2000:])
+    send(DOWN, 0.8)
+    check("reject-selectable", "› Reject" in screen()[-2000:])
+    send(ENTER, 4.0)
+    ok = wait_for("No files were changed", 30)
+    check("reject-no-mutation", ok)
+    send(b"q", 1.0)
+    for _ in range(40):
+        if not alive():
+            break
+        time.sleep(0.25)
+    check("q-quits", not alive())
 elif SCENARIO == "ctrl-c":
     journey_to_outcome()
     send(CTRL_C, 1.0)

@@ -103,6 +103,24 @@ function trace(event: string, fields: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Views whose navigation the TUI owns outright. While one of these is on
+ * screen, a legacy bridge question has no rendered surface, so it must never
+ * be allowed to capture keys — it is answered with its default instead.
+ */
+const TUI_OWNED_VIEWS: ReadonlySet<string> = new Set([
+  "proposal-review",
+  "correction-review",
+  "diff-view",
+  "output-viewer",
+  "visual-result",
+  "needs-attention",
+  "final-result",
+  "validation-result",
+  "diagnostics-view",
+  "applying",
+]);
+
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
   | { readonly type: "quit" };
@@ -169,6 +187,8 @@ export function App({
   const handoffStarted = useRef(false);
   const rawInputRef = useRef<string | undefined>();
   const authRequestRef = useRef(0);
+  const navigationRef = useRef(navigation);
+  navigationRef.current = navigation;
 
   // One input owner: a pending ask() may only capture keys while the
   // execution view renders it. Once the run is over, any pending or late
@@ -468,9 +488,10 @@ export function App({
         ask: (question, options) => new Promise<string>((resolve, reject) => {
           trace("bridge-ask", { question, options, done: executionDoneRef.current });
           // A question that arrives after the run already reached a terminal
-          // outcome has no screen to render on; answering with the default
-          // keeps the interactive outcome as the only input owner.
-          if (executionDoneRef.current) {
+          // outcome — or while a TUI-owned interactive view is on screen —
+          // has no place to render. Answering with the default ("" — callers
+          // treat empty as decline / no) keeps exactly one input owner.
+          if (executionDoneRef.current || TUI_OWNED_VIEWS.has(navigationRef.current.view)) {
             resolve("");
             return;
           }
@@ -480,6 +501,9 @@ export function App({
         }),
         review: (request: TuiReviewRequest) => new Promise((resolve) => {
           reviewResolver.current = resolve;
+          // The review owns input from the moment it appears: any lingering
+          // sidebar focus would silently divert Enter to the outputs list.
+          setInteraction((current) => ({ ...current, focusArea: "main" }));
           setNavigation((current) => openProposalReview(current, request));
         }),
         visual: (result: VisualResultView) => {
@@ -771,6 +795,27 @@ export function App({
     }
 
     const action = mapTuiKey(input, key);
+
+    // Proposal/correction review owns its input outright (§ DF-TUI-08): the
+    // advertised keys act on the review regardless of any lingering sidebar
+    // focus, `d` opens the diff as the status bar promises, and Tab must not
+    // silently divert Enter to the outputs list.
+    if (navigation.view === "proposal-review" || navigation.view === "correction-review") {
+      if (input === "d") {
+        setNavigation((current) => openDiffView(current));
+        return;
+      }
+      if (action === "next-focus" || action === "previous-focus") return;
+      if (action === "up" || action === "down") {
+        setNavigation((current) => moveReviewAction(current, action === "up" ? -1 : 1));
+        return;
+      }
+      if (action === "activate") {
+        if (interaction.focusArea !== "main") setInteraction((current) => ({ ...current, focusArea: "main" }));
+        activate();
+        return;
+      }
+    }
     if (navigation.view === "help") {
       if (action === "back" || action === "help") setNavigation((current) => closeHelp(current));
       else if (action === "quit") {
@@ -836,11 +881,6 @@ export function App({
         ...current,
         designOption: moveListSelection(current.designOption, 2, action === "up" ? -1 : 1),
       }));
-      return;
-    }
-
-    if ((navigation.view === "proposal-review" || navigation.view === "correction-review") && interaction.focusArea === "main" && (action === "up" || action === "down")) {
-      setNavigation((current) => moveReviewAction(current, action === "up" ? -1 : 1));
       return;
     }
 
