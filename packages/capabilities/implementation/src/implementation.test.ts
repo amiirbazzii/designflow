@@ -108,3 +108,39 @@ describe("inspection source prioritization", () => {
     await rm(root, { recursive: true, force: true });
   });
 });
+
+// ── Field defect DF-REAL-02: separate export statements must be discovered ──
+
+describe("component export-style discovery", () => {
+  async function projectWith(button: string) {
+    const root = await mkdtemp(join(tmpdir(), "designflow-exports-"));
+    await mkdir(join(root, "src/components"), { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "exports", dependencies: { react: "19.0.0" } }));
+    await writeFile(join(root, "src/components/Button.tsx"), button);
+    return root;
+  }
+
+  test("a component declared first and exported via `export { Button };` is discovered and trusted (the real Spendly shape)", async () => {
+    const root = await projectWith('"use client";\n\nimport React from \'react\';\n\nconst Button = ({ children }: { children: React.ReactNode }) => {\n  return <button>{children}</button>;\n};\n\nexport { Button };\n');
+    const context = inspectRegisteredProject({ id: "p1", name: "Exports", rootPath: root });
+    expect(context.designSystem.components.map((c) => c.sourcePath)).toContain("src/components/Button.tsx");
+    expect(context.designSystem.components.find((c) => c.sourcePath === "src/components/Button.tsx")?.name).toBe("Button");
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("`export default Button;` and `export { Button as default };` are discovered too", async () => {
+    for (const style of ["const Button = () => null;\nexport default Button;\n", "const Button = () => null;\nexport { Button as default };\n"]) {
+      const root = await projectWith(style);
+      const context = inspectRegisteredProject({ id: "p1", name: "Exports", rootPath: root });
+      expect(context.designSystem.components.find((c) => c.sourcePath === "src/components/Button.tsx")?.name).toBe("Button");
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a components file with no value export at all stays undiscovered", async () => {
+    const root = await projectWith("export type ButtonProps = { label: string };\n");
+    const context = inspectRegisteredProject({ id: "p1", name: "Exports", rootPath: root });
+    expect(context.designSystem.components.map((c) => c.sourcePath)).not.toContain("src/components/Button.tsx");
+    await rm(root, { recursive: true, force: true });
+  });
+});

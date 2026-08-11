@@ -80,7 +80,7 @@ export function validateImplementationCoverage(plan: ImplementationCoveragePlanV
     if (claim.mode === "proposed_change") {
       for (const path of claim.paths) if (!proposalPaths.has(path)) fail("ERR_PROPOSAL_COVERAGE_INVALID", `Coverage claim references a file that is not part of the proposal: ${path}`, { targetId: claim.targetId, mode: claim.mode, path, fact: "proposed_change paths must occur in the exact proposal" });
     } else {
-      for (const path of claim.paths) if (!trusted.has(path)) fail("ERR_PROPOSAL_COVERAGE_INVALID", `Coverage claim reuses a path outside the trusted implementation mapping: ${path}`, { targetId: claim.targetId, mode: claim.mode, path, fact: "path is not present in trusted implementation mapping" });
+      for (const path of claim.paths) if (!trusted.has(path)) fail("ERR_PROPOSAL_COVERAGE_INVALID", `Coverage claim reuses a path outside the trusted implementation mapping: ${path}`, { targetId: claim.targetId, mode: claim.mode, path, fact: "path is not present in trusted implementation mapping", trustedReusePathCount: trusted.size, trustedReusePathsSample: [...trusted].sort().slice(0, 12) });
     }
   }
   const satisfied: { targetId: string; mode: string; paths: readonly string[] }[] = [];

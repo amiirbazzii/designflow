@@ -19,6 +19,36 @@ const SECRET = /(^|\.)((env($|\.)|npmrc|pypirc|ssh|aws)|secret|credential|passwo
 const SOURCE = /\.(tsx?|jsx?|vue|svelte|css|scss|sass|less|json)$/i;
 
 function posix(path: string): string { return path.split(sep).join("/"); }
+
+/**
+ * Every value name a module exports, across the real-world export styles a
+ * component file uses. The original recognition only saw inline
+ * `export [default] function|const|class Name` declarations; mature projects
+ * routinely declare the component first and export it separately —
+ * `export { Button };`, `export { Button as default };`,
+ * `export default Button;` — and those files silently vanished from the
+ * design-system component inventory (and therefore from trustedReusePaths,
+ * where the coverage validator rejected their legitimate reuse in the field).
+ */
+export function exportedValueNames(text: string): string[] {
+  const names: string[] = [];
+  for (const match of text.matchAll(/export\s+(?:default\s+)?(?:async\s+)?(?:function\s*\*?|const|let|var|class)\s+([A-Za-z_$][A-Za-z0-9_$]*)/g)) names.push(match[1]!);
+  for (const match of text.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const entry of match[1]!.split(",")) {
+      const parts = entry.trim().split(/\s+as\s+/);
+      const declared = parts[0]?.trim() ?? "";
+      const exported = (parts[1] ?? parts[0])?.trim() ?? "";
+      if (declared.startsWith("type ") || declared === "" ) continue;
+      const name = exported === "default" ? declared : exported;
+      if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) && name !== "default") names.push(name);
+    }
+  }
+  for (const match of text.matchAll(/export\s+default\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*;?/g)) {
+    const name = match[1]!;
+    if (!["function", "class", "async", "new", "await"].includes(name)) names.push(name);
+  }
+  return [...new Set(names)];
+}
 function hash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function readText(path: string, max: number): string | undefined {
   try { const stat = lstatSync(path); if (!stat.isFile() || stat.size > max) return undefined; const data = readFileSync(path); if (data.subarray(0, Math.min(data.length, 512)).includes(0)) return undefined; return data.toString("utf8"); } catch { return undefined; }
@@ -70,7 +100,7 @@ export function inspectRegisteredProject(project: { id: string; name: string; ro
     ...(path.endsWith(".module.css") ? ["css-modules"] : []), ...(path.endsWith(".scss") || path.endsWith(".sass") ? ["sass"] : []), ...(text.includes("styled.") || text.includes("styled(") ? ["styled-components"] : []), ...(text.includes("@emotion/") ? ["emotion"] : []), ...(text.includes("className=") && text.includes("tailwind") ? ["tailwind"] : []), ...(text.includes("style={{") ? ["inline-styles"] : []), ...(path.endsWith(".css") ? ["css"] : []),
   ]))];
   const tokens = excerpts.flatMap(({path,text}) => [...text.matchAll(/--([A-Za-z0-9_-]+)\s*:\s*([^;\n]+)/g)].map((m) => ({ name: m[1]!, category: /color|background|foreground/i.test(m[1]!) ? "color" as const : /space|gap|padding|margin/i.test(m[1]!) ? "spacing" as const : /radius/i.test(m[1]!) ? "radii" as const : "motion" as const, reference: `var(--${m[1]})`, value: m[2]!.trim(), sourcePath: path })));
-  const components = excerpts.filter(({path,text}) => /(^|\/)components\//.test(path) && /export\s+(default\s+)?(function|const|class)|<template/.test(text)).map(({path,text}) => { const names = [...text.matchAll(/export\s+(?:default\s+)?(?:function|const|class)\s+([A-Za-z0-9_]+)/g)].map((m) => m[1]!); return { name: names[0] ?? path.split("/").at(-1)!.split(".")[0]!, sourcePath: path, props: [...text.matchAll(/(?:interface|type)\s+\w*Props\s*\{([\s\S]*?)\}/g)].flatMap((m) => [...m[1]!.matchAll(/(\w+)\??\s*:/g)].map((p) => ({ name: p[1]! }))), variants: [], styling: strategies[0], safeToReuse: true, evidence: [`component source: ${path}`] }; });
+  const components = excerpts.filter(({path,text}) => /(^|\/)components\//.test(path) && (exportedValueNames(text).length > 0 || /<template/.test(text))).map(({path,text}) => { const names = exportedValueNames(text); return { name: names[0] ?? path.split("/").at(-1)!.split(".")[0]!, sourcePath: path, props: [...text.matchAll(/(?:interface|type)\s+\w*Props\s*\{([\s\S]*?)\}/g)].flatMap((m) => [...m[1]!.matchAll(/(\w+)\??\s*:/g)].map((p) => ({ name: p[1]! }))), variants: [], styling: strategies[0], safeToReuse: true, evidence: [`component source: ${path}`] }; });
   const scripts = pkg.scripts && typeof pkg.scripts === "object" && !Array.isArray(pkg.scripts) ? pkg.scripts as Record<string, unknown> : {};
   const packageManager: PackageManager = lstatSync(join(root, "bun.lock"), { throwIfNoEntry: false }) || lstatSync(join(root, "bun.lockb"), { throwIfNoEntry: false }) ? "bun" : lstatSync(join(root, "pnpm-lock.yaml"), { throwIfNoEntry: false }) ? "pnpm" : lstatSync(join(root, "yarn.lock"), { throwIfNoEntry: false }) ? "yarn" : "npm";
   const previewScriptName = typeof scripts.preview === "string" ? "preview" : typeof scripts.dev === "string" ? "dev" : typeof scripts.start === "string" ? "start" : "serve";
