@@ -2,13 +2,14 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { DesignFlowSessionView } from "./model";
 import { designFlowTheme } from "./theme";
+import type { TuiPromptState } from "./text-input";
 
 export function ExecutionView({
   session,
   prompt,
 }: {
   readonly session: DesignFlowSessionView;
-  readonly prompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly prompt?: TuiPromptState | undefined;
 }): React.JSX.Element {
   const active = session.activity.find((item) => item.state === "running") ?? session.activity.at(-1);
   return (
@@ -32,8 +33,9 @@ export function ExecutionView({
       </Box>}
       {prompt !== undefined && <Box flexDirection="column" marginTop={2} borderStyle="single" borderColor={designFlowTheme.focus} paddingX={1}>
         <Text bold color={designFlowTheme.accentStrong}>{prompt.question}</Text>
-        {prompt.options !== undefined && <Text color={designFlowTheme.textSecondary}>Options: {prompt.options.join(" / ")}</Text>}
-        <Text>{prompt.value}▌</Text>
+        {prompt.options !== undefined
+          ? prompt.options.map((option, index) => <Text key={option} color={index === prompt.optionIndex ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>{index === prompt.optionIndex ? "›" : " "} {option}</Text>)
+          : <Text wrap="truncate">{prompt.value.slice(0, prompt.cursorIndex)}▌{prompt.value.slice(prompt.cursorIndex)}</Text>}
       </Box>}
     </Box>
   );

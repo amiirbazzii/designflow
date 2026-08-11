@@ -11,6 +11,7 @@ import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view
 import type { ArtifactViewerDocument } from "./artifact-viewer";
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
+import type { TuiPromptState } from "./text-input";
 export { visibleUrlWindow } from "./url-window";
 
 export interface ShellProps {
@@ -25,7 +26,7 @@ export interface ShellProps {
   readonly viewerDocument?: ArtifactViewerDocument | undefined;
   readonly viewerVisibleLines: number;
   readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
-  readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly executionPrompt?: TuiPromptState | undefined;
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
 }
@@ -214,7 +215,7 @@ export function MainPanel({
   readonly viewerVisibleLines: number;
   readonly viewerScrollOffset: number;
   readonly viewerDetails: boolean;
-  readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly executionPrompt?: TuiPromptState | undefined;
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
 }): React.JSX.Element {

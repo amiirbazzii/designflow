@@ -10,6 +10,7 @@ import type { ArtifactViewerDocument } from "./artifact-viewer";
 import { renderVisibleUrlWindow, urlInputContentWidth, visibleUrlWindow } from "./url-window";
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
+import type { TuiPromptState } from "./text-input";
 
 export function CompactView({
   session,
@@ -32,7 +33,7 @@ export function CompactView({
   readonly viewerDocument?: ArtifactViewerDocument | undefined;
   readonly viewerVisibleLines: number;
   readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
-  readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly executionPrompt?: TuiPromptState | undefined;
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
 }): React.JSX.Element {

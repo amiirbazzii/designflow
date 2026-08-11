@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useApp, useInput, useStdout } from "ink";
+import { useApp, useInput, useStdin, useStdout } from "ink";
 import type { DestinationCandidate } from "../../services/destinations";
 import type { InteractiveDesign } from "../../services/figma-selection";
 import {
@@ -21,6 +21,8 @@ import {
   keepSelectionVisible,
   moveListSelection,
   moveUrlCursor,
+  moveUrlCursorEnd,
+  moveUrlCursorHome,
   navigateBack,
   openOutput,
   openHelp,
@@ -39,7 +41,26 @@ import {
   type TuiNavigationState,
   type TuiReviewRequest,
 } from "./navigation";
-import { isCompactTerminal, mapTuiKey, reduceTuiInteraction, type TuiInteractionState } from "./keys";
+import {
+  isBackspaceInput,
+  isCompactTerminal,
+  isEndInput,
+  isForwardDeleteInput,
+  isHomeInput,
+  mapTuiKey,
+  reduceTuiInteraction,
+  type TuiInteractionState,
+} from "./keys";
+import {
+  backspaceText,
+  deleteForwardText,
+  insertText,
+  moveTextCursor,
+  moveTextCursorEnd,
+  moveTextCursorHome,
+  type TextEditorState,
+  type TuiPromptState,
+} from "./text-input";
 import { Shell } from "./components";
 import {
   applyExecutionProgress,
@@ -84,6 +105,7 @@ export function App({
   onImprove,
 }: TuiAppProps): React.JSX.Element {
   const { exit } = useApp();
+  const { internal_eventEmitter } = useStdin();
   const { stdout } = useStdout();
   const [size, setSize] = useState({ columns: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
   const [session, setSession] = useState<SessionView>(initialSession);
@@ -98,7 +120,7 @@ export function App({
   const [executionStarted, setExecutionStarted] = useState(false);
   const [executionFinished, setExecutionFinished] = useState(false);
   const [visualResult, setVisualResult] = useState<VisualResultView | undefined>();
-  const [prompt, setPrompt] = useState<{ readonly question: string; readonly options?: readonly string[]; readonly value: string }>();
+  const [prompt, setPrompt] = useState<TuiPromptState>();
   const promptResolver = useRef<((value: string) => void) | undefined>();
   const promptRejecter = useRef<(() => void) | undefined>();
   const reviewResolver = useRef<((value: "approve" | "reject") => void) | undefined>();
@@ -106,6 +128,17 @@ export function App({
   const cancellationRequested = useRef(false);
   const destinationRequest = useRef(0);
   const handoffStarted = useRef(false);
+  const rawInputRef = useRef<string | undefined>();
+
+  useEffect(() => {
+    const rememberRawInput = (chunk: unknown): void => {
+      rawInputRef.current = String(chunk);
+    };
+    internal_eventEmitter?.on("input", rememberRawInput);
+    return () => {
+      internal_eventEmitter?.off("input", rememberRawInput);
+    };
+  }, [internal_eventEmitter]);
 
   useEffect(() => {
     const onResize = (): void => {
@@ -293,7 +326,7 @@ export function App({
         ask: (question, options) => new Promise<string>((resolve, reject) => {
           promptResolver.current = resolve;
           promptRejecter.current = reject;
-          setPrompt({ question, ...(options === undefined ? {} : { options }), value: "" });
+          setPrompt({ question, ...(options === undefined ? {} : { options }), value: "", cursorIndex: 0, viewportStart: 0, optionIndex: 0 });
         }),
         review: (request: TuiReviewRequest) => new Promise((resolve) => {
           reviewResolver.current = resolve;
@@ -357,6 +390,8 @@ export function App({
   const viewerMaximum = Math.max(0, (viewerDocument?.lines.length ?? 0) - viewerVisibleLines);
 
   useInput((input, key) => {
+    const rawInput = rawInputRef.current;
+    rawInputRef.current = undefined;
     if (key.ctrl && input === "c") {
       onInterrupt();
       if (!executionStarted || executionFinished) {
@@ -371,6 +406,21 @@ export function App({
     }
 
     if (prompt !== undefined) {
+      if (prompt.options !== undefined) {
+        if (key.upArrow || rawInput === "\u001b[A") {
+          setPrompt((current) => current === undefined ? current : { ...current, optionIndex: Math.max(0, current.optionIndex - 1) });
+        } else if (key.downArrow || rawInput === "\u001b[B") {
+          setPrompt((current) => current === undefined ? current : { ...current, optionIndex: Math.min(current.options!.length - 1, current.optionIndex + 1) });
+        } else if (key.return || input === "\n" || input === "\r") {
+          const answer = prompt.options[prompt.optionIndex];
+          if (answer === undefined) return;
+          promptResolver.current?.(answer);
+          promptResolver.current = undefined;
+          promptRejecter.current = undefined;
+          setPrompt(undefined);
+        }
+        return;
+      }
       if (key.return || input === "\n" || input === "\r") {
         const answer = prompt.value.trim();
         if (answer.length === 0) return;
@@ -378,10 +428,20 @@ export function App({
         promptResolver.current = undefined;
         promptRejecter.current = undefined;
         setPrompt(undefined);
-      } else if (key.backspace || input === "\b" || input === "\u007f") {
-        setPrompt((current) => current === undefined ? current : { ...current, value: current.value.slice(0, -1) });
+      } else if (isBackspaceInput(input, key, rawInput)) {
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, backspaceText(current)));
+      } else if (isForwardDeleteInput(input, key, rawInput)) {
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, deleteForwardText(current)));
+      } else if (isHomeInput(input, rawInput)) {
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, moveTextCursorHome(current)));
+      } else if (isEndInput(input, rawInput)) {
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, moveTextCursorEnd(current)));
+      } else if (key.leftArrow || rawInput === "\u001b[D") {
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, moveTextCursor(current, -1)));
+      } else if (key.rightArrow || rawInput === "\u001b[C") {
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, moveTextCursor(current, 1)));
       } else if (input.length > 0 && key.ctrl !== true && key.meta !== true) {
-        setPrompt((current) => current === undefined ? current : { ...current, value: current.value + input });
+        setPrompt((current) => current === undefined ? current : applyPromptEditor(current, insertText(current, input)));
       }
       return;
     }
@@ -443,6 +503,14 @@ export function App({
         setNavigation((current) => navigateBack(current));
       } else if (key.return || input === "\n" || input === "\r") {
         activate();
+      } else if (isBackspaceInput(input, key, rawInput)) {
+        setNavigation((current) => backspaceUrlText(current));
+      } else if (isForwardDeleteInput(input, key, rawInput)) {
+        setNavigation((current) => deleteUrlText(current));
+      } else if (isHomeInput(input, rawInput)) {
+        setNavigation((current) => moveUrlCursorHome(current));
+      } else if (isEndInput(input, rawInput)) {
+        setNavigation((current) => moveUrlCursorEnd(current));
       } else {
         handleUrlInput(input, key);
       }
@@ -565,4 +633,8 @@ export function App({
       terminalColumns={size.columns}
     />
   );
+}
+
+function applyPromptEditor(prompt: TuiPromptState, editor: TextEditorState): TuiPromptState {
+  return { ...prompt, value: editor.value, cursorIndex: editor.cursorIndex, viewportStart: editor.viewportStart };
 }

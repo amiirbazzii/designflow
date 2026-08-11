@@ -2,6 +2,15 @@ import type { DestinationCandidate } from "../../services/destinations";
 import type { InteractiveDesign } from "../../services/figma-selection";
 import type { ApprovalMode } from "./model";
 import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
+import {
+  backspaceText,
+  deleteForwardText,
+  insertText,
+  moveTextCursor,
+  moveTextCursorEnd,
+  moveTextCursorHome,
+  type TextEditorState,
+} from "./text-input";
 
 export interface TuiReviewRequest {
   readonly executionId: string;
@@ -47,6 +56,7 @@ export interface TuiNavigationState {
   readonly design?: InteractiveDesign | undefined;
   readonly urlValue: string;
   readonly urlCursor: number;
+  readonly urlViewportStart: number;
   readonly urlError?: string | undefined;
   readonly destinationCandidates: readonly DestinationCandidate[];
   readonly destinationIndex: number;
@@ -71,6 +81,7 @@ export function initialNavigationState(): TuiNavigationState {
     designOption: 0,
     urlValue: "",
     urlCursor: 0,
+    urlViewportStart: 0,
     destinationCandidates: [],
     destinationIndex: 0,
     destinationScrollOffset: 0,
@@ -96,6 +107,7 @@ export function enterUrlEntry(state: TuiNavigationState): TuiNavigationState {
     view: "figma-url-entry",
     urlValue: "",
     urlCursor: 0,
+    urlViewportStart: 0,
     urlError: undefined,
     error: undefined,
     loading: null,
@@ -173,41 +185,47 @@ export function updateUrlText(
   state: TuiNavigationState,
   input: string,
 ): TuiNavigationState {
-  const value = state.urlValue.slice(0, state.urlCursor) + input + state.urlValue.slice(state.urlCursor);
-  return {
-    ...state,
-    urlValue: value,
-    urlCursor: state.urlCursor + input.length,
-    urlError: undefined,
-  };
+  return applyUrlEditor(state, insertText(urlEditor(state), input));
 }
 
 export function backspaceUrlText(state: TuiNavigationState): TuiNavigationState {
-  if (state.urlCursor === 0) return state;
-  return {
-    ...state,
-    urlValue: state.urlValue.slice(0, state.urlCursor - 1) + state.urlValue.slice(state.urlCursor),
-    urlCursor: state.urlCursor - 1,
-    urlError: undefined,
-  };
+  return applyUrlEditor(state, backspaceText(urlEditor(state)));
 }
 
 export function deleteUrlText(state: TuiNavigationState): TuiNavigationState {
-  if (state.urlCursor >= state.urlValue.length) return state;
-  return {
-    ...state,
-    urlValue: state.urlValue.slice(0, state.urlCursor) + state.urlValue.slice(state.urlCursor + 1),
-    urlError: undefined,
-  };
+  return applyUrlEditor(state, deleteForwardText(urlEditor(state)));
 }
 
 export function moveUrlCursor(
   state: TuiNavigationState,
   delta: -1 | 1,
 ): TuiNavigationState {
+  return applyUrlEditor(state, moveTextCursor(urlEditor(state), delta));
+}
+
+export function moveUrlCursorHome(state: TuiNavigationState): TuiNavigationState {
+  return applyUrlEditor(state, moveTextCursorHome(urlEditor(state)));
+}
+
+export function moveUrlCursorEnd(state: TuiNavigationState): TuiNavigationState {
+  return applyUrlEditor(state, moveTextCursorEnd(urlEditor(state)));
+}
+
+function urlEditor(state: TuiNavigationState): TextEditorState {
+  return {
+    value: state.urlValue,
+    cursorIndex: state.urlCursor,
+    viewportStart: state.urlViewportStart,
+  };
+}
+
+function applyUrlEditor(state: TuiNavigationState, editor: TextEditorState): TuiNavigationState {
   return {
     ...state,
-    urlCursor: Math.min(Math.max(0, state.urlCursor + delta), state.urlValue.length),
+    urlValue: editor.value,
+    urlCursor: editor.cursorIndex,
+    urlViewportStart: editor.viewportStart,
+    urlError: undefined,
   };
 }
 

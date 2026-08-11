@@ -7,13 +7,14 @@ import {
   setDesignSelection,
   setDestinationSelection,
 } from "./model";
-import { isCompactTerminal, mapTuiKey, reduceTuiInteraction } from "./keys";
+import { isBackspaceInput, isCompactTerminal, isEndInput, isForwardDeleteInput, isHomeInput, mapTuiKey, reduceTuiInteraction } from "./keys";
 import { designFlowTheme, statusColor } from "./theme";
 import { shouldUseTui } from "./eligibility";
 import { stageMarker, visibleUrlWindow } from "./components";
 import { renderVisibleUrlWindow, stripBracketedPasteMarkers, urlInputBoxWidth, urlInputContentWidth } from "./url-window";
 import {
   backspaceUrlText,
+  deleteUrlText,
   enterDesignSelection,
   enterDestinationSelection,
   enterUrlEntry,
@@ -23,6 +24,8 @@ import {
   keepSelectionVisible,
   moveListSelection,
   moveUrlCursor,
+  moveUrlCursorEnd,
+  moveUrlCursorHome,
   navigateBack,
   openOutput,
   setOutputScrollOffset,
@@ -35,6 +38,16 @@ import {
   moveReviewAction,
   moveReviewFile,
 } from "./navigation";
+import {
+  backspaceText,
+  createTextEditor,
+  deleteForwardText,
+  ensureTextCursorVisible,
+  insertText,
+  moveTextCursor,
+  moveTextCursorEnd,
+  moveTextCursorHome,
+} from "./text-input";
 import { buildProposalReview } from "../../services/proposal-review";
 import { designFromUrl } from "../../services/figma-selection";
 
@@ -202,6 +215,60 @@ describe("DesignFlow TUI selection navigation", () => {
       expect(rendered).not.toContain("\n");
       expect([...rendered].length).toBeLessThanOrEqual(width);
     }
+  });
+
+  test("shared text editing removes repeated characters and clamps boundaries", () => {
+    let editor = createTextEditor();
+    editor = insertText(editor, "abcdef");
+    for (const expected of ["abcde", "abcd", "abc", "ab", "a", ""]) {
+      editor = backspaceText(editor);
+      expect(editor.value).toBe(expected);
+    }
+    expect(backspaceText(editor)).toEqual(editor);
+    editor = insertText(editor, "abc");
+    editor = moveTextCursorHome(editor);
+    editor = moveTextCursor(editor, 1);
+    editor = deleteForwardText(editor);
+    expect(editor.value).toBe("ac");
+    editor = moveTextCursorEnd(editor);
+    expect(deleteForwardText(editor)).toEqual(editor);
+  });
+
+  test("normalizes Ink's Backspace and forward-Delete key representations", () => {
+    const backspace = key({ delete: true });
+    expect(isBackspaceInput("", backspace, "\u007f")).toBe(true);
+    expect(isBackspaceInput("", key({ backspace: true }), "\b")).toBe(true);
+    expect(isForwardDeleteInput("", backspace, "\u001b[3~")).toBe(true);
+    expect(isForwardDeleteInput("", backspace, "\u007f")).toBe(false);
+    expect(isHomeInput("", "\u001b[H")).toBe(true);
+    expect(isEndInput("", "\u001b[F")).toBe(true);
+  });
+
+  test("URL editing uses the shared contract for middle and long-value deletion", () => {
+    let state = updateUrlText(enterUrlEntry(initialNavigationState()), "abcdef");
+    state = moveUrlCursorHome(state);
+    state = moveUrlCursor(state, 1);
+    state = deleteUrlText(state);
+    expect(state.urlValue).toBe("acdef");
+    state = moveUrlCursorEnd(state);
+    for (const expected of ["acde", "acd", "ac", "a", ""]) {
+      state = backspaceUrlText(state);
+      expect(state.urlValue).toBe(expected);
+    }
+    expect(state.urlCursor).toBe(0);
+    expect(backspaceUrlText(state).urlValue).toBe("");
+  });
+
+  test("cursor viewport stays valid after editing and resize widths", () => {
+    let editor = insertText(createTextEditor(), "https://www.figma.com/design/E958ARSSBoJjblLhxZQVSU/Spendly?node-id=1026-6098");
+    editor = ensureTextCursorVisible(editor, 12);
+    expect(editor.viewportStart).toBeGreaterThan(0);
+    editor = moveTextCursorHome(editor);
+    editor = ensureTextCursorVisible(editor, 80);
+    expect(editor.viewportStart).toBe(0);
+    editor = moveTextCursorEnd(editor);
+    editor = ensureTextCursorVisible(editor, 40);
+    expect(editor.cursorIndex).toBe(editor.value.length);
   });
 
   test("destination selection uses discovered candidates and keeps the active row visible", () => {

@@ -102,5 +102,18 @@ export {
   backspaceUrlText,
   deleteUrlText,
   moveUrlCursor,
+  moveUrlCursorHome,
+  moveUrlCursorEnd,
 } from "./ui/tui/navigation";
 export type { TuiNavigationState, TuiView } from "./ui/tui/navigation";
+export {
+  backspaceText,
+  createTextEditor,
+  deleteForwardText,
+  ensureTextCursorVisible,
+  insertText,
+  moveTextCursor,
+  moveTextCursorHome,
+  moveTextCursorEnd,
+} from "./ui/tui/text-input";
+export type { TextEditorState, TuiPromptState } from "./ui/tui/text-input";

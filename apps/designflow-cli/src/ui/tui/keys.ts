@@ -25,6 +25,24 @@ export function mapTuiKey(input: string, key: Key): TuiKeyAction {
   return "none";
 }
 
+/** Ink maps terminal DEL (0x7f) to `key.delete`, although users mean Backspace. */
+export function isBackspaceInput(input: string, key: Key, rawInput?: string): boolean {
+  return key.backspace || input === "\b" || input === "\u007f" || rawInput === "\b" || rawInput === "\u007f";
+}
+
+/** Forward Delete is the CSI 3~ sequence; DEL remains backward deletion. */
+export function isForwardDeleteInput(input: string, key: Key, rawInput?: string): boolean {
+  return key.delete === true && !isBackspaceInput(input, key, rawInput);
+}
+
+export function isHomeInput(input: string, rawInput?: string): boolean {
+  return input === "\u001b[H" || input === "\u001bOH" || rawInput === "\u001b[H" || rawInput === "\u001bOH";
+}
+
+export function isEndInput(input: string, rawInput?: string): boolean {
+  return input === "\u001b[F" || input === "\u001bOF" || rawInput === "\u001b[F" || rawInput === "\u001bOF";
+}
+
 export interface TuiInteractionState {
   readonly helpOpen: boolean;
   readonly focusArea: "workflow" | "outputs" | "main";
