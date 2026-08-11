@@ -8,6 +8,8 @@ import { OutputViewer } from "./output-viewer";
 import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view";
 import type { ArtifactViewerDocument } from "./artifact-viewer";
 import { visibleUrlWindow } from "./url-window";
+import type { VisualResultView } from "../../services/visual-result";
+import { VisualResultPanel } from "./visual-result-view";
 
 export function CompactView({
   session,
@@ -19,6 +21,7 @@ export function CompactView({
   viewerVisibleLines,
   selectedOutputView,
   executionPrompt,
+  visualResult,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -29,6 +32,7 @@ export function CompactView({
   readonly viewerVisibleLines: number;
   readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly visualResult?: VisualResultView | undefined;
 }): React.JSX.Element {
   return <Box flexGrow={1} flexDirection="column" paddingX={1}>
     <Text color={designFlowTheme.warning}>Compact terminal mode</Text>
@@ -44,7 +48,7 @@ export function CompactView({
       : navigation.view === "diff-view" ? navigation.review === undefined ? <Text color={designFlowTheme.warning}>Diff is unavailable.</Text> : <DiffView review={navigation.review.review} fileIndex={navigation.reviewFileIndex} scrollOffset={navigation.diffScrollOffset} visibleLines={viewerVisibleLines} />
       : navigation.view === "applying" ? <LifecycleResultView title="Applying" sessionLines={["● Applying changes…"]} />
       : navigation.view === "validation-result" ? <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
-      : navigation.view === "visual-result" ? <LifecycleResultView title="Visual result" sessionLines={[session.finalResult?.summary ?? "Visual validation complete.", "Visual validation report is available in Outputs."]} actions={["View report"]} />
+      : navigation.view === "visual-result" ? <VisualResultPanel result={visualResult} compact />
       : navigation.view === "final-result" ? <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", "Outputs remain available for inspection."]} />
       : <Box flexDirection="column"><Text bold>Ready to start</Text><Text>Press Enter to select a design.</Text></Box>}
   </Box>;

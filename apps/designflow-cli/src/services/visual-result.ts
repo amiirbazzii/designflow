@@ -54,6 +54,86 @@ export interface VisualResult {
   readonly offerImprove: boolean;
 }
 
+export type PersistedVisualClassification = NonNullable<VisualResultFacts["overallStatus"]>;
+
+export interface VisualResultViewInput {
+  readonly reportAvailable: boolean;
+  readonly classification?: PersistedVisualClassification;
+  readonly findingSummaries: readonly string[];
+  readonly unreachableChangedFiles?: number;
+  readonly correctionEligibility: {
+    readonly status: string;
+    readonly reason?: string;
+    readonly iterationNumber?: number;
+    readonly maximumIterations?: number;
+  };
+}
+
+export interface VisualResultView {
+  readonly classification?: PersistedVisualClassification;
+  readonly title: string;
+  readonly summary: string;
+  readonly findings: readonly string[];
+  readonly reachability?: "rendered" | "unreachable";
+  readonly canImprove: boolean;
+  readonly improveUnavailableReason?: string;
+  readonly reportAvailable: boolean;
+  readonly actions: readonly ("View report" | "Improve" | "Finish")[];
+}
+
+/**
+ * Pure product adapter for persisted Stage 5 facts and the host's existing
+ * correction eligibility decision. It does not calculate visual outcomes or
+ * eligibility; it only translates those authoritative facts for the TUI.
+ */
+export function buildVisualResultView(input: VisualResultViewInput): VisualResultView {
+  const canImprove = input.correctionEligibility.status === "eligible";
+  const title = titleFor(input.classification);
+  const summary = summaryFor(input.classification, input.reportAvailable);
+  const findings = input.findingSummaries.slice(0, 5).map((finding) => finding.slice(0, 200));
+  const reachability = input.unreachableChangedFiles === undefined
+    ? undefined
+    : input.unreachableChangedFiles > 0 ? "unreachable" : "rendered";
+  const actions: Array<"View report" | "Improve" | "Finish"> = [];
+  if (input.reportAvailable) actions.push("View report");
+  if (canImprove) actions.push("Improve");
+  actions.push("Finish");
+
+  return {
+    ...(input.classification === undefined ? {} : { classification: input.classification }),
+    title,
+    summary,
+    findings,
+    ...(reachability === undefined ? {} : { reachability }),
+    canImprove,
+    ...(canImprove || input.correctionEligibility.reason === undefined ? {} : { improveUnavailableReason: input.correctionEligibility.reason }),
+    reportAvailable: input.reportAvailable,
+    actions,
+  };
+}
+
+function titleFor(classification: PersistedVisualClassification | undefined): string {
+  if (classification === undefined) return "Missing evidence";
+  switch (classification) {
+    case "pass": return "Looks good";
+    case "pass_with_findings": return "Needs improvement";
+    case "fail": return "Needs improvement";
+    case "inconclusive": return "Inconclusive";
+    case "unavailable": return "Missing evidence";
+  }
+}
+
+function summaryFor(classification: PersistedVisualClassification | undefined, reportAvailable: boolean): string {
+  if (!reportAvailable || classification === undefined) return "Visual validation evidence is unavailable.";
+  switch (classification) {
+    case "pass": return "The rendered implementation matches the selected design within the recorded validation result.";
+    case "pass_with_findings": return "The rendered implementation passed validation with recorded visual findings.";
+    case "fail": return "The rendered implementation differs from the selected design according to the recorded visual result.";
+    case "inconclusive": return "DesignFlow could not reach a trustworthy visual conclusion.";
+    case "unavailable": return "A visual result was recorded, but the evidence needed for comparison is missing.";
+  }
+}
+
 function stateOf(facts: VisualResultFacts): VisualResultState {
   if (!facts.compared || facts.overallStatus === undefined) return "failed";
   switch (facts.overallStatus) {

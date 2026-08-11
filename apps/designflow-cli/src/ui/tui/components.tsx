@@ -9,6 +9,8 @@ import { visibleUrlWindow } from "./url-window";
 import { OutputViewer } from "./output-viewer";
 import { DiffView, LifecycleResultView, ProposalReviewView } from "./review-view";
 import type { ArtifactViewerDocument } from "./artifact-viewer";
+import type { VisualResultView } from "../../services/visual-result";
+import { VisualResultPanel } from "./visual-result-view";
 export { visibleUrlWindow } from "./url-window";
 
 export interface ShellProps {
@@ -24,6 +26,7 @@ export interface ShellProps {
   readonly viewerVisibleLines: number;
   readonly selectedOutputView?: DesignFlowSessionView["outputs"][number] | undefined;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly visualResult?: VisualResultView | undefined;
 }
 
 export function Shell({
@@ -39,6 +42,7 @@ export function Shell({
   viewerVisibleLines,
   selectedOutputView,
   executionPrompt,
+  visualResult,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -56,6 +60,7 @@ export function Shell({
           viewerVisibleLines={viewerVisibleLines}
           selectedOutputView={selectedOutputView}
           executionPrompt={executionPrompt}
+          visualResult={visualResult}
         />
       ) : (
         <Box flexGrow={1} flexDirection="row" overflow="hidden">
@@ -76,10 +81,11 @@ export function Shell({
             viewerScrollOffset={navigation.outputScrollOffset}
             viewerDetails={navigation.outputDetails}
             executionPrompt={executionPrompt}
+            visualResult={visualResult}
           />
         </Box>
       )}
-      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} />
+      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} canImprove={visualResult?.canImprove === true} />
     </Box>
   );
 }
@@ -192,6 +198,7 @@ export function MainPanel({
   viewerScrollOffset,
   viewerDetails,
   executionPrompt,
+  visualResult,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -203,6 +210,7 @@ export function MainPanel({
   readonly viewerScrollOffset: number;
   readonly viewerDetails: boolean;
   readonly executionPrompt?: { readonly question: string; readonly options?: readonly string[]; readonly value: string } | undefined;
+  readonly visualResult?: VisualResultView | undefined;
 }): React.JSX.Element {
   return (
     <Box
@@ -236,7 +244,7 @@ export function MainPanel({
       ) : navigation.view === "validation-result" ? (
         <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
       ) : navigation.view === "visual-result" ? (
-        <LifecycleResultView title="Visual result" sessionLines={[session.finalResult?.summary ?? "Visual validation complete.", "Visual validation report is available in Outputs."]} actions={["View report"]} />
+        <VisualResultPanel result={visualResult} />
       ) : navigation.view === "final-result" ? (
         <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} />
       ) : navigation.view === "output-viewer" ? (
@@ -441,10 +449,12 @@ export function StatusBar({
   compact,
   helpOpen,
   view,
+  canImprove,
 }: {
   readonly compact: boolean;
   readonly helpOpen: boolean;
   readonly view: TuiView;
+  readonly canImprove?: boolean;
 }): React.JSX.Element {
   const hint = compact
     ? view === "output-viewer"
@@ -468,8 +478,10 @@ export function StatusBar({
                   ? "↑↓ Navigate   Enter Select   d View diff   Esc Back"
                   : view === "diff-view"
                     ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   [/] File   Esc Back"
-                    : view === "final-result" || view === "visual-result" || view === "validation-result"
-                      ? "Enter View report   i Improve   Tab Outputs   q Quit"
+                    : view === "visual-result"
+                      ? `Enter View report${canImprove ? "   i Improve" : ""}   Tab Outputs   q Quit`
+                      : view === "final-result" || view === "validation-result"
+                        ? "Enter View report   Tab Outputs   q Quit"
               : view === "output-viewer"
                   ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   d Details   Esc Back"
               : "Enter Start   ? Help   q Quit";

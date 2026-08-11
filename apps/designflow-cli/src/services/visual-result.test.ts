@@ -1,7 +1,7 @@
 // apps/designflow-cli/src/services/visual-result.test.ts
 import { describe, expect, test } from "bun:test";
 
-import { buildVisualResult, renderVisualResult } from "./visual-result";
+import { buildVisualResult, buildVisualResultView, renderVisualResult } from "./visual-result";
 
 const BASE = {
   findingSummaries: [] as string[],
@@ -94,5 +94,74 @@ describe("Phase 10 visual result model", () => {
     }
     expect(renderVisualResult(result).join("\n")).toContain("Figma: iPhone 16 Pro Max - 14");
     expect(result.detailLines.length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("Phase 5A product visual result view", () => {
+  const view = (overrides: Partial<Parameters<typeof buildVisualResultView>[0]> = {}) => buildVisualResultView({
+    reportAvailable: true,
+    classification: "pass",
+    findingSummaries: [],
+    correctionEligibility: { status: "not_needed" },
+    ...overrides,
+  });
+
+  test("maps every persisted classification to truthful product language", () => {
+    expect(view({ classification: "pass" }).title).toBe("Looks good");
+    expect(view({ classification: "pass_with_findings", correctionEligibility: { status: "eligible" } }).title).toBe("Needs improvement");
+    expect(view({ classification: "fail", correctionEligibility: { status: "eligible" } }).title).toBe("Needs improvement");
+    expect(view({ classification: "pass_with_findings" }).title).toBe("Needs improvement");
+    expect(view({ classification: "fail" }).title).toBe("Needs improvement");
+    expect(view({ classification: "inconclusive" }).title).toBe("Inconclusive");
+    expect(view({ classification: "unavailable" }).title).toBe("Missing evidence");
+    expect(view({ classification: undefined }).title).toBe("Missing evidence");
+  });
+
+  test("renders bounded persisted findings and does not invent absent findings", () => {
+    const findings = ["Header spacing differs", "Form width differs"];
+    expect(view({ classification: "fail", findingSummaries: findings }).findings).toEqual(findings);
+    expect(view({ classification: "pass" }).findings).toEqual([]);
+    expect(view({ findingSummaries: Array.from({ length: 8 }, (_, index) => `${index}-${"x".repeat(240)}`) }).findings).toHaveLength(5);
+    expect(view({ findingSummaries: ["x".repeat(240)] }).findings[0]).toHaveLength(200);
+  });
+
+  test("renders reachability only from the persisted reachability fact", () => {
+    expect(view({ unreachableChangedFiles: 0 }).reachability).toBe("rendered");
+    expect(view({ unreachableChangedFiles: 2 }).reachability).toBe("unreachable");
+    expect(view().reachability).toBeUndefined();
+  });
+
+  test("offers Improve only when host correction eligibility is eligible", () => {
+    expect(view({ classification: "fail", correctionEligibility: { status: "eligible" } })).toMatchObject({
+      canImprove: true,
+      actions: ["View report", "Improve", "Finish"],
+    });
+    for (const status of ["not_needed", "blocked", "iteration_limit_reached", "completed", "inconclusive", "unavailable"]) {
+      const result = view({ classification: "fail", correctionEligibility: { status, reason: `host says ${status}` } });
+      expect(result.canImprove).toBe(false);
+      expect(result.actions).toEqual(["View report", "Finish"]);
+      expect(result.improveUnavailableReason).toBe(`host says ${status}`);
+    }
+  });
+
+  test("keeps report availability truthful and leaves inputs unchanged", () => {
+    const input = {
+      reportAvailable: false,
+      classification: "pass" as const,
+      findingSummaries: ["Recorded finding"],
+      unreachableChangedFiles: 0,
+      correctionEligibility: { status: "eligible", reason: "ready" },
+    };
+    const before = JSON.stringify(input);
+    const result = buildVisualResultView(input);
+    expect(result).toMatchObject({ reportAvailable: false, canImprove: true });
+    expect(result.actions).toEqual(["Improve", "Finish"]);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  test("approval mode does not affect deterministic visual eligibility", () => {
+    const eligible = view({ classification: "fail", correctionEligibility: { status: "eligible" } });
+    const sameEligibility = view({ classification: "fail", correctionEligibility: { status: "eligible" } });
+    expect(eligible).toEqual(sameEligibility);
   });
 });

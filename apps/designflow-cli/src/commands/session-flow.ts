@@ -41,7 +41,10 @@ import {
 } from "../services/failure-presentation";
 import {
   buildVisualResult,
+  buildVisualResultView,
   renderVisualResult,
+  type VisualResultView,
+  type VisualResultViewInput,
   type VisualResultFacts,
 } from "../services/visual-result";
 import {
@@ -732,6 +735,49 @@ async function prepareCorrectionReadonly(
       .listWorkflows()
       .some((workflow) => workflow.workflowId === FEEDBACK_LOOP_WORKFLOW_ID),
     pendingApproval: (await context.runner.pendingApproval(executionId)) !== null,
+  });
+}
+
+/**
+ * Reads the same persisted Stage 5 facts and host eligibility used by the
+ * textual product result, then exposes only the bounded UI view model.
+ */
+export async function buildProductVisualResultView(
+  context: CliContext,
+  executionId: string,
+  originalInput: unknown,
+): Promise<VisualResultView> {
+  const report = await context.runner.explain(executionId);
+  const payloadOf = async (artifactId: string): Promise<unknown> => {
+    const summary = report.artifacts.find((artifact) => artifact.artifactId === artifactId);
+    if (summary === undefined) return undefined;
+    try {
+      return (await context.artifactInspection.getPayload(summary)).payload;
+    } catch {
+      return undefined;
+    }
+  };
+  const stageSummary = (await payloadOf("stage-5-summary")) as { overallStatus?: VisualResultFacts["overallStatus"] } | undefined;
+  const visualReport = (await payloadOf("visual-validation-report")) as { overallStatus?: VisualResultFacts["overallStatus"]; findings?: Array<{ explanation?: string }> } | undefined;
+  const reportAvailable = stageSummary !== undefined || visualReport !== undefined;
+  const proposalMetadata = await context.artifactInspection.getMetadata("proposed-file-changes").catch(() => undefined);
+  const unreachableChangedFiles = countOf(proposalMetadata?.["unreachableChangedFiles"]);
+  let correctionEligibility: VisualResultViewInput["correctionEligibility"] = { status: "unavailable" };
+  try {
+    correctionEligibility = (await prepareCorrectionReadonly(context, executionId, originalInput)).eligibility;
+  } catch {
+    // A presentation read failure must fail closed for Improve without
+    // changing the workflow result or inventing a policy explanation.
+  }
+  const classification = stageSummary?.overallStatus ?? visualReport?.overallStatus;
+  return buildVisualResultView({
+    reportAvailable,
+    findingSummaries: (visualReport?.findings ?? [])
+      .map((finding) => finding.explanation)
+      .filter((finding): finding is string => typeof finding === "string" && finding.length > 0),
+    ...(classification === undefined ? {} : { classification }),
+    ...(unreachableChangedFiles === undefined ? {} : { unreachableChangedFiles }),
+    correctionEligibility,
   });
 }
 

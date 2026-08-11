@@ -3,7 +3,7 @@
 import { createInterface } from "node:readline";
 import { dispatch } from "./cli";
 import { runSelectedDesignEngineer } from "./commands/interactive";
-import { offerVisualCorrection } from "./commands/session-flow";
+import { buildProductVisualResultView, offerVisualCorrection } from "./commands/session-flow";
 import {
   createCliContext,
   type CliContext,
@@ -208,11 +208,19 @@ async function main(): Promise<number> {
             async (startAction, bridge) => {
               let executionId: string | undefined;
               let reportRefreshPending = false;
+              const refreshVisualResult = async (report: Awaited<ReturnType<CliContext["runner"]["explain"]>>): Promise<void> => {
+                if (report.overview.state !== "ready" || executionId === undefined || tuiOriginalInput === undefined) return;
+                const visual = await buildProductVisualResultView(context!, executionId, tuiOriginalInput);
+                if (visual.reportAvailable) bridge.visual(visual);
+              };
               const refreshArtifactReport = (): void => {
                 if (executionId === undefined || reportRefreshPending) return;
                 reportRefreshPending = true;
                 void context!.runner.explain(executionId)
-                  .then((report) => bridge.report(report))
+                  .then(async (report) => {
+                    bridge.report(report);
+                    await refreshVisualResult(report);
+                  })
                   .catch(() => undefined)
                   .finally(() => {
                     reportRefreshPending = false;
@@ -250,7 +258,11 @@ async function main(): Promise<number> {
                 throw error;
               } finally {
                 if (coordinator.interrupted) bridge.cancelled();
-                else if (executionId !== undefined) bridge.report(await context!.runner.explain(executionId));
+                else if (executionId !== undefined) {
+                  const report = await context!.runner.explain(executionId);
+                  bridge.report(report);
+                  await refreshVisualResult(report);
+                }
               }
               return tuiCommandCode;
             },
@@ -275,7 +287,10 @@ async function main(): Promise<number> {
                   }),
                 },
               );
-              bridge.report(await context!.runner.explain(tuiExecutionId));
+              const report = await context!.runner.explain(tuiExecutionId);
+              bridge.report(report);
+              const visual = await buildProductVisualResultView(context!, tuiExecutionId, tuiOriginalInput);
+              if (visual.reportAvailable) bridge.visual(visual);
               return code;
             },
           );

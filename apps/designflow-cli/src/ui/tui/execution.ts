@@ -9,6 +9,7 @@ import type {
   WorkflowStageView,
 } from "./model";
 import { buildProductFailure } from "../../services/failure-presentation";
+import type { VisualResultView } from "../../services/visual-result";
 import type { TuiReviewRequest } from "./navigation";
 
 export type ExecutionPresentationStatus = "running" | "completed" | "failed" | "cancelled" | "waiting";
@@ -27,6 +28,7 @@ export interface TuiExecutionBridge {
   readonly cancelled: () => void;
   readonly ask: (question: string, options?: readonly string[]) => Promise<string>;
   readonly review: (request: TuiReviewRequest) => Promise<"approve" | "reject">;
+  readonly visual: (result: VisualResultView) => void;
 }
 
 const STAGE_ORDER = [

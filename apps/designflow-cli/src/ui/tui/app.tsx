@@ -49,6 +49,7 @@ import {
   type TuiExecutionBridge,
 } from "./execution";
 import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtifactReader } from "./artifact-viewer";
+import type { VisualResultView } from "../../services/visual-result";
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
@@ -95,6 +96,7 @@ export function App({
   const [viewerDocument, setViewerDocument] = useState<ArtifactViewerDocument | undefined>();
   const [executionStarted, setExecutionStarted] = useState(false);
   const [executionFinished, setExecutionFinished] = useState(false);
+  const [visualResult, setVisualResult] = useState<VisualResultView | undefined>();
   const [prompt, setPrompt] = useState<{ readonly question: string; readonly options?: readonly string[]; readonly value: string }>();
   const promptResolver = useRef<((value: string) => void) | undefined>();
   const promptRejecter = useRef<(() => void) | undefined>();
@@ -174,9 +176,10 @@ export function App({
 
   const activate = (): void => {
     if (navigation.view === "visual-result") {
-      const visual = session.outputs.find((output) => output.kind === "visual-validation");
-      if (visual?.status === "available") setNavigation((current) => openOutput(current, visual.id));
-      else if (onImprove !== undefined) void onImprove(executionBridge.current!).catch(() => undefined);
+      if (visualResult?.reportAvailable) {
+        const visual = session.outputs.find((output) => output.kind === "visual-validation");
+        if (visual?.status === "available") setNavigation((current) => openOutput(current, visual.id));
+      }
       return;
     }
     if (navigation.view === "proposal-review" || navigation.view === "correction-review") {
@@ -276,19 +279,7 @@ export function App({
         update: (nextSession) => setSession(nextSession),
         progress: (progress) => setSession((current) => applyExecutionProgress(current, progress)),
         result: (result) => setSession((current) => applySessionResult(current, result)),
-        report: (report) => {
-          setSession((current) => applyExecutionReport(current, report));
-          const root = typeof report === "object" && report !== null ? report as { overview?: { state?: unknown }; artifacts?: unknown[] } : undefined;
-          const artifacts = root?.artifacts ?? [];
-          const hasVisualResult = artifacts.some((artifact) => typeof artifact === "object" && artifact !== null && ((artifact as { artifactId?: unknown }).artifactId === "stage-5-summary" || (artifact as { artifactId?: unknown }).artifactId === "visual-validation-report"));
-          if (root?.overview?.state === "ready") {
-            setNavigation((current) => ({ ...current, view: hasVisualResult ? "visual-result" : "final-result" }));
-            if (hasVisualResult) {
-              const visualIndex = session.outputs.findIndex((output) => output.kind === "visual-validation");
-              if (visualIndex >= 0) setInteraction((current) => ({ ...current, selectedOutput: visualIndex }));
-            }
-          }
-        },
+        report: (report) => setSession((current) => applyExecutionReport(current, report)),
         cancelled: () => {
           reviewResolver.current?.("reject");
           reviewResolver.current = undefined;
@@ -307,6 +298,10 @@ export function App({
           reviewResolver.current = resolve;
           setNavigation((current) => openProposalReview(current, request));
         }),
+        visual: (result: VisualResultView) => {
+          setVisualResult(result);
+          setNavigation((current) => ({ ...current, view: "visual-result" }));
+        },
       };
       executionBridge.current = bridge;
       void onStart(action, bridge)
@@ -452,7 +447,7 @@ export function App({
       return;
     }
 
-    if (navigation.view === "visual-result" && input.toLowerCase() === "i" && onImprove !== undefined && executionBridge.current !== undefined) {
+    if (navigation.view === "visual-result" && input.toLowerCase() === "i" && visualResult?.canImprove === true && onImprove !== undefined && executionBridge.current !== undefined) {
       setExecutionFinished(false);
       setNavigation((current) => ({ ...current, view: "execution" }));
       void onImprove(executionBridge.current)
@@ -564,6 +559,7 @@ export function App({
       viewerVisibleLines={viewerVisibleLines}
       selectedOutputView={selectedOutput}
       executionPrompt={prompt}
+      visualResult={visualResult}
     />
   );
 }
