@@ -81,10 +81,12 @@ export function LifecycleResultView({
   title,
   sessionLines,
   actions = [],
+  selectedAction,
 }: {
   readonly title: string;
   readonly sessionLines: readonly string[];
   readonly actions?: readonly string[];
+  readonly selectedAction?: number;
 }): React.JSX.Element {
-  return <Box flexDirection="column"><Text bold color={designFlowTheme.textPrimary}>{title}</Text><Box flexDirection="column" marginTop={2}>{sessionLines.map((line, index) => <Text key={`${index}:${line}`} color={line.startsWith("✕") || line.startsWith("!") ? designFlowTheme.danger : line.startsWith("✓") ? designFlowTheme.success : designFlowTheme.textPrimary}>{line}</Text>)}</Box>{actions.length > 0 && <Box flexDirection="column" marginTop={2}>{actions.map((action) => <Text key={action} color={designFlowTheme.accentStrong}>[ {action} ]</Text>)}</Box>}</Box>;
+  return <Box flexDirection="column"><Text bold color={designFlowTheme.textPrimary}>{title}</Text><Box flexDirection="column" marginTop={2}>{sessionLines.map((line, index) => <Text key={`${index}:${line}`} color={line.startsWith("✕") || line.startsWith("!") ? designFlowTheme.danger : line.startsWith("✓") ? designFlowTheme.success : designFlowTheme.textPrimary}>{line}</Text>)}</Box>{actions.length > 0 && <Box flexDirection="column" marginTop={2}>{actions.map((action, index) => <Text key={action} color={index === selectedAction ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>{index === selectedAction ? "›" : " "} {action}</Text>)}</Box>}</Box>;
 }

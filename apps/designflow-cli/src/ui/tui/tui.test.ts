@@ -37,6 +37,9 @@ import {
   setDiffScrollOffset,
   moveReviewAction,
   moveReviewFile,
+  openDiagnosticsView,
+  openNeedsAttention,
+  moveOutcomeAction,
 } from "./navigation";
 import {
   backspaceText,
@@ -50,6 +53,7 @@ import {
 } from "./text-input";
 import { buildProposalReview } from "../../services/proposal-review";
 import { designFromUrl } from "../../services/figma-selection";
+import { latestAvailableOutput, terminalOutcomeActions, terminalOutcomeStatusHint, visualResultStatusHint } from "./outcome";
 
 const key = (overrides: Partial<Key> = {}): Key => ({
   upArrow: false,
@@ -381,6 +385,49 @@ describe("DesignFlow TUI theme and keyboard contract", () => {
     expect(setOutputScrollOffset(opened, 99, 4).outputScrollOffset).toBe(4);
     expect(setOutputScrollOffset(opened, -1, 4).outputScrollOffset).toBe(0);
     expect(navigateBack(opened).view).toBe("start");
+  });
+
+  test("model-unreachable terminal outcomes stay interactive and expose truthful actions", () => {
+    const withOutput = buildSessionView({ figma: "connected", ai: "connected", project: { name: "Spendly" } });
+    const failed = {
+      ...withOutput,
+      workflow: { ...withOutput.workflow, status: "unavailable" as const },
+      diagnostics: ["The model could not be reached."],
+      outputs: [{
+        id: "implementation-validation",
+        kind: "validation" as const,
+        label: "Validation",
+        stage: "Validation",
+        viewerType: "validation" as const,
+        status: "available" as const,
+        artifactRef: { artifactId: "implementation-validation", type: "validation" },
+      }],
+      finalResult: { status: "failure" as const, summary: "The model could not be reached." },
+    };
+    const needsAttention = openNeedsAttention(initialNavigationState());
+    const actions = terminalOutcomeActions(latestAvailableOutput(failed.outputs) !== undefined, failed.diagnostics.length > 0);
+
+    expect(needsAttention.view).toBe("needs-attention");
+    expect(actions.map((action) => action.label)).toEqual(["View report", "Back to start", "Quit"]);
+    expect(terminalOutcomeStatusHint(true, true, true)).toContain("Enter View report");
+    expect(terminalOutcomeStatusHint(true, true, true)).toContain("Tab Outputs");
+    expect(moveOutcomeAction(needsAttention, 1, actions.length).outcomeActionIndex).toBe(1);
+    expect(navigateBack(needsAttention).view).toBe("start");
+    expect(openDiagnosticsView(needsAttention).view).toBe("diagnostics-view");
+    expect(navigateBack(openDiagnosticsView(needsAttention)).view).toBe("needs-attention");
+    expect(failed.workflow.status).toBe("unavailable");
+  });
+
+  test("terminal outcome actions hide unavailable report/details actions", () => {
+    expect(terminalOutcomeActions(false, false).map((action) => action.id)).toEqual(["back-to-start", "quit"]);
+    expect(terminalOutcomeStatusHint(false, false, false)).toBe("Enter Back to start   q Quit   Esc Back");
+  });
+
+  test("visual result status hints only advertise available actions", () => {
+    expect(visualResultStatusHint(false, false, false)).toBe("q Quit   Esc Back");
+    expect(visualResultStatusHint(true, true, true)).toContain("Enter View report");
+    expect(visualResultStatusHint(true, true, true)).toContain("i Improve");
+    expect(visualResultStatusHint(true, true, true)).toContain("Tab Outputs");
   });
 
   test("has a sane compact mode boundary", () => {

@@ -11,6 +11,7 @@ import { renderVisibleUrlWindow, urlInputContentWidth, visibleUrlWindow } from "
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
 import type { TuiPromptState } from "./text-input";
+import { latestAvailableOutput, terminalOutcomeActions } from "./outcome";
 
 export function CompactView({
   session,
@@ -52,7 +53,9 @@ export function CompactView({
       : navigation.view === "applying" ? <LifecycleResultView title="Applying" sessionLines={["● Applying changes…"]} />
       : navigation.view === "validation-result" ? <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
       : navigation.view === "visual-result" ? <VisualResultPanel result={visualResult} compact />
-      : navigation.view === "final-result" ? <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", "Outputs remain available for inspection."]} />
+      : navigation.view === "needs-attention" ? <LifecycleResultView title="Needs attention" sessionLines={session.diagnostics.length > 0 ? [...session.diagnostics.slice(0, 8), "No new mutation is started from this screen."] : ["The workflow needs attention.", "No new mutation is started from this screen."]} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+      : navigation.view === "diagnostics-view" ? <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
+      : navigation.view === "final-result" ? <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       : <Box flexDirection="column"><Text bold>Ready to start</Text><Text>Press Enter to select a design.</Text></Box>}
   </Box>;
 }

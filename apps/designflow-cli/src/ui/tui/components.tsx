@@ -12,6 +12,7 @@ import type { ArtifactViewerDocument } from "./artifact-viewer";
 import type { VisualResultView } from "../../services/visual-result";
 import { VisualResultPanel } from "./visual-result-view";
 import type { TuiPromptState } from "./text-input";
+import { latestAvailableOutput, terminalOutcomeActions, terminalOutcomeStatusHint, visualResultStatusHint } from "./outcome";
 export { visibleUrlWindow } from "./url-window";
 
 export interface ShellProps {
@@ -29,6 +30,7 @@ export interface ShellProps {
   readonly executionPrompt?: TuiPromptState | undefined;
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
+  readonly executionBusy: boolean;
 }
 
 export function Shell({
@@ -46,6 +48,7 @@ export function Shell({
   executionPrompt,
   visualResult,
   terminalColumns,
+  executionBusy,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
@@ -90,7 +93,7 @@ export function Shell({
           />
         </Box>
       )}
-      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} canImprove={visualResult?.canImprove === true} />
+      <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} canImprove={visualResult?.canImprove === true} hasVisualReport={visualResult?.reportAvailable === true} hasReport={latestAvailableOutput(session.outputs) !== undefined} hasDetails={session.diagnostics.length > 0} hasOutputs={session.outputs.length > 0} executionBusy={executionBusy} terminalOutcome={navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && session.finalResult !== undefined)} />
     </Box>
   );
 }
@@ -252,8 +255,12 @@ export function MainPanel({
         <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
       ) : navigation.view === "visual-result" ? (
         <VisualResultPanel result={visualResult} />
+      ) : navigation.view === "needs-attention" ? (
+        <LifecycleResultView title="Needs attention" sessionLines={outcomeLines(session, true)} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
+      ) : navigation.view === "diagnostics-view" ? (
+        <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
       ) : navigation.view === "final-result" ? (
-        <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} />
+        <LifecycleResultView title={session.finalResult?.status === "failure" ? "Needs attention" : "Done"} sessionLines={outcomeLines(session, session.finalResult?.status === "failure")} actions={terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "output-viewer" ? (
         <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={viewerScrollOffset} visibleLines={viewerVisibleLines} details={viewerDetails} />
       ) : (
@@ -460,14 +467,32 @@ export function StatusBar({
   helpOpen,
   view,
   canImprove,
+  hasVisualReport,
+  hasReport,
+  hasDetails,
+  hasOutputs,
+  executionBusy,
+  terminalOutcome,
 }: {
   readonly compact: boolean;
   readonly helpOpen: boolean;
   readonly view: TuiView;
   readonly canImprove?: boolean;
+  readonly hasVisualReport: boolean;
+  readonly hasReport: boolean;
+  readonly hasDetails: boolean;
+  readonly hasOutputs: boolean;
+  readonly executionBusy: boolean;
+  readonly terminalOutcome: boolean;
 }): React.JSX.Element {
+  const outcomeHint = terminalOutcomeStatusHint(hasReport, hasDetails, hasOutputs);
+  const diagnosticsHint = "? Help   Esc Back   q Quit";
   const hint = compact
-    ? view === "output-viewer"
+    ? view === "diagnostics-view"
+      ? diagnosticsHint
+      : terminalOutcome
+      ? outcomeHint
+      : view === "output-viewer"
       ? "Compact viewer — ↑↓/jk Scroll   PgUp/PgDn   Home/End   Esc Back"
       : "Compact mode — resize for the full shell"
     : helpOpen
@@ -482,18 +507,20 @@ export function StatusBar({
           ? "↑↓ Navigate   Enter Select   Esc Back"
       : view === "ready-to-run"
               ? "Enter Start   Esc Change destination   ? Help   q Quit"
-      : view === "execution"
-                ? "? Help   Ctrl+C Cancel   q Quit when complete"
+                : view === "execution"
+                ? executionBusy ? "? Help   Ctrl+C Cancel" : outcomeHint
+                : view === "diagnostics-view"
+                  ? diagnosticsHint
                 : view === "proposal-review" || view === "correction-review"
                   ? "↑↓ Navigate   Enter Select   d View diff   Esc Back"
                   : view === "diff-view"
                     ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   [/] File   Esc Back"
                     : view === "visual-result"
-                      ? `Enter View report${canImprove ? "   i Improve" : ""}   Tab Outputs   q Quit`
-                      : view === "final-result" || view === "validation-result"
-                        ? "Enter View report   Tab Outputs   q Quit"
+                      ? visualResultStatusHint(hasVisualReport, canImprove === true, hasOutputs)
+                      : view === "needs-attention" || view === "final-result" || view === "validation-result"
+                        ? outcomeHint
               : view === "output-viewer"
-                  ? "↑↓/jk Scroll   PgUp/PgDn   Home/End   d Details   Esc Back"
+                  ? `↑↓/jk Scroll   PgUp/PgDn   Home/End   d Details   Esc Back${executionBusy ? "" : "   q Quit"}`
               : "Enter Start   ? Help   q Quit";
 
   return (
@@ -501,6 +528,13 @@ export function StatusBar({
       <Text color={designFlowTheme.textSecondary}>{hint}</Text>
     </Box>
   );
+}
+
+function outcomeLines(session: DesignFlowSessionView, failure: boolean): readonly string[] {
+  if (session.diagnostics.length > 0) {
+    return [...session.diagnostics.slice(0, 8), ...(failure ? ["No new mutation is started from this screen."] : [])];
+  }
+  return [session.finalResult?.summary ?? "DesignFlow finished.", failure ? "No new mutation is started from this screen." : "Outputs remain available for inspection."];
 }
 
 function ReadinessRow({

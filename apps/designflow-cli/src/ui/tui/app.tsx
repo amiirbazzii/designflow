@@ -38,6 +38,9 @@ import {
   setDiffScrollOffset,
   moveReviewAction,
   moveReviewFile,
+  moveOutcomeAction,
+  openDiagnosticsView,
+  openNeedsAttention,
   type TuiNavigationState,
   type TuiReviewRequest,
 } from "./navigation";
@@ -72,6 +75,7 @@ import {
 import { buildArtifactViewerDocument, type ArtifactViewerDocument, type TuiArtifactReader } from "./artifact-viewer";
 import type { VisualResultView } from "../../services/visual-result";
 import { stripBracketedPasteMarkers } from "./url-window";
+import { latestAvailableOutput, terminalOutcomeActions, type TerminalOutcomeActionId } from "./outcome";
 
 export type TuiAction =
   | { readonly type: "start"; readonly projectId?: string; readonly design: InteractiveDesign; readonly destination: DestinationCandidate; readonly approvalMode: "manual" | "designflow" }
@@ -180,6 +184,14 @@ export function App({
       current = false;
     };
   }, [artifactReader, navigation.outputId, navigation.view, session.outputs]);
+
+  useEffect(() => {
+    if (navigation.view !== "execution" || session.finalResult === undefined || session.workflow.status === "active") return;
+    setNavigation((current) => {
+      if (current.view !== "execution") return current;
+      return session.workflow.status === "unavailable" ? openNeedsAttention(current) : { ...current, view: "final-result", outcomeActionIndex: 0 };
+    });
+  }, [navigation.view, session.finalResult, session.workflow.status]);
 
   const loadDestinations = (design: InteractiveDesign): void => {
     const requestId = destinationRequest.current + 1;
@@ -356,7 +368,7 @@ export function App({
             finalResult: { status: "failure", summary: "The workflow did not complete." },
           }));
           setExecutionFinished(true);
-          setNavigation((current) => ({ ...current, view: "final-result" }));
+          setNavigation((current) => openNeedsAttention(current));
         });
     }
   };
@@ -388,13 +400,29 @@ export function App({
   const visibleCount = Math.max(1, size.rows - (compact ? 8 : 14));
   const viewerVisibleLines = Math.max(1, size.rows - (compact ? 8 : 10));
   const viewerMaximum = Math.max(0, (viewerDocument?.lines.length ?? 0) - viewerVisibleLines);
+  const executionBusy = executionStarted && !executionFinished && navigation.view === "execution" && session.workflow.status === "active" && session.finalResult === undefined;
+  const terminalOutcomeView = navigation.view === "needs-attention" || navigation.view === "final-result" || navigation.view === "validation-result" || (navigation.view === "execution" && !executionBusy && session.finalResult !== undefined);
+
+  const activateTerminalOutcome = (actionId: TerminalOutcomeActionId): void => {
+    if (actionId === "view-report") {
+      const output = latestAvailableOutput(session.outputs);
+      if (output !== undefined) setNavigation((current) => openOutput(current, output.id));
+    } else if (actionId === "view-details") {
+      setNavigation((current) => openDiagnosticsView(current));
+    } else if (actionId === "back-to-start") {
+      setNavigation((current) => ({ ...current, view: "start", outcomeActionIndex: 0 }));
+    } else if (actionId === "quit") {
+      onAction({ type: "quit" });
+      exit();
+    }
+  };
 
   useInput((input, key) => {
     const rawInput = rawInputRef.current;
     rawInputRef.current = undefined;
     if (key.ctrl && input === "c") {
       onInterrupt();
-      if (!executionStarted || executionFinished) {
+      if (!executionBusy) {
         onAction({ type: "quit" });
         exit();
       } else {
@@ -471,7 +499,7 @@ export function App({
       } else if (input === "d") {
         setNavigation((current) => toggleOutputDetails(current));
       }
-      if (outputAction === "quit" && (!executionStarted || executionFinished)) {
+      if (outputAction === "quit" && !executionBusy) {
         onAction({ type: "quit" });
         exit();
       }
@@ -495,6 +523,17 @@ export function App({
       else if (input === "[") setNavigation((current) => moveReviewFile(current, -1));
       else if (input === "]") setNavigation((current) => moveReviewFile(current, 1));
       else if (diffAction === "help") setNavigation((current) => openHelp(current));
+      return;
+    }
+
+    if (navigation.view === "diagnostics-view") {
+      const detailsAction = mapTuiKey(input, key);
+      if (detailsAction === "back") setNavigation((current) => ({ ...current, view: "needs-attention" }));
+      else if (detailsAction === "help") setNavigation((current) => openHelp(current));
+      else if (detailsAction === "quit") {
+        onAction({ type: "quit" });
+        exit();
+      }
       return;
     }
 
@@ -548,17 +587,21 @@ export function App({
       return;
     }
     if (action === "quit") {
-      if (executionStarted && !executionFinished) return;
+      if (executionBusy) return;
       onAction({ type: "quit" });
       exit();
       return;
     }
     if (action === "back") {
-      setNavigation((current) => navigateBack(current));
+      setNavigation((current) => terminalOutcomeView && current.view === "execution" ? { ...current, view: "start", outcomeActionIndex: 0 } : navigateBack(current));
       return;
     }
     if (action === "activate") {
-      if (interaction.focusArea === "main") activate();
+      if (terminalOutcomeView && interaction.focusArea === "main") {
+        const actions = terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0);
+        const selected = actions[navigation.outcomeActionIndex];
+        if (selected !== undefined) activateTerminalOutcome(selected.id);
+      } else if (interaction.focusArea === "main") activate();
       else if (interaction.focusArea === "outputs") {
         const output = session.outputs[interaction.selectedOutput];
         if (output?.status === "available") setNavigation((current) => openOutput(current, output.id));
@@ -566,7 +609,17 @@ export function App({
       return;
     }
     if (action === "next-focus" || action === "previous-focus") {
-      setInteraction((current) => reduceTuiInteraction(current, action, session.workflow.stages.length));
+      if (terminalOutcomeView && action === "next-focus" && session.outputs.length > 0) {
+        setInteraction((current) => ({ ...current, focusArea: "outputs" }));
+      } else {
+        setInteraction((current) => reduceTuiInteraction(current, action, session.workflow.stages.length));
+      }
+      return;
+    }
+
+    if (terminalOutcomeView && interaction.focusArea === "main" && (action === "up" || action === "down")) {
+      const count = terminalOutcomeActions(latestAvailableOutput(session.outputs) !== undefined, session.diagnostics.length > 0).length;
+      setNavigation((current) => moveOutcomeAction(current, action === "up" ? -1 : 1, count));
       return;
     }
 
@@ -631,6 +684,7 @@ export function App({
       executionPrompt={prompt}
       visualResult={visualResult}
       terminalColumns={size.columns}
+      executionBusy={executionBusy}
     />
   );
 }

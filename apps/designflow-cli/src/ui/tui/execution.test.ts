@@ -102,4 +102,19 @@ describe("live workflow presentation adapter", () => {
     expect(failed.finalResult?.status).toBe("failure");
     expect(failed.diagnostics.join(" ")).toContain("safe change");
   });
+
+  test("model-unreachable terminal facts clear the active workflow state", () => {
+    const failed = applyExecutionReport(session(), {
+      overview: {
+        state: "failed",
+        status: "failed",
+        failure: { errorCode: "ERR_MODEL_SERVICE_UNAVAILABLE", failedCapabilityId: "invoke-implementation-agent" },
+      },
+      artifacts: [],
+    });
+
+    expect(failed.workflow.status).toBe("unavailable");
+    expect(failed.finalResult?.status).toBe("failure");
+    expect(failed.activity[0]).toMatchObject({ actor: "designflow", title: "Needs attention", state: "failed" });
+  });
 });

@@ -34,6 +34,8 @@ export type TuiView =
   | "validation-result"
   | "visual-result"
   | "correction-review"
+  | "needs-attention"
+  | "diagnostics-view"
   | "final-result"
   | "output-viewer"
   | "help";
@@ -49,6 +51,7 @@ export interface TuiNavigationState {
   readonly reviewActionIndex: number;
   readonly reviewFileIndex: number;
   readonly diffScrollOffset: number;
+  readonly outcomeActionIndex: number;
   readonly diffReturnView: Exclude<TuiView, "help" | "diff-view" | "output-viewer">;
   readonly approvalOption: number;
   readonly approvalMode: ApprovalMode;
@@ -75,6 +78,7 @@ export function initialNavigationState(): TuiNavigationState {
     reviewActionIndex: 0,
     reviewFileIndex: 0,
     diffScrollOffset: 0,
+    outcomeActionIndex: 0,
     diffReturnView: "proposal-review",
     approvalOption: 0,
     approvalMode: "manual",
@@ -331,15 +335,33 @@ export function closeHelp(state: TuiNavigationState): TuiNavigationState {
   return state.view === "help" ? { ...state, view: state.helpReturnView } : state;
 }
 
+export function openNeedsAttention(state: TuiNavigationState): TuiNavigationState {
+  return { ...state, view: "needs-attention", outcomeActionIndex: 0 };
+}
+
+export function openDiagnosticsView(state: TuiNavigationState): TuiNavigationState {
+  return { ...state, view: "diagnostics-view" };
+}
+
+export function moveOutcomeAction(
+  state: TuiNavigationState,
+  delta: -1 | 1,
+  count: number,
+): TuiNavigationState {
+  return { ...state, outcomeActionIndex: moveListSelection(state.outcomeActionIndex, count, delta) };
+}
+
 export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   if (state.view === "help") return closeHelp(state);
   if (state.view === "output-viewer") return closeOutput(state);
   if (state.view === "diff-view") return closeDiffView(state);
+  if (state.view === "diagnostics-view") return { ...state, view: "needs-attention" };
+  if (state.view === "needs-attention") return { ...state, view: "start", outcomeActionIndex: 0 };
   if (state.view === "proposal-review" || state.view === "correction-review") {
     const { review: _review, ...withoutReview } = state;
     return { ...withoutReview, view: "execution" };
   }
-  if (state.view === "final-result" || state.view === "visual-result" || state.view === "validation-result") return { ...state, view: "execution" };
+  if (state.view === "final-result" || state.view === "visual-result" || state.view === "validation-result") return { ...state, view: "start", outcomeActionIndex: 0 };
   if (state.view === "ready-to-run") return { ...state, view: "approval-mode", error: undefined };
   if (state.view === "approval-mode") return { ...state, view: "destination-selection", error: undefined };
   if (state.view === "destination-selection") return enterDesignSelection(state);
