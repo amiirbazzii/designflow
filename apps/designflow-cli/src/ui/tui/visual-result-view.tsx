@@ -6,9 +6,11 @@ import { designFlowTheme } from "./theme";
 export function VisualResultPanel({
   result,
   compact = false,
+  selectedAction = 0,
 }: {
   readonly result: VisualResultView | undefined;
   readonly compact?: boolean;
+  readonly selectedAction?: number;
 }): React.JSX.Element {
   if (result === undefined) {
     return <Text color={designFlowTheme.muted}>Loading persisted visual result…</Text>;
@@ -43,8 +45,8 @@ export function VisualResultPanel({
         <Box flexDirection="column" marginTop={compact ? 1 : 2}>
           <Text bold color={designFlowTheme.textSecondary}>Actions</Text>
           {result.actions.map((action, index) => (
-            <Text key={action} color={index === 0 ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
-              {index === 0 ? "›" : " "} {action}
+            <Text key={action} color={index === selectedAction ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
+              {index === selectedAction ? "›" : " "} {action}
             </Text>
           ))}
         </Box>

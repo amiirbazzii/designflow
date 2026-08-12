@@ -279,7 +279,7 @@ export function MainPanel({
       ) : navigation.view === "validation-result" ? (
         <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
       ) : navigation.view === "visual-result" ? (
-        <VisualResultPanel result={visualResult} />
+        <VisualResultPanel result={visualResult} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "needs-attention" ? (
         <LifecycleResultView title={terminalOutcome?.title ?? "Needs attention"} sessionLines={outcomeLines(session, true)} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       ) : navigation.view === "diagnostics-view" ? (

@@ -508,7 +508,8 @@ export function App({
         }),
         visual: (result: VisualResultView) => {
           setVisualResult(result);
-          setNavigation((current) => ({ ...current, view: "visual-result" }));
+          setInteraction((current) => ({ ...current, focusArea: "main" }));
+          setNavigation((current) => ({ ...current, view: "visual-result", outcomeActionIndex: 0 }));
         },
         authRequired: (message) => {
           finishExecution();
@@ -777,24 +778,55 @@ export function App({
       return;
     }
 
-    if (navigation.view === "visual-result" && input.toLowerCase() === "i" && visualResult?.canImprove === true && onImprove !== undefined && executionBridge.current !== undefined) {
+    const beginImprove = (): void => {
+      if (visualResult?.canImprove !== true || onImprove === undefined || executionBridge.current === undefined) return;
       executionDoneRef.current = false;
       setExecutionFinished(false);
       setNavigation((current) => ({ ...current, view: "execution" }));
       void onImprove(executionBridge.current)
         .then(() => {
           finishExecution();
-          setNavigation((current) => ({ ...current, view: "visual-result" }));
+          setNavigation((current) => ({ ...current, view: "visual-result", outcomeActionIndex: 0 }));
         })
         .catch((error: unknown) => {
           finishExecution();
           setSession((current) => ({ ...current, diagnostics: [error instanceof Error ? error.message : "Improvement could not start."], finalResult: { status: "failure", summary: "Improvement could not start." } }));
           setNavigation((current) => ({ ...current, view: "final-result" }));
         });
+    };
+
+    if (navigation.view === "visual-result" && input.toLowerCase() === "i" && visualResult?.canImprove === true) {
+      beginImprove();
       return;
     }
 
     const action = mapTuiKey(input, key);
+
+    // Visual Result owns its action navigation (§ DF-TUI-09): arrows/j-k move
+    // the selection, Enter activates it, Tab must not divert focus.
+    if (navigation.view === "visual-result") {
+      const visualActions = visualResult?.actions ?? [];
+      if ((action === "up" || action === "down") && visualActions.length > 0) {
+        setNavigation((current) => moveOutcomeAction(current, action === "up" ? -1 : 1, visualActions.length));
+        return;
+      }
+      if (action === "next-focus" || action === "previous-focus") return;
+      if (action === "activate") {
+        const selected = visualActions[navigation.outcomeActionIndex] ?? "Finish";
+        if (selected === "View report") {
+          const visual = session.outputs.find((output) => output.kind === "visual-validation");
+          if (visual?.status === "available") setNavigation((current) => openOutput(current, visual.id));
+        } else if (selected === "Improve") {
+          beginImprove();
+        } else {
+          setSession((current) => current.finalResult === undefined
+            ? { ...current, finalResult: { status: "success", summary: "Finished. Your approved changes remain in place." } }
+            : current);
+          setNavigation((current) => ({ ...current, view: "final-result", outcomeActionIndex: 0 }));
+        }
+        return;
+      }
+    }
 
     // Proposal/correction review owns its input outright (§ DF-TUI-08): the
     // advertised keys act on the review regardless of any lingering sidebar

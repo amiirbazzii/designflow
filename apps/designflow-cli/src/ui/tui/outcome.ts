@@ -111,12 +111,10 @@ export function terminalOutcomeStatusHintForActions(
 }
 
 export function visualResultStatusHint(
-  hasReport: boolean,
+  _hasReport: boolean,
   canImprove: boolean,
-  hasOutputs: boolean,
+  _hasOutputs: boolean,
 ): string {
-  const report = hasReport ? "Enter View report   " : "";
   const improve = canImprove ? "i Improve   " : "";
-  const outputs = hasOutputs ? "Tab Outputs   " : "";
-  return `${report}${improve}${outputs}q Quit   Esc Back`;
+  return `↑↓ Navigate   Enter Select   ${improve}q Quit   Esc Back`;
 }

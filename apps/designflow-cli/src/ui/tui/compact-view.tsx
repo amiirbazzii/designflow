@@ -55,7 +55,7 @@ export function CompactView({
       : navigation.view === "diff-view" ? navigation.review === undefined ? <Text color={designFlowTheme.warning}>Diff is unavailable.</Text> : <DiffView review={navigation.review.review} fileIndex={navigation.reviewFileIndex} scrollOffset={navigation.diffScrollOffset} visibleLines={viewerVisibleLines} />
       : navigation.view === "applying" ? <LifecycleResultView title="Applying" sessionLines={["● Applying changes…"]} />
       : navigation.view === "validation-result" ? <LifecycleResultView title="Validation" sessionLines={session.checks.map((check) => `${check.status === "passed" ? "✓" : check.status === "failed" ? "✕" : "○"} ${check.label}`)} />
-      : navigation.view === "visual-result" ? <VisualResultPanel result={visualResult} compact />
+      : navigation.view === "visual-result" ? <VisualResultPanel result={visualResult} compact selectedAction={navigation.outcomeActionIndex} />
       : navigation.view === "needs-attention" ? <LifecycleResultView title={terminalOutcome?.title ?? "Needs attention"} sessionLines={session.diagnostics.length > 0 ? [...session.diagnostics.slice(0, 8), "No new mutation is started from this screen."] : ["The workflow needs attention.", "No new mutation is started from this screen."]} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       : navigation.view === "sign-in-required" ? <AuthView navigation={navigation} signingIn={false} />
       : navigation.view === "signing-in" ? <AuthView navigation={navigation} signingIn />

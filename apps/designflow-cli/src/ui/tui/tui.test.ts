@@ -426,10 +426,11 @@ describe("DesignFlow TUI theme and keyboard contract", () => {
   });
 
   test("visual result status hints only advertise available actions", () => {
-    expect(visualResultStatusHint(false, false, false)).toBe("q Quit   Esc Back");
-    expect(visualResultStatusHint(true, true, true)).toContain("Enter View report");
+    expect(visualResultStatusHint(false, false, false)).toBe("↑↓ Navigate   Enter Select   q Quit   Esc Back");
+    expect(visualResultStatusHint(true, true, true)).toContain("↑↓ Navigate");
+    expect(visualResultStatusHint(true, true, true)).toContain("Enter Select");
     expect(visualResultStatusHint(true, true, true)).toContain("i Improve");
-    expect(visualResultStatusHint(true, true, true)).toContain("Tab Outputs");
+    expect(visualResultStatusHint(true, false, true)).not.toContain("i Improve");
   });
 
   test("has a sane compact mode boundary", () => {
@@ -487,5 +488,16 @@ describe("DF-TUI-08 review/diff input ownership", () => {
       expect(moveReviewAction(moveReviewAction(state, 1), 1).reviewActionIndex).toBe(2);
       expect(moveReviewAction(state, -1).reviewActionIndex).toBe(0);
     }
+  });
+});
+
+describe("DF-TUI-09 visual result action navigation", () => {
+  test("outcome index moves over the visual actions and clamps at both ends", () => {
+    const state = { ...initialNavigationState(), view: "visual-result" as const };
+    const actions = ["View report", "Improve", "Finish"];
+    expect(moveOutcomeAction(state, 1, actions.length).outcomeActionIndex).toBe(1);
+    expect(moveOutcomeAction(moveOutcomeAction(state, 1, actions.length), 1, actions.length).outcomeActionIndex).toBe(2);
+    expect(moveOutcomeAction({ ...state, outcomeActionIndex: 2 }, 1, actions.length).outcomeActionIndex).toBe(2);
+    expect(moveOutcomeAction(state, -1, actions.length).outcomeActionIndex).toBe(0);
   });
 });
