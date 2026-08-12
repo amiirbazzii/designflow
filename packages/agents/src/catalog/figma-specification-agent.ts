@@ -12,6 +12,7 @@ import {
   type FigmaNodeSnapshot,
   type FigmaSourceSnapshot,
   type ModelProfile,
+  type SpecElement,
   type SpecializedAgent,
   type SpecializedAgentContext,
 } from "@designflow/sdk";
@@ -51,17 +52,48 @@ const MODEL_PROFILE_ID = "figma-specification-default";
 export const figmaSpecificationAgentManifest: AgentManifest = agentManifestSchema.parse({
   id: "figma-specification-agent",
   name: "Figma Specification Agent",
-  description: "Turns a Figma source snapshot into a design specification",
-  version: "0.2.0",
+  description: "Turns a Figma source snapshot into an implementation-grade design specification",
+  version: "0.3.0",
   instructions:
-    "The supplied Figma source snapshot is authoritative — it is everything you " +
-    "know about this design. Never invent a property, a node, a token or an " +
-    "asset the snapshot does not contain. Every component and hierarchy entry " +
-    "you name must reference a real node id from the snapshot. Distinguish " +
-    "observed facts (already present in the snapshot) from your own inferred " +
-    "implementation guidance. Every unresolved question must appear as a " +
-    "structured ambiguity, never silently guessed at. Respond with structured " +
-    "output only.",
+    "Produce an implementation-grade design specification from the supplied " +
+    "normalized Figma evidence. The snapshot is authoritative — it is everything " +
+    "you know about this design; never invent a node, property, token, asset, " +
+    "variant, state or behavior it does not contain, and never produce code or " +
+    "decide repository reuse.\n\n" +
+    "Be exhaustive about implementation-relevant evidence:\n" +
+    "- Preserve exact numeric and style values (dimensions, padding, gaps, radii, " +
+    "borders, fills, opacity, effects) instead of summarizing them away.\n" +
+    "- Preserve exact visible copy verbatim in `content` and on the elements that " +
+    "carry it; never replace real text with generic summaries.\n" +
+    "- Describe the screen in visual/hierarchical order in `anatomy`: ordered " +
+    "top-level regions, each containing its own nested elements with their " +
+    "layout, style and typography facts. Do not collapse structure into one " +
+    "flat name list, and do not enumerate every trivial vector node — include " +
+    "what an implementer needs.\n" +
+    "- Fill `screen` with the selected root's name and evidenced dimensions, " +
+    "layout model and background.\n" +
+    "- Reason about repeated component instances: emit a `componentContracts` " +
+    "entry per design component with its anatomy, shared base styles, evidenced " +
+    "properties/variants/states, and every observed instance with its " +
+    "instance-specific differences. Mark each property/variant source as " +
+    "observedInSelection or declaredByFigmaComponentMetadata; never fabricate " +
+    "variants a single instance cannot prove.\n" +
+    "- Fill `foundations` with structured values, distinguishing named Figma " +
+    "variables (source figma-variable) from repeated raw values (source " +
+    "observed-value). Never label a raw value as a named token.\n" +
+    "- Record only evidence-supported interaction facts: put visually evidenced " +
+    "states in `observedStates` and affordance-suggested but unconfirmed " +
+    "behavior in `inferredBehavior`.\n" +
+    "- In `responsiveEvidence`, record explicit constraint/auto-layout evidence; " +
+    "if only one fixed frame exists, say exactly that.\n" +
+    "- Accessibility: only evidence-derived facts or recommendations clearly " +
+    "labeled as recommendations.\n" +
+    "- Every node id you reference must exist in the snapshot. Every uncertainty " +
+    "must be a specific, structured ambiguity naming what is missing — never a " +
+    "generic 'behavior is unclear'.\n" +
+    "Also populate the legacy summary fields (frames, hierarchy, designTokens, " +
+    "components, content, interactions, states) consistently with the richer " +
+    "sections. Respond with structured output only.",
   allowedWorkflows: ["design-to-code-agent-foundation", "design-to-code-figma-specification"],
   allowedTools: [],
   modelProfileId: MODEL_PROFILE_ID,
@@ -71,7 +103,10 @@ export const figmaSpecificationAgentManifest: AgentManifest = agentManifestSchem
 export const figmaSpecificationDefaultModelProfile: ModelProfile = modelProfileSchema.parse({
   id: MODEL_PROFILE_ID,
   providerId: "openrouter",
-  model: "openai/gpt-4o-mini",
+  // Specification V2 mandates this exact model for the Specification AI only.
+  // Other agents keep their own independent profiles; if the provider cannot
+  // serve it, the run fails truthfully through the provider error path.
+  model: "deepseek/deepseek-v4-flash-0731",
 });
 
 export type FigmaSpecificationStrategy = (
@@ -101,12 +136,33 @@ function readSnapshot(request: AgentInvocationRequest): FigmaSourceSnapshot {
  * was derived from — the check that catches a fabricated node id, whichever
  * strategy produced it.
  */
+/** Strict-JSON providers express optional fields as null; the Zod contract uses omission. */
+function stripNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripNulls);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== null)
+        .map(([key, entry]) => [key, stripNulls(entry)]),
+    );
+  }
+  return value;
+}
+
+function elementNodeIds(elements: readonly { nodeId?: string | undefined; children: readonly unknown[] }[]): string[] {
+  return elements.flatMap((element) => [
+    ...(element.nodeId !== undefined ? [element.nodeId] : []),
+    ...elementNodeIds(element.children as never),
+  ]);
+}
+
 function validate(
   agentVersion: string,
   raw: unknown,
   snapshot: FigmaSourceSnapshot,
 ): DesignSpecification {
-  const withVersion = typeof raw === "object" && raw !== null ? { ...raw, agentVersion } : raw;
+  const cleaned = stripNulls(raw);
+  const withVersion = typeof cleaned === "object" && cleaned !== null ? { ...cleaned, agentVersion } : cleaned;
   const parsed = designSpecificationSchema.safeParse(withVersion);
 
   if (!parsed.success) {
@@ -123,6 +179,14 @@ function validate(
     ...spec.hierarchy.map((entry) => entry.id),
     ...spec.components.flatMap((component) => component.sourceNodeIds),
     ...spec.ambiguities.flatMap((ambiguity) => ambiguity.affectedNodeIds),
+    ...spec.anatomy.flatMap((region) => [
+      ...(region.nodeId !== undefined ? [region.nodeId] : []),
+      ...elementNodeIds(region.elements),
+    ]),
+    ...spec.componentContracts.flatMap((contract) => [
+      ...contract.sourceNodeIds,
+      ...contract.instances.flatMap((instance) => (instance.nodeId !== undefined ? [instance.nodeId] : [])),
+    ]),
   ];
 
   const fabricated = referenced.filter((id) => !knownIds.has(id));
@@ -132,7 +196,63 @@ function validate(
     ]);
   }
 
+  const completeness = completenessIssues(spec, snapshot);
+  if (completeness.length > 0) {
+    throw new SpecializedAgentOutputInvalidError("figma-specification-agent", completeness);
+  }
+
   return spec;
+}
+
+/**
+ * Evidence-relative completeness (Specification V2). A successful
+ * specification must not be materially emptier than the evidence it was
+ * derived from. No arbitrary minimum counts: every check compares the
+ * specification against what the snapshot actually contains.
+ */
+function completenessIssues(
+  spec: DesignSpecification,
+  snapshot: FigmaSourceSnapshot,
+): string[] {
+  const issues: string[] = [];
+
+  if (snapshot.nodes.length > 0 && spec.hierarchy.length === 0 && spec.anatomy.length === 0) {
+    issues.push("completeness: the snapshot carries nodes but the specification describes no screen hierarchy");
+  }
+
+  const evidencedText = snapshot.nodes.filter((node) => (node.characters ?? "").trim().length > 0);
+  if (evidencedText.length > 0 && spec.content.length === 0) {
+    issues.push(`completeness: the snapshot carries ${evidencedText.length} text node(s) but the specification preserves no content`);
+  }
+
+  const componentEvidence =
+    snapshot.components.length > 0 ||
+    snapshot.nodes.some((node) => node.componentId !== undefined || node.type === "COMPONENT" || node.type === "INSTANCE");
+  if (componentEvidence && spec.components.length === 0 && spec.componentContracts.length === 0) {
+    issues.push("completeness: the snapshot carries component evidence but the specification names no components");
+  }
+
+  const styleEvidence = snapshot.nodes.some(
+    (node) =>
+      node.fills.length > 0 ||
+      node.strokes.length > 0 ||
+      node.effects.length > 0 ||
+      node.cornerRadius !== undefined ||
+      node.itemSpacing !== undefined,
+  );
+  const styleCaptured =
+    spec.foundations !== undefined ||
+    spec.designTokens.colors.length > 0 ||
+    spec.designTokens.spacing.length > 0 ||
+    spec.designTokens.typography.length > 0 ||
+    spec.designTokens.radii.length > 0 ||
+    spec.designTokens.borders.length > 0 ||
+    spec.designTokens.shadows.length > 0;
+  if (styleEvidence && !styleCaptured) {
+    issues.push("completeness: the snapshot carries style evidence (fills/strokes/effects/radii/spacing) but every style section is empty");
+  }
+
+  return issues;
 }
 
 // ── Deterministic derivation helpers ─────────────────────────────
@@ -254,6 +374,105 @@ function ambiguitiesFrom(
   return ambiguities;
 }
 
+// ── Deterministic V2 derivation ──────────────────────────────────
+
+function solidColorOf(paint: Record<string, unknown>): string | undefined {
+  const color = paint["color"];
+  if (typeof color !== "object" || color === null) return undefined;
+  const { r, g, b } = color as { r?: unknown; g?: unknown; b?: unknown };
+  if (typeof r !== "number" || typeof g !== "number" || typeof b !== "number") return undefined;
+  const hex = (channel: number): string => Math.round(channel * 255).toString(16).padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase();
+}
+
+function elementFrom(node: FigmaNodeSnapshot, byId: ReadonlyMap<string, FigmaNodeSnapshot>, depth: number): SpecElement {
+  const width = node.absoluteBoundingBox?.width ?? node.relativeBoundingBox?.width;
+  const height = node.absoluteBoundingBox?.height ?? node.relativeBoundingBox?.height;
+  const background = node.fills.map(solidColorOf).find((value) => value !== undefined);
+  return {
+    nodeId: node.id,
+    name: node.name,
+    ...(node.type === "TEXT" ? { role: "text" } : node.componentId !== undefined ? { role: "component-instance" } : {}),
+    ...(node.characters !== undefined ? { text: node.characters } : {}),
+    ...(width !== undefined ? { width: `${width}px` } : {}),
+    ...(height !== undefined ? { height: `${height}px` } : {}),
+    ...(node.layoutMode !== undefined && node.layoutMode !== "NONE"
+      ? {
+          layout: {
+            direction: node.layoutMode === "HORIZONTAL" ? ("horizontal" as const) : ("vertical" as const),
+            ...(node.itemSpacing !== undefined ? { gap: `${node.itemSpacing}px` } : {}),
+            ...(node.padding !== undefined
+              ? { padding: `${node.padding.top}px ${node.padding.right}px ${node.padding.bottom}px ${node.padding.left}px` }
+              : {}),
+          },
+        }
+      : {}),
+    ...(background !== undefined ? { background } : {}),
+    ...(node.cornerRadius !== undefined ? { radius: `${node.cornerRadius}px` } : {}),
+    ...(node.opacity !== undefined ? { opacity: node.opacity } : {}),
+    effects: [],
+    states: [],
+    notes: [],
+    children: depth > 0
+      ? node.childIds
+          .map((childId) => byId.get(childId))
+          .filter((child): child is FigmaNodeSnapshot => child !== undefined)
+          .map((child) => elementFrom(child, byId, depth - 1))
+      : [],
+  };
+}
+
+function anatomyFrom(snapshot: FigmaSourceSnapshot): { screen?: import("@designflow/sdk").SpecScreen; anatomy: import("@designflow/sdk").SpecRegion[] } {
+  const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const root = snapshot.nodes.find((node) => node.parentId === undefined) ?? snapshot.nodes[0];
+  if (root === undefined) return { anatomy: [] };
+  const rootWidth = root.absoluteBoundingBox?.width ?? root.relativeBoundingBox?.width;
+  const rootHeight = root.absoluteBoundingBox?.height ?? root.relativeBoundingBox?.height;
+  const rootBackground = root.fills.map(solidColorOf).find((value) => value !== undefined);
+  const screen = {
+    name: root.name,
+    ...(rootWidth !== undefined ? { width: `${rootWidth}px` } : {}),
+    ...(rootHeight !== undefined ? { height: `${rootHeight}px` } : {}),
+    ...(root.layoutMode !== undefined && root.layoutMode !== "NONE"
+      ? { layoutModel: root.layoutMode === "HORIZONTAL" ? "horizontal auto-layout" : "vertical auto-layout" }
+      : {}),
+    ...(rootBackground !== undefined ? { background: rootBackground } : {}),
+  };
+  const anatomy = root.childIds
+    .map((childId) => byId.get(childId))
+    .filter((child): child is FigmaNodeSnapshot => child !== undefined)
+    .map((child) => ({
+      nodeId: child.id,
+      name: child.name,
+      elements: [elementFrom(child, byId, 2)],
+    }));
+  return { screen, anatomy };
+}
+
+function foundationsFrom(snapshot: FigmaSourceSnapshot): import("@designflow/sdk").SpecFoundations {
+  const observed = (values: readonly string[]): { value: string; source: "observed-value" }[] =>
+    [...new Set(values)].map((value) => ({ value, source: "observed-value" as const }));
+  const colors = observed(
+    snapshot.nodes.flatMap((node) => node.fills.map(solidColorOf).filter((value): value is string => value !== undefined)),
+  );
+  const variableColors = snapshot.variables
+    .filter((variable) => variable.name.toLowerCase().includes("color"))
+    .map((variable) => ({
+      value: typeof variable.value === "string" ? variable.value : variable.name,
+      name: variable.name,
+      source: "figma-variable" as const,
+    }));
+  return {
+    colors: [...variableColors, ...colors],
+    typography: [],
+    spacing: observed(snapshot.nodes.flatMap((node) => (node.itemSpacing !== undefined ? [`${node.itemSpacing}px`] : []))),
+    radii: observed(snapshot.nodes.flatMap((node) => (node.cornerRadius !== undefined ? [`${node.cornerRadius}px`] : []))),
+    borders: [],
+    shadows: [],
+    iconSizing: [],
+  };
+}
+
 export const deterministicFigmaSpecificationStrategy: FigmaSpecificationStrategy = async (
   request,
   _context,
@@ -261,6 +480,7 @@ export const deterministicFigmaSpecificationStrategy: FigmaSpecificationStrategy
 ) => {
   const snapshot = readSnapshot(request);
   const resolvedFrameIds = new Set(snapshot.source.resolvedFrames.map((frame) => frame.id));
+  const { screen, anatomy } = anatomyFrom(snapshot);
 
   const spec = {
     sourceIdentity: {
@@ -288,6 +508,18 @@ export const deterministicFigmaSpecificationStrategy: FigmaSpecificationStrategy
     accessibilityNotes:
       snapshot.nodes.length > 0 ? ["ensure interactive elements carry an accessible name"] : [],
     ambiguities: ambiguitiesFrom(snapshot, [...resolvedFrameIds]),
+    ...(screen !== undefined ? { screen } : {}),
+    anatomy,
+    foundations: foundationsFrom(snapshot),
+    assetDetails: snapshot.assets.map((asset) => ({
+      id: asset.id,
+      name: asset.name,
+      type: asset.type,
+      ...(asset.reference !== undefined ? { reference: asset.reference } : {}),
+    })),
+    responsiveEvidence: snapshot.nodes.some((node) => node.layoutMode !== undefined && node.layoutMode !== "NONE")
+      ? ["Auto-layout evidence exists on at least one frame."]
+      : ["Only fixed-position evidence is available; no responsive behavior is evidenced."],
   };
 
   return validate(manifest.version, spec, snapshot);
@@ -313,7 +545,9 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
       },
     ],
     responseSchema: figmaSpecificationResponseSchema,
-    maxOutputTokens: 2000,
+    // Specification V2 carries element-level styles, component contracts and
+    // exact copy — 2000 tokens forced the model to discard evidence.
+    maxOutputTokens: 8000,
     validate: (output) => validate(manifest.version, output, snapshot),
   });
 };

@@ -11,11 +11,111 @@ const strings = { type: "array", items: text } as const;
  * strict JSON-schema provider cannot invent nullable variants or prose-shaped
  * extensions. The agent's Zod parser remains authoritative after the call.
  */
+// ── Specification V2 provider shapes ─────────────────────────────
+// Strict-JSON providers require every property to be listed as required, so
+// optional evidence is expressed as ["string","null"]; the agent strips
+// nulls before the authoritative Zod parse.
+const maybeText = { type: ["string", "null"] } as const;
+
+const specTypographyShape = {
+  type: ["object", "null"],
+  additionalProperties: false,
+  properties: { family: maybeText, weight: maybeText, size: maybeText, lineHeight: maybeText, letterSpacing: maybeText, color: maybeText, align: maybeText },
+  required: ["family", "weight", "size", "lineHeight", "letterSpacing", "color", "align"],
+} as const;
+
+const specLayoutShape = {
+  type: ["object", "null"],
+  additionalProperties: false,
+  properties: { direction: { type: ["string", "null"], enum: ["horizontal", "vertical", "none", null] }, gap: maybeText, padding: maybeText, align: maybeText, justify: maybeText, sizing: maybeText, position: maybeText },
+  required: ["direction", "gap", "padding", "align", "justify", "sizing", "position"],
+} as const;
+
+/** Bounded element nesting: three levels of children is enough for anatomy regions. */
+function specElementShape(depth: number): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      nodeId: maybeText,
+      name: text,
+      role: maybeText,
+      text: maybeText,
+      width: maybeText,
+      height: maybeText,
+      layout: specLayoutShape,
+      background: maybeText,
+      border: maybeText,
+      radius: maybeText,
+      opacity: { type: ["number", "null"], minimum: 0, maximum: 1 },
+      typography: specTypographyShape,
+      effects: strings,
+      asset: maybeText,
+      componentName: maybeText,
+      states: strings,
+      notes: strings,
+      children: depth > 0 ? { type: "array", items: specElementShape(depth - 1) } : { type: "array", maxItems: 0 },
+    },
+    required: ["nodeId", "name", "role", "text", "width", "height", "layout", "background", "border", "radius", "opacity", "typography", "effects", "asset", "componentName", "states", "notes", "children"],
+  };
+}
+
+const specRegionShape = {
+  type: "object",
+  additionalProperties: false,
+  properties: { nodeId: maybeText, name: text, role: maybeText, elements: { type: "array", items: specElementShape(3) } },
+  required: ["nodeId", "name", "role", "elements"],
+} as const;
+
+const evidenceSource = { type: "string", enum: ["observedInSelection", "declaredByFigmaComponentMetadata"] } as const;
+
+const specComponentContractShape = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: text,
+    componentKey: maybeText,
+    componentSetName: maybeText,
+    sourceNodeIds: strings,
+    anatomy: strings,
+    baseStyles: strings,
+    componentProperties: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: text, values: strings, source: evidenceSource }, required: ["name", "values", "source"] } },
+    variants: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: text, source: evidenceSource }, required: ["name", "source"] } },
+    states: strings,
+    instances: { type: "array", items: { type: "object", additionalProperties: false, properties: { nodeId: maybeText, label: text, differences: strings }, required: ["nodeId", "label", "differences"] } },
+    usedBy: strings,
+  },
+  required: ["name", "componentKey", "componentSetName", "sourceNodeIds", "anatomy", "baseStyles", "componentProperties", "variants", "states", "instances", "usedBy"],
+} as const;
+
+const foundationValues = {
+  type: "array",
+  items: { type: "object", additionalProperties: false, properties: { value: text, name: maybeText, source: { type: "string", enum: ["figma-variable", "observed-value"] }, usage: maybeText }, required: ["value", "name", "source", "usage"] },
+} as const;
+
 export const figmaSpecificationResponseSchema: JsonSchemaObject = {
   type: "object",
   additionalProperties: false,
   properties: {
-    schemaVersion: { type: "string", enum: ["2"] },
+    schemaVersion: { type: "string", enum: ["3"] },
+    screen: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: { name: text, width: maybeText, height: maybeText, layoutModel: maybeText, background: maybeText, scrollBehavior: maybeText },
+      required: ["name", "width", "height", "layoutModel", "background", "scrollBehavior"],
+    },
+    anatomy: { type: "array", items: specRegionShape },
+    componentContracts: { type: "array", items: specComponentContractShape },
+    foundations: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: { colors: foundationValues, typography: foundationValues, spacing: foundationValues, radii: foundationValues, borders: foundationValues, shadows: foundationValues, iconSizing: foundationValues },
+      required: ["colors", "typography", "spacing", "radii", "borders", "shadows", "iconSizing"],
+    },
+    assetDetails: { type: "array", items: { type: "object", additionalProperties: false, properties: { id: text, name: text, type: text, reference: maybeText, width: maybeText, height: maybeText, purpose: maybeText }, required: ["id", "name", "type", "reference", "width", "height", "purpose"] } },
+    observedStates: strings,
+    inferredBehavior: strings,
+    responsiveEvidence: strings,
     sourceIdentity: { type: "object", additionalProperties: false, properties: { designFile: text }, required: ["designFile"] },
     screenshotArtifactIds: strings,
     frames: strings,
@@ -32,7 +132,7 @@ export const figmaSpecificationResponseSchema: JsonSchemaObject = {
     ambiguities: { type: "array", items: { type: "object", additionalProperties: false, properties: { code: text, description: text, affectedNodeIds: strings, requiresUserInput: { type: "boolean" } }, required: ["code", "description", "affectedNodeIds", "requiresUserInput"] } },
     agentVersion: text,
   },
-  required: ["schemaVersion", "sourceIdentity", "screenshotArtifactIds", "frames", "hierarchy", "designTokens", "components", "layoutBehavior", "responsiveAssumptions", "assets", "content", "interactions", "states", "accessibilityNotes", "ambiguities", "agentVersion"],
+  required: ["schemaVersion", "screen", "anatomy", "componentContracts", "foundations", "assetDetails", "observedStates", "inferredBehavior", "responsiveEvidence", "sourceIdentity", "screenshotArtifactIds", "frames", "hierarchy", "designTokens", "components", "layoutBehavior", "responsiveAssumptions", "assets", "content", "interactions", "states", "accessibilityNotes", "ambiguities", "agentVersion"],
 };
 
 export const implementationResponseSchema: JsonSchemaObject = {

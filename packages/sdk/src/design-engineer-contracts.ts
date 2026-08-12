@@ -31,7 +31,13 @@ export const DESIGN_ENGINEER_CONTRACT_SCHEMA_VERSION = "1";
  * artifacts that never changed shape.
  */
 export const FIGMA_SOURCE_SNAPSHOT_SCHEMA_VERSION = "2";
-export const DESIGN_SPECIFICATION_SCHEMA_VERSION = "2";
+/**
+ * "3" is Specification V2: the implementation-grade contract (screen,
+ * ordered page anatomy, element styles, component contracts, structured
+ * foundations, evidence-vs-inference separation). All V2 sections are
+ * additive and optional, so schemaVersion "2" artifacts still parse.
+ */
+export const DESIGN_SPECIFICATION_SCHEMA_VERSION = "3";
 
 // ── A. Figma source snapshot ────────────────────────────────────
 
@@ -349,6 +355,215 @@ export type DesignSpecificationComponent = z.infer<
   typeof designSpecificationComponentSchema
 >;
 
+// ── B2. Specification V2 sections ───────────────────────────────
+//
+// Implementation-grade design truth. Every field is evidence-bound: agents
+// omit what the snapshot cannot prove instead of inventing values. All V2
+// sections are optional on the artifact so schemaVersion "2" payloads keep
+// parsing; consumers feature-detect the richer sections.
+
+/** Typography facts for one element, exactly as evidenced. */
+export const specTypographySchema = z
+  .object({
+    family: z.string().min(1).optional(),
+    weight: z.string().min(1).optional(),
+    size: z.string().min(1).optional(),
+    lineHeight: z.string().min(1).optional(),
+    letterSpacing: z.string().min(1).optional(),
+    color: z.string().min(1).optional(),
+    align: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type SpecTypography = z.infer<typeof specTypographySchema>;
+
+/** Auto-layout / positioning facts for one element. */
+export const specLayoutSchema = z
+  .object({
+    direction: z.enum(["horizontal", "vertical", "none"]).optional(),
+    gap: z.string().min(1).optional(),
+    padding: z.string().min(1).optional(),
+    align: z.string().min(1).optional(),
+    justify: z.string().min(1).optional(),
+    sizing: z.string().min(1).optional(),
+    position: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type SpecLayout = z.infer<typeof specLayoutSchema>;
+
+export interface SpecElement {
+  readonly nodeId?: string | undefined;
+  readonly name: string;
+  readonly role?: string | undefined;
+  readonly text?: string | undefined;
+  readonly width?: string | undefined;
+  readonly height?: string | undefined;
+  readonly layout?: SpecLayout | undefined;
+  readonly background?: string | undefined;
+  readonly border?: string | undefined;
+  readonly radius?: string | undefined;
+  readonly opacity?: number | undefined;
+  readonly typography?: SpecTypography | undefined;
+  readonly effects: readonly string[];
+  readonly asset?: string | undefined;
+  readonly componentName?: string | undefined;
+  readonly visible?: boolean | undefined;
+  readonly states: readonly string[];
+  readonly notes: readonly string[];
+  readonly children: readonly SpecElement[];
+}
+
+/**
+ * One implementation-relevant element in visual/hierarchical order.
+ * Children nest, so a region carries its own contents rather than only
+ * contributing names to one flat list.
+ */
+export const specElementSchema: z.ZodType<SpecElement> = z.lazy(() =>
+  z
+    .object({
+      nodeId: z.string().min(1).optional(),
+      name: z.string().min(1),
+      role: z.string().min(1).optional(),
+      text: z.string().min(1).optional(),
+      width: z.string().min(1).optional(),
+      height: z.string().min(1).optional(),
+      layout: specLayoutSchema.optional(),
+      background: z.string().min(1).optional(),
+      border: z.string().min(1).optional(),
+      radius: z.string().min(1).optional(),
+      opacity: z.number().min(0).max(1).optional(),
+      typography: specTypographySchema.optional(),
+      effects: z.array(z.string().min(1)).default([]),
+      asset: z.string().min(1).optional(),
+      componentName: z.string().min(1).optional(),
+      visible: z.boolean().optional(),
+      states: z.array(z.string().min(1)).default([]),
+      notes: z.array(z.string().min(1)).default([]),
+      children: z.array(specElementSchema).default([]),
+    })
+    .strict(),
+) as z.ZodType<SpecElement>;
+
+/** One ordered top-level region of the screen (header, tabs, form, …). */
+export const specRegionSchema = z
+  .object({
+    nodeId: z.string().min(1).optional(),
+    name: z.string().min(1),
+    role: z.string().min(1).optional(),
+    elements: z.array(specElementSchema).default([]),
+  })
+  .strict();
+
+export type SpecRegion = z.infer<typeof specRegionSchema>;
+
+/** Whether a fact was seen in the selection or declared by Figma component metadata. */
+export const specEvidenceSourceSchema = z.enum([
+  "observedInSelection",
+  "declaredByFigmaComponentMetadata",
+]);
+
+export const specComponentPropertySchema = z
+  .object({
+    name: z.string().min(1),
+    values: z.array(z.string().min(1)).default([]),
+    source: specEvidenceSourceSchema,
+  })
+  .strict();
+
+export const specComponentVariantSchema = z
+  .object({
+    name: z.string().min(1),
+    source: specEvidenceSourceSchema,
+  })
+  .strict();
+
+export const specComponentInstanceSchema = z
+  .object({
+    nodeId: z.string().min(1).optional(),
+    label: z.string().min(1),
+    propertyValues: z.record(z.string()).optional(),
+    /** How this instance differs from the shared base (e.g. "trailing chevron"). */
+    differences: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+/**
+ * A design-component contract: identity, anatomy, shared visual base,
+ * evidenced properties/variants/states, and the concrete instances observed
+ * in the selection. Never a repository-reuse decision — that belongs to
+ * Project Analysis.
+ */
+export const specComponentContractSchema = z
+  .object({
+    name: z.string().min(1),
+    componentKey: z.string().min(1).optional(),
+    componentSetName: z.string().min(1).optional(),
+    sourceNodeIds: z.array(z.string().min(1)).default([]),
+    anatomy: z.array(z.string().min(1)).default([]),
+    baseStyles: z.array(z.string().min(1)).default([]),
+    componentProperties: z.array(specComponentPropertySchema).default([]),
+    variants: z.array(specComponentVariantSchema).default([]),
+    states: z.array(z.string().min(1)).default([]),
+    instances: z.array(specComponentInstanceSchema).default([]),
+    /** Region/element names in this specification that use the component. */
+    usedBy: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type SpecComponentContract = z.infer<typeof specComponentContractSchema>;
+
+/** One foundation value: a named Figma variable or an observed repeated raw value. */
+export const specFoundationValueSchema = z
+  .object({
+    value: z.string().min(1),
+    name: z.string().min(1).optional(),
+    source: z.enum(["figma-variable", "observed-value"]),
+    usage: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const specFoundationsSchema = z
+  .object({
+    colors: z.array(specFoundationValueSchema).default([]),
+    typography: z.array(specFoundationValueSchema).default([]),
+    spacing: z.array(specFoundationValueSchema).default([]),
+    radii: z.array(specFoundationValueSchema).default([]),
+    borders: z.array(specFoundationValueSchema).default([]),
+    shadows: z.array(specFoundationValueSchema).default([]),
+    iconSizing: z.array(specFoundationValueSchema).default([]),
+  })
+  .strict();
+
+export type SpecFoundations = z.infer<typeof specFoundationsSchema>;
+
+export const specScreenSchema = z
+  .object({
+    name: z.string().min(1),
+    width: z.string().min(1).optional(),
+    height: z.string().min(1).optional(),
+    layoutModel: z.string().min(1).optional(),
+    background: z.string().min(1).optional(),
+    scrollBehavior: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type SpecScreen = z.infer<typeof specScreenSchema>;
+
+export const specAssetDetailSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    type: z.string().min(1),
+    reference: z.string().min(1).optional(),
+    width: z.string().min(1).optional(),
+    height: z.string().min(1).optional(),
+    purpose: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type SpecAssetDetail = z.infer<typeof specAssetDetailSchema>;
+
 /** The Figma Specification Agent's output. */
 export const designSpecificationSchema = z
   .object({
@@ -401,6 +616,24 @@ export const designSpecificationSchema = z
     ambiguities: z.array(designSpecificationAmbiguitySchema),
     /** The Figma Specification Agent's own manifest version, at time of production. */
     agentVersion: z.string().min(1),
+
+    // ── Specification V2 (schemaVersion "3") — all optional/additive ──
+    /** The selected screen's identity and top-level visual facts. */
+    screen: specScreenSchema.optional(),
+    /** Ordered page anatomy: each region carries its own nested elements. */
+    anatomy: z.array(specRegionSchema).default([]),
+    /** Design-component contracts (identity, anatomy, base, instances). */
+    componentContracts: z.array(specComponentContractSchema).default([]),
+    /** Structured foundations, distinguishing named variables from observed values. */
+    foundations: specFoundationsSchema.optional(),
+    /** Richer asset records than the legacy id/name pairs. */
+    assetDetails: z.array(specAssetDetailSchema).default([]),
+    /** Visual states directly evidenced by the selection (active tab, selected item…). */
+    observedStates: z.array(z.string().min(1)).default([]),
+    /** Behavior suggested by affordances but NOT confirmed by evidence. */
+    inferredBehavior: z.array(z.string().min(1)).default([]),
+    /** Explicit responsive/constraint evidence; states when only one fixed frame exists. */
+    responsiveEvidence: z.array(z.string().min(1)).default([]),
   })
   .strict();
 

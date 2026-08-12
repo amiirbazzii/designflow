@@ -8,6 +8,7 @@ import {
   projectImplementationContextV1Schema,
   proposedFileChangesSchema,
   visualValidationReportV1Schema,
+  type SpecElement,
 } from "@designflow/sdk";
 import type { OutputView, OutputViewerType } from "./model";
 
@@ -94,41 +95,137 @@ function renderByType(type: OutputViewerType, payload: unknown): readonly Artifa
   }
 }
 
+function elementSummary(element: SpecElement): string {
+  const facts = [
+    element.text !== undefined ? `“${element.text}”` : undefined,
+    element.width !== undefined || element.height !== undefined
+      ? `${element.width ?? "?"} × ${element.height ?? "?"}`
+      : undefined,
+    element.background !== undefined ? `bg ${element.background}` : undefined,
+    element.border !== undefined ? `border ${element.border}` : undefined,
+    element.radius !== undefined ? `radius ${element.radius}` : undefined,
+    element.layout?.direction !== undefined ? element.layout.direction : undefined,
+    element.layout?.gap !== undefined ? `gap ${element.layout.gap}` : undefined,
+    element.layout?.padding !== undefined ? `padding ${element.layout.padding}` : undefined,
+    element.typography?.family !== undefined
+      ? `${element.typography.family}${element.typography.size !== undefined ? ` ${element.typography.size}` : ""}${element.typography.weight !== undefined ? ` ${element.typography.weight}` : ""}`
+      : undefined,
+    element.componentName !== undefined ? `⟨${element.componentName}⟩` : undefined,
+    element.asset !== undefined ? `asset ${element.asset}` : undefined,
+  ].filter((fact): fact is string => fact !== undefined);
+  return `${element.name}${facts.length > 0 ? ` — ${facts.join(", ")}` : ""}`;
+}
+
+function pushElement(lines: ArtifactViewerLine[], element: SpecElement, depth: number): void {
+  if (depth > 4) return;
+  lines.push({ text: `${"  ".repeat(depth + 1)}${depth === 0 ? "•" : "·"} ${elementSummary(element)}`, tone: "primary" });
+  for (const state of element.states) lines.push({ text: `${"  ".repeat(depth + 2)}state: ${state}`, tone: "muted" });
+  for (const child of element.children) pushElement(lines, child, depth + 1);
+}
+
+function foundationLines(label: string, values: readonly { value: string; name?: string | undefined; source: string; usage?: string | undefined }[]): string[] {
+  return values.map((item) =>
+    `${label}: ${item.name !== undefined ? `${item.name} = ` : ""}${item.value}` +
+    `${item.source === "figma-variable" ? " (Figma variable)" : ""}${item.usage !== undefined ? ` — ${item.usage}` : ""}`);
+}
+
 function renderSpecification(payload: unknown): readonly ArtifactViewerLine[] {
   const parsed = designSpecificationSchema.safeParse(payload);
   if (!parsed.success) return summaryLines(payload, ["fileKey", "documentVersion", "resolvedFrameCount", "componentCount", "ambiguityCount", "screenshotCount"]);
   const value = parsed.data;
   const lines: ArtifactViewerLine[] = [];
+
   section(lines, "Source");
   key(lines, "Design file", value.sourceIdentity.designFile);
   optionalKey(lines, "File key", value.sourceIdentity.fileKey);
   optionalKey(lines, "Document version", value.sourceIdentity.documentVersion);
-  section(lines, "Frames");
-  list(lines, value.frames);
-  section(lines, "Structure");
-  list(lines, value.hierarchy.map((node) => node.name));
+
+  if (value.screen !== undefined) {
+    section(lines, "Screen");
+    key(lines, "Name", value.screen.name);
+    optionalKey(lines, "Size", value.screen.width !== undefined || value.screen.height !== undefined
+      ? `${value.screen.width ?? "?"} × ${value.screen.height ?? "?"}`
+      : undefined);
+    optionalKey(lines, "Layout", value.screen.layoutModel);
+    optionalKey(lines, "Background", value.screen.background);
+    optionalKey(lines, "Scroll", value.screen.scrollBehavior);
+  }
+
+  if (value.anatomy.length > 0) {
+    section(lines, "Page anatomy");
+    value.anatomy.forEach((region, index) => {
+      lines.push({ text: `${index + 1}. ${region.name}${region.role !== undefined ? ` — ${region.role}` : ""}`, tone: "primary" });
+      for (const element of region.elements) pushElement(lines, element, 0);
+    });
+  } else {
+    section(lines, "Structure");
+    list(lines, value.hierarchy.map((node) => node.name));
+  }
+
   section(lines, "Components");
-  list(lines, value.components.map((component) => `${component.name}${component.role === undefined ? "" : ` — ${component.role}`}${component.reusableAssessment === undefined ? "" : ` (${component.reusableAssessment})`}`));
-  section(lines, "Design details");
+  if (value.componentContracts.length > 0) {
+    for (const contract of value.componentContracts) {
+      lines.push({ text: `${contract.name}${contract.componentSetName !== undefined ? ` (${contract.componentSetName})` : ""}`, tone: "primary" });
+      for (const item of contract.anatomy) lines.push({ text: `  anatomy: ${item}`, tone: "muted" });
+      for (const item of contract.baseStyles) lines.push({ text: `  base: ${item}`, tone: "muted" });
+      for (const property of contract.componentProperties) {
+        lines.push({ text: `  property ${property.name}${property.values.length > 0 ? `: ${property.values.join(" | ")}` : ""} [${property.source}]`, tone: "muted" });
+      }
+      for (const variant of contract.variants) lines.push({ text: `  variant: ${variant.name} [${variant.source}]`, tone: "muted" });
+      for (const state of contract.states) lines.push({ text: `  state: ${state}`, tone: "muted" });
+      for (const instance of contract.instances) {
+        lines.push({ text: `  instance: ${instance.label}${instance.differences.length > 0 ? ` — ${instance.differences.join(", ")}` : ""}`, tone: "muted" });
+      }
+    }
+  } else {
+    list(lines, value.components.map((component) => `${component.name}${component.role === undefined ? "" : ` — ${component.role}`}${component.reusableAssessment === undefined ? "" : ` (${component.reusableAssessment})`}`));
+  }
+
+  section(lines, "Design foundations");
+  if (value.foundations !== undefined) {
+    list(lines, [
+      ...foundationLines("Color", value.foundations.colors),
+      ...foundationLines("Typography", value.foundations.typography),
+      ...foundationLines("Spacing", value.foundations.spacing),
+      ...foundationLines("Radius", value.foundations.radii),
+      ...foundationLines("Border", value.foundations.borders),
+      ...foundationLines("Shadow", value.foundations.shadows),
+      ...foundationLines("Icon size", value.foundations.iconSizing),
+    ]);
+  } else {
+    list(lines, [
+      ...value.designTokens.colors.map((item) => `Color: ${item}`),
+      ...value.designTokens.spacing.map((item) => `Spacing: ${item}`),
+      ...value.designTokens.typography.map((item) => `Typography: ${item}`),
+      ...value.designTokens.radii.map((item) => `Radius: ${item}`),
+      ...value.designTokens.borders.map((item) => `Border: ${item}`),
+      ...value.designTokens.shadows.map((item) => `Shadow: ${item}`),
+    ]);
+  }
+
+  section(lines, "Content");
+  list(lines, value.content);
+
+  section(lines, "Interactions & states");
   list(lines, [
-    ...value.layoutBehavior,
-    ...value.responsiveAssumptions,
+    ...value.observedStates.map((item) => `Observed: ${item}`),
+    ...value.inferredBehavior.map((item) => `Inferred (unconfirmed): ${item}`),
     ...value.interactions,
     ...value.states,
   ]);
-  section(lines, "Design tokens");
-  list(lines, [
-    ...value.designTokens.colors.map((item) => `Color: ${item}`),
-    ...value.designTokens.spacing.map((item) => `Spacing: ${item}`),
-    ...value.designTokens.typography.map((item) => `Typography: ${item}`),
-    ...value.designTokens.radii.map((item) => `Radius: ${item}`),
-    ...value.designTokens.borders.map((item) => `Border: ${item}`),
-    ...value.designTokens.shadows.map((item) => `Shadow: ${item}`),
-  ]);
-  section(lines, "Content");
-  list(lines, value.content);
+
+  if (value.assetDetails.length > 0) {
+    section(lines, "Assets");
+    list(lines, value.assetDetails.map((asset) =>
+      `${asset.name} (${asset.type})${asset.purpose !== undefined ? ` — ${asset.purpose}` : ""}${asset.width !== undefined ? ` ${asset.width} × ${asset.height ?? "?"}` : ""}`));
+  }
+
+  section(lines, "Responsive");
+  list(lines, [...value.responsiveEvidence, ...value.layoutBehavior, ...value.responsiveAssumptions]);
+
   section(lines, "Accessibility");
   list(lines, value.accessibilityNotes);
+
   section(lines, "Open questions");
   list(lines, value.ambiguities.map((item) => item.description));
   return lines;
