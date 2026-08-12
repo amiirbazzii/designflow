@@ -33,6 +33,7 @@ import type { Config } from "./config";
  */
 
 export interface RawModelProfileOverride {
+  readonly fallbackModels?: readonly string[];
   readonly providerId?: string;
   readonly model?: string;
   readonly temperature?: number;
@@ -84,8 +85,13 @@ function readOverride(value: unknown): RawModelProfileOverride | undefined {
   const maxOutputTokens = readNumber(value, "maxOutputTokens");
   const timeoutMs = readNumber(value, "timeoutMs");
   const providerRouting = readProviderRouting(value["providerRouting"]);
+  const rawFallbacks = value["fallbackModels"];
+  const fallbackModels = Array.isArray(rawFallbacks)
+    ? rawFallbacks.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 8)
+    : undefined;
 
   const override: RawModelProfileOverride = {
+    ...(fallbackModels !== undefined ? { fallbackModels } : {}),
     ...(providerId !== undefined ? { providerId } : {}),
     ...(model !== undefined ? { model } : {}),
     ...(temperature !== undefined ? { temperature } : {}),

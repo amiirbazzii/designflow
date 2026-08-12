@@ -151,8 +151,7 @@ describe("Specification V2 — deterministic preservation", () => {
   });
 });
 
-describe("Specification V2 — model output contract", () => {
-  const richModelOutput = {
+const RICH_MODEL_OUTPUT = {
     schemaVersion: "3",
     sourceIdentity: { designFile: "https://www.figma.com/design/E958/Spendly?node-id=1026-6098" },
     screenshotArtifactIds: [],
@@ -195,10 +194,19 @@ describe("Specification V2 — model output contract", () => {
     observedStates: ["Expense tab selected, Income tab inactive"],
     inferredBehavior: ["Card selector likely opens a picker (affordance only; not confirmed)"],
     responsiveEvidence: ["Only one fixed 440px frame is available."],
-  };
+};
 
+const SHALLOW_BASE = {
+  ...RICH_MODEL_OUTPUT,
+  anatomy: [], componentContracts: [], foundations: null, screen: null,
+  hierarchy: [], components: [], content: [],
+  designTokens: { colors: [], spacing: [], typography: [], radii: [], borders: [], shadows: [], referencedVariableNames: [] },
+  assetDetails: [], observedStates: [], inferredBehavior: [], responsiveEvidence: [],
+};
+
+describe("Specification V2 — model output contract", () => {
   test("a rich V2 model response validates: nulls stripped, evidence sources kept, instances preserved", async () => {
-    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(richModelOutput), figmaSpecificationAgentManifest);
+    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(RICH_MODEL_OUTPUT), figmaSpecificationAgentManifest);
     expect(spec.componentContracts).toHaveLength(1);
     expect(spec.componentContracts[0]?.instances).toHaveLength(6);
     expect(spec.componentContracts[0]?.componentProperties[0]?.source).toBe("declaredByFigmaComponentMetadata");
@@ -211,13 +219,7 @@ describe("Specification V2 — model output contract", () => {
   });
 
   test("a shallow 'Button, Text field, Poppins' response is rejected for rich evidence", async () => {
-    const shallow = {
-      ...richModelOutput,
-      anatomy: [], componentContracts: [], foundations: null, screen: null,
-      hierarchy: [], components: [], content: [],
-      designTokens: { colors: [], spacing: [], typography: [], radii: [], borders: [], shadows: [], referencedVariableNames: [] },
-      assetDetails: [], observedStates: [], inferredBehavior: [], responsiveEvidence: [],
-    };
+    const shallow = { ...SHALLOW_BASE };
     await expect(
       modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(shallow), figmaSpecificationAgentManifest),
     ).rejects.toThrow(/completeness/);
@@ -225,7 +227,7 @@ describe("Specification V2 — model output contract", () => {
 
   test("a fabricated anatomy node id is rejected", async () => {
     const fabricated = {
-      ...richModelOutput,
+      ...RICH_MODEL_OUTPUT,
       anatomy: [{ nodeId: "9:999", name: "Ghost region", role: null, elements: [] }],
     };
     await expect(
@@ -235,10 +237,25 @@ describe("Specification V2 — model output contract", () => {
 });
 
 describe("Specification V2 — model profile", () => {
-  test("the Specification AI profile is exactly deepseek/deepseek-v4-flash-0731", () => {
+  test("the Specification AI ordered model policy is pinned exactly", () => {
     expect(figmaSpecificationDefaultModelProfile.id).toBe("figma-specification-default");
-    expect(figmaSpecificationDefaultModelProfile.model).toBe("deepseek/deepseek-v4-flash-0731");
+    expect(figmaSpecificationDefaultModelProfile.model).toBe("openai/gpt-5.6-luna");
+    expect(figmaSpecificationDefaultModelProfile.fallbackModels).toEqual([
+      "deepseek/deepseek-v4-pro",
+      "openai/gpt-4o-mini",
+    ]);
     expect(figmaSpecificationAgentManifest.modelProfileId).toBe("figma-specification-default");
+  });
+
+  test("no other agent's profile declares fallbacks in this task", () => {
+    for (const profile of [
+      designEngineerCoordinatorDefaultModelProfile,
+      implementationDefaultModelProfile,
+      visualValidationDefaultModelProfile,
+      visualCorrectionDefaultModelProfile,
+    ]) {
+      expect(profile.fallbackModels).toEqual([]);
+    }
   });
 
   test("no other agent's default model changed", () => {
@@ -250,5 +267,38 @@ describe("Specification V2 — model profile", () => {
     ]) {
       expect(profile.model).toBe("openai/gpt-4o-mini");
     }
+  });
+});
+
+describe("Specification V2 — quality repair stays on the same model port (no fallback for poor output)", () => {
+  test("a schema-valid but evidence-incomplete response triggers bounded repair, then succeeds", async () => {
+    let generateCalls = 0;
+    const shallowThenRich: SpecializedAgentContext = {
+      ...EMPTY_CONTEXT,
+      model: {
+        generate: async () => {
+          generateCalls += 1;
+          if (generateCalls === 1) {
+            // schema-valid, but materially emptier than the evidence
+            return { type: "success", output: { ...SHALLOW_BASE } } as never;
+          }
+          return { type: "success", output: RICH_MODEL_OUTPUT } as never;
+        },
+      },
+    };
+
+    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), shallowThenRich, figmaSpecificationAgentManifest);
+    expect(generateCalls).toBe(2);
+    expect(spec.componentContracts).toHaveLength(1);
+  });
+
+  test("if repair also produces semantically invalid output, the failure is a validation failure — not a model switch", async () => {
+    const alwaysShallow: SpecializedAgentContext = {
+      ...EMPTY_CONTEXT,
+      model: { generate: async () => ({ type: "success", output: { ...SHALLOW_BASE } }) as never },
+    };
+    await expect(
+      modelFigmaSpecificationStrategy(request(SPENDLY), alwaysShallow, figmaSpecificationAgentManifest),
+    ).rejects.toThrow(/completeness/);
   });
 });

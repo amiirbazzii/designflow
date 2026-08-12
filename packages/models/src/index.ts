@@ -17,5 +17,7 @@ export {
   ModelConfigurationInvalidError,
   ModelApiKeyMissingError,
   ModelResultInvalidError,
+  FALLBACK_ELIGIBLE_MODEL_ERROR_CODES,
+  isFallbackEligibleModelError,
 } from "./errors";
 export type { ModelErrorCode } from "./errors";

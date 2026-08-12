@@ -118,6 +118,8 @@ export {
   modelRequestSchema,
   modelResponseSchema,
   modelResultSchema,
+  modelCandidateAttemptSchema,
+  modelCandidateSelectionSchema,
 } from "./model";
 
 export type {
@@ -130,6 +132,8 @@ export type {
   ModelRequest,
   ModelResponse,
   ModelResult,
+  ModelCandidateAttempt,
+  ModelCandidateSelection,
   ModelProviderContext,
   ModelProviderCapabilities,
   ModelProvider,

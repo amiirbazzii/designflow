@@ -16,6 +16,7 @@ import type { InMemoryModelProviderRegistry } from "./provider-registry";
 import {
   ModelRequestInvalidError,
   PROVIDER_THROWABLE_CODES,
+  isFallbackEligibleModelError,
   type ModelErrorCode,
 } from "./errors";
 
@@ -117,51 +118,100 @@ export class ModelRuntime implements ModelInvoker {
       );
     }
 
-    // Built from the profile — never from the caller. `providerId`, `model`,
-    // `timeoutMs`, `fallbackModels` and `providerRouting` are all
-    // security-relevant policy, and the agent-facing request has no field for
-    // any of them; this is the one place they are read, and they are read
-    // from the profile the registry resolved, not from anything the caller
-    // supplied alongside `profileId`.
-    const wireRequest: ModelRequest = {
-      requestId: validated.requestId,
-      profileId: profile.id,
-      model: profile.model,
-      messages: [...validated.messages],
-      responseSchema: validated.responseSchema,
-      temperature: validated.temperature ?? profile.temperature,
-      // Output budget is model policy, so an explicitly configured profile
-      // limit outranks the caller's built-in default — otherwise the
-      // documented per-profile `maxOutputTokens` override could never take
-      // effect for a strategy that supplies its own value, and a stronger
-      // configured model would be truncated to a weaker model's budget.
-      maxOutputTokens: profile.maxOutputTokens ?? validated.maxOutputTokens,
-      fallbackModels: profile.fallbackModels,
-      ...(profile.providerRouting !== undefined
-        ? { providerRouting: profile.providerRouting }
-        : {}),
-    };
+    // Deterministic ordered model policy: the primary model followed by the
+    // profile's explicit fallbacks, attempted in exactly that order. Only
+    // capability/availability failures advance to the next candidate;
+    // authentication, configuration, quota, abort and output-quality
+    // failures stop truthfully. A single-model profile takes exactly the
+    // pre-policy path and returns byte-identical results.
+    const candidates = [profile.model, ...profile.fallbackModels];
+    const attempts: { model: string; code: string }[] = [];
 
-    const capabilities = provider.capabilities?.(profile.model);
-    if (capabilities !== undefined) {
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidateModel = candidates[index]!;
+
+      // Built from the profile — never from the caller. `providerId`,
+      // `model`, `timeoutMs` and `providerRouting` are all security-relevant
+      // policy, and the agent-facing request has no field for any of them.
+      // `fallbackModels` stays empty on the wire: this loop is the single
+      // owner of candidate order, and a provider-side `models` list would be
+      // a second, hidden fallback layer outside the configured policy.
+      const wireRequest: ModelRequest = {
+        requestId: validated.requestId,
+        profileId: profile.id,
+        model: candidateModel,
+        messages: [...validated.messages],
+        responseSchema: validated.responseSchema,
+        temperature: validated.temperature ?? profile.temperature,
+        // Output budget is model policy, so an explicitly configured profile
+        // limit outranks the caller's built-in default — otherwise the
+        // documented per-profile `maxOutputTokens` override could never take
+        // effect for a strategy that supplies its own value, and a stronger
+        // configured model would be truncated to a weaker model's budget.
+        maxOutputTokens: profile.maxOutputTokens ?? validated.maxOutputTokens,
+        fallbackModels: [],
+        ...(profile.providerRouting !== undefined
+          ? { providerRouting: profile.providerRouting }
+          : {}),
+      };
+
+      const capabilities = provider.capabilities?.(candidateModel);
+      let result: ModelResult;
       const requestedTokens = wireRequest.maxOutputTokens ?? 0;
-      if (!capabilities.jsonMode || !capabilities.strictJsonSchema || capabilities.maxOutputTokens < requestedTokens) {
-        return fail(
+      if (
+        capabilities !== undefined &&
+        (!capabilities.jsonMode || !capabilities.strictJsonSchema || capabilities.maxOutputTokens < requestedTokens)
+      ) {
+        result = fail(
           "ERR_MODEL_OUTPUT_UNSUPPORTED",
           "The configured model cannot satisfy DesignFlow's required strict structured output contract.",
         );
+      } else if ((capabilities?.responseSchemaIssues?.(wireRequest.responseSchema) ?? []).length > 0) {
+        result = fail(
+          "ERR_MODEL_SCHEMA_UNSUPPORTED",
+          "The configured model cannot accept the structured-output schema required by this workflow.",
+        );
+      } else {
+        result = await this.execute(provider, wireRequest, validated, profile.timeoutMs, startedAt, fail);
+      }
+
+      if (result.type === "success") {
+        if (candidates.length === 1) return result;
+        return this.validateResult({
+          ...result,
+          selection: {
+            model: candidateModel,
+            candidateIndex: index,
+            candidateCount: candidates.length,
+            previousFailures: attempts.slice(0, 8),
+          },
+        });
+      }
+
+      // Single-model profiles keep the exact pre-policy failure shape.
+      if (candidates.length === 1) return result;
+
+      attempts.push({ model: candidateModel, code: result.code });
+
+      if (!isFallbackEligibleModelError(result.code)) {
+        return this.validateResult({ ...result, attempts: attempts.slice(0, 8) });
+      }
+
+      if (index === candidates.length - 1) {
+        return this.validateResult({
+          type: "failure",
+          requestId: validated.requestId,
+          code: "ERR_MODEL_CANDIDATES_EXHAUSTED",
+          message: "Every configured model candidate failed with a capability or availability error.",
+          retryable: false,
+          durationMs: elapsed(startedAt),
+          attempts: attempts.slice(0, 8),
+        });
       }
     }
 
-    const schemaIssues = capabilities?.responseSchemaIssues?.(wireRequest.responseSchema) ?? [];
-    if (schemaIssues.length > 0) {
-      return fail(
-        "ERR_MODEL_SCHEMA_UNSUPPORTED",
-        "The configured model cannot accept the structured-output schema required by this workflow.",
-      );
-    }
-
-    return this.execute(provider, wireRequest, validated, profile.timeoutMs, startedAt, fail);
+    // Unreachable: the loop always returns. Kept for exhaustiveness.
+    return fail("ERR_MODEL_PROVIDER_FAILED", "No model candidate produced a result.");
   }
 
   /**

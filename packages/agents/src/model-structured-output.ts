@@ -33,9 +33,13 @@ export async function generateValidatedModelOutput<T>(options: {
       // The model call reached the provider boundary but failed there. Keep
       // that stable code distinct from a response that was returned and then
       // failed the specialized agent's own output schema.
+      const attemptSummary =
+        result.attempts !== undefined && result.attempts.length > 0
+          ? ` Candidates tried: ${result.attempts.map((attempt) => `${attempt.model} (${attempt.code})`).join(" → ")}.`
+          : "";
       throw new DesignFlowError(
         result.code,
-        `Model request failed for ${options.agentId}: ${result.code}`,
+        `Model request failed for ${options.agentId}: ${result.code}.${attemptSummary}`,
       );
     }
 

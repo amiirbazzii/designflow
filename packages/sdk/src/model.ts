@@ -250,6 +250,29 @@ export type ModelResponse = z.infer<typeof modelResponseSchema>;
  * likely place for a request id, an internal hostname or a fragment of the
  * prompt to leak, so the runtime sanitises before constructing one of these.
  */
+/** One candidate's sanitized outcome inside an ordered model policy. */
+export const modelCandidateAttemptSchema = z
+  .object({
+    model: z.string().min(1),
+    code: z.string().min(1),
+  })
+  .strict();
+
+export type ModelCandidateAttempt = z.infer<typeof modelCandidateAttemptSchema>;
+
+/** Which candidate of an ordered model policy produced a successful result. */
+export const modelCandidateSelectionSchema = z
+  .object({
+    model: z.string().min(1),
+    /** 0 = primary; >0 = fallback position in the configured list. */
+    candidateIndex: z.number().int().nonnegative(),
+    candidateCount: z.number().int().positive(),
+    previousFailures: z.array(modelCandidateAttemptSchema).max(8).default([]),
+  })
+  .strict();
+
+export type ModelCandidateSelection = z.infer<typeof modelCandidateSelectionSchema>;
+
 export const modelResultSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -260,6 +283,12 @@ export const modelResultSchema = z.discriminatedUnion("type", [
       output: z.unknown(),
       usage: modelUsageSchema.optional(),
       durationMs: z.number().nonnegative(),
+      /**
+       * Which configured candidate actually produced this result, when the
+       * profile declares an ordered model policy. Absent for single-model
+       * profiles, whose results are byte-identical to the pre-policy shape.
+       */
+      selection: modelCandidateSelectionSchema.optional(),
     })
     .strict(),
   z
@@ -271,6 +300,11 @@ export const modelResultSchema = z.discriminatedUnion("type", [
       message: z.string().min(1),
       retryable: z.boolean(),
       durationMs: z.number().nonnegative(),
+      /**
+       * Bounded, sanitized per-candidate outcomes when an ordered model
+       * policy was exhausted. Absent for single-model profiles.
+       */
+      attempts: z.array(modelCandidateAttemptSchema).max(8).optional(),
     })
     .strict(),
 ]);

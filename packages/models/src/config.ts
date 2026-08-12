@@ -45,6 +45,12 @@ export interface ModelProfileOverride {
     readonly allowFallbacks?: boolean;
     readonly dataCollection?: "allow" | "deny";
   };
+  /**
+   * Ordered fallback candidates. Optional: a config that names only `model`
+   * keeps working and — deliberately — clears any built-in fallbacks, so a
+   * user who pinned one model gets exactly that one model.
+   */
+  readonly fallbackModels?: readonly string[];
 }
 
 /**
@@ -69,7 +75,14 @@ export function mergeModelProfileOverrides(
     const override = overrides[profile.id];
     if (override === undefined) return profile;
 
-    const merged = modelProfileSchema.safeParse({ ...profile, ...override });
+    // A user override that pins `model` without declaring `fallbackModels`
+    // means "use exactly this model": built-in fallbacks are cleared rather
+    // than silently calling models the user never chose.
+    const fallbackReset =
+      override.model !== undefined && override.fallbackModels === undefined
+        ? { fallbackModels: [] }
+        : {};
+    const merged = modelProfileSchema.safeParse({ ...profile, ...override, ...fallbackReset });
 
     if (!merged.success) {
       throw new ModelConfigurationInvalidError(

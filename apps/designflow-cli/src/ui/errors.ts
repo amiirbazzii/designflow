@@ -214,6 +214,22 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "The configured model rejected the required structured-output schema.",
     suggestion: "Nothing was started. Check model compatibility and try again.",
   },
+  ERR_MODEL_CANDIDATES_EXHAUSTED: {
+    problem: "Every configured AI model for this step was unavailable or incompatible.",
+    suggestion: "Nothing was started. Check the configured model list and try again.",
+  },
+  ERR_MODEL_ROUTE_NOT_FOUND: {
+    problem: "The DesignFlow AI service has no route for this worker's model.",
+    suggestion: "Nothing was started. Update DesignFlow, or try again later.",
+  },
+  ERR_MODEL_SERVICE_UNAVAILABLE: {
+    problem: "The DesignFlow AI service is temporarily unavailable.",
+    suggestion: "Nothing was started. Try again in a few minutes.",
+  },
+  ERR_MODEL_QUOTA_EXCEEDED: {
+    problem: "The DesignFlow AI usage limit was reached.",
+    suggestion: "Nothing was started. Try again after the usage limit resets.",
+  },
   ERR_MODEL_RESPONSE_INVALID: {
     problem: "That worker's AI sent back something unusable.",
     suggestion: TRY_AGAIN,

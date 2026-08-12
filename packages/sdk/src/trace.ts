@@ -90,6 +90,14 @@ export const traceModelCallSchema = z
     status: z.enum(["success", "failure"]),
     errorCode: z.string().min(1).optional(),
     usage: modelUsageSchema.optional(),
+    /** Ordered-model-policy provenance: 0 = primary, >0 = fallback position. */
+    fallbackIndex: z.number().int().nonnegative().optional(),
+    candidateCount: z.number().int().positive().optional(),
+    /** Bounded sanitized earlier candidate failures (policy provenance). */
+    previousFailures: z
+      .array(z.object({ model: z.string().min(1), code: z.string().min(1) }).strict())
+      .max(8)
+      .optional(),
   })
   .strict();
 

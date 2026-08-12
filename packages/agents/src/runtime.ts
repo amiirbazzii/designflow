@@ -281,10 +281,24 @@ export class AgentRuntime implements AgentDecisionService {
         ...(observed.type === "success"
           ? {
               providerId: observed.providerId,
-              model: observed.model,
+              model: observed.selection?.model ?? observed.model,
               ...(observed.usage !== undefined ? { usage: observed.usage } : {}),
+              ...(observed.selection !== undefined
+                ? {
+                    fallbackIndex: observed.selection.candidateIndex,
+                    candidateCount: observed.selection.candidateCount,
+                    ...(observed.selection.previousFailures.length > 0
+                      ? { previousFailures: observed.selection.previousFailures.slice(0, 8) }
+                      : {}),
+                  }
+                : {}),
             }
-          : { errorCode: observed.code }),
+          : {
+              errorCode: observed.code,
+              ...(observed.attempts !== undefined && observed.attempts.length > 0
+                ? { previousFailures: observed.attempts.slice(0, 8) }
+                : {}),
+            }),
       });
 
       void this.trace(

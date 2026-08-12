@@ -45,6 +45,10 @@ export const MODEL_ERROR_CODES = [
   "ERR_MODEL_API_KEY_MISSING",
   "ERR_MODEL_OUTPUT_UNSUPPORTED",
   "ERR_MODEL_SCHEMA_UNSUPPORTED",
+  "ERR_MODEL_CANDIDATES_EXHAUSTED",
+  "ERR_MODEL_ROUTE_NOT_FOUND",
+  "ERR_MODEL_SERVICE_UNAVAILABLE",
+  "ERR_MODEL_QUOTA_EXCEEDED",
 ] as const;
 
 export type ModelErrorCode = (typeof MODEL_ERROR_CODES)[number];
@@ -177,4 +181,33 @@ export const PROVIDER_THROWABLE_CODES = [
   "ERR_MODEL_UNAVAILABLE",
   "ERR_MODEL_API_KEY_MISSING",
   "ERR_MODEL_SCHEMA_UNSUPPORTED",
+  // Minted by the managed gateway provider; passed through so callers see
+  // the gateway's own classification instead of a generic provider failure.
+  "ERR_MODEL_ROUTE_NOT_FOUND",
+  "ERR_MODEL_SERVICE_UNAVAILABLE",
+  "ERR_MODEL_QUOTA_EXCEEDED",
 ] as const satisfies readonly ModelErrorCode[];
+
+/**
+ * The one centralized fallback-eligibility classification for ordered model
+ * policies (per-agent candidate lists).
+ *
+ * Eligible codes mean "THIS model/provider route cannot execute the
+ * contract" — capability or availability failures where the next configured
+ * candidate could plausibly succeed. Everything else is ineligible:
+ * authentication/configuration/quota failures apply to every candidate
+ * equally, aborts and timeouts reflect the caller's environment, and
+ * output-quality failures belong to the bounded same-model repair path,
+ * never to model switching.
+ */
+export const FALLBACK_ELIGIBLE_MODEL_ERROR_CODES = [
+  "ERR_MODEL_SCHEMA_UNSUPPORTED",
+  "ERR_MODEL_OUTPUT_UNSUPPORTED",
+  "ERR_MODEL_UNAVAILABLE",
+  "ERR_MODEL_ROUTE_NOT_FOUND",
+  "ERR_MODEL_SERVICE_UNAVAILABLE",
+] as const;
+
+export function isFallbackEligibleModelError(code: string): boolean {
+  return (FALLBACK_ELIGIBLE_MODEL_ERROR_CODES as readonly string[]).includes(code);
+}

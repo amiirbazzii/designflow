@@ -469,12 +469,14 @@ describe("what the runtime does not do", () => {
     expect(runtime.installedProfileIds()).toEqual(["design-engineer-default"]);
   });
 
-  test("fallback models are forwarded only when the profile configured them", async () => {
-    let seenFallbacks: readonly string[] = [];
+  test("the ordered model policy is owned by the runtime: nothing is forwarded for a provider-side fallback", async () => {
+    let seenFallbacks: readonly string[] | undefined;
+    let seenModel: string | undefined;
 
     const runtime = runtimeFor(
       providerThat((request) => {
         seenFallbacks = request.fallbackModels;
+        seenModel = request.model;
         return Promise.resolve({
           requestId: request.requestId,
           providerId: "openrouter",
@@ -486,9 +488,21 @@ describe("what the runtime does not do", () => {
       { ...PROFILE, fallbackModels: ["openai/gpt-4o"] },
     );
 
-    await runtime.generate(CALL);
+    const result = await runtime.generate(CALL);
 
-    expect(seenFallbacks).toEqual(["openai/gpt-4o"]);
+    // The runtime's candidate loop is the single fallback owner; the wire
+    // request never carries a second, provider-side fallback list.
+    expect(seenFallbacks).toEqual([]);
+    expect(seenModel).toBe(PROFILE.model);
+    expect(result.type).toBe("success");
+    if (result.type === "success") {
+      expect(result.selection).toEqual({
+        model: PROFILE.model,
+        candidateIndex: 0,
+        candidateCount: 2,
+        previousFailures: [],
+      });
+    }
   });
 
   test("routing policy comes only from the resolved profile, never from the caller", async () => {

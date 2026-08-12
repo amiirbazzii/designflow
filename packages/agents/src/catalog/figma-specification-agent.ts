@@ -103,10 +103,13 @@ export const figmaSpecificationAgentManifest: AgentManifest = agentManifestSchem
 export const figmaSpecificationDefaultModelProfile: ModelProfile = modelProfileSchema.parse({
   id: MODEL_PROFILE_ID,
   providerId: "openrouter",
-  // Specification V2 mandates this exact model for the Specification AI only.
-  // Other agents keep their own independent profiles; if the provider cannot
-  // serve it, the run fails truthfully through the provider error path.
-  model: "deepseek/deepseek-v4-flash-0731",
+  // The Specification AI's ordered model policy (Specification AI only —
+  // every other agent keeps its own independent profile). The runtime tries
+  // these in exactly this order, advancing only on capability/availability
+  // failures; if none can execute the structured-output contract, the run
+  // fails truthfully with the bounded attempt provenance.
+  model: "openai/gpt-5.6-luna",
+  fallbackModels: ["deepseek/deepseek-v4-pro", "openai/gpt-4o-mini"],
 });
 
 export type FigmaSpecificationStrategy = (
