@@ -286,10 +286,13 @@ describe("Specification V2 — wire response contract", () => {
 describe("Specification V2 — model profile", () => {
   test("the Specification AI ordered model policy is pinned exactly", () => {
     expect(figmaSpecificationDefaultModelProfile.id).toBe("figma-specification-default");
-    expect(figmaSpecificationDefaultModelProfile.model).toBe("openai/gpt-5.6-luna");
+    // DF-SPEC-05: reordered from field evidence (run d840ab80) — gpt-4o-mini
+    // is the only candidate that has executed this contract in the real
+    // environment; Luna and DeepSeek V4 Pro both returned ERR_MODEL_UNAVAILABLE.
+    expect(figmaSpecificationDefaultModelProfile.model).toBe("openai/gpt-4o-mini");
     expect(figmaSpecificationDefaultModelProfile.fallbackModels).toEqual([
+      "openai/gpt-5.6-luna",
       "deepseek/deepseek-v4-pro",
-      "openai/gpt-4o-mini",
     ]);
     expect(figmaSpecificationAgentManifest.modelProfileId).toBe("figma-specification-default");
   });

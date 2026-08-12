@@ -255,6 +255,8 @@ export const modelCandidateAttemptSchema = z
   .object({
     model: z.string().min(1),
     code: z.string().min(1),
+    /** Elapsed time for that candidate alone, when the runtime measured it. */
+    durationMs: z.number().nonnegative().optional(),
   })
   .strict();
 

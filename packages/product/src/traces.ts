@@ -205,11 +205,19 @@ export class TraceCollector implements TraceObserver {
             durationMs: validated.durationMs,
             status: "failure" as const,
             errorCode: validated.errorCode,
+            ...(validated.previousFailures !== undefined
+              ? { previousFailures: validated.previousFailures }
+              : {}),
           },
         ];
 
         this.pendingModels.set(validated.traceId, calls);
         await this.store.update(validated.traceId, { modelCalls: calls });
+        return;
+      }
+
+      case "agent.evidence.compiled": {
+        await this.store.update(validated.traceId, { evidence: validated.metrics });
         return;
       }
 

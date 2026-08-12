@@ -103,6 +103,27 @@ export const traceModelCallSchema = z
 
 export type TraceModelCall = z.infer<typeof traceModelCallSchema>;
 
+/**
+ * How much normalized design evidence an agent compiled into a model request.
+ *
+ * Counts and byte sizes only. It exists because "the model request was too
+ * large / too small" was, in the field, only answerable by re-running the
+ * capture: the trace recorded the failure code but nothing about the input
+ * that produced it. Deliberately unable to hold evidence, prompts or output.
+ */
+export const traceEvidenceMetricsSchema = z
+  .object({
+    snapshotNodeCount: z.number().int().nonnegative(),
+    snapshotBytes: z.number().int().nonnegative().optional(),
+    bundleElementCount: z.number().int().nonnegative(),
+    bundleComponentCount: z.number().int().nonnegative(),
+    bundleInstanceCount: z.number().int().nonnegative(),
+    bundleBytes: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type TraceEvidenceMetrics = z.infer<typeof traceEvidenceMetricsSchema>;
+
 /** Safe structural facts for a rejected Coordinator response. */
 export const coordinatorOutputDiagnosticSchema = z
   .object({
@@ -170,6 +191,8 @@ export const agentTraceSchema = z
       .array(coordinatorOutputDiagnosticSchema)
       .max(2)
       .default([]),
+    /** Model-input size provenance, when the agent compiled design evidence. */
+    evidence: traceEvidenceMetricsSchema.optional(),
     /**
      * Host-supplied facts about the installation, not about the request.
      *
@@ -199,6 +222,7 @@ export const agentTracePatchSchema = z
       .array(coordinatorOutputDiagnosticSchema)
       .max(2)
       .optional(),
+    evidence: traceEvidenceMetricsSchema.optional(),
     metadata: z.record(z.unknown()).optional(),
   })
   .strict();
@@ -301,7 +325,16 @@ export const traceEventSchema = z.discriminatedUnion("type", [
       fallbackIndex: z.number().int().nonnegative().optional(),
       candidateCount: z.number().int().positive().optional(),
       previousFailures: z
-        .array(z.object({ model: z.string().min(1), code: z.string().min(1) }).strict())
+        .array(
+          z
+            .object({
+              model: z.string().min(1),
+              code: z.string().min(1),
+              /** How long that candidate itself took before failing. */
+              durationMs: z.number().nonnegative().optional(),
+            })
+            .strict(),
+        )
         .max(8)
         .optional(),
       timestamp: z.string().min(1),
@@ -327,6 +360,34 @@ export const traceEventSchema = z.discriminatedUnion("type", [
       /** A stable `ERR_MODEL_*` code. Never the provider's own error text. */
       errorCode: z.string().min(1),
       durationMs: z.number().nonnegative(),
+      /**
+       * Ordered-model-policy provenance for a failed request: which candidate
+       * models were attempted, in order, with their own codes and elapsed
+       * time. Without it a candidates-exhausted failure recorded which codes
+       * happened but not which candidate spent the time.
+       */
+      previousFailures: z
+        .array(
+          z
+            .object({
+              model: z.string().min(1),
+              code: z.string().min(1),
+              durationMs: z.number().nonnegative().optional(),
+            })
+            .strict(),
+        )
+        .max(8)
+        .optional(),
+      timestamp: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      /** Model-input size provenance, emitted before the request is issued. */
+      type: z.literal("agent.evidence.compiled"),
+      traceId: z.string().min(1),
+      agentId: z.string().min(1),
+      metrics: traceEvidenceMetricsSchema,
       timestamp: z.string().min(1),
     })
     .strict(),

@@ -2,6 +2,7 @@
 import {
   agentInvocationRequestSchema,
   agentInvocationOutcomeSchema,
+  traceEvidenceMetricsSchema,
   DesignFlowError,
   type AgentInvocationOutcome,
   type AgentInvocationRequest,
@@ -222,18 +223,41 @@ export class AgentInvocationRuntime implements AgentInvocationService {
                   profileId: observed.profileId,
                   errorCode: observed.code,
                   durationMs: observed.durationMs,
+                  // Ordered-policy provenance: which candidates were tried,
+                  // with what code, and how long each took. Previously only
+                  // the coordinator path forwarded this, so a specialized
+                  // agent's exhausted chain lost its per-candidate detail.
+                  ...(observed.attempts !== undefined && observed.attempts.length > 0
+                    ? { previousFailures: observed.attempts.slice(0, 8) }
+                    : {}),
                   timestamp: new Date().toISOString(),
                 });
               }
             },
           });
 
+    // At most one evidence report per invocation, emitted with the model
+    // events so it lands on the same trace regardless of the outcome.
+    let evidenceReported = false;
     const context: SpecializedAgentContext = {
       tools: toolService,
       model: modelService,
       metadata: this.metadata,
       signal: signal ?? new AbortController().signal,
       logger: this.logger,
+      reportEvidenceMetrics: (metrics) => {
+        if (evidenceReported) return;
+        const parsed = traceEvidenceMetricsSchema.safeParse(metrics);
+        if (!parsed.success) return;
+        evidenceReported = true;
+        modelEvents.push({
+          type: "agent.evidence.compiled",
+          traceId,
+          agentId: manifest.id,
+          metrics: parsed.data,
+          timestamp: new Date().toISOString(),
+        });
+      },
     };
 
     try {

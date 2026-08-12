@@ -125,7 +125,7 @@ export class ModelRuntime implements ModelInvoker {
     // failures stop truthfully. A single-model profile takes exactly the
     // pre-policy path and returns byte-identical results.
     const candidates = [profile.model, ...profile.fallbackModels];
-    const attempts: { model: string; code: string }[] = [];
+    const attempts: { model: string; code: string; durationMs: number }[] = [];
 
     for (let index = 0; index < candidates.length; index += 1) {
       const candidateModel = candidates[index]!;
@@ -156,6 +156,9 @@ export class ModelRuntime implements ModelInvoker {
       };
 
       const capabilities = provider.capabilities?.(candidateModel);
+      // Measured per candidate, so an exhausted chain records which candidate
+      // spent the time rather than only the total (field run d840ab80).
+      const candidateStartedAt = performance.now();
       let result: ModelResult;
       const requestedTokens = wireRequest.maxOutputTokens ?? 0;
       if (
@@ -195,7 +198,11 @@ export class ModelRuntime implements ModelInvoker {
       // Single-model profiles keep the exact pre-policy failure shape.
       if (candidates.length === 1) return result;
 
-      attempts.push({ model: candidateModel, code: result.code });
+      attempts.push({
+        model: candidateModel,
+        code: result.code,
+        durationMs: elapsed(candidateStartedAt),
+      });
 
       if (!isFallbackEligibleModelError(result.code)) {
         return this.validateResult({ ...result, attempts: attempts.slice(0, 8) });

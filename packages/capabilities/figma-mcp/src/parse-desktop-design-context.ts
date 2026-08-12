@@ -162,8 +162,52 @@ export interface DesignContextTreeNode {
   readonly children: readonly DesignContextTreeNode[];
 }
 
-const TREE_TAG_PATTERN = /<([A-Za-z][A-Za-z0-9]*)((?:\s+[a-zA-Z_-]+="[^"]*")*)\s*(\/?)>|<\/([A-Za-z][A-Za-z0-9]*)\s*>/g;
+const TREE_TAG_START_PATTERN = /<(\/?)([A-Za-z][A-Za-z0-9]*)/g;
 const TREE_ATTRIBUTE_PATTERN = /([a-zA-Z_-]+)="([^"]*)"/g;
+
+/**
+ * Finds the end of one opening tag, tolerating the full JSX attribute
+ * grammar the Desktop server emits: quoted strings, expression props
+ * (`img={imgIcon}`, `{...props}`) and boolean props. A `>` inside a string or
+ * inside braces does not end the tag.
+ *
+ * Field evidence (run d840ab80): instances whose generated tag carried an
+ * expression prop — icon-only Buttons, the first history item, the navigation
+ * menu — were skipped entirely by an attributes-must-be-quoted-pairs grammar,
+ * so their descendants and property values never reached the snapshot even
+ * though the transport had supplied them.
+ */
+function scanOpeningTag(
+  code: string,
+  from: number,
+): { attributes: string; end: number; selfClosing: boolean } | undefined {
+  let quote: string | undefined;
+  let braceDepth = 0;
+  for (let index = from; index < code.length; index += 1) {
+    const char = code[index]!;
+    if (quote !== undefined) {
+      if (char === quote) quote = undefined;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "{") {
+      braceDepth += 1;
+      continue;
+    }
+    if (char === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (char === ">" && braceDepth === 0) {
+      const attributes = code.slice(from, index);
+      return { attributes, end: index + 1, selfClosing: attributes.trimEnd().endsWith("/") };
+    }
+  }
+  return undefined;
+}
 
 interface MutableTreeNode {
   nodeId: string;
@@ -223,15 +267,18 @@ export function parseDesignContextTree(code: string): readonly DesignContextTree
     else roots.push(node);
   };
 
-  TREE_TAG_PATTERN.lastIndex = 0;
-  for (let match = TREE_TAG_PATTERN.exec(code); match !== null; match = TREE_TAG_PATTERN.exec(code)) {
-    if (match[4] !== undefined) {
+  TREE_TAG_START_PATTERN.lastIndex = 0;
+  for (let match = TREE_TAG_START_PATTERN.exec(code); match !== null; match = TREE_TAG_START_PATTERN.exec(code)) {
+    if (match[1] === "/") {
       stack.pop();
       continue;
     }
-    const tag = match[1]!;
-    const rawAttributes = match[2] ?? "";
-    const selfClosing = match[3] === "/";
+    const tag = match[2]!;
+    const scanned = scanOpeningTag(code, TREE_TAG_START_PATTERN.lastIndex);
+    if (scanned === undefined) break;
+    TREE_TAG_START_PATTERN.lastIndex = scanned.end;
+    const rawAttributes = scanned.attributes;
+    const selfClosing = scanned.selfClosing;
 
     const attributes: Record<string, string> = {};
     TREE_ATTRIBUTE_PATTERN.lastIndex = 0;
@@ -272,7 +319,7 @@ export function parseDesignContextTree(code: string): readonly DesignContextTree
     if (paddingYPx !== undefined) node.paddingYPx = paddingYPx;
 
     if (!selfClosing) {
-      const text = innerText(code, TREE_TAG_PATTERN.lastIndex, tag);
+      const text = innerText(code, scanned.end, tag);
       if (text !== undefined && text.length > 0) node.text = text;
     }
 

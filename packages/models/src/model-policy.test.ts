@@ -17,6 +17,13 @@ import { FALLBACK_ELIGIBLE_MODEL_ERROR_CODES, isFallbackEligibleModelError } fro
 
 const RESPONSE_SCHEMA = { type: "object" };
 
+/** Attempt provenance carries a measured per-candidate duration; compare the policy facts. */
+function codesOf(
+  attempts: readonly { model: string; code: string; durationMs?: number }[] | undefined,
+): readonly { model: string; code: string }[] | undefined {
+  return attempts?.map(({ model, code }) => ({ model, code }));
+}
+
 const POLICY_PROFILE = {
   id: "spec-policy",
   providerId: "openrouter",
@@ -89,7 +96,7 @@ describe("ordered model policy", () => {
         model: "model-b",
         candidateIndex: 1,
         candidateCount: 3,
-        previousFailures: [{ model: "model-a", code: "ERR_MODEL_SCHEMA_UNSUPPORTED" }],
+        previousFailures: [expect.objectContaining({ model: "model-a", code: "ERR_MODEL_SCHEMA_UNSUPPORTED" })],
       });
     }
   });
@@ -116,7 +123,7 @@ describe("ordered model policy", () => {
     expect(result.type).toBe("failure");
     if (result.type === "failure") {
       expect(result.code).toBe("ERR_MODEL_AUTHENTICATION");
-      expect(result.attempts).toEqual([{ model: "model-a", code: "ERR_MODEL_AUTHENTICATION" }]);
+      expect(codesOf(result.attempts)).toEqual([{ model: "model-a", code: "ERR_MODEL_AUTHENTICATION" }]);
     }
   });
 
@@ -129,7 +136,7 @@ describe("ordered model policy", () => {
     expect(result.type).toBe("failure");
     if (result.type === "failure") {
       expect(result.code).toBe("ERR_MODEL_CANDIDATES_EXHAUSTED");
-      expect(result.attempts).toEqual([
+      expect(codesOf(result.attempts)).toEqual([
         { model: "model-a", code: "ERR_MODEL_UNAVAILABLE" },
         { model: "model-b", code: "ERR_MODEL_SERVICE_UNAVAILABLE" },
         { model: "model-c", code: "ERR_MODEL_SCHEMA_UNSUPPORTED" },
@@ -213,7 +220,7 @@ describe("field regression DF run ce64cc85 (ERR_MODEL_SCHEMA_UNSUPPORTED on the 
         model: "deepseek/deepseek-v4-pro",
         candidateIndex: 1,
         candidateCount: 3,
-        previousFailures: [{ model: "openai/gpt-5.6-luna", code: "ERR_MODEL_SCHEMA_UNSUPPORTED" }],
+        previousFailures: [expect.objectContaining({ model: "openai/gpt-5.6-luna", code: "ERR_MODEL_SCHEMA_UNSUPPORTED" })],
       });
     }
   });
@@ -289,7 +296,7 @@ describe("candidate timeouts vs caller aborts (field run 101df3e3)", () => {
         model: "model-b",
         candidateIndex: 1,
         candidateCount: 3,
-        previousFailures: [{ model: "model-a", code: "ERR_MODEL_TIMEOUT" }],
+        previousFailures: [expect.objectContaining({ model: "model-a", code: "ERR_MODEL_TIMEOUT" })],
       });
     }
   });
@@ -309,7 +316,7 @@ describe("candidate timeouts vs caller aborts (field run 101df3e3)", () => {
     expect(result.type).toBe("failure");
     if (result.type === "failure") {
       expect(result.code).toBe("ERR_MODEL_CANDIDATES_EXHAUSTED");
-      expect(result.attempts).toEqual([
+      expect(codesOf(result.attempts)).toEqual([
         { model: "model-a", code: "ERR_MODEL_TIMEOUT" },
         { model: "model-b", code: "ERR_MODEL_TIMEOUT" },
         { model: "model-c", code: "ERR_MODEL_TIMEOUT" },

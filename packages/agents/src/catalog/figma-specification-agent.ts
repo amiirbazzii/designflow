@@ -19,6 +19,7 @@ import {
 } from "@designflow/sdk";
 
 import { SpecializedAgentOutputInvalidError } from "../errors";
+import { compileSpecificationEvidenceBundle } from "./specification-evidence-bundle";
 import { figmaSpecificationResponseSchema } from "../model-response-schemas";
 import { wireToDesignSpecification } from "./specification-wire";
 import { generateValidatedModelOutput } from "../model-structured-output";
@@ -114,8 +115,13 @@ export const figmaSpecificationDefaultModelProfile: ModelProfile = modelProfileS
   // these in exactly this order, advancing only on capability/availability
   // failures; if none can execute the structured-output contract, the run
   // fails truthfully with the bounded attempt provenance.
-  model: "openai/gpt-5.6-luna",
-  fallbackModels: ["deepseek/deepseek-v4-pro", "openai/gpt-4o-mini"],
+  // Order set from field evidence (run d840ab80): gpt-4o-mini is the only
+  // candidate that has produced accepted Specification V2 output in the real
+  // environment, while Luna and DeepSeek V4 Pro both returned
+  // ERR_MODEL_UNAVAILABLE upstream. The generic ordered-candidate
+  // architecture is unchanged and an explicit user override still wins.
+  model: "openai/gpt-4o-mini",
+  fallbackModels: ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro"],
   // Specification V2 streams up to 8000 output tokens from rich Figma
   // evidence; the field run 101df3e3 proved the inherited 30s default is
   // too small (Luna was cut at exactly 30006ms). 120s is the documented
@@ -587,6 +593,19 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
   manifest,
 ) => {
   const snapshot = readSnapshot(request);
+  // DF-SPEC-05: the model reads the deterministic evidence bundle, not the
+  // raw snapshot. Same facts, no repeated shared component styling and no
+  // transport bookkeeping — the persisted snapshot is unchanged and stays the
+  // authority the produced specification is validated against.
+  const bundle = compileSpecificationEvidenceBundle(snapshot);
+  context.reportEvidenceMetrics?.({
+    snapshotNodeCount: bundle.metrics.snapshotNodeCount,
+    bundleElementCount: bundle.metrics.bundleElementCount,
+    bundleComponentCount: bundle.metrics.bundleComponentCount,
+    bundleInstanceCount: bundle.metrics.bundleInstanceCount,
+    bundleBytes: bundle.metrics.bundleBytes,
+    snapshotBytes: bundle.metrics.snapshotBytes,
+  });
 
   return generateValidatedModelOutput({
     agentId: "figma-specification-agent",
@@ -597,7 +616,12 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
         role: "user",
         content:
           `Objective: ${request.objective}\n\n` +
-          `Figma source snapshot (authoritative — do not invent anything beyond it):\n${JSON.stringify(snapshot)}`,
+          "Normalized Figma evidence (authoritative — do not invent anything beyond it). " +
+          "`elements` is the ordered screen structure; `components` carries each design " +
+          "component's shared styling and anatomy once; `instances` carries every " +
+          "instance's own property values and exact contents; `foundations` deduplicates " +
+          "repeated raw values. Every nodeId is a real Figma node id.\n" +
+          JSON.stringify(bundle),
       },
     ],
     responseSchema: figmaSpecificationResponseSchema,

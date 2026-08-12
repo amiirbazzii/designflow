@@ -4,6 +4,7 @@ import type { Logger } from "./context";
 import type { AgentManifest } from "./agent";
 import type { AgentModelService } from "./model";
 import type { AgentToolService } from "./tool";
+import type { TraceEvidenceMetrics } from "./trace";
 
 /**
  * A Specialized Agent is invoked *by a workflow node*, not by a person's
@@ -90,6 +91,14 @@ export interface SpecializedAgentContext {
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly signal: AbortSignal;
   readonly logger: Logger;
+  /**
+   * Reports how much evidence an agent compiled into its model request.
+   *
+   * Counts and byte sizes only — never the prompt, the evidence itself or any
+   * model response. Optional so a host that predates it (or a test double)
+   * stays valid; an agent calls it at most once per invocation.
+   */
+  readonly reportEvidenceMetrics?: (metrics: TraceEvidenceMetrics) => void;
 }
 
 /**

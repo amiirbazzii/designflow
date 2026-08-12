@@ -110,7 +110,7 @@ const DESIGN_CONTEXT = [
   '</div>',
 ].join("\n");
 
-async function buildSpendlySnapshot(): Promise<FigmaSourceSnapshot> {
+async function buildSpendlySnapshot(designContext: string = DESIGN_CONTEXT): Promise<FigmaSourceSnapshot> {
   const client = new InMemoryMcpClient({
     serverIdentity: "figma-desktop-mcp",
     tools: [
@@ -120,7 +120,7 @@ async function buildSpendlySnapshot(): Promise<FigmaSourceSnapshot> {
     ],
     results: {
       get_metadata: [{ type: "text", text: METADATA_OUTLINE }],
-      get_design_context: [{ type: "text", text: DESIGN_CONTEXT }],
+      get_design_context: [{ type: "text", text: designContext }],
       get_variable_defs: [{ type: "text", text: '{"Color/Surface/field":"#F8F8F8"}' }],
     },
   });
@@ -214,6 +214,40 @@ describe("instance descendant evidence (Spendly-shaped)", () => {
     const amount = snapshot.nodes.find((node) => node.id === "1026:6116")!;
     expect(amount.childIds).toEqual([]);
     expect(snapshot.nodes.some((node) => node.characters === "Enter amount")).toBe(false);
+  });
+
+  // DF-SPEC-05 §2: in field run d840ab80 the icon Button, the first history
+  // card and the navigation menu stayed unexpanded while the text-only
+  // TextFields expanded — every one of them carries a JSX *expression* prop in
+  // the generated code, which the quoted-pairs-only tag grammar could not
+  // match, so the whole element (and its subtree) was skipped.
+  test("instances whose generated tag carries JSX expression props still expand", async () => {
+    const withExpressionProps = DESIGN_CONTEXT
+      .replace(
+        '<NavigationMenuV3 variant="Expenses" className="bg-white flex"',
+        '<NavigationMenuV3 variant="Expenses" imgIcon={imgNavIcon} {...navProps} className="bg-white flex"',
+      )
+      .replace(
+        '<Button className="w-[48px] h-[48px] rounded-[10px]" data-node-id="1026:6126"',
+        '<Button icon={imgChevronLeft} className="w-[48px] h-[48px] rounded-[10px]" data-node-id="1026:6126"',
+      )
+      .replace(
+        '<HistoryCard className="bg-white border-[#e7e7e7] rounded-[10px]"',
+        '<HistoryCard avatar={imgAvatar} className="bg-white border-[#e7e7e7] rounded-[10px]"',
+      );
+
+    const snapshot = await buildSpendlySnapshot(withExpressionProps);
+    const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
+    const texts = snapshot.nodes.map((node) => node.characters).filter((text) => text !== undefined);
+
+    for (const label of ["Add", "Report", "Invest", "Loan", "Setting", "Grocery Shopping"]) {
+      expect(texts).toContain(label);
+    }
+    expect(byId.get("1026:6137")?.variantProperties).toEqual({ variant: "Expenses" });
+    expect(byId.get("I1026:6126;51:1")?.name).toBe("chevron-left");
+    expect(byId.get("1026:6132")?.childIds.length).toBeGreaterThan(0);
+    // an expression prop is not a property VALUE — nothing is invented from it
+    expect(JSON.stringify(snapshot)).not.toContain("imgNavIcon");
   });
 
   test("expansion is bounded and reports truncation instead of silently dropping evidence", () => {
