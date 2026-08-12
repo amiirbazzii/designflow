@@ -111,6 +111,12 @@ export const figmaSpecificationDefaultModelProfile: ModelProfile = modelProfileS
   // fails truthfully with the bounded attempt provenance.
   model: "openai/gpt-5.6-luna",
   fallbackModels: ["deepseek/deepseek-v4-pro", "openai/gpt-4o-mini"],
+  // Specification V2 streams up to 8000 output tokens from rich Figma
+  // evidence; the field run 101df3e3 proved the inherited 30s default is
+  // too small (Luna was cut at exactly 30006ms). 120s is the documented
+  // per-profile ceiling and covers the 8000-token worst case at realistic
+  // provider throughput. Other agents keep the 30s default.
+  timeoutMs: 120_000,
 });
 
 export type FigmaSpecificationStrategy = (

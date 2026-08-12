@@ -201,6 +201,23 @@ export class ModelRuntime implements ModelInvoker {
         return this.validateResult({ ...result, attempts: attempts.slice(0, 8) });
       }
 
+      // A caller/global stop is terminal even when the candidate's own
+      // failure would have been fallback-eligible: after a cancellation or
+      // an exhausted outer deadline the next candidate cannot possibly be
+      // useful, and starting another paid request would be spend without a
+      // consumer. Checked after every failure, before any next candidate.
+      if (validated.signal?.aborted === true) {
+        return this.validateResult({
+          type: "failure",
+          requestId: validated.requestId,
+          code: "ERR_MODEL_ABORTED",
+          message: "The request was cancelled before the next model candidate could be attempted.",
+          retryable: false,
+          durationMs: elapsed(startedAt),
+          attempts: attempts.slice(0, 8),
+        });
+      }
+
       if (index === candidates.length - 1) {
         return this.validateResult({
           type: "failure",

@@ -184,6 +184,7 @@ export const PROVIDER_THROWABLE_CODES = [
   "ERR_MODEL_SCHEMA_UNSUPPORTED",
   // Minted by the managed gateway provider; passed through so callers see
   // the gateway's own classification instead of a generic provider failure.
+  "ERR_MODEL_TIMEOUT",
   "ERR_MODEL_ROUTE_NOT_FOUND",
   "ERR_MODEL_SERVICE_UNAVAILABLE",
   "ERR_MODEL_QUOTA_EXCEEDED",
@@ -207,6 +208,11 @@ export const FALLBACK_ELIGIBLE_MODEL_ERROR_CODES = [
   "ERR_MODEL_UNAVAILABLE",
   "ERR_MODEL_ROUTE_NOT_FOUND",
   "ERR_MODEL_SERVICE_UNAVAILABLE",
+  // A candidate-request timeout: THIS model did not answer within its
+  // per-candidate budget; the next candidate may well complete. The
+  // caller/global class stays terminal via ERR_MODEL_ABORTED, and the
+  // runtime re-checks the caller's signal before every next candidate.
+  "ERR_MODEL_TIMEOUT",
 ] as const;
 
 export function isFallbackEligibleModelError(code: string): boolean {

@@ -183,7 +183,7 @@ describe("ordered model policy", () => {
       "ERR_MODEL_QUOTA_EXCEEDED",
       "ERR_MODEL_RATE_LIMITED",
       "ERR_MODEL_ABORTED",
-      "ERR_MODEL_TIMEOUT",
+      "ERR_MODEL_REQUEST_SCHEMA_INVALID",
       "ERR_MODEL_OUTPUT_INVALID",
       "ERR_MODEL_RESPONSE_INVALID",
     ]) {
@@ -245,5 +245,108 @@ describe("ordered model policy — configuration compatibility", () => {
     const [merged] = mergeModelProfileOverrides([{ ...POLICY_PROFILE } as never], {});
     expect(merged?.model).toBe("model-a");
     expect(merged?.fallbackModels).toEqual(["model-b", "model-c"]);
+  });
+});
+
+describe("candidate timeouts vs caller aborts (field run 101df3e3)", () => {
+  /** Providers whose per-model behavior is 'hang' (never resolves) or fast success. */
+  function timingProvider(hangs: readonly string[], calls: string[]): ModelProvider {
+    return {
+      id: "openrouter",
+      generate: (async (request: ModelRequest, context: { signal: AbortSignal }) => {
+        calls.push(request.model);
+        if (hangs.includes(request.model)) {
+          return new Promise((_, reject) => {
+            context.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+          });
+        }
+        return {
+          requestId: request.requestId,
+          providerId: "openrouter",
+          model: request.model,
+          output: { answer: request.model },
+          durationMs: 1,
+        };
+      }) as never,
+    };
+  }
+
+  const SPEC_LIKE = {
+    id: "spec-policy",
+    providerId: "openrouter",
+    model: "model-a",
+    fallbackModels: ["model-b", "model-c"],
+    timeoutMs: 40,
+  };
+
+  test("A: a candidate-request timeout falls back; the next candidate succeeds with provenance", async () => {
+    const calls: string[] = [];
+    const result = await runtimeWith(timingProvider(["model-a"], calls), SPEC_LIKE).generate(call());
+    expect(calls).toEqual(["model-a", "model-b"]);
+    expect(result.type).toBe("success");
+    if (result.type === "success") {
+      expect(result.selection).toEqual({
+        model: "model-b",
+        candidateIndex: 1,
+        candidateCount: 3,
+        previousFailures: [{ model: "model-a", code: "ERR_MODEL_TIMEOUT" }],
+      });
+    }
+  });
+
+  test("B: two candidate timeouts then success — exactly three calls", async () => {
+    const calls: string[] = [];
+    const result = await runtimeWith(timingProvider(["model-a", "model-b"], calls), SPEC_LIKE).generate(call());
+    expect(calls).toEqual(["model-a", "model-b", "model-c"]);
+    expect(result.type).toBe("success");
+    if (result.type === "success") expect(result.selection?.candidateIndex).toBe(2);
+  });
+
+  test("C: all candidates time out — typed bounded exhaustion with every attempt", async () => {
+    const calls: string[] = [];
+    const result = await runtimeWith(timingProvider(["model-a", "model-b", "model-c"], calls), SPEC_LIKE).generate(call());
+    expect(calls).toEqual(["model-a", "model-b", "model-c"]);
+    expect(result.type).toBe("failure");
+    if (result.type === "failure") {
+      expect(result.code).toBe("ERR_MODEL_CANDIDATES_EXHAUSTED");
+      expect(result.attempts).toEqual([
+        { model: "model-a", code: "ERR_MODEL_TIMEOUT" },
+        { model: "model-b", code: "ERR_MODEL_TIMEOUT" },
+        { model: "model-c", code: "ERR_MODEL_TIMEOUT" },
+      ]);
+    }
+  });
+
+  test("D: a root abort while the primary is active is terminal — no fallback candidate is called", async () => {
+    const calls: string[] = [];
+    const controller = new AbortController();
+    const pending = runtimeWith(timingProvider(["model-a"], calls), SPEC_LIKE).generate({
+      ...call(),
+      signal: controller.signal,
+    } as never);
+    setTimeout(() => controller.abort(), 10);
+    const result = await pending;
+    expect(calls).toEqual(["model-a"]);
+    expect(result.type).toBe("failure");
+    if (result.type === "failure") expect(result.code).toBe("ERR_MODEL_ABORTED");
+  });
+
+  test("E/F: an exhausted outer deadline after a candidate timeout stops before the next candidate", async () => {
+    const calls: string[] = [];
+    const controller = new AbortController();
+    // The outer deadline fires while candidate A is still hanging: A fails
+    // with its candidate timeout... but by then the caller has no budget
+    // left, so candidate B must never start.
+    setTimeout(() => controller.abort(), 20);
+    const slowAbortProfile = { ...SPEC_LIKE, timeoutMs: 60 };
+    const result = await runtimeWith(timingProvider(["model-a"], calls), slowAbortProfile).generate({
+      ...call(),
+      signal: controller.signal,
+    } as never);
+    expect(calls).toEqual(["model-a"]);
+    expect(result.type).toBe("failure");
+    if (result.type === "failure") {
+      expect(result.code).toBe("ERR_MODEL_ABORTED");
+    }
   });
 });

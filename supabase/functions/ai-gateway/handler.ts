@@ -34,7 +34,10 @@ export interface GatewayHandlerOptions {
 }
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
-const UPSTREAM_TIMEOUT_MS = 30_000;
+// Raised with Specification V2: an 8000-token structured response can
+// legitimately stream for well over 30s. Bounded below the Edge Function
+// wall-clock limit.
+const UPSTREAM_TIMEOUT_MS = 120_000;
 const AUTH_TIMEOUT_MS = 5_000;
 
 /**
