@@ -155,3 +155,21 @@ describe("Phase 6B technical details reach the session view (DF-TUI-06)", () => 
     expect(failed.technicalDetails.some((line) => line.includes("undefined"))).toBe(false);
   });
 });
+
+describe("DF-CORR-01 stage truthfulness on completion", () => {
+  test("a completed run marks only stages that ran; correction stays pending", () => {
+    let view = session();
+    view = applyExecutionProgress(view, {
+      steps: [
+        { capabilityId: "parse-figma-source", label: "Parse", status: "done" },
+        { capabilityId: "invoke-implementation-agent", label: "Implement", status: "done" },
+      ],
+    } as never);
+    const completed = applyExecutionUpdate(view, { status: "completed" });
+    const byId = new Map(completed.workflow.stages.map((stage) => [stage.id, stage.status]));
+    expect(byId.get("understanding")).toBe("complete");
+    expect(byId.get("implementation")).toBe("complete");
+    expect(byId.get("correction")).toBe("pending");
+    expect(byId.get("visual-check")).toBe("pending");
+  });
+});

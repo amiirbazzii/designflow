@@ -212,3 +212,28 @@ describe("Phase 10 post-apply visual result UX", () => {
     expect(details).not.toContain("artifactId");
   });
 });
+
+describe("DF-CORR-01 the TUI product path never auto-starts a correction", () => {
+  test("visualCorrection 'off' skips the legacy visual-result and correction consent prompts entirely", async () => {
+    // No scripted answers on purpose: if any legacy ask fires, the scripted
+    // terminal would record the question in the transcript.
+    const terminal = new ScriptedTerminal([]);
+    const context = contextFor({
+      payloads: {
+        ...APPLIED_BASE,
+        "stage-5-summary": { overallStatus: "needs_improvement", referenceMode: "real-reference", critical: 0, major: 1, minor: 0 },
+      },
+    });
+
+    const code = await runCommand(context, terminal, "design-engineer", {
+      ...runOptions(),
+      visualCorrection: "off",
+    });
+
+    expect(code).toBe(0);
+    const transcript = terminal.transcript;
+    expect(transcript).not.toContain("Visual result [");
+    expect(transcript).not.toContain("Start a correction iteration?");
+    expect(transcript).not.toContain("Approve these exact correction changes?");
+  });
+});

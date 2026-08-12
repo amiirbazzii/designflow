@@ -8,6 +8,7 @@ import {
 } from "@designflow/workflow-design-to-code";
 import {
   assessVisualCorrectionEligibility,
+  projectParentId,
   type EligibilityProjectionInput,
 } from "./visual-correction";
 
@@ -123,5 +124,49 @@ describe("visual correction eligibility", () => {
     });
     expect(stale.status).toBe("blocked");
     expect(stale.reason).toContain("changed after visual validation");
+  });
+});
+
+describe("DF-CORR-01 correction iteration scope", () => {
+  test("a fresh run with no parent record is eligible at iteration 0", () => {
+    const result = assessVisualCorrectionEligibility(facts({
+      artifacts: undefined,
+      parent: null,
+    }));
+    // parent === null means zero iterations consumed for THIS run
+    expect(result.iterationNumber).toBe(1);
+    expect(result.status).not.toBe("iteration_limit_reached");
+    expect(result.status).not.toBe("already_active");
+    expect(result.status).not.toBe("completed");
+  });
+
+  test("the parent record key is scoped to the execution, never the project", () => {
+    expect(projectParentId("run-a")).toBe("feedback-loop-parent-run-a");
+    expect(projectParentId("run-b")).toBe("feedback-loop-parent-run-b");
+    expect(projectParentId("run-a")).not.toBe(projectParentId("run-b"));
+  });
+
+  test("a consumed iteration on the same run reports the limit; eligibility never mutates the parent", () => {
+    const parent = {
+      currentIterationNumber: 1,
+      maxIterations: 1,
+      state: "waiting_approval",
+      childExecutionIds: ["child-1"],
+    } as never;
+    const snapshot = JSON.stringify(parent);
+    const result = assessVisualCorrectionEligibility(facts({ parent }));
+    expect(result.status).toBe("iteration_limit_reached");
+    expect(result.maximumIterations).toBe(1);
+    expect(JSON.stringify(parent)).toBe(snapshot);
+  });
+
+  test("an active correction child on the same run is already_active, not silently restarted", () => {
+    const parent = {
+      currentIterationNumber: 0,
+      maxIterations: 1,
+      state: "waiting_approval",
+      childExecutionIds: ["child-1"],
+    } as never;
+    expect(assessVisualCorrectionEligibility(facts({ parent })).status).toBe("already_active");
   });
 });

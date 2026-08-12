@@ -184,6 +184,17 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
     expect(status).toBe(0);
   }, 300_000);
 
+  test("fresh run reaches the visual result with no consumed correction iteration and no fake ✓ Correction (DF-CORR-01)", () => {
+    const { status, stdout } = runScenario("visual-result", { figmaSucceeds: true, isolatedProject: true });
+    expect(stdout).not.toContain("FAIL ");
+    expect(stdout).toContain("PASS visual-result-reached");
+    expect(stdout).toContain("PASS no-iteration-limit-on-fresh-run");
+    expect(stdout).toContain("PASS correction-stage-not-complete");
+    expect(stdout).toContain("PASS no-auto-correction-consent");
+    expect(stdout).toContain("PASS finish-activates");
+    expect(status).toBe(0);
+  }, 600_000);
+
   test("approval mode: first option persists as manual review, second as DesignFlow approvals", () => {
     // The manual option is asserted inside every journey (approval-label);
     // this scenario explicitly selects the second option.

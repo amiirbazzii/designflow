@@ -209,7 +209,11 @@ export function applyExecutionUpdate(
       workflow: {
         ...workflowWithoutActiveStage,
         status: "ready",
-        stages: next.workflow.stages.map((stage) => ({ ...stage, status: "complete" })),
+        // Only stages that actually ran become ✓. A stage that never started
+        // (correction on a run where the user has not chosen Improve) stays
+        // pending — completion of the run is not completion of every stage.
+        stages: next.workflow.stages.map((stage) =>
+          stage.status === "pending" ? stage : { ...stage, status: "complete" as const }),
       },
       activity: [{ actor: "designflow", title: "Ready for review", state: "completed" }],
       finalResult: { status: "success", summary: "Implementation complete. Ready for review." },

@@ -256,6 +256,10 @@ async function main(): Promise<number> {
                       authRequiredNotified = true;
                       bridge.authRequired(message);
                     },
+                    // The TUI's visual-result panel owns Improve; the legacy
+                    // post-run correction offer must never consume the
+                    // iteration on the product shell's behalf (DF-CORR-01).
+                    visualCorrection: "off",
                   },
                 );
                 if (!authRequiredNotified && context!.aiStatus() === "sign-in-required") {

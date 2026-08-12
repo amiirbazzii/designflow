@@ -195,6 +195,45 @@ elif SCENARIO == "proposal-review":
             break
         time.sleep(0.25)
     check("q-quits", not alive())
+elif SCENARIO == "visual-result":
+    # Journey through Apply into the real post-apply pipeline (snapshot,
+    # application, validation, preview, visual check) and prove the fresh-run
+    # correction contract: no consumed iteration, no fake ✓ Correction, and a
+    # navigable visual result (DF-CORR-01).
+    expect("startup", "DesignFlow", 60)
+    send(ENTER, 1.5)
+    expect("design-selection", "Select design")
+    send(DOWN, 0.5)
+    send(ENTER, 1.0)
+    send(b"https://www.figma.com/design/AbCdEf123456/Test?node-id=1-2", 0.8)
+    send(ENTER, 2.0)
+    expect("destination", "estination", 20)
+    send(ENTER, 1.5)
+    send(ENTER, 1.5)  # approval: manual
+    send(ENTER, 1.0)  # start the run
+    expect("ready-to-apply", "Ready to apply", 240)
+    read_for(1.5)
+    send(DOWN, 0.8)   # Apply
+    send(ENTER, 3.0)
+    ok = wait_for("View report", 300)
+    check("visual-result-reached", ok)
+    read_for(2.0)
+    recent = screen()[-4000:]
+    check("no-iteration-limit-on-fresh-run", "iteration limit" not in recent)
+    check("correction-stage-not-complete", "✓ Correction" not in recent)
+    check("no-auto-correction-consent", "Start a correction iteration?" not in screen())
+    # navigate the visual actions: last action is Finish
+    send(DOWN, 0.8)
+    send(DOWN, 0.8)
+    send(ENTER, 4.0)
+    ok = wait_for("Done", 30) or wait_for("Finished", 5)
+    check("finish-activates", ok)
+    send(b"q", 1.0)
+    for _ in range(40):
+        if not alive():
+            break
+        time.sleep(0.25)
+    check("q-quits", not alive())
 elif SCENARIO == "ctrl-c":
     journey_to_outcome()
     send(CTRL_C, 1.0)

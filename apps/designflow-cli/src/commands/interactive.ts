@@ -97,6 +97,14 @@ export async function runSelectedDesignEngineer(
     readonly onSessionResult?: (result: SessionResult) => void;
     readonly onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">;
     readonly onAuthRequired?: (message: string) => void;
+    /**
+     * DF-CORR-01: the TUI owns the Improve decision on its visual-result
+     * panel, so it passes "off" here to disable the legacy post-run
+     * correction offer/consent prompts. The correction iteration may only be
+     * consumed by an explicit Improve (offerVisualCorrection with
+     * productAuthorized). Legacy terminals keep the default behavior.
+     */
+    readonly visualCorrection?: "off" | "once";
   } = {},
 ): Promise<number> {
   if (context.aiStatus() === "sign-in-required") {
@@ -127,6 +135,7 @@ export async function runSelectedDesignEngineer(
       ...(hooks.onProgress === undefined ? {} : { onProgress: hooks.onProgress }),
       ...(hooks.onSessionResult === undefined ? {} : { onSessionResult: hooks.onSessionResult }),
       ...(hooks.onReview === undefined ? {} : { onReview: hooks.onReview }),
+      ...(hooks.visualCorrection === undefined ? {} : { visualCorrection: hooks.visualCorrection }),
     },
   );
 }
