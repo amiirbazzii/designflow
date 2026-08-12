@@ -214,6 +214,10 @@ const BY_CODE: Readonly<Record<string, UserFacingError>> = {
     problem: "The configured model rejected the required structured-output schema.",
     suggestion: "Nothing was started. Check model compatibility and try again.",
   },
+  ERR_MODEL_REQUEST_SCHEMA_INVALID: {
+    problem: "DesignFlow produced a structured-output request its providers cannot accept.",
+    suggestion: "Nothing was started. Update DesignFlow and report this if it persists.",
+  },
   ERR_MODEL_CANDIDATES_EXHAUSTED: {
     problem: "Every configured AI model for this step was unavailable or incompatible.",
     suggestion: "Nothing was started. Check the configured model list and try again.",

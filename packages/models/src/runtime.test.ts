@@ -130,7 +130,9 @@ describe("structured-output capability preflight", () => {
       generate: async () => { called = true; return {} as ModelResult; },
     });
     const failure = expectFailure(await runtime.generate(CALL));
-    expect(failure.code).toBe("ERR_MODEL_SCHEMA_UNSUPPORTED");
+    // A DesignFlow-generated invalid schema is a shared request failure, not
+    // a candidate capability failure.
+    expect(failure.code).toBe("ERR_MODEL_REQUEST_SCHEMA_INVALID");
     expect(called).toBe(false);
   });
 });

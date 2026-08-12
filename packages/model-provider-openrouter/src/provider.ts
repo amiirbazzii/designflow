@@ -372,22 +372,47 @@ async function errorFor(response: Response): Promise<Error> {
   return new Error(`OpenRouter responded with status ${response.status}.`);
 }
 
-const UNSUPPORTED_SCHEMA_KEYWORDS = ["oneOf", "anyOf", "allOf", "not", "if", "then", "else", "const"] as const;
+const UNSUPPORTED_SCHEMA_KEYWORDS = ["oneOf", "anyOf", "allOf", "not", "if", "then", "else", "const", "$ref", "$defs", "patternProperties"] as const;
 
-/** Validates the strict JSON-schema subset used by OpenRouter before a call. */
+/** Portable-subset bounds enforced before any model call is spent. */
+const MAX_SCHEMA_NESTING = 8;
+const MAX_SCHEMA_PROPERTIES = 200;
+
+/**
+ * Validates the portable strict JSON-schema subset DesignFlow sends to
+ * structured-output providers, before a call. The field forensics for run
+ * 9a9ed5d1 showed the previous version only descended into `type: "object"`
+ * nodes, so nullable-object unions were never inspected at all — an invalid
+ * schema then burned every fallback candidate. This version inspects every
+ * node, enforces closed/required objects, forbids nullable OBJECT unions,
+ * enums containing null, zero-length array tricks, and bounds depth and
+ * total property count.
+ */
 export function openRouterResponseSchemaIssues(schema: JsonSchemaObject): readonly string[] {
   const issues: string[] = [];
+  let totalProperties = 0;
   const visit = (value: unknown, path: string, depth: number): void => {
-    if (depth > 32) { issues.push("schema nesting exceeds the supported bound"); return; }
+    if (depth > MAX_SCHEMA_NESTING) { issues.push(`schema nesting exceeds the supported bound of ${MAX_SCHEMA_NESTING}`); return; }
     if (typeof value !== "object" || value === null || Array.isArray(value)) { issues.push(`${path}: schema node must be an object`); return; }
     const node = value as Record<string, unknown>;
     for (const keyword of UNSUPPORTED_SCHEMA_KEYWORDS) if (keyword in node) issues.push(`${path}: ${keyword} is unsupported`);
-    if (node.type === "object") {
+    const typeList = Array.isArray(node.type) ? node.type : [node.type];
+    if (Array.isArray(node.type) && node.type.includes("object")) {
+      issues.push(`${path}: nullable object type unions are unsupported — make the object required and its fields nullable`);
+    }
+    if (Array.isArray(node.enum) && node.enum.includes(null) && !typeList.includes("null")) {
+      issues.push(`${path}: enum contains null but the type is not nullable`);
+    }
+    if (node.maxItems === 0) {
+      issues.push(`${path}: zero-length array bounds are unsupported — omit the property instead`);
+    }
+    if (typeList.includes("object")) {
       const properties = node.properties;
       if (properties !== undefined && (typeof properties !== "object" || properties === null || Array.isArray(properties))) issues.push(`${path}: properties must be an object`);
       if (properties !== undefined && node.additionalProperties !== false) issues.push(`${path}: additionalProperties must be false`);
       if (typeof properties === "object" && properties !== null && !Array.isArray(properties)) {
         const propertyNames = Object.keys(properties as Record<string, unknown>);
+        totalProperties += propertyNames.length;
         const required = Array.isArray(node.required) ? node.required.filter((item): item is string => typeof item === "string") : [];
         for (const name of propertyNames) if (!required.includes(name)) issues.push(`${path}: ${name} must be required`);
         for (const [name, child] of Object.entries(properties as Record<string, unknown>)) visit(child, `${path}.${name}`, depth + 1);
@@ -396,5 +421,6 @@ export function openRouterResponseSchemaIssues(schema: JsonSchemaObject): readon
     if (node.items !== undefined) visit(node.items, `${path}.items`, depth + 1);
   };
   visit(schema, "$", 0);
+  if (totalProperties > MAX_SCHEMA_PROPERTIES) issues.push(`schema declares ${totalProperties} properties, above the portable bound of ${MAX_SCHEMA_PROPERTIES}`);
   return [...new Set(issues)].slice(0, 32);
 }

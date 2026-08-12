@@ -140,7 +140,7 @@ export async function handleAiGatewayRequest(
   }
 
   if (!upstream.ok) {
-    const failure = classifyUpstreamStatus(upstream.status);
+    const failure = classifyUpstreamStatus(upstream.status, upstreamText);
     await finalizeUsage(usageLedger, reservation, { requestId: reservation?.requestId ?? "", status: "failed" });
     return json(errorPayload(failure), failure.status);
   }

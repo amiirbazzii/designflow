@@ -18,16 +18,23 @@ export const MANAGED_MODEL = "openai/gpt-4o-mini";
  * provider does not turn existing non-Design-Engineer commands into an
  * arbitrary-model proxy or an accidental model-unavailable failure.
  */
-export const MANAGED_MODEL_ROUTES: Readonly<Record<string, string>> = Object.freeze({
-  "design-engineer-coordinator-default": MANAGED_MODEL,
-  "figma-specification-default": MANAGED_MODEL,
-  "implementation-default": MANAGED_MODEL,
-  "visual-validation-default": MANAGED_MODEL,
-  "visual-correction-default": MANAGED_MODEL,
-  "design-engineer-default": MANAGED_MODEL,
-  "qa-reviewer-default": MANAGED_MODEL,
-  "research-analyst-default": MANAGED_MODEL,
-  "product-manager-default": MANAGED_MODEL,
+/**
+ * Per-profile ALLOWED model lists. The first entry is the default when the
+ * client's requested model is not in the profile's allowlist; a requested
+ * model that IS allowed is honored, which is what lets the client-side
+ * ordered fallback policy present different candidates per attempt while the
+ * gateway still refuses to act as an arbitrary-model proxy.
+ */
+export const MANAGED_MODEL_ROUTES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  "design-engineer-coordinator-default": [MANAGED_MODEL],
+  "figma-specification-default": ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro", MANAGED_MODEL],
+  "implementation-default": [MANAGED_MODEL],
+  "visual-validation-default": [MANAGED_MODEL],
+  "visual-correction-default": [MANAGED_MODEL],
+  "design-engineer-default": [MANAGED_MODEL],
+  "qa-reviewer-default": [MANAGED_MODEL],
+  "research-analyst-default": [MANAGED_MODEL],
+  "product-manager-default": [MANAGED_MODEL],
 });
 
 export type GatewayErrorCode =
@@ -208,17 +215,21 @@ export function buildOpenRouterBody(request: GatewayRequest): Record<string, unk
         schema: request.responseSchema,
       },
     },
-    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
-    ...(request.maxOutputTokens !== undefined ? { max_tokens: request.maxOutputTokens } : {}),
-    ...(routing !== undefined
-      ? {
-          provider: {
+    // Every gateway request requires strict structured output, so upstream
+    // routing must only select provider endpoints that support the requested
+    // parameters instead of silently dropping response_format.
+    provider: {
+      require_parameters: true,
+      ...(routing !== undefined
+        ? {
             ...(routing.order !== undefined ? { order: routing.order } : {}),
             ...(routing.allowFallbacks !== undefined ? { allow_fallbacks: routing.allowFallbacks } : {}),
             ...(routing.dataCollection !== undefined ? { data_collection: routing.dataCollection } : {}),
-          },
-        }
-      : {}),
+          }
+        : {}),
+    },
+    ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+    ...(request.maxOutputTokens !== undefined ? { max_tokens: request.maxOutputTokens } : {}),
   };
 }
 
@@ -229,10 +240,14 @@ export function buildOpenRouterBody(request: GatewayRequest): Record<string, unk
  * or provider outside this allowlist.
  */
 export function routeManagedRequest(request: GatewayRequest): GatewayRequest | GatewayFailure {
-  const model = MANAGED_MODEL_ROUTES[request.profileId];
-  if (model === undefined) {
+  const allowed = MANAGED_MODEL_ROUTES[request.profileId];
+  if (allowed === undefined || allowed.length === 0) {
     return new GatewayFailure("ERR_MODEL_ROUTE_NOT_FOUND", "no managed model route is configured for this profile", 400);
   }
+  // Honor the requested candidate when it is on the profile's allowlist;
+  // anything else routes to the profile's default rather than 400ing, so an
+  // older client keeps working and a hostile client cannot pick models.
+  const model = allowed.includes(request.model) ? request.model : allowed[0]!;
 
   return {
     requestId: request.requestId,
@@ -286,10 +301,53 @@ export function normalizeOpenRouterResponse(
   };
 }
 
-export function classifyUpstreamStatus(status: number): GatewayFailure {
+const MAX_UPSTREAM_REASON_LENGTH = 300;
+
+/** Bounded, sanitized upstream error text: no keys, no URLs, no newlines. */
+export function sanitizedUpstreamReason(bodyText: string | undefined): string | undefined {
+  if (bodyText === undefined || bodyText.length === 0) return undefined;
+  let message: unknown;
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: { message?: unknown; metadata?: { raw?: unknown } } };
+    message = parsed.error?.message ?? parsed.error?.metadata?.raw;
+  } catch {
+    return undefined;
+  }
+  if (typeof message !== "string" || message.length === 0) return undefined;
+  const cleaned = message
+    .replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+)/g, "[redacted]")
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length > 0 ? cleaned.slice(0, MAX_UPSTREAM_REASON_LENGTH) : undefined;
+}
+
+/**
+ * HTTP 400 carries several distinct upstream conditions; the body's own
+ * message is the only way to tell an invalid schema from an unknown model or
+ * an unroutable parameter set, so it is classified rather than bucketed.
+ */
+export function classifyUpstreamStatus(status: number, bodyText?: string): GatewayFailure {
   if (status === 401 || status === 403) return new GatewayFailure("ERR_MODEL_AUTHENTICATION", "upstream provider rejected the gateway credential", 502);
   if (status === 429) return new GatewayFailure("ERR_MODEL_RATE_LIMITED", "upstream provider rate-limited the gateway", 429, true);
-  if (status === 400) return new GatewayFailure("ERR_MODEL_SCHEMA_UNSUPPORTED", "upstream provider rejected the requested schema", 400);
+  if (status === 400) {
+    const reason = sanitizedUpstreamReason(bodyText);
+    const suffix = reason !== undefined ? `: ${reason}` : "";
+    const lowered = (reason ?? "").toLowerCase();
+    if (/schema|response_format|json_schema|structured/.test(lowered)) {
+      return new GatewayFailure("ERR_MODEL_SCHEMA_UNSUPPORTED", `upstream provider rejected the requested output schema${suffix}`, 400);
+    }
+    if (/not a valid model|model .*not (found|exist)|invalid model|no such model/.test(lowered)) {
+      return new GatewayFailure("ERR_MODEL_UNAVAILABLE", `requested model is unavailable${suffix}`, 400, true);
+    }
+    if (/no endpoints|require[sd]? parameters|provider.*support|unsupported parameter/.test(lowered)) {
+      return new GatewayFailure("ERR_MODEL_OUTPUT_UNSUPPORTED", `no upstream provider supports the requested parameters${suffix}`, 400);
+    }
+    if (reason !== undefined) {
+      return new GatewayFailure("ERR_MODEL_SCHEMA_UNSUPPORTED", `upstream provider rejected the request${suffix}`, 400);
+    }
+    return new GatewayFailure("ERR_MODEL_SCHEMA_UNSUPPORTED", "upstream provider rejected the requested schema", 400);
+  }
   if (status === 404) return new GatewayFailure("ERR_MODEL_UNAVAILABLE", "requested model is unavailable", 404, true);
   if (status === 408 || status === 504) return new GatewayFailure("ERR_MODEL_TIMEOUT", "upstream provider timed out", 504, true);
   return new GatewayFailure("ERR_MODEL_PROVIDER_FAILED", "upstream provider request failed", 502, true);

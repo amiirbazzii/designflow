@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { handleAiGatewayRequest } from "./handler";
-import { MANAGED_MODEL, MANAGED_MODEL_ROUTES } from "./contract";
+import { MANAGED_MODEL, MANAGED_MODEL_ROUTES, classifyUpstreamStatus } from "./contract";
 import type { UsageFinalizationInput, UsageLedger, UsageReservationInput } from "./usage";
 
 const REQUEST = {
@@ -112,7 +112,9 @@ describe("ai-gateway Edge Function handler", () => {
       "visual-correction-default",
     ];
 
-    expect(designEngineerProfiles.every((profileId) => MANAGED_MODEL_ROUTES[profileId] === MANAGED_MODEL)).toBe(true);
+    // Every profile's allowlist contains the launch model, and an
+    // out-of-allowlist request (below) always lands on the profile default.
+    expect(designEngineerProfiles.every((profileId) => MANAGED_MODEL_ROUTES[profileId]?.includes(MANAGED_MODEL) === true)).toBe(true);
 
     for (const [index, profileId] of designEngineerProfiles.entries()) {
       let upstreamBody: Record<string, unknown> | undefined;
@@ -136,10 +138,13 @@ describe("ai-gateway Edge Function handler", () => {
       });
 
       expect(result.status).toBe(200);
-      expect(upstreamBody?.model).toBe(MANAGED_MODEL);
+      const expectedDefault = MANAGED_MODEL_ROUTES[profileId]?.[0];
+      expect(upstreamBody?.model).toBe(expectedDefault);
       expect(upstreamBody?.models).toBeUndefined();
-      expect(upstreamBody?.provider).toBeUndefined();
-      expect((await result.json() as Record<string, unknown>).model).toBe(MANAGED_MODEL);
+      // structured output is always required, so routing must require
+      // parameter-compatible providers — and never leak client routing hints.
+      expect(upstreamBody?.provider).toEqual({ require_parameters: true });
+      expect((await result.json() as Record<string, unknown>).model).toBe(expectedDefault);
     }
   });
 
@@ -374,5 +379,76 @@ describe("ai-gateway Edge Function handler", () => {
     const body = await result.json() as { error: Record<string, unknown> };
     expect(result.status).toBe(504);
     expect(body.error.code).toBe("ERR_MODEL_TIMEOUT");
+  });
+});
+
+describe("upstream 400 classification (DF spec-v2 structured-output forensics)", () => {
+  const cases: Array<{ body: string; code: string; contains: string }> = [
+    {
+      body: JSON.stringify({ error: { message: "Invalid schema for response_format 'designflow_structured_output': too many properties" } }),
+      code: "ERR_MODEL_SCHEMA_UNSUPPORTED",
+      contains: "too many properties",
+    },
+    {
+      body: JSON.stringify({ error: { message: "openai/gpt-5.6-luna is not a valid model ID" } }),
+      code: "ERR_MODEL_UNAVAILABLE",
+      contains: "not a valid model",
+    },
+    {
+      body: JSON.stringify({ error: { message: "No endpoints found that support the requested parameters" } }),
+      code: "ERR_MODEL_OUTPUT_UNSUPPORTED",
+      contains: "No endpoints found",
+    },
+  ];
+
+  for (const { body, code, contains } of cases) {
+    test(`a 400 body mapping to ${code} preserves the sanitized upstream reason`, () => {
+      const failure = classifyUpstreamStatus(400, body);
+      expect(failure.code).toBe(code);
+      expect(failure.message).toContain(contains);
+    });
+  }
+
+  test("upstream reasons are sanitized: no keys, no urls, bounded length", () => {
+    const failure = classifyUpstreamStatus(400, JSON.stringify({
+      error: { message: `schema rejected sk-or-v1-abcdef1234567890 see https://openrouter.ai/errors ${"x".repeat(600)}` },
+    }));
+    expect(failure.message).not.toContain("sk-or-v1");
+    expect(failure.message).not.toContain("https://");
+    expect(failure.message.length).toBeLessThan(400);
+  });
+
+  test("a bodyless 400 keeps the legacy schema-unsupported mapping", () => {
+    expect(classifyUpstreamStatus(400).code).toBe("ERR_MODEL_SCHEMA_UNSUPPORTED");
+  });
+});
+
+describe("per-profile candidate allowlists", () => {
+  test("an allowed Specification candidate is honored; a foreign model routes to the default", async () => {
+    for (const [requested, expected] of [
+      ["deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-pro"],
+      ["openai/gpt-4o-mini", "openai/gpt-4o-mini"],
+      ["anthropic/claude-3.5-haiku", "openai/gpt-5.6-luna"],
+    ] as const) {
+      let upstreamBody: Record<string, unknown> | undefined;
+      const result = await handleAiGatewayRequest(request({
+        ...REQUEST,
+        requestId: `allow-${requested}`,
+        profileId: "figma-specification-default",
+        model: requested,
+      }), {
+        openRouterApiKey: "server-only-secret",
+        allowLocalDev: true,
+        fetchImpl: async (_url, init) => {
+          upstreamBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return new Response(JSON.stringify({
+            id: "upstream-allow",
+            choices: [{ message: { content: JSON.stringify({ decision: "run" }) } }],
+          }), { status: 200 });
+        },
+      });
+      expect(result.status).toBe(200);
+      expect(upstreamBody?.model).toBe(expected);
+    }
   });
 });

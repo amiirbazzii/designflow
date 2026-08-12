@@ -1,0 +1,1828 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": [
+        "3"
+      ]
+    },
+    "screen": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "width": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "height": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "layoutModel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "background": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scrollBehavior": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "width",
+        "height",
+        "layoutModel",
+        "background",
+        "scrollBehavior"
+      ]
+    },
+    "anatomy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "nodeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "elements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nodeId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "text": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "width": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "height": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layout": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "direction": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "horizontal",
+                        "vertical",
+                        "none",
+                        null
+                      ]
+                    },
+                    "gap": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "padding": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "align": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "justify": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "sizing": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "position": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "direction",
+                    "gap",
+                    "padding",
+                    "align",
+                    "justify",
+                    "sizing",
+                    "position"
+                  ]
+                },
+                "background": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "border": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "radius": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "opacity": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "typography": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "family": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "weight": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "size": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "lineHeight": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "letterSpacing": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "color": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "align": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "family",
+                    "weight",
+                    "size",
+                    "lineHeight",
+                    "letterSpacing",
+                    "color",
+                    "align"
+                  ]
+                },
+                "effects": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "asset": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "componentName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "states": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "children": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "nodeId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "text": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "width": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "height": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "layout": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "direction": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "horizontal",
+                              "vertical",
+                              "none",
+                              null
+                            ]
+                          },
+                          "gap": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "padding": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "align": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "justify": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "sizing": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "position": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "direction",
+                          "gap",
+                          "padding",
+                          "align",
+                          "justify",
+                          "sizing",
+                          "position"
+                        ]
+                      },
+                      "background": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "border": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "radius": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "opacity": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "typography": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "family": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "weight": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "size": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "lineHeight": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "letterSpacing": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "color": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "align": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "family",
+                          "weight",
+                          "size",
+                          "lineHeight",
+                          "letterSpacing",
+                          "color",
+                          "align"
+                        ]
+                      },
+                      "effects": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "asset": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "componentName": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "states": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "notes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "children": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "nodeId": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "role": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "text": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "width": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "height": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "layout": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "additionalProperties": false,
+                              "properties": {
+                                "direction": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "enum": [
+                                    "horizontal",
+                                    "vertical",
+                                    "none",
+                                    null
+                                  ]
+                                },
+                                "gap": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "padding": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "align": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "justify": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "sizing": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "position": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "direction",
+                                "gap",
+                                "padding",
+                                "align",
+                                "justify",
+                                "sizing",
+                                "position"
+                              ]
+                            },
+                            "background": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "border": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "radius": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "opacity": {
+                              "type": [
+                                "number",
+                                "null"
+                              ],
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "typography": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "additionalProperties": false,
+                              "properties": {
+                                "family": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "weight": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "size": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "lineHeight": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "letterSpacing": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "color": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "align": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "family",
+                                "weight",
+                                "size",
+                                "lineHeight",
+                                "letterSpacing",
+                                "color",
+                                "align"
+                              ]
+                            },
+                            "effects": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "asset": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "componentName": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "states": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "notes": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "children": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "nodeId": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "text": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "width": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "height": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "layout": {
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "direction": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "enum": [
+                                          "horizontal",
+                                          "vertical",
+                                          "none",
+                                          null
+                                        ]
+                                      },
+                                      "gap": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "padding": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "align": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "justify": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "sizing": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "position": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "direction",
+                                      "gap",
+                                      "padding",
+                                      "align",
+                                      "justify",
+                                      "sizing",
+                                      "position"
+                                    ]
+                                  },
+                                  "background": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "border": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "radius": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "opacity": {
+                                    "type": [
+                                      "number",
+                                      "null"
+                                    ],
+                                    "minimum": 0,
+                                    "maximum": 1
+                                  },
+                                  "typography": {
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "family": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "weight": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "size": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "lineHeight": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "letterSpacing": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "color": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "align": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "family",
+                                      "weight",
+                                      "size",
+                                      "lineHeight",
+                                      "letterSpacing",
+                                      "color",
+                                      "align"
+                                    ]
+                                  },
+                                  "effects": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "asset": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "componentName": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "states": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "notes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "children": {
+                                    "type": "array",
+                                    "maxItems": 0
+                                  }
+                                },
+                                "required": [
+                                  "nodeId",
+                                  "name",
+                                  "role",
+                                  "text",
+                                  "width",
+                                  "height",
+                                  "layout",
+                                  "background",
+                                  "border",
+                                  "radius",
+                                  "opacity",
+                                  "typography",
+                                  "effects",
+                                  "asset",
+                                  "componentName",
+                                  "states",
+                                  "notes",
+                                  "children"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "nodeId",
+                            "name",
+                            "role",
+                            "text",
+                            "width",
+                            "height",
+                            "layout",
+                            "background",
+                            "border",
+                            "radius",
+                            "opacity",
+                            "typography",
+                            "effects",
+                            "asset",
+                            "componentName",
+                            "states",
+                            "notes",
+                            "children"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "nodeId",
+                      "name",
+                      "role",
+                      "text",
+                      "width",
+                      "height",
+                      "layout",
+                      "background",
+                      "border",
+                      "radius",
+                      "opacity",
+                      "typography",
+                      "effects",
+                      "asset",
+                      "componentName",
+                      "states",
+                      "notes",
+                      "children"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "nodeId",
+                "name",
+                "role",
+                "text",
+                "width",
+                "height",
+                "layout",
+                "background",
+                "border",
+                "radius",
+                "opacity",
+                "typography",
+                "effects",
+                "asset",
+                "componentName",
+                "states",
+                "notes",
+                "children"
+              ]
+            }
+          }
+        },
+        "required": [
+          "nodeId",
+          "name",
+          "role",
+          "elements"
+        ]
+      }
+    },
+    "componentContracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "componentKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "componentSetName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceNodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "anatomy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "baseStyles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "componentProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "observedInSelection",
+                    "declaredByFigmaComponentMetadata"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "values",
+                "source"
+              ]
+            }
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "observedInSelection",
+                    "declaredByFigmaComponentMetadata"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "source"
+              ]
+            }
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "instances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nodeId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "differences": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "nodeId",
+                "label",
+                "differences"
+              ]
+            }
+          },
+          "usedBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "componentKey",
+          "componentSetName",
+          "sourceNodeIds",
+          "anatomy",
+          "baseStyles",
+          "componentProperties",
+          "variants",
+          "states",
+          "instances",
+          "usedBy"
+        ]
+      }
+    },
+    "foundations": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        },
+        "typography": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        },
+        "spacing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        },
+        "radii": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        },
+        "borders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        },
+        "shadows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        },
+        "iconSizing": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "figma-variable",
+                  "observed-value"
+                ]
+              },
+              "usage": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "value",
+              "name",
+              "source",
+              "usage"
+            ]
+          }
+        }
+      },
+      "required": [
+        "colors",
+        "typography",
+        "spacing",
+        "radii",
+        "borders",
+        "shadows",
+        "iconSizing"
+      ]
+    },
+    "assetDetails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "reference",
+          "width",
+          "height",
+          "purpose"
+        ]
+      }
+    },
+    "observedStates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "inferredBehavior": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "responsiveEvidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "designFile": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "designFile"
+      ]
+    },
+    "screenshotArtifactIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hierarchy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "designTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "spacing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "typography": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "radii": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "borders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shadows": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencedVariableNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "colors",
+        "spacing",
+        "typography",
+        "radii",
+        "borders",
+        "shadows",
+        "referencedVariableNames"
+      ]
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "sourceNodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiredAssets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "implementationNotes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "sourceNodeIds",
+          "variants",
+          "requiredAssets",
+          "implementationNotes"
+        ]
+      }
+    },
+    "layoutBehavior": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "responsiveAssumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "content": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "interactions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "accessibilityNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ambiguities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "affectedNodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiresUserInput": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "description",
+          "affectedNodeIds",
+          "requiresUserInput"
+        ]
+      }
+    },
+    "agentVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "screen",
+    "anatomy",
+    "componentContracts",
+    "foundations",
+    "assetDetails",
+    "observedStates",
+    "inferredBehavior",
+    "responsiveEvidence",
+    "sourceIdentity",
+    "screenshotArtifactIds",
+    "frames",
+    "hierarchy",
+    "designTokens",
+    "components",
+    "layoutBehavior",
+    "responsiveAssumptions",
+    "assets",
+    "content",
+    "interactions",
+    "states",
+    "accessibilityNotes",
+    "ambiguities",
+    "agentVersion"
+  ]
+}

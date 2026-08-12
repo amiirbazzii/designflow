@@ -19,6 +19,7 @@ import {
 
 import { SpecializedAgentOutputInvalidError } from "../errors";
 import { figmaSpecificationResponseSchema } from "../model-response-schemas";
+import { wireToDesignSpecification } from "./specification-wire";
 import { generateValidatedModelOutput } from "../model-structured-output";
 
 /**
@@ -551,7 +552,18 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
     // Specification V2 carries element-level styles, component contracts and
     // exact copy — 2000 tokens forced the model to discard evidence.
     maxOutputTokens: 8000,
-    validate: (output) => validate(manifest.version, output, snapshot),
+    // Portable wire response → deterministic normalization → the same
+    // authoritative validation (schema, node ids, completeness) every other
+    // strategy passes through. Normalization failures feed the bounded
+    // same-model repair loop like any other validation issue.
+    validate: (output) => {
+      const root = snapshot.nodes.find((node) => node.parentId === undefined) ?? snapshot.nodes[0];
+      const internal = wireToDesignSpecification(stripNulls(output), {
+        fallbackRootNodeId: root?.id,
+        screenshotArtifactIds: snapshot.screenshots.map((screenshot) => screenshot.artifactId),
+      });
+      return validate(manifest.version, internal, snapshot);
+    },
   });
 };
 

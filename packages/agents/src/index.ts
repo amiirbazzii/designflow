@@ -342,3 +342,6 @@ export function createSpecializedAgentRegistry(
     visualCorrection,
   ]);
 }
+
+export { figmaSpecificationWireSchema, wireToDesignSpecification } from "./catalog/specification-wire";
+export { figmaSpecificationResponseSchema, implementationResponseSchema, visualValidationResponseSchema, visualCorrectionResponseSchema } from "./model-response-schemas";

@@ -167,9 +167,13 @@ export class ModelRuntime implements ModelInvoker {
           "The configured model cannot satisfy DesignFlow's required strict structured output contract.",
         );
       } else if ((capabilities?.responseSchemaIssues?.(wireRequest.responseSchema) ?? []).length > 0) {
-        result = fail(
-          "ERR_MODEL_SCHEMA_UNSUPPORTED",
-          "The configured model cannot accept the structured-output schema required by this workflow.",
+        // A schema DesignFlow itself generated outside the portable subset is
+        // a SHARED request failure: no candidate model can fix it, so it
+        // stops immediately instead of burning every fallback.
+        const issues = capabilities?.responseSchemaIssues?.(wireRequest.responseSchema) ?? [];
+        return fail(
+          "ERR_MODEL_REQUEST_SCHEMA_INVALID",
+          `DesignFlow produced a structured-output schema outside the portable provider subset: ${issues.slice(0, 3).join("; ")}`,
         );
       } else {
         result = await this.execute(provider, wireRequest, validated, profile.timeoutMs, startedAt, fail);

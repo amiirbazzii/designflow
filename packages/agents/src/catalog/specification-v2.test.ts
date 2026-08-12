@@ -152,83 +152,118 @@ describe("Specification V2 — deterministic preservation", () => {
 });
 
 const RICH_MODEL_OUTPUT = {
-    schemaVersion: "3",
-    sourceIdentity: { designFile: "https://www.figma.com/design/E958/Spendly?node-id=1026-6098" },
-    screenshotArtifactIds: [],
-    frames: ["Add Transaction"],
-    hierarchy: [{ id: "1:1", name: "Add Transaction" }],
-    designTokens: { colors: ["#F8F8F8"], spacing: ["16px"], typography: ["Poppins"], radii: ["10px"], borders: ["1px #D3D3D3"], shadows: [], referencedVariableNames: ["Color/Surface/field"] },
-    components: [{ name: "TextField", role: "form-field", sourceNodeIds: ["1:41"], variants: [], requiredAssets: [], implementationNotes: [] }],
-    layoutBehavior: [], responsiveAssumptions: [],
-    assets: [{ id: "A:calendar", name: "Calendar icon" }],
-    content: ["Add Transaction", "Enter amount", "Dollar"],
-    interactions: [], states: [], accessibilityNotes: [],
-    ambiguities: [{ code: "OPTION_LISTS_UNKNOWN", description: "Card and Category fields show dropdown affordances, but the snapshot does not define their option lists.", affectedNodeIds: ["1:43", "1:44"], requiresUserInput: false }],
-    agentVersion: "ignored",
-    screen: { name: "Add Transaction", width: "440px", height: null, layoutModel: "vertical auto-layout", background: "#FFFFFF", scrollBehavior: null },
-    anatomy: [
-      { nodeId: "1:10", name: "App header", role: null, elements: [{ nodeId: "1:11", name: "Title", role: "text", text: "Add Transaction", width: null, height: null, layout: null, background: null, border: null, radius: null, opacity: null, typography: { family: "Poppins", weight: "600", size: "20px", lineHeight: null, letterSpacing: null, color: "#111111", align: null }, effects: [], asset: null, componentName: null, states: [], notes: [], children: [] }] },
+  // Portable WIRE format: flat closed objects, nullable scalars.
+  schemaVersion: "3",
+  sourceIdentity: { designFile: "https://www.figma.com/design/E958/Spendly?node-id=1026-6098" },
+  rootNodeId: "1:1",
+  screen: { name: "Add Transaction", width: "440px", height: null, layoutModel: "vertical auto-layout", background: "#FFFFFF", scrollBehavior: null },
+  regions: [
+    { nodeId: "1:10", name: "App header", role: null },
+    { nodeId: "1:20", name: "Tabs", role: null },
+    { nodeId: "1:40", name: "Add Expense form", role: "form" },
+  ],
+  elements: [
+    { region: "App header", parent: null, nodeId: "1:11", name: "Title", role: "text", text: "Add Transaction", width: null, height: null, layoutDirection: null, gap: null, padding: null, align: null, justify: null, sizing: null, position: null, background: null, border: null, radius: null, opacity: null, fontFamily: "Poppins", fontWeight: "600", fontSize: "20px", lineHeight: null, letterSpacing: null, textColor: "#111111", textAlign: null, effects: [], asset: null, componentName: null, states: [], notes: [] },
+    { region: "Add Expense form", parent: null, nodeId: "1:41", name: "Amount field", role: "form-field", text: "Enter amount", width: "392px", height: "56px", layoutDirection: "horizontal", gap: "12px", padding: "16px 16px 16px 16px", align: null, justify: null, sizing: null, position: null, background: "#F8F8F8", border: "1px #D3D3D3", radius: "10px", opacity: null, fontFamily: null, fontWeight: null, fontSize: null, lineHeight: null, letterSpacing: null, textColor: null, textAlign: null, effects: [], asset: null, componentName: "TextField", states: [], notes: [] },
+    { region: "Add Expense form", parent: "Amount field", nodeId: null, name: "Dollar suffix", role: "text", text: "Dollar", width: null, height: null, layoutDirection: null, gap: null, padding: null, align: null, justify: null, sizing: null, position: null, background: null, border: null, radius: null, opacity: null, fontFamily: null, fontWeight: null, fontSize: null, lineHeight: null, letterSpacing: null, textColor: null, textAlign: null, effects: [], asset: null, componentName: null, states: [], notes: [] },
+  ],
+  componentContracts: [{
+    name: "TextField",
+    componentKey: "key-textfield",
+    componentSetName: null,
+    sourceNodeIds: ["1:41", "1:42", "1:43", "1:44", "1:45", "1:46"],
+    anatomy: ["leading icon slot", "value text", "trailing slot"],
+    baseStyles: ["height 56px", "radius 10px", "background #F8F8F8", "border 1px #D3D3D3", "horizontal padding 16px"],
+    componentProperties: [{ name: "Trailing", values: ["None"], source: "declaredByFigmaComponentMetadata" }],
+    variants: [{ name: "State=Selected", source: "observedInSelection" }],
+    states: [],
+    instances: [
+      { nodeId: "1:41", label: "amount field", differences: ["trailing \"Dollar\""] },
+      { nodeId: "1:42", label: "title field", differences: ["leading icon"] },
+      { nodeId: "1:43", label: "card selector", differences: ["leading icon + trailing chevron"] },
+      { nodeId: "1:44", label: "category selector", differences: ["leading icon + trailing settings icon"] },
+      { nodeId: "1:45", label: "payee field", differences: ["trailing \"Optional\""] },
+      { nodeId: "1:46", label: "date field", differences: ["leading calendar icon + selected value"] },
     ],
-    componentContracts: [{
-      name: "TextField",
-      componentKey: "key-textfield",
-      componentSetName: null,
-      sourceNodeIds: ["1:41", "1:42", "1:43", "1:44", "1:45", "1:46"],
-      anatomy: ["leading icon slot", "value text", "trailing slot"],
-      baseStyles: ["height 56px", "radius 10px", "background #F8F8F8", "border 1px #D3D3D3", "horizontal padding 16px"],
-      componentProperties: [{ name: "Trailing", values: ["None"], source: "declaredByFigmaComponentMetadata" }],
-      variants: [{ name: "State=Selected", source: "observedInSelection" }],
-      states: [],
-      instances: [
-        { nodeId: "1:41", label: "amount field", differences: ["trailing \"Dollar\""] },
-        { nodeId: "1:42", label: "title field", differences: ["leading icon"] },
-        { nodeId: "1:43", label: "card selector", differences: ["leading icon + trailing chevron"] },
-        { nodeId: "1:44", label: "category selector", differences: ["leading icon + trailing settings icon"] },
-        { nodeId: "1:45", label: "payee field", differences: ["trailing \"Optional\""] },
-        { nodeId: "1:46", label: "date field", differences: ["leading calendar icon + selected value"] },
-      ],
-      usedBy: ["Add Expense form"],
-    }],
-    foundations: { colors: [{ value: "#F8F8F8", name: "Color/Surface/field", source: "figma-variable", usage: "field background" }], typography: [{ value: "Poppins", name: null, source: "observed-value", usage: null }], spacing: [], radii: [], borders: [], shadows: [], iconSizing: [] },
-    assetDetails: [{ id: "A:calendar", name: "Calendar icon", type: "icon", reference: "asset://calendar", width: null, height: null, purpose: "date field leading icon" }],
-    observedStates: ["Expense tab selected, Income tab inactive"],
-    inferredBehavior: ["Card selector likely opens a picker (affordance only; not confirmed)"],
-    responsiveEvidence: ["Only one fixed 440px frame is available."],
+    usedBy: ["Add Expense form"],
+  }],
+  foundations: {
+    colors: [{ value: "#F8F8F8", name: "Color/Surface/field", source: "figma-variable", usage: "field background" }],
+    typography: [{ value: "Poppins", name: null, source: "observed-value", usage: null }],
+    spacing: [], radii: [{ value: "10px", name: null, source: "observed-value", usage: null }], borders: [], shadows: [], iconSizing: [],
+  },
+  assetDetails: [{ id: "A:calendar", name: "Calendar icon", type: "icon", reference: "asset://calendar", width: null, height: null, purpose: "date field leading icon" }],
+  content: ["Add Transaction", "Enter amount", "Dollar"],
+  observedStates: ["Expense tab selected, Income tab inactive"],
+  inferredBehavior: ["Card selector likely opens a picker (affordance only; not confirmed)"],
+  responsiveEvidence: ["Only one fixed 440px frame is available."],
+  interactions: [], states: [], accessibilityNotes: [],
+  layoutBehavior: [], responsiveAssumptions: [], frames: ["Add Transaction"],
+  ambiguities: [{ code: "OPTION_LISTS_UNKNOWN", description: "Card and Category fields show dropdown affordances, but the snapshot does not define their option lists.", affectedNodeIds: ["1:43", "1:44"], requiresUserInput: false }],
 };
 
 const SHALLOW_BASE = {
   ...RICH_MODEL_OUTPUT,
-  anatomy: [], componentContracts: [], foundations: null, screen: null,
-  hierarchy: [], components: [], content: [],
-  designTokens: { colors: [], spacing: [], typography: [], radii: [], borders: [], shadows: [], referencedVariableNames: [] },
-  assetDetails: [], observedStates: [], inferredBehavior: [], responsiveEvidence: [],
+  regions: [], elements: [], componentContracts: [], foundations: null, screen: null, rootNodeId: null,
+  content: [], assetDetails: [], observedStates: [], inferredBehavior: [], responsiveEvidence: [],
+  frames: [],
 };
 
-describe("Specification V2 — model output contract", () => {
-  test("a rich V2 model response validates: nulls stripped, evidence sources kept, instances preserved", async () => {
+describe("Specification V2 — wire response contract", () => {
+  test("a rich wire response reconstructs the full internal V2 artifact", async () => {
     const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(RICH_MODEL_OUTPUT), figmaSpecificationAgentManifest);
+
+    // screen + ordered regions reconstructed
+    expect(spec.screen?.name).toBe("Add Transaction");
+    expect(spec.screen?.width).toBe("440px");
+    expect(spec.screen?.height).toBeUndefined();
+    expect(spec.anatomy.map((region) => region.name)).toEqual(["App header", "Tabs", "Add Expense form"]);
+
+    // nested element tree from flat wire elements, with structured facts
+    const form = spec.anatomy.find((region) => region.name === "Add Expense form");
+    const amount = form?.elements[0];
+    expect(amount?.name).toBe("Amount field");
+    expect(amount?.height).toBe("56px");
+    expect(amount?.radius).toBe("10px");
+    expect(amount?.background).toBe("#F8F8F8");
+    expect(amount?.border).toBe("1px #D3D3D3");
+    expect(amount?.layout?.padding).toBe("16px 16px 16px 16px");
+    expect(amount?.children[0]?.text).toBe("Dollar");
+    const header = spec.anatomy[0]?.elements[0];
+    expect(header?.typography?.family).toBe("Poppins");
+    expect(header?.typography?.size).toBe("20px");
+
+    // component contract with all six observed instances and evidence tags
     expect(spec.componentContracts).toHaveLength(1);
     expect(spec.componentContracts[0]?.instances).toHaveLength(6);
     expect(spec.componentContracts[0]?.componentProperties[0]?.source).toBe("declaredByFigmaComponentMetadata");
     expect(spec.componentContracts[0]?.variants[0]?.source).toBe("observedInSelection");
-    expect(spec.screen?.height).toBeUndefined();
+
+    // foundations, assets, states, uncertainties
+    expect(spec.foundations?.colors[0]).toMatchObject({ name: "Color/Surface/field", source: "figma-variable" });
+    expect(spec.assetDetails[0]?.purpose).toBe("date field leading icon");
     expect(spec.observedStates[0]).toContain("Expense tab selected");
     expect(spec.inferredBehavior[0]).toContain("not confirmed");
     expect(spec.ambiguities[0]?.description).toContain("option lists");
+
+    // derived legacy fields keep downstream consumers working
+    expect(spec.hierarchy[0]).toMatchObject({ id: "1:1", name: "Add Transaction" });
+    expect(spec.components[0]?.name).toBe("TextField");
+    expect(spec.designTokens.referencedVariableNames).toContain("Color/Surface/field");
+    expect(spec.content).toContain("Dollar");
     expect(spec.agentVersion).toBe(figmaSpecificationAgentManifest.version);
   });
 
   test("a shallow 'Button, Text field, Poppins' response is rejected for rich evidence", async () => {
-    const shallow = { ...SHALLOW_BASE };
     await expect(
-      modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(shallow), figmaSpecificationAgentManifest),
+      modelFigmaSpecificationStrategy(request(SPENDLY), modelContext({ ...SHALLOW_BASE }), figmaSpecificationAgentManifest),
     ).rejects.toThrow(/completeness/);
   });
 
-  test("a fabricated anatomy node id is rejected", async () => {
+  test("a fabricated element node id is rejected", async () => {
     const fabricated = {
       ...RICH_MODEL_OUTPUT,
-      anatomy: [{ nodeId: "9:999", name: "Ghost region", role: null, elements: [] }],
+      elements: [{ ...RICH_MODEL_OUTPUT.elements[0], nodeId: "9:999" }],
     };
     await expect(
       modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(fabricated), figmaSpecificationAgentManifest),
