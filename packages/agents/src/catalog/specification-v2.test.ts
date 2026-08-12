@@ -42,12 +42,13 @@ const FIELD_STYLE = {
   strokes: [{ type: "SOLID", color: { r: 0.827, g: 0.827, b: 0.827 } }],
 } as const;
 
-function textField(id: string, name: string): Record<string, unknown> {
+function textField(id: string, name: string, characters?: string): Record<string, unknown> {
   return {
     id, name, type: "INSTANCE", parentId: "1:40", componentId: "C:textfield",
     absoluteBoundingBox: { x: 24, y: 0, width: 392, height: 56 },
     layoutMode: "HORIZONTAL", itemSpacing: 12,
     padding: { top: 16, right: 16, bottom: 16, left: 16 },
+    ...(characters !== undefined ? { characters } : {}),
     ...FIELD_STYLE,
   };
 }
@@ -70,12 +71,17 @@ const SPENDLY: FigmaSourceSnapshot = figmaSourceSnapshotSchema.parse({
     { id: "1:30", name: "Heading", type: "TEXT", parentId: "1:1", characters: "Add New Expense" },
     { id: "1:31", name: "Subheading", type: "TEXT", parentId: "1:1", characters: "Fill in the details below to track your expense" },
     { id: "1:40", name: "Add Expense form", type: "FRAME", parentId: "1:1", childIds: ["1:41", "1:42", "1:43", "1:44", "1:45", "1:46"], layoutMode: "VERTICAL", itemSpacing: 16 },
-    textField("1:41", "Amount field"),
-    textField("1:42", "Title field"),
-    textField("1:43", "Card selector"),
-    textField("1:44", "Category selector"),
-    textField("1:45", "Payee field"),
-    textField("1:46", "Date field"),
+    textField("1:41", "Amount field", "Enter amount"),
+    textField("1:42", "Title field", "Add a title"),
+    textField("1:43", "Card selector", "Select your card"),
+    textField("1:44", "Category selector", "Select or add categories"),
+    textField("1:45", "Payee field", "Who did you pay for?"),
+    textField("1:46", "Date field", "1404/04/24"),
+    { id: "1:47", name: "Payee optional hint", type: "TEXT", parentId: "1:45", characters: "Optional" },
+    { id: "1:48", name: "Amount suffix", type: "TEXT", parentId: "1:41", characters: "Dollar" },
+    { id: "1:32", name: "Form hint", type: "TEXT", parentId: "1:1", characters: "Fill the information" },
+    { id: "1:62", name: "History month", type: "TEXT", parentId: "1:60", characters: "May 2024" },
+    { id: "1:63", name: "History heading", type: "TEXT", parentId: "1:60", characters: "Expense History" },
     { id: "1:50", name: "Add Expense button", type: "INSTANCE", parentId: "1:1", componentId: "C:button", absoluteBoundingBox: { x: 24, y: 700, width: 392, height: 56 }, cornerRadius: 12 },
     { id: "1:60", name: "Expense History", type: "FRAME", parentId: "1:1", childIds: ["1:61"], layoutMode: "VERTICAL" },
     { id: "1:61", name: "History card", type: "INSTANCE", parentId: "1:60", componentId: "C:historycard" },
@@ -193,7 +199,13 @@ const RICH_MODEL_OUTPUT = {
     spacing: [], radii: [{ value: "10px", name: null, source: "observed-value", usage: null }], borders: [], shadows: [], iconSizing: [],
   },
   assetDetails: [{ id: "A:calendar", name: "Calendar icon", type: "icon", reference: "asset://calendar", width: null, height: null, purpose: "date field leading icon" }],
-  content: ["Add Transaction", "Enter amount", "Dollar"],
+  content: [
+    "Add Transaction", "Expense", "Income", "Add New Expense",
+    "Fill in the details below to track your expense", "Enter amount", "Dollar",
+    "Add a title", "Select your card", "Select or add categories",
+    "Who did you pay for?", "Optional", "1404/04/24", "Fill the information",
+    "May 2024", "Expense History",
+  ],
   observedStates: ["Expense tab selected, Income tab inactive"],
   inferredBehavior: ["Card selector likely opens a picker (affordance only; not confirmed)"],
   responsiveEvidence: ["Only one fixed 440px frame is available."],
@@ -335,5 +347,91 @@ describe("Specification V2 — quality repair stays on the same model port (no f
     await expect(
       modelFigmaSpecificationStrategy(request(SPENDLY), alwaysShallow, figmaSpecificationAgentManifest),
     ).rejects.toThrow(/completeness/);
+  });
+});
+
+describe("Specification V2 — content preservation (field run 689c19d9)", () => {
+  const SPENDLY_COPY = [
+    "Add Transaction", "Expense", "Income", "Add New Expense",
+    "Fill in the details below to track your expense", "Enter amount", "Dollar",
+    "Add a title", "Select your card", "Select or add categories",
+    "Who did you pay for?", "Optional", "1404/04/24", "Fill the information",
+    "May 2024", "Expense History",
+  ];
+
+  test("exact Spendly copy survives into the content index and elements", async () => {
+    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(RICH_MODEL_OUTPUT), figmaSpecificationAgentManifest);
+    for (const copy of SPENDLY_COPY) expect(spec.content).toContain(copy);
+    // region/element association preserved
+    const header = spec.anatomy.find((region) => region.name === "App header");
+    expect(header?.elements[0]?.text).toBe("Add Transaction");
+  });
+
+  test("B: element text with an EMPTY explicit content index passes — content is derived, not duplicated", async () => {
+    const elementCarried = {
+      ...RICH_MODEL_OUTPUT,
+      content: [],
+      elements: [
+        ...SPENDLY_COPY.map((copy, index) => ({
+          ...RICH_MODEL_OUTPUT.elements[0],
+          nodeId: null,
+          name: `Copy ${index}`,
+          text: copy,
+          region: "App header",
+          parent: null,
+        })),
+      ],
+    };
+    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(elementCarried), figmaSpecificationAgentManifest);
+    for (const copy of SPENDLY_COPY) expect(spec.content).toContain(copy);
+  });
+
+  test("D: generic replacement labels fail content preservation with a specific repair message", async () => {
+    const generic = {
+      ...RICH_MODEL_OUTPUT,
+      content: ["Page heading", "Primary input", "Navigation labels"],
+      elements: [{ ...RICH_MODEL_OUTPUT.elements[0], text: "Page heading" }],
+    };
+    await expect(
+      modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(generic), figmaSpecificationAgentManifest),
+    ).rejects.toThrow(/visible text that is missing from the specification.*Preserve the exact visible copy/s);
+  });
+
+  test("E: duplicate evidence strings cause no false failure", async () => {
+    const spec = await modelFigmaSpecificationStrategy(
+      request(SPENDLY),
+      modelContext({ ...RICH_MODEL_OUTPUT, content: [...RICH_MODEL_OUTPUT.content] }),
+      figmaSpecificationAgentManifest,
+    );
+    expect(new Set(spec.content).size).toBe(spec.content.length);
+  });
+
+  test("F: a design with no visible text imposes no artificial content requirement", async () => {
+    const sparse = figmaSourceSnapshotSchema.parse({
+      source: { designFile: "sparse.fig" },
+      nodes: [{ id: "s:1", name: "Frame", type: "FRAME" }],
+    });
+    const spec = await deterministicFigmaSpecificationStrategy(request(sparse), EMPTY_CONTEXT, figmaSpecificationAgentManifest);
+    expect(spec.content).toEqual([]);
+  });
+
+  test("G: the missing-content validation issue names the exact missing strings for the repair prompt", async () => {
+    const partial = {
+      ...RICH_MODEL_OUTPUT,
+      content: ["Add Transaction"],
+      elements: [],
+    };
+    await expect(
+      modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(partial), figmaSpecificationAgentManifest),
+    ).rejects.toThrow(/including "Expense"/);
+  });
+
+  test("canonical collector reports provenance across content, elements and instances", async () => {
+    const { collectSpecificationVisibleContent } = await import("@designflow/sdk");
+    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(RICH_MODEL_OUTPUT), figmaSpecificationAgentManifest);
+    const collected = collectSpecificationVisibleContent(spec);
+    expect(collected.some((entry) => entry.source === "content")).toBe(true);
+    expect(collected.some((entry) => entry.source === "element" && entry.region === "App header" && entry.text === "Add Transaction")).toBe(true);
+    expect(collected.some((entry) => entry.source === "component-instance" && entry.text === "amount field")).toBe(true);
   });
 });

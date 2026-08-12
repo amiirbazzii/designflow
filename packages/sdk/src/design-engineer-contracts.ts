@@ -830,3 +830,62 @@ export const revisionRequestSchema = z
   .strict();
 
 export type RevisionRequest = z.infer<typeof revisionRequestSchema>;
+
+// ── Specification V2 content coverage ───────────────────────────
+
+/** One piece of visible copy the specification preserves, with provenance. */
+export interface SpecVisibleContent {
+  readonly text: string;
+  readonly nodeId?: string | undefined;
+  readonly region?: string | undefined;
+  readonly source: "content" | "element" | "component-instance";
+}
+
+function collectElementContent(
+  elements: readonly SpecElement[],
+  region: string | undefined,
+  into: SpecVisibleContent[],
+): void {
+  for (const element of elements) {
+    if (element.text !== undefined && element.text.trim().length > 0) {
+      into.push({
+        text: element.text,
+        ...(element.nodeId !== undefined ? { nodeId: element.nodeId } : {}),
+        ...(region !== undefined ? { region } : {}),
+        source: "element",
+      });
+    }
+    collectElementContent(element.children, region, into);
+  }
+}
+
+/**
+ * The ONE definition of "visible copy this specification preserves", shared
+ * by completeness validation, the derived `content[]` index, and any future
+ * deterministic coverage check. Collects explicit content entries, anatomy
+ * element text (nested), and component-instance labels' text slots. Never
+ * invents; only reads what the artifact carries.
+ */
+export function collectSpecificationVisibleContent(
+  specification: DesignSpecification,
+): readonly SpecVisibleContent[] {
+  const collected: SpecVisibleContent[] = [];
+  for (const line of specification.content) {
+    if (line.trim().length > 0) collected.push({ text: line, source: "content" });
+  }
+  for (const regionEntry of specification.anatomy) {
+    collectElementContent(regionEntry.elements, regionEntry.name, collected);
+  }
+  for (const contract of specification.componentContracts) {
+    for (const instance of contract.instances) {
+      if (instance.label.trim().length > 0) {
+        collected.push({
+          text: instance.label,
+          ...(instance.nodeId !== undefined ? { nodeId: instance.nodeId } : {}),
+          source: "component-instance",
+        });
+      }
+    }
+  }
+  return collected;
+}

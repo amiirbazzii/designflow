@@ -297,6 +297,13 @@ export const traceEventSchema = z.discriminatedUnion("type", [
       model: z.string().min(1),
       durationMs: z.number().nonnegative(),
       usage: modelUsageSchema.optional(),
+      /** Ordered-model-policy provenance, when a candidate list was configured. */
+      fallbackIndex: z.number().int().nonnegative().optional(),
+      candidateCount: z.number().int().positive().optional(),
+      previousFailures: z
+        .array(z.object({ model: z.string().min(1), code: z.string().min(1) }).strict())
+        .max(8)
+        .optional(),
       timestamp: z.string().min(1),
     })
     .strict(),

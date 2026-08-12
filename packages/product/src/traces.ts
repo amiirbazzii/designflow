@@ -185,6 +185,9 @@ export class TraceCollector implements TraceObserver {
             durationMs: validated.durationMs,
             status: "success" as const,
             ...(validated.usage !== undefined ? { usage: validated.usage } : {}),
+            ...(validated.fallbackIndex !== undefined ? { fallbackIndex: validated.fallbackIndex } : {}),
+            ...(validated.candidateCount !== undefined ? { candidateCount: validated.candidateCount } : {}),
+            ...(validated.previousFailures !== undefined ? { previousFailures: validated.previousFailures } : {}),
           },
         ];
 

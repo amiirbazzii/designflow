@@ -1,6 +1,7 @@
 // packages/agents/src/catalog/figma-specification-agent.ts
 import {
   agentManifestSchema,
+  collectSpecificationVisibleContent,
   designSpecificationSchema,
   figmaSourceSnapshotSchema,
   modelProfileSchema,
@@ -230,9 +231,30 @@ function completenessIssues(
     issues.push("completeness: the snapshot carries nodes but the specification describes no screen hierarchy");
   }
 
-  const evidencedText = snapshot.nodes.filter((node) => (node.characters ?? "").trim().length > 0);
-  if (evidencedText.length > 0 && spec.content.length === 0) {
-    issues.push(`completeness: the snapshot carries ${evidencedText.length} text node(s) but the specification preserves no content`);
+  // Visible copy is preserved when the specification semantically contains
+  // it anywhere the V2 contract carries text — the content index, anatomy
+  // element text, or component-instance labels — measured with the one
+  // canonical collector. Exact meaningful copy must not disappear, and
+  // generic replacements do not count.
+  const evidencedTexts = [...new Set(
+    snapshot.nodes
+      .map((node) => (node.characters ?? "").trim())
+      .filter((text) => text.length > 0),
+  )];
+  if (evidencedTexts.length > 0) {
+    const preservedTexts = new Set(
+      collectSpecificationVisibleContent(spec).map((entry) => entry.text.trim()),
+    );
+    const missing = evidencedTexts.filter((text) => !preservedTexts.has(text));
+    const preservedCount = evidencedTexts.length - missing.length;
+    const requiredCount = Math.max(1, Math.ceil(evidencedTexts.length / 2));
+    if (preservedCount < requiredCount) {
+      const examples = missing.slice(0, 3).map((text) => `"${text.slice(0, 80)}"`).join(", ");
+      issues.push(
+        `completeness: the snapshot contains visible text that is missing from the specification (${missing.length} of ${evidencedTexts.length} evidenced strings), including ${examples}. ` +
+          "Preserve the exact visible copy from the evidence and associate it with the correct structured elements. Do not summarize or invent replacement text.",
+      );
+    }
   }
 
   const componentEvidence =

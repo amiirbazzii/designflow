@@ -286,6 +286,21 @@ export function wireToDesignSpecification(
   const anatomy = buildAnatomy(wire);
   const foundations = wire.foundations ?? undefined;
 
+  // `content[]` is a DERIVED normalized index of visible copy, not a second
+  // thing the model must repeat. Element-level text is the primary carrier;
+  // the index unions the wire's explicit entries with every element text, in
+  // document order, deduplicated exactly.
+  const contentIndex: string[] = [];
+  const seenContent = new Set<string>();
+  const pushContent = (text: string | null | undefined): void => {
+    if (text == null || text.trim().length === 0) return;
+    if (seenContent.has(text)) return;
+    seenContent.add(text);
+    contentIndex.push(text);
+  };
+  for (const line of wire.content) pushContent(line);
+  for (const element of wire.elements) pushContent(element.text);
+
   const rootNodeId = wire.rootNodeId ?? context.fallbackRootNodeId;
   const hierarchy: { id: string; name: string; parentId?: string }[] = [];
   if (rootNodeId !== undefined && rootNodeId !== null) {
@@ -337,7 +352,7 @@ export function wireToDesignSpecification(
     layoutBehavior: wire.layoutBehavior,
     responsiveAssumptions: wire.responsiveAssumptions,
     assets: wire.assetDetails.map((asset) => ({ id: asset.id, name: asset.name })),
-    content: wire.content,
+    content: contentIndex,
     interactions: wire.interactions,
     states: wire.states,
     accessibilityNotes: wire.accessibilityNotes,

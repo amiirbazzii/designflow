@@ -309,9 +309,18 @@ export class AgentRuntime implements AgentDecisionService {
               requestId: observed.requestId,
               profileId: observed.profileId,
               providerId: observed.providerId,
-              model: observed.model,
+              model: observed.selection?.model ?? observed.model,
               durationMs: observed.durationMs,
               ...(observed.usage !== undefined ? { usage: observed.usage } : {}),
+              ...(observed.selection !== undefined
+                ? {
+                    fallbackIndex: observed.selection.candidateIndex,
+                    candidateCount: observed.selection.candidateCount,
+                    ...(observed.selection.previousFailures.length > 0
+                      ? { previousFailures: observed.selection.previousFailures.slice(0, 8) }
+                      : {}),
+                  }
+                : {}),
               timestamp: this.now().toISOString(),
             }
           : {
