@@ -90,6 +90,10 @@ export const figmaSpecificationAgentManifest: AgentManifest = agentManifestSchem
     "if only one fixed frame exists, say exactly that.\n" +
     "- Accessibility: only evidence-derived facts or recommendations clearly " +
     "labeled as recommendations.\n" +
+    "- Prefer explicit component/instance descendant evidence over inference: " +
+    "nodes nested inside component instances (including their exact text, icon " +
+    "slots and property values) are authoritative evidence, never something to " +
+    "re-derive from appearance.\n" +
     "- Every node id you reference must exist in the snapshot. Every uncertainty " +
     "must be a specific, structured ambiguity naming what is missing — never a " +
     "generic 'behavior is unclear'.\n" +
@@ -282,6 +286,26 @@ function completenessIssues(
     spec.designTokens.shadows.length > 0;
   if (styleEvidence && !styleCaptured) {
     issues.push("completeness: the snapshot carries style evidence (fills/strokes/effects/radii/spacing) but every style section is empty");
+  }
+
+  // §DF-SPEC-04: a fact must not be classified as unknown when normalized
+  // evidence exists. Bounded: only ambiguities whose affected nodes ALL carry
+  // text or children evidence are flagged.
+  for (const ambiguity of spec.ambiguities) {
+    if (ambiguity.affectedNodeIds.length === 0) continue;
+    const affected = ambiguity.affectedNodeIds
+      .map((id) => snapshot.nodes.find((node) => node.id === id))
+      .filter((node) => node !== undefined);
+    if (affected.length === 0) continue;
+    const allEvidenced = affected.every(
+      (node) => (node.characters ?? "").trim().length > 0 || node.childIds.length > 0,
+    );
+    const claimsUnavailable = /\b(not (captured|available|present|exposed)|unavailable|missing|no child)\b/i.test(ambiguity.description);
+    if (allEvidenced && claimsUnavailable) {
+      issues.push(
+        `completeness: ambiguity "${ambiguity.code}" classifies node(s) ${ambiguity.affectedNodeIds.slice(0, 3).join(", ")} as unavailable, but the snapshot carries explicit evidence for them. Do not classify a fact as unknown when corresponding normalized evidence exists.`,
+      );
+    }
   }
 
   return issues;

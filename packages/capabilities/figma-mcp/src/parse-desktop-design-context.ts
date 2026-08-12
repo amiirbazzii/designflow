@@ -133,3 +133,152 @@ function innerText(code: string, from: number, tag: string): string | undefined 
   const collapsed = unwrapped.replace(/\s+/g, " ").trim();
   return collapsed.length > 0 ? collapsed : undefined;
 }
+
+// ── Structural tree parsing (DF-SPEC-04) ────────────────────────
+//
+// The same generated code is also a structural source: every element carries
+// `data-node-id` — including descendants INSIDE component instances, which
+// the `get_metadata` outline omits entirely — and component instances appear
+// as capitalized tags whose JSX props are the instance's real Figma
+// component property values (e.g. `<NavigationMenuV3 variant="Expenses">`).
+// This parser turns that closed grammar into a nested tree so the snapshot
+// builder can materialize instance descendants as real evidence nodes.
+
+export interface DesignContextTreeNode {
+  readonly nodeId: string;
+  readonly tag: string;
+  /** The element's `data-name` attribute — Figma's own layer name. */
+  readonly name?: string | undefined;
+  /** Set when the tag is capitalized: the generated component's name. */
+  readonly componentName?: string | undefined;
+  /** JSX string props on a component tag — real instance property values. */
+  readonly propertyValues?: Readonly<Record<string, string>> | undefined;
+  readonly facts: DesignContextNodeFacts;
+  readonly widthPx?: number | undefined;
+  readonly heightPx?: number | undefined;
+  readonly paddingXPx?: number | undefined;
+  readonly paddingYPx?: number | undefined;
+  readonly text?: string | undefined;
+  readonly children: readonly DesignContextTreeNode[];
+}
+
+const TREE_TAG_PATTERN = /<([A-Za-z][A-Za-z0-9]*)((?:\s+[a-zA-Z_-]+="[^"]*")*)\s*(\/?)>|<\/([A-Za-z][A-Za-z0-9]*)\s*>/g;
+const TREE_ATTRIBUTE_PATTERN = /([a-zA-Z_-]+)="([^"]*)"/g;
+
+interface MutableTreeNode {
+  nodeId: string;
+  tag: string;
+  name?: string;
+  componentName?: string;
+  propertyValues?: Record<string, string>;
+  facts: DesignContextNodeFacts;
+  widthPx?: number;
+  heightPx?: number;
+  paddingXPx?: number;
+  paddingYPx?: number;
+  text?: string;
+  children: MutableTreeNode[];
+}
+
+function factsFromClassName(className: string): DesignContextNodeFacts {
+  const extracted: Mutable<DesignContextNodeFacts> = {};
+  const background = colorToken(className, "bg");
+  if (background !== undefined) extracted.backgroundColor = background;
+  const textColor = colorToken(className, "text");
+  if (textColor !== undefined) extracted.textColor = textColor;
+  const borderColor = colorToken(className, "border");
+  if (borderColor !== undefined) extracted.borderColor = borderColor;
+  const radius = pxToken(className, "rounded");
+  if (radius !== undefined) extracted.cornerRadius = radius;
+  const gap = pxToken(className, "gap");
+  if (gap !== undefined) extracted.itemSpacing = gap;
+  const fontSize = pxToken(className, "text");
+  if (fontSize !== undefined) extracted.fontSizePx = fontSize;
+  if (/\bflex-col\b/.test(className)) extracted.layoutMode = "VERTICAL";
+  else if (/\bflex\b/.test(className)) extracted.layoutMode = "HORIZONTAL";
+  const opacity = /\bopacity-\[(\d*\.?\d+)\]/.exec(className)?.[1];
+  if (opacity !== undefined) {
+    const value = Number(opacity);
+    if (Number.isFinite(value) && value >= 0 && value <= 1) extracted.opacity = value;
+  }
+  const font = fontToken(className);
+  if (font !== undefined) {
+    extracted.fontFamily = font.family;
+    if (font.style !== undefined) extracted.fontStyle = font.style;
+  }
+  return extracted;
+}
+
+/** Parses the design-context code into nested trees rooted at top-level elements. */
+export function parseDesignContextTree(code: string): readonly DesignContextTreeNode[] {
+  const roots: MutableTreeNode[] = [];
+  // Each stack frame is either a real node or an anonymous passthrough
+  // (an element without data-node-id) whose children attach to the nearest
+  // real ancestor.
+  const stack: (MutableTreeNode | undefined)[] = [];
+
+  const attach = (node: MutableTreeNode): void => {
+    const parent = [...stack].reverse().find((entry) => entry !== undefined);
+    if (parent !== undefined) parent.children.push(node);
+    else roots.push(node);
+  };
+
+  TREE_TAG_PATTERN.lastIndex = 0;
+  for (let match = TREE_TAG_PATTERN.exec(code); match !== null; match = TREE_TAG_PATTERN.exec(code)) {
+    if (match[4] !== undefined) {
+      stack.pop();
+      continue;
+    }
+    const tag = match[1]!;
+    const rawAttributes = match[2] ?? "";
+    const selfClosing = match[3] === "/";
+
+    const attributes: Record<string, string> = {};
+    TREE_ATTRIBUTE_PATTERN.lastIndex = 0;
+    for (let attr = TREE_ATTRIBUTE_PATTERN.exec(rawAttributes); attr !== null; attr = TREE_ATTRIBUTE_PATTERN.exec(rawAttributes)) {
+      attributes[attr[1]!] = attr[2]!;
+    }
+
+    const nodeId = attributes["data-node-id"];
+    if (nodeId === undefined || nodeId.length === 0) {
+      if (!selfClosing) stack.push(undefined);
+      continue;
+    }
+
+    const className = attributes["className"] ?? "";
+    const isComponentTag = /^[A-Z]/.test(tag);
+    const propertyValues: Record<string, string> = {};
+    for (const [key, value] of Object.entries(attributes)) {
+      if (key === "className" || key.startsWith("data-") || key === "style" || key === "key") continue;
+      propertyValues[key] = value;
+    }
+
+    const node: MutableTreeNode = {
+      nodeId,
+      tag,
+      ...(attributes["data-name"] !== undefined ? { name: attributes["data-name"] } : {}),
+      ...(isComponentTag ? { componentName: tag } : {}),
+      ...(isComponentTag && Object.keys(propertyValues).length > 0 ? { propertyValues } : {}),
+      facts: factsFromClassName(className),
+      children: [],
+    };
+    const widthPx = pxToken(className, "w");
+    if (widthPx !== undefined) node.widthPx = widthPx;
+    const heightPx = pxToken(className, "h");
+    if (heightPx !== undefined) node.heightPx = heightPx;
+    const paddingXPx = pxToken(className, "px");
+    if (paddingXPx !== undefined) node.paddingXPx = paddingXPx;
+    const paddingYPx = pxToken(className, "py");
+    if (paddingYPx !== undefined) node.paddingYPx = paddingYPx;
+
+    if (!selfClosing) {
+      const text = innerText(code, TREE_TAG_PATTERN.lastIndex, tag);
+      if (text !== undefined && text.length > 0) node.text = text;
+    }
+
+    attach(node);
+    if (!selfClosing) stack.push(node);
+  }
+
+  return roots;
+}

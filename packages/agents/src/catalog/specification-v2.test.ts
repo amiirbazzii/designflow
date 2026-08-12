@@ -435,3 +435,52 @@ describe("Specification V2 — content preservation (field run 689c19d9)", () =>
     expect(collected.some((entry) => entry.source === "component-instance" && entry.text === "amount field")).toBe(true);
   });
 });
+
+describe("DF-SPEC-04 — evidence reaches the model and false unknowns are rejected", () => {
+  test("the Specification Agent payload serializes instance descendant evidence verbatim", async () => {
+    let captured = "";
+    const capturingContext: SpecializedAgentContext = {
+      ...EMPTY_CONTEXT,
+      model: {
+        generate: async (request: { messages: readonly { content: string }[] }) => {
+          captured = request.messages.map((message) => message.content).join("\n");
+          return { type: "success", output: RICH_MODEL_OUTPUT } as never;
+        },
+      } as never,
+    };
+    await modelFigmaSpecificationStrategy(request(SPENDLY), capturingContext, figmaSpecificationAgentManifest);
+    for (const evidence of ["Enter amount", "Add a title", "Select your card", "Who did you pay for?", "1404/04/24"]) {
+      expect(captured).toContain(evidence);
+    }
+    expect(captured).toContain("component/instance descendant evidence");
+  });
+
+  test("an ambiguity claiming evidenced nodes are unavailable is rejected", async () => {
+    const falseUnknown = {
+      ...RICH_MODEL_OUTPUT,
+      ambiguities: [{
+        code: "TEXTFIELD_LABELS_UNAVAILABLE",
+        description: "TextField labels are not captured in the node tree.",
+        affectedNodeIds: ["1:41", "1:42"],
+        requiresUserInput: false,
+      }],
+    };
+    await expect(
+      modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(falseUnknown), figmaSpecificationAgentManifest),
+    ).rejects.toThrow(/Do not classify a fact as unknown/);
+  });
+
+  test("a genuine uncertainty about un-evidenced nodes still passes", async () => {
+    const genuine = {
+      ...RICH_MODEL_OUTPUT,
+      ambiguities: [{
+        code: "OPTION_LISTS_UNKNOWN",
+        description: "Card and Category fields show dropdown affordances, but the snapshot does not define their option lists.",
+        affectedNodeIds: ["1:50"],
+        requiresUserInput: false,
+      }],
+    };
+    const spec = await modelFigmaSpecificationStrategy(request(SPENDLY), modelContext(genuine), figmaSpecificationAgentManifest);
+    expect(spec.ambiguities).toHaveLength(1);
+  });
+});
