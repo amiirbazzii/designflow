@@ -575,3 +575,92 @@ describe("building a trace with model calls", () => {
     }
   });
 });
+
+// ── DF-SPEC-06. Candidate provenance must survive persistence ────
+
+describe("failed model candidates are persisted, not silently dropped", () => {
+  test("a failed call keeps every candidate's code, duration and sanitized reason", async () => {
+    const { store, observer } = collector();
+
+    await observer.onEvent({
+      type: "agent.invocation.started",
+      traceId: "spec-candidates",
+      workerId: "capability-invocation",
+      agentId: "figma-specification-agent",
+      timestamp: "2026-08-12T19:29:25.651Z",
+    });
+
+    // Field run 926a8b19's shape: one real completion, then an exhausted
+    // chain. The exhausted call was previously rejected at persistence
+    // because a duplicated strict schema did not accept `durationMs`, so the
+    // trace kept the success and lost every candidate fact.
+    await observer.onEvent({
+      type: "model.request.completed",
+      traceId: "spec-candidates",
+      requestId: "call-1",
+      profileId: "figma-specification-default",
+      providerId: "designflow-managed",
+      model: "openai/gpt-4o-mini",
+      durationMs: 91_549,
+      timestamp: "2026-08-12T19:31:00.000Z",
+    });
+
+    await observer.onEvent({
+      type: "model.request.failed",
+      traceId: "spec-candidates",
+      requestId: "call-2",
+      profileId: "figma-specification-default",
+      errorCode: "ERR_MODEL_CANDIDATES_EXHAUSTED",
+      durationMs: 246_093,
+      previousFailures: [
+        { model: "openai/gpt-4o-mini", code: "ERR_MODEL_TIMEOUT", durationMs: 145_000 },
+        { model: "openai/gpt-5.6-luna", code: "ERR_MODEL_UNAVAILABLE", durationMs: 812, reason: "requested model is unavailable: not a valid model ID" },
+        { model: "deepseek/deepseek-v4-pro", code: "ERR_MODEL_UNAVAILABLE", durationMs: 764, reason: "no endpoints found matching your data policy" },
+      ],
+      timestamp: "2026-08-12T19:35:03.000Z",
+    });
+
+    const trace = await store.get("spec-candidates") as AgentTrace;
+    expect(trace.modelCalls).toHaveLength(2);
+    const failed = trace.modelCalls[1]!;
+    expect(failed.status).toBe("failure");
+    expect(failed.previousFailures).toHaveLength(3);
+    expect(failed.previousFailures?.[1]).toEqual({
+      model: "openai/gpt-5.6-luna",
+      code: "ERR_MODEL_UNAVAILABLE",
+      durationMs: 812,
+      reason: "requested model is unavailable: not a valid model ID",
+    });
+    // still no prompt, no output, no credential anywhere on the trace
+    expect(JSON.stringify(trace)).not.toContain("Bearer");
+  });
+
+  test("evidence metrics land on the trace as counts only", async () => {
+    const { store, observer } = collector();
+    await observer.onEvent({
+      type: "agent.invocation.started",
+      traceId: "spec-evidence",
+      workerId: "capability-invocation",
+      agentId: "figma-specification-agent",
+      timestamp: "2026-08-12T19:29:25.651Z",
+    });
+    await observer.onEvent({
+      type: "agent.evidence.compiled",
+      traceId: "spec-evidence",
+      agentId: "figma-specification-agent",
+      metrics: {
+        snapshotNodeCount: 158,
+        snapshotBytes: 48_583,
+        bundleElementCount: 40,
+        bundleComponentCount: 4,
+        bundleInstanceCount: 16,
+        bundleBytes: 24_073,
+      },
+      timestamp: "2026-08-12T19:29:26.000Z",
+    });
+
+    const trace = await store.get("spec-evidence") as AgentTrace;
+    expect(trace.evidence?.bundleBytes).toBe(24_073);
+    expect(trace.evidence?.snapshotNodeCount).toBe(158);
+  });
+});

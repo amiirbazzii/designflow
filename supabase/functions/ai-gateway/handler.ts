@@ -29,7 +29,7 @@ export interface GatewayHandlerOptions {
   readonly fetchImpl?: typeof fetch;
   readonly authFetchImpl?: typeof fetch;
   readonly now?: () => number;
-  /** Test seam; production defaults to the bounded 30-second ceiling. */
+  /** Test seam; production defaults to the bounded global ceiling. */
   readonly timeoutMs?: number;
 }
 
@@ -37,7 +37,14 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 // Raised with Specification V2: an 8000-token structured response can
 // legitimately stream for well over 30s. Bounded below the Edge Function
 // wall-clock limit.
-const UPSTREAM_TIMEOUT_MS = 120_000;
+//
+// One GLOBAL bound — this gateway has no per-profile or per-request timeout,
+// so every managed request shares this ceiling. It matches the Specification
+// profile's 145s synchronous candidate budget (the largest configured client
+// budget) so the gateway can never cut a request the client would still be
+// waiting on: the client's timer starts before the request leaves the
+// machine, so at equal budgets the client always trips first.
+const UPSTREAM_TIMEOUT_MS = 145_000;
 const AUTH_TIMEOUT_MS = 5_000;
 
 /**

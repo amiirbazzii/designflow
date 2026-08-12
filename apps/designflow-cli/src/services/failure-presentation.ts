@@ -1,5 +1,5 @@
 // apps/designflow-cli/src/services/failure-presentation.ts
-import type { ProposalAttemptDiagnostic } from "@designflow/sdk";
+import type { ModelCandidateFailure, ProposalAttemptDiagnostic } from "@designflow/sdk";
 import { describeCapability } from "./presentation";
 
 /**
@@ -32,6 +32,8 @@ export interface ProductFailureFacts {
   readonly rollbackTriggered: boolean;
   /** The execution's run id, for support/technical details. */
   readonly executionId?: string | undefined;
+  /** Ordered-model-policy provenance when a candidate chain was exhausted. */
+  readonly modelCandidates?: readonly ModelCandidateFailure[] | undefined;
 }
 
 export interface ProductFailure {
@@ -247,6 +249,32 @@ export function redactDetailLine(line: string): string {
     .replace(/\b(sk-[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_.-]{10,})\b/g, "[redacted]");
 }
 
+/**
+ * The candidate chain, one indented block per attempted model.
+ *
+ * "Candidates tried: a (CODE) → b (CODE)" said which models failed but not
+ * why or for how long — three identical `ERR_MODEL_UNAVAILABLE`s read as one
+ * outage when they can be three different fixable causes. Every line here is
+ * already bounded and sanitized upstream and is redacted again on the way out.
+ */
+function modelCandidateLines(
+  candidates: readonly ModelCandidateFailure[] | undefined,
+): string[] {
+  if (candidates === undefined || candidates.length === 0) return [];
+  const lines = ["Candidates tried"];
+  candidates.slice(0, 8).forEach((candidate, index) => {
+    lines.push(`  ${index + 1}. ${redactDetailLine(candidate.model)}`);
+    lines.push(`     ${candidate.code}`);
+    if (candidate.durationMs !== undefined) {
+      lines.push(`     Duration: ${Math.round(candidate.durationMs)}ms`);
+    }
+    if (candidate.reason !== undefined && candidate.reason.trim().length > 0) {
+      lines.push(`     Reason: ${redactDetailLine(candidate.reason.slice(0, 300))}`);
+    }
+  });
+  return lines;
+}
+
 /** Bounded safe facts for the Details action. Never prompts, output, or secrets. */
 function technicalDetailLines(facts: ProductFailureFacts): string[] {
   const lines: string[] = [];
@@ -274,6 +302,7 @@ function technicalDetailLines(facts: ProductFailureFacts): string[] {
       lines.push(`  ${redactDetailLine(diagnostic.compileErrorSummary.slice(0, 600))}`);
     }
   }
+  lines.push(...modelCandidateLines(facts.modelCandidates));
   if (facts.executionId !== undefined) lines.push(`Run id: ${facts.executionId}`);
   lines.push(...mutationLines(facts).map((line) => line === "No files were changed." ? "Your project files were not changed." : line));
   return lines;

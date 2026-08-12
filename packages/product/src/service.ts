@@ -19,6 +19,7 @@ import { summarizeArtifacts } from "./artifacts";
 import { ExecutionNotFoundError } from "./errors";
 import {
   boundedAttemptDiagnostics,
+  boundedModelCandidates,
   readExecutionLineage,
   type ArtifactRegistry,
   type ExecutionEvent,
@@ -417,12 +418,17 @@ function failureFactsOf(
         : undefined;
   const message = rawMessage?.slice(0, 500);
 
+  const modelCandidates =
+    boundedModelCandidates(capabilityFailed?.payload?.modelCandidates) ??
+    boundedModelCandidates(executionFailed?.payload?.modelCandidates);
+
   const facts = {
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(failedCapabilityId !== undefined ? { failedCapabilityId } : {}),
     ...(message !== undefined ? { message } : {}),
     ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
     ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+    ...(modelCandidates !== undefined ? { modelCandidates } : {}),
   };
   return Object.keys(facts).length > 0 ? facts : undefined;
 }

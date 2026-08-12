@@ -103,6 +103,34 @@ describe("live workflow presentation adapter", () => {
     expect(failed.diagnostics.join(" ")).toContain("safe change");
   });
 
+  // DF-SPEC-06: the candidate chain travels as structured report facts, not
+  // as prose inside the failure message, so Details can render it per model.
+  test("an exhausted candidate chain reaches Details with per-candidate facts", () => {
+    const failed = applyExecutionReport(session(), {
+      overview: {
+        state: "failed",
+        status: "failed",
+        executionId: "926a8b19-7f58-4651-b229-97fa006b4906",
+        failure: {
+          errorCode: "ERR_MODEL_CANDIDATES_EXHAUSTED",
+          failedCapabilityId: "invoke-figma-specification-agent",
+          modelCandidates: [
+            { model: "openai/gpt-4o-mini", code: "ERR_MODEL_TIMEOUT", durationMs: 145000 },
+            { model: "openai/gpt-5.6-luna", code: "ERR_MODEL_UNAVAILABLE", durationMs: 812, reason: "requested model is unavailable: not a valid model ID" },
+          ],
+        },
+      },
+      artifacts: [],
+    });
+
+    const details = failed.technicalDetails.join("\n");
+    expect(details).toContain("Candidates tried");
+    expect(details).toContain("1. openai/gpt-4o-mini");
+    expect(details).toContain("Duration: 145000ms");
+    expect(details).toContain("Reason: requested model is unavailable: not a valid model ID");
+    expect(details).toContain("Run id: 926a8b19-7f58-4651-b229-97fa006b4906");
+  });
+
   test("model-unreachable terminal facts clear the active workflow state", () => {
     const failed = applyExecutionReport(session(), {
       overview: {

@@ -40,6 +40,12 @@ export async function generateValidatedModelOutput<T>(options: {
       throw new DesignFlowError(
         result.code,
         `Model request failed for ${options.agentId}: ${result.code}.${attemptSummary}`,
+        // Structured as well as summarized: the message is for a log line, this
+        // is what the failure screen renders per candidate (code, duration and
+        // the provider's bounded sanitized reason).
+        result.attempts !== undefined && result.attempts.length > 0
+          ? { modelCandidates: result.attempts.slice(0, 8) }
+          : undefined,
       );
     }
 

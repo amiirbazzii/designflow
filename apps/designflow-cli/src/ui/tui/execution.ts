@@ -294,6 +294,19 @@ export function applyExecutionReport(
       .filter((item): item is Record<string, unknown> & { attempt: number; code: string; message: string } => typeof item.attempt === "number" && typeof item.code === "string" && typeof item.message === "string")
       .map((item) => ({ attempt: item.attempt, code: item.code, message: item.message, ...(typeof item.path === "string" ? { path: item.path } : {}) }))
     : [];
+  const modelCandidates = Array.isArray(failure?.modelCandidates)
+    ? failure.modelCandidates
+      .map((item) => record(item))
+      .filter((item): item is Record<string, unknown> => item !== undefined)
+      .filter((item): item is Record<string, unknown> & { model: string; code: string } =>
+        typeof item.model === "string" && typeof item.code === "string")
+      .map((item) => ({
+        model: item.model,
+        code: item.code,
+        ...(typeof item.durationMs === "number" ? { durationMs: item.durationMs } : {}),
+        ...(typeof item.reason === "string" ? { reason: item.reason } : {}),
+      }))
+    : [];
   const productFailure = buildProductFailure({
     status: typeof overview.status === "string" ? overview.status : "failed",
     errorCode: typeof failure?.errorCode === "string" ? failure.errorCode : undefined,
@@ -306,6 +319,7 @@ export function applyExecutionReport(
     validationFailed: false,
     rollbackTriggered: false,
     ...(attemptDiagnostics.length > 0 ? { attemptDiagnostics } : {}),
+    ...(modelCandidates.length > 0 ? { modelCandidates } : {}),
   });
   return {
     ...applyExecutionUpdate(session, { status: "failed", diagnostics: [productFailure.title, ...productFailure.lines.filter((line) => line.trim().length > 0).slice(0, 8)] }),

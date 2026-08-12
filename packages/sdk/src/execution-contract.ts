@@ -80,6 +80,49 @@ export function boundedAttemptDiagnostics(
   return out.length > 0 ? out : undefined;
 }
 
+/**
+ * One attempted model candidate as it survives into a persisted failure.
+ *
+ * The same three-plus-one facts the trace keeps — which model, which stable
+ * code, how long it took, and the provider's bounded sanitized reason — so a
+ * person reading a failed run can tell "that model id is not available to
+ * this account" from "the request timed out" without opening a trace.
+ */
+export const modelCandidateFailureSchema = z.object({
+  model: z.string().min(1).max(160),
+  code: z.string().min(1).max(120),
+  durationMs: z.number().nonnegative().optional(),
+  reason: z.string().min(1).max(300).optional(),
+});
+
+export type ModelCandidateFailure = z.infer<typeof modelCandidateFailureSchema>;
+
+const MAX_MODEL_CANDIDATES = 8;
+
+/** Sanitizes untrusted failure metadata into bounded model-candidate facts. */
+export function boundedModelCandidates(
+  value: unknown,
+): ModelCandidateFailure[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const out: ModelCandidateFailure[] = [];
+  for (const entry of value.slice(0, MAX_MODEL_CANDIDATES)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    const cut = (input: unknown, max: number): string | undefined =>
+      typeof input === "string" && input.trim().length > 0 ? input.trim().slice(0, max) : undefined;
+    const parsed = modelCandidateFailureSchema.safeParse({
+      model: cut(record["model"], 160),
+      code: cut(record["code"], 120),
+      ...(typeof record["durationMs"] === "number" && Number.isFinite(record["durationMs"]) && record["durationMs"] >= 0
+        ? { durationMs: Math.round(record["durationMs"]) }
+        : {}),
+      ...(cut(record["reason"], 300) !== undefined ? { reason: cut(record["reason"], 300) } : {}),
+    });
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export const executionErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),

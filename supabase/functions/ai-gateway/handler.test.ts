@@ -380,6 +380,27 @@ describe("ai-gateway Edge Function handler", () => {
     expect(result.status).toBe(504);
     expect(body.error.code).toBe("ERR_MODEL_TIMEOUT");
   });
+
+  // DF-SPEC-06 §5/§11D: one global ceiling, and it must not be able to cut a
+  // request the client's largest configured budget (Specification, 145s) is
+  // still waiting on. A caller asking for more is clamped to the ceiling.
+  test("the global upstream ceiling covers the largest client candidate budget", async () => {
+    let observedSignalAborted = false;
+    const result = await handleAiGatewayRequest(request(), {
+      openRouterApiKey: "server-only-secret",
+      allowLocalDev: true,
+      timeoutMs: 600_000,
+      fetchImpl: async (_url, init) => {
+        observedSignalAborted = init?.signal?.aborted ?? false;
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: "{}" } }], usage: {} }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      },
+    });
+    expect(observedSignalAborted).toBe(false);
+    expect(result.status).toBe(200);
+  });
 });
 
 describe("upstream 400 classification (DF spec-v2 structured-output forensics)", () => {

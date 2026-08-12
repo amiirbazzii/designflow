@@ -1,6 +1,6 @@
 // packages/product/src/schemas.ts
 import { z } from "zod";
-import { proposalAttemptDiagnosticSchema } from "@designflow/sdk";
+import { modelCandidateFailureSchema, proposalAttemptDiagnosticSchema } from "@designflow/sdk";
 
 /**
  * Product-facing read models.
@@ -75,6 +75,8 @@ export const executionOverviewSchema = z.object({
       attemptDiagnostics: z.array(proposalAttemptDiagnosticSchema).max(12).optional(),
       /** Provider-supplied bounded retry interval, when one was recorded. */
       retryAfterSeconds: z.number().nonnegative().optional(),
+      /** Ordered-model-policy provenance for an exhausted candidate chain. */
+      modelCandidates: z.array(modelCandidateFailureSchema).max(8).optional(),
     })
     .optional(),
 });

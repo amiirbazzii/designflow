@@ -110,20 +110,30 @@ function gatewayReason(body: unknown): string {
   return ` (${message.replace(/\s+/g, " ").trim().slice(0, MAX_GATEWAY_REASON_LENGTH)})`;
 }
 
+/** The same bounded reason as structured metadata, so it survives past the message. */
+function reasonMetadataOf(body: unknown): Record<string, unknown> | undefined {
+  const text = gatewayReason(body).replace(/^ \(/, "").replace(/\)$/, "");
+  return text.length > 0 ? { reason: text } : undefined;
+}
+
 function gatewayError(status: number, body: unknown): Error {
   const code = readGatewayCode(body);
   const retryMetadata = retryAfterMetadataOf(body);
   const reason = gatewayReason(body);
-  if (code === "ERR_MODEL_ROUTE_NOT_FOUND") return new DesignFlowError("ERR_MODEL_ROUTE_NOT_FOUND", "The managed AI gateway has no route for this profile.");
+  // Carried structurally as well as in the message: the model runtime records
+  // it per candidate, so an exhausted chain can say *why* each candidate
+  // refused instead of repeating one broad code three times.
+  const reasonMetadata = reasonMetadataOf(body);
+  if (code === "ERR_MODEL_ROUTE_NOT_FOUND") return new DesignFlowError("ERR_MODEL_ROUTE_NOT_FOUND", "The managed AI gateway has no route for this profile.", reasonMetadata);
   if (code === "ERR_MODEL_RATE_LIMIT") return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.", retryMetadata);
   if (code === "ERR_MODEL_QUOTA_EXCEEDED") return new DesignFlowError("ERR_MODEL_QUOTA_EXCEEDED", "The managed AI gateway usage quota was reached.", retryMetadata);
   if (code === "ERR_MODEL_SERVICE_UNAVAILABLE") return new DesignFlowError("ERR_MODEL_SERVICE_UNAVAILABLE", "The managed AI gateway is temporarily unavailable.", retryMetadata);
   if (code === "ERR_MODEL_AUTHENTICATION" || status === 401 || status === 403) return new DesignFlowError("ERR_MODEL_AUTHENTICATION", "The managed AI gateway rejected the session.");
   if (code === "ERR_MODEL_RATE_LIMITED" || status === 429) return new DesignFlowError("ERR_MODEL_RATE_LIMITED", "The managed AI gateway is rate-limiting requests.", retryMetadata);
-  if (code === "ERR_MODEL_TIMEOUT" || status === 408 || status === 504) return new DesignFlowError("ERR_MODEL_TIMEOUT", "The managed AI gateway timed out.");
-  if (code === "ERR_MODEL_UNAVAILABLE" || status === 404 || status >= 500) return new DesignFlowError("ERR_MODEL_UNAVAILABLE", `The managed AI gateway or requested model is unavailable.${reason}`);
-  if (code === "ERR_MODEL_OUTPUT_UNSUPPORTED") return new DesignFlowError("ERR_MODEL_OUTPUT_UNSUPPORTED", `No upstream provider supports the requested structured-output parameters.${reason}`);
-  if (code === "ERR_MODEL_SCHEMA_UNSUPPORTED" || status === 400) return new DesignFlowError("ERR_MODEL_SCHEMA_UNSUPPORTED", `The managed gateway rejected the requested output schema.${reason}`);
+  if (code === "ERR_MODEL_TIMEOUT" || status === 408 || status === 504) return new DesignFlowError("ERR_MODEL_TIMEOUT", "The managed AI gateway timed out.", reasonMetadata);
+  if (code === "ERR_MODEL_UNAVAILABLE" || status === 404 || status >= 500) return new DesignFlowError("ERR_MODEL_UNAVAILABLE", `The managed AI gateway or requested model is unavailable.${reason}`, reasonMetadata);
+  if (code === "ERR_MODEL_OUTPUT_UNSUPPORTED") return new DesignFlowError("ERR_MODEL_OUTPUT_UNSUPPORTED", `No upstream provider supports the requested structured-output parameters.${reason}`, reasonMetadata);
+  if (code === "ERR_MODEL_SCHEMA_UNSUPPORTED" || status === 400) return new DesignFlowError("ERR_MODEL_SCHEMA_UNSUPPORTED", `The managed gateway rejected the requested output schema.${reason}`, reasonMetadata);
   return new DesignFlowError("ERR_MODEL_PROVIDER_FAILED", "The managed AI gateway request failed.");
 }
 

@@ -124,10 +124,22 @@ export const figmaSpecificationDefaultModelProfile: ModelProfile = modelProfileS
   fallbackModels: ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro"],
   // Specification V2 streams up to 8000 output tokens from rich Figma
   // evidence; the field run 101df3e3 proved the inherited 30s default is
-  // too small (Luna was cut at exactly 30006ms). 120s is the documented
-  // per-profile ceiling and covers the 8000-token worst case at realistic
-  // provider throughput. Other agents keep the 30s default.
-  timeoutMs: 120_000,
+  // too small (Luna was cut at exactly 30006ms), and run 926a8b19 showed a
+  // real 4o-mini completion taking 91.5s for 7696 output tokens — inside
+  // 120s, but with no headroom for the bounded repair attempt that follows a
+  // validation failure. 145s is the final synchronous budget, chosen to sit
+  // under the managed gateway's own request ceiling. Other agents keep the
+  // 30s default.
+  //
+  // THIS IS THE LAST TIMEOUT INCREASE. If the compact Specification request
+  // cannot reliably complete within the 145-second synchronous candidate
+  // budget, DesignFlow will not solve the problem by raising synchronous
+  // timeouts again. The next decision must instead be one of: a faster viable
+  // structured-output model; reducing redundant response work while
+  // preserving semantics; splitting Specification generation into bounded
+  // stages; or moving the AI gateway to an execution model suited to longer
+  // inference.
+  timeoutMs: 145_000,
 });
 
 export type FigmaSpecificationStrategy = (

@@ -61,8 +61,17 @@ export type JsonSchemaObject = z.infer<typeof jsonSchemaObjectSchema>;
 
 // ── Model profile ───────────────────────────────────────────────
 
-/** Bounds shared by every duration field in this file. */
-const MAX_TIMEOUT_MS = 120_000;
+/**
+ * Bounds shared by every duration field in this file.
+ *
+ * 145s is DesignFlow's final synchronous per-candidate budget: it is what the
+ * Specification profile needs for an 8000-token structured response plus its
+ * bounded repair attempt, and it is the ceiling the managed gateway enforces
+ * on its own upstream call. A profile asking for more than this is a request
+ * to hold a decision open past the point a person is still waiting — the
+ * answer to which is a different execution model, not a larger number here.
+ */
+const MAX_TIMEOUT_MS = 145_000;
 const MAX_OUTPUT_TOKENS = 32_000;
 
 /**
@@ -251,12 +260,25 @@ export type ModelResponse = z.infer<typeof modelResponseSchema>;
  * prompt to leak, so the runtime sanitises before constructing one of these.
  */
 /** One candidate's sanitized outcome inside an ordered model policy. */
+/** Bounded, already-sanitized upstream explanation. Never a raw payload. */
+export const MAX_MODEL_FAILURE_REASON_LENGTH = 300;
+
 export const modelCandidateAttemptSchema = z
   .object({
     model: z.string().min(1),
     code: z.string().min(1),
     /** Elapsed time for that candidate alone, when the runtime measured it. */
     durationMs: z.number().nonnegative().optional(),
+    /**
+     * Why the upstream refused, when the provider layer could say.
+     *
+     * `ERR_MODEL_UNAVAILABLE` alone cannot distinguish "this account has no
+     * access to the model" from "that model id does not exist" from "no
+     * provider route serves these parameters" — three failures with three
+     * different fixes. The gateway already sanitizes and bounds its own
+     * message; this carries it the rest of the way.
+     */
+    reason: z.string().min(1).max(MAX_MODEL_FAILURE_REASON_LENGTH).optional(),
   })
   .strict();
 
@@ -302,6 +324,8 @@ export const modelResultSchema = z.discriminatedUnion("type", [
       message: z.string().min(1),
       retryable: z.boolean(),
       durationMs: z.number().nonnegative(),
+      /** The provider layer's bounded sanitized upstream explanation. */
+      reason: z.string().min(1).max(MAX_MODEL_FAILURE_REASON_LENGTH).optional(),
       /**
        * Bounded, sanitized per-candidate outcomes when an ordered model
        * policy was exhausted. Absent for single-model profiles.

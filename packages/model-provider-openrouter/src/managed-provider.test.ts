@@ -117,6 +117,35 @@ describe("ManagedGatewayProvider", () => {
     });
   });
 
+  // DF-SPEC-06: the gateway's sanitized reason must survive as structured
+  // metadata, not only inside the message, so the model runtime can record it
+  // against the candidate that failed.
+  test("carries the gateway's bounded sanitized reason as structured metadata", async () => {
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      fetchImpl: async () =>
+        response(
+          { error: { code: "ERR_MODEL_UNAVAILABLE", message: "requested model is unavailable: openai/gpt-5.6-luna is not a valid model ID", retryable: true } },
+          400,
+        ),
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({
+      code: "ERR_MODEL_UNAVAILABLE",
+      metadata: { reason: "requested model is unavailable: openai/gpt-5.6-luna is not a valid model ID" },
+    });
+  });
+
+  test("a gateway failure with no message carries no invented reason", async () => {
+    const provider = new ManagedGatewayProvider({
+      endpoint: "https://project.supabase.co/functions/v1/ai-gateway",
+      fetchImpl: async () => response({ error: { code: "ERR_MODEL_UNAVAILABLE", retryable: true } }, 404),
+    });
+    await expect(provider.generate(REQUEST, CONTEXT)).rejects.toMatchObject({
+      code: "ERR_MODEL_UNAVAILABLE",
+      metadata: {},
+    });
+  });
+
   test("rejects non-HTTPS remote endpoints", () => {
     expect(() => new ManagedGatewayProvider({ endpoint: "http://gateway.example.test" })).toThrow("must use HTTPS");
   });

@@ -182,6 +182,7 @@ export {
   traceEventSchema,
   traceToolCallSchema,
   traceModelCallSchema,
+  traceModelCandidateAttemptSchema,
   traceEvidenceMetricsSchema,
   coordinatorOutputDiagnosticSchema,
   traceStatusSchema,
@@ -197,6 +198,7 @@ export type {
   TraceEvent,
   TraceToolCall,
   TraceModelCall,
+  TraceModelCandidateAttempt,
   TraceEvidenceMetrics,
   CoordinatorOutputDiagnostic,
   TraceStatus,
@@ -716,6 +718,8 @@ export {
   executionErrorSchema,
   proposalAttemptDiagnosticSchema,
   boundedAttemptDiagnostics,
+  modelCandidateFailureSchema,
+  boundedModelCandidates,
 } from "./execution-contract";
 
 export type {
@@ -724,6 +728,7 @@ export type {
   ExecutionResult,
   ExecutionErrorDetail,
   ProposalAttemptDiagnostic,
+  ModelCandidateFailure,
   ExecutionContract,
   ExecutionRuntimeOptions,
 } from "./execution-contract";

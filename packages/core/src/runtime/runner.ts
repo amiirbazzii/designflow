@@ -7,6 +7,7 @@ import {
   executionEventSchema,
   DesignFlowError,
   boundedAttemptDiagnostics,
+  boundedModelCandidates,
 } from "@designflow/sdk";
 
 import { CapabilityExecutionError } from "./errors";
@@ -77,6 +78,11 @@ export class CapabilityRunner {
           : undefined;
       const retryAfterSeconds =
         error instanceof DesignFlowError ? boundedRetryAfterSeconds(error.metadata["retryAfterSeconds"]) : undefined;
+      // Ordered-model-policy provenance, carried the same bounded way attempt
+      // diagnostics are: one stable code for the run, plus per-candidate facts
+      // for the person who has to act on it.
+      const modelCandidates =
+        error instanceof DesignFlowError ? boundedModelCandidates(error.metadata["modelCandidates"]) : undefined;
       await this.publishEvent(context.executionId, "capability.failed", {
         capabilityId: capability.id,
         attempt: lastAttempt,
@@ -84,6 +90,7 @@ export class CapabilityRunner {
         ...(error instanceof DesignFlowError ? { errorCode: error.code } : {}),
         ...(attemptDiagnostics !== undefined ? { attemptDiagnostics } : {}),
         ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+        ...(modelCandidates !== undefined ? { modelCandidates } : {}),
       });
       throw error;
     }

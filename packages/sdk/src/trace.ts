@@ -62,6 +62,28 @@ export const traceToolCallSchema = z
 export type TraceToolCall = z.infer<typeof traceToolCallSchema>;
 
 /**
+ * One attempted model candidate, as it appears anywhere on a trace.
+ *
+ * Defined once and reused by the trace, the patch and both model events. It
+ * was previously written out inline in each of those places, and they drifted:
+ * the runtime started reporting a per-candidate `durationMs` that one strict
+ * copy did not accept, so the whole failed-call record was rejected at
+ * persistence and silently dropped — the exhausted chain in field run
+ * 926a8b19 left no per-candidate record at all. One definition, no drift.
+ */
+export const traceModelCandidateAttemptSchema = z
+  .object({
+    model: z.string().min(1),
+    code: z.string().min(1),
+    durationMs: z.number().nonnegative().optional(),
+    /** Bounded sanitized upstream explanation. Never a raw payload. */
+    reason: z.string().min(1).max(300).optional(),
+  })
+  .strict();
+
+export type TraceModelCandidateAttempt = z.infer<typeof traceModelCandidateAttemptSchema>;
+
+/**
  * One model call, as it appears on a trace.
  *
  * The same discipline as `TraceToolCall`, one layer up: which provider and
@@ -94,10 +116,7 @@ export const traceModelCallSchema = z
     fallbackIndex: z.number().int().nonnegative().optional(),
     candidateCount: z.number().int().positive().optional(),
     /** Bounded sanitized earlier candidate failures (policy provenance). */
-    previousFailures: z
-      .array(z.object({ model: z.string().min(1), code: z.string().min(1) }).strict())
-      .max(8)
-      .optional(),
+    previousFailures: z.array(traceModelCandidateAttemptSchema).max(8).optional(),
   })
   .strict();
 
@@ -324,19 +343,7 @@ export const traceEventSchema = z.discriminatedUnion("type", [
       /** Ordered-model-policy provenance, when a candidate list was configured. */
       fallbackIndex: z.number().int().nonnegative().optional(),
       candidateCount: z.number().int().positive().optional(),
-      previousFailures: z
-        .array(
-          z
-            .object({
-              model: z.string().min(1),
-              code: z.string().min(1),
-              /** How long that candidate itself took before failing. */
-              durationMs: z.number().nonnegative().optional(),
-            })
-            .strict(),
-        )
-        .max(8)
-        .optional(),
+      previousFailures: z.array(traceModelCandidateAttemptSchema).max(8).optional(),
       timestamp: z.string().min(1),
     })
     .strict(),
@@ -366,18 +373,7 @@ export const traceEventSchema = z.discriminatedUnion("type", [
        * time. Without it a candidates-exhausted failure recorded which codes
        * happened but not which candidate spent the time.
        */
-      previousFailures: z
-        .array(
-          z
-            .object({
-              model: z.string().min(1),
-              code: z.string().min(1),
-              durationMs: z.number().nonnegative().optional(),
-            })
-            .strict(),
-        )
-        .max(8)
-        .optional(),
+      previousFailures: z.array(traceModelCandidateAttemptSchema).max(8).optional(),
       timestamp: z.string().min(1),
     })
     .strict(),

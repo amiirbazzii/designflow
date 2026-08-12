@@ -95,7 +95,7 @@ export class ModelRuntime implements ModelInvoker {
     const validated = this.parseRequest(request);
     const startedAt = performance.now();
 
-    const fail = (code: string, message: string, retryable = false): ModelResult =>
+    const fail = (code: string, message: string, retryable = false, reason?: string): ModelResult =>
       this.validateResult({
         type: "failure",
         requestId: validated.requestId,
@@ -103,6 +103,7 @@ export class ModelRuntime implements ModelInvoker {
         message,
         retryable,
         durationMs: elapsed(startedAt),
+        ...(reason !== undefined ? { reason } : {}),
       });
 
     const profile = this.profiles.get(validated.profileId);
@@ -125,7 +126,7 @@ export class ModelRuntime implements ModelInvoker {
     // failures stop truthfully. A single-model profile takes exactly the
     // pre-policy path and returns byte-identical results.
     const candidates = [profile.model, ...profile.fallbackModels];
-    const attempts: { model: string; code: string; durationMs: number }[] = [];
+    const attempts: { model: string; code: string; durationMs: number; reason?: string }[] = [];
 
     for (let index = 0; index < candidates.length; index += 1) {
       const candidateModel = candidates[index]!;
@@ -202,6 +203,7 @@ export class ModelRuntime implements ModelInvoker {
         model: candidateModel,
         code: result.code,
         durationMs: elapsed(candidateStartedAt),
+        ...(result.reason !== undefined ? { reason: result.reason } : {}),
       });
 
       if (!isFallbackEligibleModelError(result.code)) {
@@ -349,10 +351,18 @@ export class ModelRuntime implements ModelInvoker {
    */
   private normalizeThrown(
     error: unknown,
-    fail: (code: string, message: string, retryable?: boolean) => ModelResult,
+    fail: (code: string, message: string, retryable?: boolean, reason?: string) => ModelResult,
   ): ModelResult {
     if (error instanceof DesignFlowError && isProviderThrowable(error.code)) {
-      return fail(error.code, sanitize(error.message), retryableByDefault(error.code));
+      // The provider layer is the only one that saw the upstream response, so
+      // it is the only one that can say *why* — carried through sanitized and
+      // bounded, never as a raw body.
+      return fail(
+        error.code,
+        sanitize(error.message),
+        retryableByDefault(error.code),
+        failureReasonOf(error),
+      );
     }
 
     return fail("ERR_MODEL_PROVIDER_FAILED", sanitize(error), true);
@@ -445,6 +455,28 @@ function sanitize(error: unknown): string {
   if (collapsed.length === 0) return "The model call failed without an explanation.";
 
   return collapsed.length > 200 ? `${collapsed.slice(0, 200)}…` : collapsed;
+}
+
+const MAX_REASON_LENGTH = 300;
+
+/**
+ * The provider's structured `reason`, re-sanitized at this boundary.
+ *
+ * The gateway already sanitizes what it forwards; this repeats the credential
+ * and URL redaction rather than trusting an adapter, because the value ends up
+ * on a persisted trace and on screen.
+ */
+function failureReasonOf(error: DesignFlowError): string | undefined {
+  const raw = error.metadata["reason"];
+  if (typeof raw !== "string") return undefined;
+  const cleaned = raw
+    .replace(/Bearer\s+[^\s]+/gi, "[redacted]")
+    .replace(/\b(?:sk-or-v1|sk-|figd_|eyJ)[A-Za-z0-9._-]+/g, "[redacted]")
+    .replace(/https?:\/\/[^\s)]+/gi, "[url]")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length === 0) return undefined;
+  return cleaned.length > MAX_REASON_LENGTH ? cleaned.slice(0, MAX_REASON_LENGTH) : cleaned;
 }
 
 function describe(error: { issues: readonly { path: PropertyKey[]; message: string }[] }): string {

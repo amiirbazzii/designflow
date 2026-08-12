@@ -239,3 +239,65 @@ describe("Phase 6B technical details (DF-TUI-06)", () => {
     expect(failure.technicalDetails.join("\n")).not.toContain("Problem:");
   });
 });
+
+// ── DF-SPEC-06. The exhausted candidate chain, readably ──────────
+
+describe("model candidate exhaustion details", () => {
+  const CANDIDATES = [
+    { model: "openai/gpt-4o-mini", code: "ERR_MODEL_TIMEOUT", durationMs: 145_000 },
+    { model: "openai/gpt-5.6-luna", code: "ERR_MODEL_UNAVAILABLE", durationMs: 812, reason: "requested model is unavailable: not a valid model ID" },
+    { model: "deepseek/deepseek-v4-pro", code: "ERR_MODEL_UNAVAILABLE", durationMs: 764, reason: "no endpoints found matching your data policy" },
+  ];
+
+  test("each candidate renders in order with its code, duration and reason", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_MODEL_CANDIDATES_EXHAUSTED",
+      failedCapabilityId: "invoke-figma-specification-agent",
+      modelCandidates: CANDIDATES,
+    });
+    const details = failure.technicalDetails.join("\n");
+
+    expect(details).toContain("Candidates tried");
+    expect(details).toContain("1. openai/gpt-4o-mini");
+    expect(details).toContain("2. openai/gpt-5.6-luna");
+    expect(details).toContain("3. deepseek/deepseek-v4-pro");
+    expect(details).toContain("Duration: 145000ms");
+    expect(details).toContain("Reason: requested model is unavailable: not a valid model ID");
+    expect(details).toContain("Reason: no endpoints found matching your data policy");
+    expect(details.indexOf("gpt-4o-mini")).toBeLessThan(details.indexOf("gpt-5.6-luna"));
+    // the normal summary screen is unchanged — this is Details-only
+    expect(renderProductFailure(failure).join("\n")).not.toContain("Candidates tried");
+  });
+
+  test("a candidate without a reason renders without an empty Reason line", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_MODEL_CANDIDATES_EXHAUSTED",
+      modelCandidates: [{ model: "openai/gpt-4o-mini", code: "ERR_MODEL_TIMEOUT" }],
+    });
+    const details = failure.technicalDetails.join("\n");
+    expect(details).toContain("1. openai/gpt-4o-mini");
+    expect(details).toContain("ERR_MODEL_TIMEOUT");
+    expect(details).not.toContain("Reason:");
+    expect(details).not.toContain("Duration:");
+  });
+
+  test("anything credential-shaped in a reason is redacted before it renders", () => {
+    const failure = buildProductFailure({
+      ...BASE,
+      errorCode: "ERR_MODEL_CANDIDATES_EXHAUSTED",
+      modelCandidates: [
+        { model: "openai/gpt-4o-mini", code: "ERR_MODEL_UNAVAILABLE", reason: "rejected: authorization sk-or-v1-abcdefgh12345 was refused" },
+      ],
+    });
+    const details = failure.technicalDetails.join("\n");
+    expect(details).not.toContain("sk-or-v1-abcdefgh12345");
+    expect(details).toContain("[redacted]");
+  });
+
+  test("a failure with no candidate provenance renders exactly as before", () => {
+    const failure = buildProductFailure({ ...BASE, errorCode: "ERR_MODEL_SERVICE_UNAVAILABLE" });
+    expect(failure.technicalDetails.join("\n")).not.toContain("Candidates tried");
+  });
+});
