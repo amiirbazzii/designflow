@@ -66,8 +66,30 @@ export const implementationPlanV1Schema = z.object({
 export type ImplementationPlanV1 = z.infer<typeof implementationPlanV1Schema>;
 
 export const safeProjectCommandReferenceSchema = z.object({ name: z.enum(["format", "typecheck", "lint", "build", "test", "preview"]), required: z.boolean() }).strict();
+/**
+ * V2 provenance for a proposal produced by the UI Builder.
+ *
+ * Additive and optional: a legacy Implementation Agent proposal carries none
+ * of it and stays valid. When present it answers, without re-deriving
+ * anything, "which design, which plan and which project state was this
+ * generated from?" — the binding V2-7's convergence loop will check.
+ */
+export const proposalV2BindingSchema = z.object({
+  blueprintArtifactId: z.string().min(1).max(200).optional(),
+  implementationMapArtifactId: z.string().min(1).max(200).optional(),
+  projectContextArtifactId: z.string().min(1).max(200).optional(),
+  projectFingerprint: z.string().min(1).max(200).optional(),
+  builderAgentId: z.string().min(1).max(120),
+  builderAgentVersion: z.string().min(1).max(40),
+  builderModelProfileId: z.string().min(1).max(120),
+  builderModel: z.string().min(1).max(160).optional(),
+  attempt: z.number().int().positive().max(8),
+}).strict();
+
+export type ProposalV2Binding = z.infer<typeof proposalV2BindingSchema>;
+
 export const proposedFileChangesSchema = z.object({
-  schemaVersion: z.literal("1"), projectId: z.string().min(1), baseProjectFingerprint: z.string().min(1), files: z.array(z.object({ path: z.string().min(1), action: z.enum(["create", "modify", "delete"]), content: z.string().optional(), patch: z.string().optional(), expectedBaseHash: z.string().min(1).optional(), reason: z.string().min(1), relatedDesignNodeIds: z.array(z.string().min(1)) }).strict()), packageChanges: z.array(z.object({ packageName: z.string().min(1), action: z.enum(["add", "remove", "update"]), requestedVersion: z.string().min(1).optional(), reason: z.string().min(1) }).strict()), commandsRequested: z.array(safeProjectCommandReferenceSchema), assumptions: z.array(z.string()), unresolvedItems: z.array(z.string()),
+  schemaVersion: z.literal("1"), projectId: z.string().min(1), baseProjectFingerprint: z.string().min(1), v2Binding: proposalV2BindingSchema.optional(), files: z.array(z.object({ path: z.string().min(1), action: z.enum(["create", "modify", "delete"]), content: z.string().optional(), patch: z.string().optional(), expectedBaseHash: z.string().min(1).optional(), reason: z.string().min(1), relatedDesignNodeIds: z.array(z.string().min(1)) }).strict()), packageChanges: z.array(z.object({ packageName: z.string().min(1), action: z.enum(["add", "remove", "update"]), requestedVersion: z.string().min(1).optional(), reason: z.string().min(1) }).strict()), commandsRequested: z.array(safeProjectCommandReferenceSchema), assumptions: z.array(z.string()), unresolvedItems: z.array(z.string()),
 }).strict();
 export type ProposedFileChanges = z.infer<typeof proposedFileChangesSchema>;
 
