@@ -361,3 +361,4 @@ export {
   type EvidenceBundleMetrics,
   type SpecificationSection,
 } from "./specification";
+export * from "./project-mapper";

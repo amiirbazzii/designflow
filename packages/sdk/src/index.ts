@@ -939,3 +939,6 @@ export type {
   UIBlueprint,
   UISemanticPatch,
 } from "./ui-blueprint";
+
+// ── Implementation Map (Agent Architecture V2, phase V2-3) ───────
+export * from "./implementation-map";
