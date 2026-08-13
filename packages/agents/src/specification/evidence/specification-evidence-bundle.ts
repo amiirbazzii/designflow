@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/specification-evidence-bundle.ts
+// packages/agents/src/specification/evidence/specification-evidence-bundle.ts
 //
 // DF-SPEC-05: the deterministic evidence compiler that sits between the rich
 // persisted `FigmaSourceSnapshot` and the Specification AI.

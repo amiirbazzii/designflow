@@ -13,7 +13,7 @@ import {
 import {
   deterministicFigmaSpecificationStrategy,
   figmaSpecificationAgentManifest,
-} from "./figma-specification-agent";
+} from "../specification/legacy/figma-specification-agent";
 import {
   deterministicImplementationStrategy,
   implementationAgentManifest,

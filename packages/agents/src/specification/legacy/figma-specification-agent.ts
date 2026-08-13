@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/figma-specification-agent.ts
+// packages/agents/src/specification/legacy/figma-specification-agent.ts
 import {
   agentManifestSchema,
   collectSpecificationVisibleContent,
@@ -18,11 +18,11 @@ import {
   type SpecializedAgentContext,
 } from "@designflow/sdk";
 
-import { SpecializedAgentOutputInvalidError } from "../errors";
-import { compileSpecificationEvidenceBundle } from "./specification-evidence-bundle";
-import { figmaSpecificationResponseSchema } from "../model-response-schemas";
+import { SpecializedAgentOutputInvalidError } from "../../errors";
+import { compileSpecificationEvidenceBundle } from "../evidence/specification-evidence-bundle";
+import { figmaSpecificationResponseSchema } from "../../model-response-schemas";
 import { wireToDesignSpecification } from "./specification-wire";
-import { generateValidatedModelOutput } from "../model-structured-output";
+import { generateValidatedModelOutput } from "../../model-structured-output";
 
 /**
  * The Figma Specification Agent.

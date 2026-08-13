@@ -5,8 +5,8 @@ import {
   figmaDesktopSelectionSource,
   readFigmaDesktopSelection,
 } from "./figma-desktop-adapter";
-import { parseFigmaSource } from "./parse-figma-source";
-import { InMemoryMcpClient } from "../test/support/in-memory-mcp-client";
+import { parseFigmaSource } from "../parse-figma-source";
+import { InMemoryMcpClient } from "../../test/support/in-memory-mcp-client";
 
 function store(): ArtifactStore {
   const payloads = new Map<string, unknown>();

@@ -1,4 +1,4 @@
-// packages/capabilities/figma-mcp/src/parse-desktop-design-context.ts
+// packages/capabilities/figma-mcp/src/desktop/desktop-design-context-parser.ts
 
 /**
  * Extracts per-node design facts from the Figma Desktop MCP

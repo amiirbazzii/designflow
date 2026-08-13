@@ -33,7 +33,7 @@ import {
   createFigmaSpecificationAgent,
   figmaSpecificationAgent,
   type FigmaSpecificationStrategy,
-} from "./catalog/figma-specification-agent";
+} from "./specification/legacy/figma-specification-agent";
 import {
   createImplementationAgent,
   implementationAgent,
@@ -168,8 +168,8 @@ export {
   createFigmaSpecificationAgent,
   deterministicFigmaSpecificationStrategy,
   modelFigmaSpecificationStrategy,
-} from "./catalog/figma-specification-agent";
-export type { FigmaSpecificationStrategy } from "./catalog/figma-specification-agent";
+} from "./specification/legacy/figma-specification-agent";
+export type { FigmaSpecificationStrategy } from "./specification/legacy/figma-specification-agent";
 
 export {
   implementationAgent,
@@ -343,51 +343,21 @@ export function createSpecializedAgentRegistry(
   ]);
 }
 
-export { figmaSpecificationWireSchema, wireToDesignSpecification } from "./catalog/specification-wire";
+export { figmaSpecificationWireSchema, wireToDesignSpecification } from "./specification/legacy/specification-wire";
 export { figmaSpecificationResponseSchema, implementationResponseSchema, visualValidationResponseSchema, visualCorrectionResponseSchema } from "./model-response-schemas";
 
-// ── Canonical UI Blueprint (Agent Architecture V2, phase V2-1) ───
+// ── Agent Architecture V2 ───────────────────────────────────────
+//
+// Each feature module owns its own surface; see the README in each directory.
+export * from "./ui-blueprint";
+export * from "./design-interpreter";
 export {
-  compileUIBlueprintDraft,
-  compileUIBlueprintDraftFromBundle,
-  measureUIBlueprint,
-  UI_BLUEPRINT_COMPILER_VERSION,
-  type UIBlueprintMetrics,
-} from "./catalog/ui-blueprint-compiler";
-export {
-  applySemanticPatches,
-  blueprintFactsFingerprint,
-  validateSemanticPatch,
-  type SemanticPatchFailure,
-} from "./catalog/ui-blueprint-merge";
-export {
-  partitionBlueprintForEnrichment,
-  MAX_PARTITION_ELEMENTS,
-  MAX_PARTITION_BYTES,
-  type BlueprintPartition,
-} from "./catalog/ui-blueprint-partition";
-export {
-  validateBlueprintCompleteness,
-  collectBlueprintVisibleText,
-  blueprintPreservesSpecificationContent,
-  type BlueprintValidationIssue,
-} from "./catalog/ui-blueprint-validation";
-export {
+  compileSpecificationEvidenceBundle,
+  estimateTokens,
   renderBlueprintSpecification,
   blueprintToDesignSpecification,
   blueprintContent,
+  type SpecificationEvidenceBundle,
+  type EvidenceBundleMetrics,
   type SpecificationSection,
-} from "./catalog/ui-blueprint-specification";
-export {
-  createDesignInterpreterAgent,
-  designInterpreterAgent,
-  designInterpreterAgentManifest,
-  designInterpreterDefaultModelProfile,
-  deterministicDesignInterpreterStrategy,
-  modelDesignInterpreterStrategy,
-  DESIGN_INTERPRETER_AGENT_ID,
-  DESIGN_INTERPRETER_AGENT_VERSION,
-  MAX_SEMANTIC_PATCH_OUTPUT_TOKENS,
-  type DesignInterpreterStrategy,
-} from "./catalog/design-interpreter-agent";
-export { uiSemanticPatchResponseSchema } from "./model-response-schemas";
+} from "./specification";

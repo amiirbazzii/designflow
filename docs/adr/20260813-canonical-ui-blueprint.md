@@ -5,7 +5,7 @@ is unchanged; nothing here is wired into `design-to-code-implementation` yet.
 
 ## Decision
 
-The canonical **UI Blueprint** (`packages/sdk/src/ui-blueprint-contracts.ts`,
+The canonical **UI Blueprint** (`packages/sdk/src/ui-blueprint/`,
 `uiBlueprintSchema`, schemaVersion 1) becomes DesignFlow's source of design
 truth. The human-readable Specification stops being a document a model writes
 and other agents re-read, and becomes a deterministic view of the Blueprint.
@@ -15,7 +15,7 @@ The eight commitments this rests on:
 1. **The Blueprint is the design source of truth.** Downstream V2 stages —
    Project Mapper, UI Builder, Visual Critic — read it, not prose.
 2. **Deterministic facts are compiler-owned.** `compileUIBlueprintDraft`
-   (`packages/agents/src/catalog/ui-blueprint-compiler.ts`) builds every fact
+   (`packages/agents/src/ui-blueprint/ui-blueprint-compiler.ts`) builds every fact
    from the normalized `SpecificationEvidenceBundle`: dimensions, layout,
    spacing, colors, borders, radii, effects, typography, exact copy, component
    identity, instance property values, slots, assets. No model participates.
@@ -36,7 +36,7 @@ The eight commitments this rests on:
 6. **Project mapping is downstream.** The Blueprint is project-independent: no
    file paths, no framework or styling choice, no reuse/extend/create
    decision, no route. Those belong to the Project Mapper (V2-3).
-7. **Semantic enrichment is bounded and staged.** `partitionBlueprintForEnrichment`
+7. **Semantic enrichment is bounded and staged.** `partitionBlueprintForEnrichment` (`design-interpreter/semantic-partitioner.ts`)
    splits a Blueprint into one request per top-level region and one per
    component family, each carrying only its own compiled facts and an explicit
    allowed-id list, bounded to 40 elements / 24 KB per request. There is no

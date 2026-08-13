@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/ui-blueprint-compiler.ts
+// packages/agents/src/ui-blueprint/ui-blueprint-compiler.ts
 //
 // The deterministic Blueprint compiler (Agent Architecture V2, phase V2-1).
 //
@@ -35,7 +35,7 @@ import {
   type EvidenceElement,
   type EvidenceStyle,
   type SpecificationEvidenceBundle,
-} from "./specification-evidence-bundle";
+} from "../specification/evidence/specification-evidence-bundle";
 
 export const UI_BLUEPRINT_COMPILER_VERSION = "1";
 

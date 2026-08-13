@@ -21,7 +21,7 @@ import {
 import { resolveFigmaFrames } from "./resolve-frames";
 import { FigmaFrameAmbiguousError, FigmaFrameNotFoundError } from "./errors";
 import { storeFigmaScreenshotArtifact } from "./screenshot-artifact";
-import { buildFigmaDesktopSourceSnapshot } from "./figma-desktop-adapter";
+import { buildFigmaDesktopSourceSnapshot } from "./desktop/figma-desktop-adapter";
 
 /**
  * The full, real retrieval path — capability discovery through to a

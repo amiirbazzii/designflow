@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/ui-blueprint-partition.ts
+// packages/agents/src/design-interpreter/semantic-partitioner.ts
 //
 // Deterministic partitioning of a Blueprint into bounded semantic-enrichment
 // requests.

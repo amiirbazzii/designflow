@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/specification-v2.test.ts
+// packages/agents/src/specification/legacy/specification-v2.test.ts
 //
 // Specification V2 contract semantics against a rich, Spendly-like Figma
 // snapshot fixture: preservation of dimensions/hierarchy/styles/content,
@@ -19,10 +19,10 @@ import {
   figmaSpecificationDefaultModelProfile,
   modelFigmaSpecificationStrategy,
 } from "./figma-specification-agent";
-import { designEngineerCoordinatorDefaultModelProfile } from "./design-engineer-coordinator";
-import { implementationDefaultModelProfile } from "./implementation-agent";
-import { visualValidationDefaultModelProfile } from "./visual-validation-agent";
-import { visualCorrectionDefaultModelProfile } from "./visual-correction-agent";
+import { designEngineerCoordinatorDefaultModelProfile } from "../../catalog/design-engineer-coordinator";
+import { implementationDefaultModelProfile } from "../../catalog/implementation-agent";
+import { visualValidationDefaultModelProfile } from "../../catalog/visual-validation-agent";
+import { visualCorrectionDefaultModelProfile } from "../../catalog/visual-correction-agent";
 
 const EMPTY_CONTEXT: SpecializedAgentContext = {
   tools: { call: async () => { throw new Error("no tools in this test"); } },

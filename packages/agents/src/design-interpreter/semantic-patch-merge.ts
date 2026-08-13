@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/ui-blueprint-merge.ts
+// packages/agents/src/design-interpreter/semantic-patch-merge.ts
 //
 // Deterministic merge of semantic patches into the canonical Blueprint.
 //

@@ -1,4 +1,4 @@
-// packages/capabilities/figma-mcp/src/parse-desktop-metadata.ts
+// packages/capabilities/figma-mcp/src/desktop/desktop-metadata-parser.ts
 
 /**
  * Parses the Figma Desktop MCP `get_metadata` outline into a raw nested node

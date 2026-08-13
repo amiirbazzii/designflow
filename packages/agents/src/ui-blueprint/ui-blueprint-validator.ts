@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/ui-blueprint-validation.ts
+// packages/agents/src/ui-blueprint/ui-blueprint-validator.ts
 //
 // Evidence-relative completeness for the Blueprint itself.
 //

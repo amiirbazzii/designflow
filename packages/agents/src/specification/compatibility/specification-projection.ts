@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/ui-blueprint-specification.ts
+// packages/agents/src/specification/compatibility/specification-projection.ts
 //
 // The Specification becomes a view.
 //

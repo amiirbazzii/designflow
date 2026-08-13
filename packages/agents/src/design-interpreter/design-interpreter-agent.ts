@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/design-interpreter-agent.ts
+// packages/agents/src/design-interpreter/design-interpreter-agent.ts
 //
 // The Design Interpreter (Agent Architecture V2, AI role A).
 //
@@ -31,8 +31,8 @@ import {
 
 import { SpecializedAgentOutputInvalidError } from "../errors";
 import { generateValidatedModelOutput } from "../model-structured-output";
-import { uiSemanticPatchResponseSchema } from "../model-response-schemas";
-import type { BlueprintPartition } from "./ui-blueprint-partition";
+import { uiSemanticPatchResponseSchema } from "./semantic-patch-response-schema";
+import type { BlueprintPartition } from "./semantic-partitioner";
 
 const MODEL_PROFILE_ID = "design-interpreter-default";
 

@@ -1,8 +1,8 @@
-// packages/capabilities/figma-mcp/src/parse-desktop-metadata.test.ts
+// packages/capabilities/figma-mcp/src/desktop/desktop-metadata-parser.test.ts
 import { describe, expect, test } from "bun:test";
 
-import { parseDesktopMetadataOutline } from "./parse-desktop-metadata";
-import { normalizeFigmaNodeTree } from "./normalize-nodes";
+import { parseDesktopMetadataOutline } from "./desktop-metadata-parser";
+import { normalizeFigmaNodeTree } from "../normalize-nodes";
 
 /**
  * Sanitized structural fixture mirroring the real Figma Desktop MCP

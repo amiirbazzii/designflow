@@ -876,7 +876,7 @@ export {
   uiSemanticRegionAnnotationSchema,
   uiSemanticRelationshipSchema,
   uiSemanticPatchSchema,
-} from "./ui-blueprint-contracts";
+} from "./ui-blueprint";
 
 export type {
   BlueprintBound,
@@ -900,4 +900,4 @@ export type {
   BlueprintEnrichmentStatus,
   UIBlueprint,
   UISemanticPatch,
-} from "./ui-blueprint-contracts";
+} from "./ui-blueprint";

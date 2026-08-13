@@ -1,4 +1,4 @@
-// packages/agents/src/catalog/specification-wire.ts
+// packages/agents/src/specification/legacy/specification-wire.ts
 //
 // Specification V2 wire ↔ internal artifact bridge.
 //

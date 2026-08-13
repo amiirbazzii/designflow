@@ -35,8 +35,8 @@ export {
   buildFigmaDesktopSourceSnapshot,
   figmaDesktopSelectionSource,
   readFigmaDesktopSelection,
-} from "./figma-desktop-adapter";
-export type { FigmaDesktopSelection } from "./figma-desktop-adapter";
+} from "./desktop/figma-desktop-adapter";
+export type { FigmaDesktopSelection } from "./desktop/figma-desktop-adapter";
 
 export {
   FIGMA_MCP_ERROR_CODES,
