@@ -284,6 +284,44 @@ export type {
   ProjectContextStore,
 } from "./project-context";
 
+// ── Canonical Project Context (Agent Architecture V2) ────────────
+export {
+  CANONICAL_PROJECT_CONTEXT_SCHEMA_VERSION,
+  PROJECT_CONTEXT_ARTIFACT_ID,
+  PROJECT_CONTEXT_ARTIFACT_TYPE,
+  projectEvidenceSourceSchema,
+  projectEvidenceConfidenceSchema,
+  projectProvenanceSchema,
+  evidencedValueSchema,
+  projectBoundSchema,
+  projectRuntimeSchema,
+  projectAliasSchema,
+  projectStructureSchema,
+  projectRoutingKindSchema,
+  projectRoutingSchema,
+  projectDestinationSchema,
+  projectStylingSchema,
+  projectTokenSchema,
+  projectDesignSystemSchema,
+  projectComponentSchema,
+  projectCommandSchema,
+  projectTestingSchema,
+  projectCapabilitiesSchema,
+  projectConventionSchema,
+  canonicalProjectContextSchema,
+} from "./project-context";
+
+export type {
+  ProjectEvidenceSource,
+  ProjectEvidenceConfidence,
+  ProjectProvenance,
+  ProjectBound,
+  ProjectAlias,
+  ProjectDestination,
+  ProjectComponent,
+  CanonicalProjectContext,
+} from "./project-context";
+
 export {
   projectEventSchema,
   NOOP_PROJECT_OBSERVER,

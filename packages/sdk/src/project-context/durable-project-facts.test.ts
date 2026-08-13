@@ -1,6 +1,6 @@
 // packages/sdk/src/project-context.test.ts
 import { describe, expect, test } from "bun:test";
-import { applyProjectFactChanges, projectContextSchema, projectFactSchema } from "./project-context";
+import { applyProjectFactChanges, projectContextSchema, projectFactSchema } from "./durable-project-facts";
 
 const NOW = "2026-08-01T00:00:00.000Z";
 

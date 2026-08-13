@@ -228,3 +228,9 @@ export function createToolRegistry(
 ): InMemoryToolRegistry {
   return new InMemoryToolRegistry(builtInTools(options));
 }
+
+// ── Canonical Project Context (Agent Architecture V2, phase V2-2) ─
+//
+// Deterministic project compilation. No model calls; see
+// `./project-context/README.md` for the facts-vs-decisions boundary.
+export * from "./project-context";

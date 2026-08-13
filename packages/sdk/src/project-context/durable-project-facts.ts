@@ -1,6 +1,6 @@
-// packages/sdk/src/project-context.ts
+// packages/sdk/src/project-context/durable-project-facts.ts
 import { z } from "zod";
-import { valueLooksSecretLike } from "./privacy";
+import { valueLooksSecretLike } from "../privacy";
 
 /**
  * Durable facts about one project — a description of what a codebase *is*,
