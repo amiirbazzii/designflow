@@ -1,19 +1,12 @@
-import {
-  validateProposedModules,
-  type ProposedModuleDiagnostic,
-  type ProposedModuleValidationResult,
-} from "@designflow/capability-implementation";
+import type { ProposedModuleDiagnostic, ProposedModuleValidationResult } from "@designflow/capability-implementation";
 import type {
   Stage4ProjectImplementationContext,
   ProposedFileChanges,
+  RenderedState,
   VisualViewportV1,
 } from "@designflow/sdk";
-import {
-  captureWithPreview,
-  loadOptionalPlaywrightRenderer,
-  makePreviewTarget,
-  type BrowserRenderer,
-} from "../visual-validation/visual-validation-runtime";
+import { renderProposedState } from "../visual-validation/render-proposed-state";
+import type { BrowserRenderer } from "../visual-validation/visual-validation-runtime";
 
 export const MAX_CORRECTION_PROPOSAL_ATTEMPTS = 3;
 
@@ -24,73 +17,24 @@ export interface CorrectionRuntimePreflightResult {
     readonly status: "passed" | "failed" | "unavailable";
     readonly diagnostics: readonly ProposedModuleDiagnostic[];
   };
-}
-
-function diagnostic(message: string): ProposedModuleDiagnostic {
-  return { message: message.slice(0, 500) };
-}
-
-function safeDiagnostic(message: string, workspace: string): string {
-  return message
-    .replaceAll(workspace, "[temporary-workspace]")
-    .replace(/(?:\/private)?\/tmp\/[^\s:]+/g, "[temporary-path]")
-    .replace(/(?:OPENROUTER_API_KEY|[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|KEY))\s*[=:]\s*[^\s]+/g, "[REDACTED]")
-    .slice(0, 500);
-}
-
-async function runtimeInWorkspace(
-  workspace: string,
-  project: Stage4ProjectImplementationContext,
-  viewports: readonly VisualViewportV1[],
-  signal: AbortSignal,
-  configuredRenderer?: BrowserRenderer,
-): Promise<{ status: "passed" | "failed" | "unavailable"; diagnostics: readonly ProposedModuleDiagnostic[] }> {
-  const target = await makePreviewTarget(project, "/");
-  if (target === undefined)
-    return { status: "unavailable", diagnostics: [diagnostic("No safe project preview command was available for runtime preflight.")] };
-  const renderer = configuredRenderer ?? await loadOptionalPlaywrightRenderer();
-  if (renderer === undefined)
-    return { status: "unavailable", diagnostics: [diagnostic("Playwright or Chromium was unavailable for runtime preflight.")] };
-  try {
-    const result = await captureWithPreview(
-      workspace,
-      target,
-      renderer,
-      viewports,
-      {
-        fullPage: false,
-        waitForFontsMs: 250,
-        timeoutMs: Math.min(target.startupTimeoutMs, 15_000),
-        maxImageBytes: 10_000_000,
-        maxImagePixels: 8_000_000,
-      },
-      signal,
-    );
-    if (result.runtime.status !== "ready")
-      return {
-        status: "failed",
-        diagnostics: [diagnostic(`Preview did not become ready: ${result.runtime.warnings.join("; ")}`)],
-      };
-    const runtimeErrors = result.captures.flatMap((capture) =>
-      (capture.capture.runtimeErrors ?? []).map((message) => diagnostic(`pageerror: ${safeDiagnostic(message, workspace)}`)),
-    );
-    if (runtimeErrors.length > 0) return { status: "failed", diagnostics: runtimeErrors.slice(0, 12) };
-    if (result.captures.length === 0)
-      return { status: "failed", diagnostics: [diagnostic("Preview navigation produced no browser capture.")] };
-    return { status: "passed", diagnostics: [] };
-  } catch (error) {
-    return {
-      status: "failed",
-      diagnostics: [diagnostic(`Preview navigation failed: ${safeDiagnostic(error instanceof Error ? error.message : String(error), workspace)}`)],
-    };
-  }
+  /**
+   * The evidence the render produced. The correction loop gates on
+   * `runtime.status` alone, but V2-5 keeps the rendered state rather than
+   * discarding it — this preflight was always a full render that threw its
+   * pixels away.
+   */
+  readonly renderedState: RenderedState;
 }
 
 /**
  * Runs the exact correction proposal through the shared bounded project copy,
- * compile gate, and browser runtime gate. The callback is executed inside the
- * temporary workspace and the workspace is always removed by the implementation
- * validator after it returns.
+ * compile gate, and browser runtime gate.
+ *
+ * This is now a thin reading of the general renderer: the isolated workspace,
+ * the real build, the preview server and the browser drive are identical work
+ * whether the proposal came from the correction agent or from the UI Builder,
+ * so there is one implementation of it and this function only translates the
+ * result into the pass/fail vocabulary the correction loop expects.
  */
 export async function preflightCorrectionProposal(
   root: string,
@@ -100,19 +44,36 @@ export async function preflightCorrectionProposal(
   signal: AbortSignal,
   configuredRenderer?: BrowserRenderer,
 ): Promise<CorrectionRuntimePreflightResult> {
-  const compile = await validateProposedModules(root, proposal, {
-    ...(project.commands.build !== undefined
-      ? { buildCommand: { executable: project.commands.build.executable, args: project.commands.build.args ?? [] } }
-      : {}),
+  const result = await renderProposedState(root, project, proposal, {
+    viewports,
     signal,
-    postBuild: (workspace) => runtimeInWorkspace(workspace, project, viewports, signal, configuredRenderer),
+    ...(configuredRenderer !== undefined ? { renderer: configuredRenderer } : {}),
+    // The correction gate never needed full-page images, and a viewport-sized
+    // capture is materially cheaper on a large page.
+    fullPage: false,
   });
+
+  const { renderedState, compile } = result;
+  const diagnostics: readonly ProposedModuleDiagnostic[] = renderedState.runtime.diagnostics.map((message) => ({ message }));
+
+  // A page that threw at runtime is a failed correction, even though the
+  // renderer keeps its screenshots as evidence.
+  const threw = renderedState.viewports.some((viewport) => viewport.runtimeErrorCount > 0);
+
+  const status: "passed" | "failed" | "unavailable" =
+    renderedState.status === "browser_unavailable"
+      ? "unavailable"
+      : renderedState.status === "rendered" && !threw
+        ? "passed"
+        : "failed";
+
   return {
     proposalHash: compile.proposalHash,
     compile,
-    runtime: compile.postBuild ?? {
-      status: compile.status === "passed" ? "unavailable" : "failed",
-      diagnostics: compile.status === "passed" ? [diagnostic("Runtime preflight did not run.")] : compile.diagnostics,
+    runtime: {
+      status,
+      diagnostics: status === "passed" ? [] : diagnostics.slice(0, 12),
     },
+    renderedState,
   };
 }

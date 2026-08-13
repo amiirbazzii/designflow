@@ -461,6 +461,40 @@ export {
 } from "./visual-validation/visual-validation-contracts";
 
 export {
+  RENDERED_STATE_SCHEMA_VERSION,
+  VISUAL_DELTA_REPORT_SCHEMA_VERSION,
+  RENDERED_STATE_ARTIFACT_ID,
+  RENDERED_STATE_ARTIFACT_TYPE,
+  VISUAL_DELTA_REPORT_ARTIFACT_ID,
+  VISUAL_DELTA_REPORT_ARTIFACT_TYPE,
+  VISUAL_CRITIC_FORBIDDEN_FIELDS,
+  DEFAULT_VISUAL_PASS_FAIL_POLICY,
+  renderedStateBindingSchema,
+  renderedViewportSchema,
+  renderedElementEvidenceSchema,
+  renderedStateStatusSchema,
+  renderedStateSchema,
+  visualExpectationKindSchema,
+  visualExpectationSchema,
+  visualCriticAnnotationSchema,
+  visualCriticPatchSchema,
+  visualOutcomeSchema,
+  visualDeltaReportSchema,
+} from "./visual-validation/rendered-state-contracts";
+
+export type {
+  RenderedState,
+  RenderedStateStatus,
+  RenderedViewport,
+  RenderedElementEvidence,
+  VisualExpectation,
+  VisualCriticAnnotation,
+  VisualCriticPatch,
+  VisualOutcome,
+  VisualDeltaReport,
+} from "./visual-validation/rendered-state-contracts";
+
+export {
   VISUAL_CORRECTION_SCHEMA_VERSION,
   VISUAL_CORRECTION_AGENT_ID,
   VISUAL_CORRECTION_AGENT_VERSION,

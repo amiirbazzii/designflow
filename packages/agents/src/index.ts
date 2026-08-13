@@ -363,3 +363,4 @@ export {
 } from "./specification";
 export * from "./project-mapper";
 export * from "./ui-builder";
+export * from "./visual-validation";
