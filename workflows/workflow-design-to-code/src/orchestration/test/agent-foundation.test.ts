@@ -5,6 +5,7 @@ import {
   SAMPLE_AGENT_FOUNDATION_INPUT,
   type AgentFoundationHost,
 } from "../../../test/support/harness";
+import { figmaSpecificationAgentManifest, implementationAgentManifest } from "@designflow/agents";
 import { AGENT_FOUNDATION_ARTIFACT_IDS } from "../agent-foundation-types";
 
 /**
@@ -78,12 +79,15 @@ describe("typed artifact handoff", () => {
     const spec = await host.artifactStore.getArtifact(
       AGENT_FOUNDATION_ARTIFACT_IDS.designSpecification,
     );
-    expect(spec?.metadata.producedByAgentVersion).toBe("0.2.0");
+    // Read from the manifest rather than a literal: the assertion is that an
+    // artifact carries its producing agent's OWN version, and hardcoding the
+    // value made this fail the moment Specification V2 bumped it to 0.3.0.
+    expect(spec?.metadata.producedByAgentVersion).toBe(figmaSpecificationAgentManifest.version);
 
     const implementation = await host.artifactStore.getArtifact(
       AGENT_FOUNDATION_ARTIFACT_IDS.generatedImplementation,
     );
-    expect(implementation?.metadata.producedByAgentVersion).toBe("0.1.0");
+    expect(implementation?.metadata.producedByAgentVersion).toBe(implementationAgentManifest.version);
   });
 
   test("summary reflects the actual specification, implementation and validation produced", async () => {
