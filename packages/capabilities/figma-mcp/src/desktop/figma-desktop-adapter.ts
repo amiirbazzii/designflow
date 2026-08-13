@@ -10,14 +10,14 @@ import {
   type McpClient,
 } from "@designflow/sdk";
 
-import type { ParsedFigmaSource } from "../parse-figma-source";
-import { discoverFigmaMcpCapabilities } from "../discover-capabilities";
-import { normalizeFigmaNodeTree } from "../normalize-nodes";
-import { parseDesktopMetadataOutline } from "./desktop-metadata-parser";
-import { expandInstanceEvidence } from "./instance-evidence-expander";
-import { parseDesignContextFacts, parseDesignContextTree, type DesignContextNodeFacts, type DesignContextTreeNode } from "./desktop-design-context-parser";
-import { storeFigmaScreenshotArtifact } from "../screenshot-artifact";
-import type { CapturedScreenshot } from "../figma-mcp-tools";
+import type { ParsedFigmaSource } from "../source/parse-figma-source";
+import { discoverFigmaMcpCapabilities } from "../transport/discover-capabilities";
+import { normalizeFigmaNodeTree } from "../normalization/normalize-nodes";
+import { parseDesktopMetadataOutline } from "../desktop/desktop-metadata-parser";
+import { expandInstanceEvidence } from "../desktop/instance-evidence-expander";
+import { parseDesignContextFacts, parseDesignContextTree, type DesignContextNodeFacts, type DesignContextTreeNode } from "../desktop/desktop-design-context-parser";
+import { storeFigmaScreenshotArtifact } from "../screenshot/screenshot-artifact";
+import type { CapturedScreenshot } from "../transport/figma-mcp-tools";
 import { FigmaFrameSemanticMismatchError } from "../errors";
 
 const DESKTOP_TOOLS = {

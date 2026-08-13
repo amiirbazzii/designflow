@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deriveImplementationCoveragePlan, validateImplementationCoverage } from "./coverage";
+import { deriveImplementationCoveragePlan, validateImplementationCoverage } from "../../proposal/coverage";
 import type { ImplementationCoverageClaim, ImplementationCoveragePlanV1, ProposedFileChanges } from "@designflow/sdk";
 
 const SPEC = {

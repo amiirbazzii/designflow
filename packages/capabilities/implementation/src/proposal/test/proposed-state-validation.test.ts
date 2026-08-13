@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync as real
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { changedExecutableFiles, isEnvironmentFailureOutput, materializeWorkspaceNodeModules, validateProposedModules } from "./proposed-state-validation";
+import { changedExecutableFiles, isEnvironmentFailureOutput, materializeWorkspaceNodeModules, validateProposedModules } from "../../proposal/proposed-state-validation";
 
 const BUILD = { executable: "bun", args: ["build", "./designflow-proposed-entry.js", "--outdir=dist"] };
 

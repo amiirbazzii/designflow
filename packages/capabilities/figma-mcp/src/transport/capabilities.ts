@@ -8,8 +8,8 @@ import {
   type CapabilityContext,
 } from "@designflow/sdk";
 
-import { parseFigmaSource, parsedFigmaSourceSchema } from "./parse-figma-source";
-import { buildFigmaSourceSnapshot } from "./build-snapshot";
+import { parseFigmaSource, parsedFigmaSourceSchema } from "../source/parse-figma-source";
+import { buildFigmaSourceSnapshot } from "../snapshot/build-snapshot";
 
 /**
  * The two real, MCP-backed workflow capabilities Stage 3 adds:

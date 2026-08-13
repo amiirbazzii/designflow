@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, normalize, sep } from "node:path";
 import { proposedFileChangesSchema, type ProposedFileChanges } from "@designflow/sdk";
-import { ImplementationError } from "./errors";
-import { isExecutableSourcePath } from "./proposed-state-validation";
+import { ImplementationError } from "../errors";
+import { isExecutableSourcePath } from "../proposal/proposed-state-validation";
 
 const FORBIDDEN = /^(?:\.git|node_modules|\.designflow|\.env(?:\.|$)|.*(?:secret|credential|private[-_.]?key))/i;
 const SUPPORTED = /\.(?:tsx?|jsx?|vue|svelte|css|scss|sass|less|json|md)$/i;

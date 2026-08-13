@@ -10,9 +10,9 @@ import {
   type McpClient,
 } from "@designflow/sdk";
 
-import type { FigmaMcpCapabilities } from "./discover-capabilities";
-import { normalizeFigmaNodeTree, type NormalizedNodes } from "./normalize-nodes";
-import { FigmaMcpUnsupportedOperationError } from "./errors";
+import type { FigmaMcpCapabilities } from "../transport/discover-capabilities";
+import { normalizeFigmaNodeTree, type NormalizedNodes } from "../normalization/normalize-nodes";
+import { FigmaMcpUnsupportedOperationError } from "../errors";
 
 /**
  * Deterministic, permission-scoped wrappers over one connected MCP client's

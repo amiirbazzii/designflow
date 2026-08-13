@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { DesignFlowError } from "@designflow/sdk";
-import { assertGitSafeForWrite, inspectGitSafety } from "./git-safety";
+import { assertGitSafeForWrite, inspectGitSafety } from "../../project-mutation/git-safety";
 
 function git(root: string, ...args: string[]): void {
   execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });

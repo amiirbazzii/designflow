@@ -1,6 +1,6 @@
 // packages/capabilities/figma-mcp/src/desktop/instance-evidence-expander.ts
 import type { FigmaNodeSnapshot, FigmaSnapshotWarning } from "@designflow/sdk";
-import type { DesignContextTreeNode } from "./desktop-design-context-parser";
+import type { DesignContextTreeNode } from "../desktop/desktop-design-context-parser";
 
 // ── Instance descendant expansion (DF-SPEC-04) ───────────────────
 //

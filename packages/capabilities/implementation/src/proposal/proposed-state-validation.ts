@@ -4,7 +4,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathS
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import { proposedFileChangesSchema, type ProposedFileChanges } from "@designflow/sdk";
-import { ImplementationError } from "./errors";
+import { ImplementationError } from "../errors";
 
 /**
  * Deterministic pre-approval validation of the PROPOSED project state:

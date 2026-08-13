@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { implementationValidationReportSchema, projectImplementationContextV1Schema, type ImplementationValidationReport } from "@designflow/sdk";
-import { ImplementationError } from "./errors";
+import { ImplementationError } from "../errors";
 
 export interface ValidationOptions { timeoutMs?: number; maxOutputBytes?: number; signal?: AbortSignal; }
 

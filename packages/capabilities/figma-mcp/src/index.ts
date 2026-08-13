@@ -3,17 +3,17 @@ export {
   parseFigmaSource,
   parsedFigmaSourceSchema,
   FigmaSourceInvalidError,
-} from "./parse-figma-source";
-export type { ParsedFigmaSource } from "./parse-figma-source";
+} from "./source/parse-figma-source";
+export type { ParsedFigmaSource } from "./source/parse-figma-source";
 
-export { resolveFigmaFrames } from "./resolve-frames";
-export type { ResolvedFrame, FrameAmbiguity, FrameResolutionResult } from "./resolve-frames";
+export { resolveFigmaFrames } from "./normalization/resolve-frames";
+export type { ResolvedFrame, FrameAmbiguity, FrameResolutionResult } from "./normalization/resolve-frames";
 
-export { discoverFigmaMcpCapabilities } from "./discover-capabilities";
-export type { FigmaMcpCapabilities } from "./discover-capabilities";
+export { discoverFigmaMcpCapabilities } from "./transport/discover-capabilities";
+export type { FigmaMcpCapabilities } from "./transport/discover-capabilities";
 
-export { normalizeFigmaNodeTree } from "./normalize-nodes";
-export type { NormalizedNodes } from "./normalize-nodes";
+export { normalizeFigmaNodeTree } from "./normalization/normalize-nodes";
+export type { NormalizedNodes } from "./normalization/normalize-nodes";
 
 export {
   figmaMcpGetDocument,
@@ -23,14 +23,14 @@ export {
   figmaMcpGetComponents,
   figmaMcpGetAssets,
   figmaMcpCaptureScreenshot,
-} from "./figma-mcp-tools";
-export type { DocumentRetrieval, CapturedScreenshot } from "./figma-mcp-tools";
+} from "./transport/figma-mcp-tools";
+export type { DocumentRetrieval, CapturedScreenshot } from "./transport/figma-mcp-tools";
 
-export { storeFigmaScreenshotArtifact, FigmaScreenshotInvalidError } from "./screenshot-artifact";
-export type { ScreenshotArtifactLimits, StoredScreenshot } from "./screenshot-artifact";
+export { storeFigmaScreenshotArtifact, FigmaScreenshotInvalidError } from "./screenshot/screenshot-artifact";
+export type { ScreenshotArtifactLimits, StoredScreenshot } from "./screenshot/screenshot-artifact";
 
-export { buildFigmaSourceSnapshot } from "./build-snapshot";
-export type { BuildSnapshotOptions } from "./build-snapshot";
+export { buildFigmaSourceSnapshot } from "./snapshot/build-snapshot";
+export type { BuildSnapshotOptions } from "./snapshot/build-snapshot";
 export {
   buildFigmaDesktopSourceSnapshot,
   figmaDesktopSelectionSource,
@@ -51,5 +51,5 @@ export {
   parseFigmaSourceCapability,
   retrieveFigmaSourceSnapshotCapability,
   figmaMcpCapabilities,
-} from "./capabilities";
-export type { CapabilityOutput } from "./capabilities";
+} from "./transport/capabilities";
+export type { CapabilityOutput } from "./transport/capabilities";

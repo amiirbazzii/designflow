@@ -8,8 +8,8 @@ import {
   type ImplementationCoveragePlanV1,
   type ProposedFileChanges,
 } from "@designflow/sdk";
-import { ImplementationError } from "./errors";
-import { isExecutableSourcePath } from "./proposed-state-validation";
+import { ImplementationError } from "../errors";
+import { isExecutableSourcePath } from "../proposal/proposed-state-validation";
 
 /**
  * Deterministic Implementation Coverage Contract (MVP-4O). The host derives

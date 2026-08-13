@@ -9,9 +9,9 @@
 // normalized FigmaSourceSnapshot preserves the evidence BEFORE any model.
 import { describe, expect, test } from "bun:test";
 import type { CapabilityContext, FigmaSourceSnapshot } from "@designflow/sdk";
-import { buildFigmaDesktopSourceSnapshot } from "../figma-desktop-adapter";
-import { parseFigmaSource } from "../../parse-figma-source";
-import { parseDesignContextTree } from "../desktop-design-context-parser";
+import { buildFigmaDesktopSourceSnapshot } from "../../desktop/figma-desktop-adapter";
+import { parseFigmaSource } from "../../source/parse-figma-source";
+import { parseDesignContextTree } from "../../desktop/desktop-design-context-parser";
 import { InMemoryMcpClient } from "../../../test/support/in-memory-mcp-client";
 
 function store(): unknown {

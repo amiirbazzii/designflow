@@ -1,8 +1,8 @@
 // packages/capabilities/figma-mcp/src/screenshot-artifact.test.ts
 import { describe, expect, test } from "bun:test";
 import type { ArtifactStore, CapabilityContext } from "@designflow/sdk";
-import { FigmaScreenshotInvalidError, storeFigmaScreenshotArtifact } from "./screenshot-artifact";
-import type { CapturedScreenshot } from "./figma-mcp-tools";
+import { FigmaScreenshotInvalidError, storeFigmaScreenshotArtifact } from "../../screenshot/screenshot-artifact";
+import type { CapturedScreenshot } from "../../transport/figma-mcp-tools";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

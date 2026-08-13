@@ -4,8 +4,8 @@ import {
   buildFigmaDesktopSourceSnapshot,
   figmaDesktopSelectionSource,
   readFigmaDesktopSelection,
-} from "../figma-desktop-adapter";
-import { parseFigmaSource } from "../../parse-figma-source";
+} from "../../desktop/figma-desktop-adapter";
+import { parseFigmaSource } from "../../source/parse-figma-source";
 import { InMemoryMcpClient } from "../../../test/support/in-memory-mcp-client";
 
 function store(): ArtifactStore {

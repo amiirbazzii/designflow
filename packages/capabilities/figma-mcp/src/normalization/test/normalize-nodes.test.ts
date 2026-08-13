@@ -1,6 +1,6 @@
 // packages/capabilities/figma-mcp/src/normalize-nodes.test.ts
 import { describe, expect, test } from "bun:test";
-import { normalizeFigmaNodeTree } from "./normalize-nodes";
+import { normalizeFigmaNodeTree } from "../../normalization/normalize-nodes";
 
 describe("hierarchy preservation", () => {
   test("flattens a nested tree while recording parent/child links", () => {

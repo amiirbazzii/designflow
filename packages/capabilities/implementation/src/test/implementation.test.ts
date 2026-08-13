@@ -2,13 +2,13 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { inspectRegisteredProject } from "./inspection";
-import { mapDesignSystem } from "./mapping";
-import { validateProposedFileChanges, projectFileHash } from "./proposal";
-import { applyProjectFileChanges, rollbackProjectSnapshot, projectRootIdentity } from "./application";
-import { acquireProjectWriteLock } from "./project-write-lock";
-import { createApprovalBinding, verifyApproval } from "./approval";
-import { validateProject } from "./validation";
+import { inspectRegisteredProject } from "../project-inspection/inspection";
+import { mapDesignSystem } from "../project-inspection/design-system-mapping";
+import { validateProposedFileChanges, projectFileHash } from "../proposal/proposal";
+import { applyProjectFileChanges, rollbackProjectSnapshot, projectRootIdentity } from "../project-mutation/application";
+import { acquireProjectWriteLock } from "../project-mutation/project-write-lock";
+import { createApprovalBinding, verifyApproval } from "../approval/approval";
+import { validateProject } from "../validation/validation";
 
 async function fixture(): Promise<string> { const root = await mkdtemp(join(tmpdir(), "designflow-stage4-")); await mkdir(join(root, "src/components"), { recursive: true }); await writeFile(join(root, "package.json"), JSON.stringify({ name: "fixture", dependencies: { react: "18.0.0" }, scripts: { typecheck: "bun --version", build: "bun --version" } })); await writeFile(join(root, "src/components/Button.tsx"), "export function Button(props: {label: string}) { return <button>{props.label}</button> }\n"); await writeFile(join(root, "src/tokens.css"), ":root { --color-brand: #123456; --space-md: 16px; }\n"); return root; }
 const spec = { schemaVersion: "2", sourceIdentity: { designFile: "file" }, frames: ["Home"], hierarchy: [{ id: "node-1", name: "Button" }], designTokens: { colors: ["color-brand"], spacing: [], typography: [], radii: [], borders: [], shadows: [], referencedVariableNames: [] }, components: [{ name: "Button", role: "button", sourceNodeIds: ["node-1"], variants: [], requiredAssets: [], implementationNotes: [] }], layoutBehavior: [], responsiveAssumptions: [], assets: [], content: [], interactions: [], states: [], accessibilityNotes: ["name button"], ambiguities: [], agentVersion: "1" };

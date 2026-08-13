@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import type { ArtifactStore, CapabilityContext } from "@designflow/sdk";
 import type { FakeMcpFixtures } from "../../../mcp/test/fixtures/fake-server/fake-server-fixtures";
-import { buildFigmaSourceSnapshot } from "./build-snapshot";
-import { parseFigmaSource } from "./parse-figma-source";
+import { buildFigmaSourceSnapshot } from "../../snapshot/build-snapshot";
+import { parseFigmaSource } from "../../source/parse-figma-source";
 
 /**
  * The full retrieval path (`discoverFigmaMcpCapabilities` through to a

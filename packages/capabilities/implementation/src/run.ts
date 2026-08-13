@@ -1,6 +1,6 @@
 import { type ProposedFileChanges, type Stage4ProjectImplementationContext } from "@designflow/sdk";
-import { applyProjectFileChanges, rollbackProjectSnapshot, type ApplicationResult } from "./application";
-import { validateProject, makeValidationReport, type ValidationOptions } from "./validation";
+import { applyProjectFileChanges, rollbackProjectSnapshot, type ApplicationResult } from "./project-mutation/application";
+import { validateProject, makeValidationReport, type ValidationOptions } from "./validation/validation";
 import { ImplementationError } from "./errors";
 
 export async function applyAndValidateProject(options: { projectId: string; root: string; rootIdentity: string; stateDirectory: string; proposal: ProposedFileChanges; context: Stage4ProjectImplementationContext; proposalArtifactId: string; applicationArtifactId: string; validationArtifactId: string; validation?: ValidationOptions }): Promise<{ application: ApplicationResult; report: ReturnType<typeof makeValidationReport> }> {

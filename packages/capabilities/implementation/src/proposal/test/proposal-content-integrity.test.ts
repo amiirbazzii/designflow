@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { validateProposedFileChanges, projectFileHash } from "./proposal";
+import { validateProposedFileChanges, projectFileHash } from "../../proposal/proposal";
 
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "designflow-content-integrity-"));

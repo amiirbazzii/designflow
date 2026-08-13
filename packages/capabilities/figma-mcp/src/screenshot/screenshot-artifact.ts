@@ -1,6 +1,6 @@
 // packages/capabilities/figma-mcp/src/screenshot-artifact.ts
 import { DesignFlowError, type CapabilityContext } from "@designflow/sdk";
-import type { CapturedScreenshot } from "./figma-mcp-tools";
+import type { CapturedScreenshot } from "../transport/figma-mcp-tools";
 
 /**
  * Validates and stores one captured Figma screenshot as its own artifact.

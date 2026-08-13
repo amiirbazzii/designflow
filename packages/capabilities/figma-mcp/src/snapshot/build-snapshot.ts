@@ -8,8 +8,8 @@ import {
   type FigmaSourceSnapshot,
 } from "@designflow/sdk";
 
-import type { ParsedFigmaSource } from "./parse-figma-source";
-import { discoverFigmaMcpCapabilities } from "./discover-capabilities";
+import type { ParsedFigmaSource } from "../source/parse-figma-source";
+import { discoverFigmaMcpCapabilities } from "../transport/discover-capabilities";
 import {
   figmaMcpCaptureScreenshot,
   figmaMcpGetAssets,
@@ -17,11 +17,11 @@ import {
   figmaMcpGetDocument,
   figmaMcpGetStyles,
   figmaMcpGetVariables,
-} from "./figma-mcp-tools";
-import { resolveFigmaFrames } from "./resolve-frames";
-import { FigmaFrameAmbiguousError, FigmaFrameNotFoundError } from "./errors";
-import { storeFigmaScreenshotArtifact } from "./screenshot-artifact";
-import { buildFigmaDesktopSourceSnapshot } from "./desktop/figma-desktop-adapter";
+} from "../transport/figma-mcp-tools";
+import { resolveFigmaFrames } from "../normalization/resolve-frames";
+import { FigmaFrameAmbiguousError, FigmaFrameNotFoundError } from "../errors";
+import { storeFigmaScreenshotArtifact } from "../screenshot/screenshot-artifact";
+import { buildFigmaDesktopSourceSnapshot } from "../desktop/figma-desktop-adapter";
 
 /**
  * The full, real retrieval path — capability discovery through to a

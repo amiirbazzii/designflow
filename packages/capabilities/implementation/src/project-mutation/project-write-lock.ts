@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ImplementationError } from "./errors";
+import { ImplementationError } from "../errors";
 
 const LOCK_STALE_AFTER_MS = 30_000;
 

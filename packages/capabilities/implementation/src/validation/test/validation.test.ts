@@ -2,9 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inspectRegisteredProject } from "./inspection";
-import { applyAndValidateProject } from "./run";
-import { validateProject } from "./validation";
+import { inspectRegisteredProject } from "../../project-inspection/inspection";
+import { applyAndValidateProject } from "../../run";
+import { validateProject } from "../../validation/validation";
 
 const roots: string[] = [];
 
@@ -153,7 +153,7 @@ describe("Stage 4 declared validation commands", () => {
     const root = await fixture({
       build: "node -e \"console.error('DESIGNFLOW_TEST_SECRET=must-never-leak-7f82c'); process.exit(1)\"",
     });
-    const source = await Bun.file(new URL("./validation.ts", import.meta.url)).text();
+    const source = await Bun.file(new URL("../validation.ts", import.meta.url)).text();
     expect(source).toContain("shell: false");
     expect(source).not.toContain("shell: true");
 

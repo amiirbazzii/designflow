@@ -1,7 +1,7 @@
 // packages/capabilities/figma-mcp/src/resolve-frames.test.ts
 import { describe, expect, test } from "bun:test";
 import type { FigmaNodeSnapshot } from "@designflow/sdk";
-import { resolveFigmaFrames } from "./resolve-frames";
+import { resolveFigmaFrames } from "../../normalization/resolve-frames";
 
 function node(overrides: Partial<FigmaNodeSnapshot> & Pick<FigmaNodeSnapshot, "id" | "name">): FigmaNodeSnapshot {
   return {

@@ -3,10 +3,10 @@ import { chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "no
 import { realpathSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { proposedFileChangesSchema, stage6FailpointEnabled, terminateAtStage6Failpoint, type ProposedFileChanges } from "@designflow/sdk";
-import { ImplementationError } from "./errors";
-import { projectFileHash, validateProposedFileChanges } from "./proposal";
-import { assertGitSafeForWrite, inspectGitSafety, type GitSafetyReport } from "./git-safety";
-import { acquireProjectWriteLock } from "./project-write-lock";
+import { ImplementationError } from "../errors";
+import { projectFileHash, validateProposedFileChanges } from "../proposal/proposal";
+import { assertGitSafeForWrite, inspectGitSafety, type GitSafetyReport } from "../project-mutation/git-safety";
+import { acquireProjectWriteLock } from "../project-mutation/project-write-lock";
 
 export interface SnapshotEntry { path: string; existed: boolean; content?: string; hash?: string; postWriteHash?: string; mode?: number; }
 export interface ProjectSnapshot { runId: string; projectId: string; proposalHash: string; rootIdentity: string; createdAt: string; entries: SnapshotEntry[]; gitSafety?: GitSafetyReport; }

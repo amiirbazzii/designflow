@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { projectImplementationContextV1Schema, type Stage4ProjectImplementationContext } from "@designflow/sdk";
-import { ImplementationError } from "./errors";
+import { ImplementationError } from "../errors";
 
 export interface InspectionLimits { maxFiles?: number; maxBytes?: number; maxFileBytes?: number; maxDepth?: number; }
 const DEFAULTS: Required<InspectionLimits> = { maxFiles: 1_500, maxBytes: 2_000_000, maxFileBytes: 100_000, maxDepth: 8 };

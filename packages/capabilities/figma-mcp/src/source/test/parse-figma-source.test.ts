@@ -1,6 +1,6 @@
 // packages/capabilities/figma-mcp/src/parse-figma-source.test.ts
 import { describe, expect, test } from "bun:test";
-import { FigmaSourceInvalidError, parseFigmaSource } from "./parse-figma-source";
+import { FigmaSourceInvalidError, parseFigmaSource } from "../../source/parse-figma-source";
 
 describe("parsing a Figma design/file URL", () => {
   test("a modern /design/ URL", () => {
