@@ -1,13 +1,13 @@
-// packages/tools/src/project-context/durable-fact-bridge.test.ts
+// packages/tools/src/project-context/test/durable-fact-bridge.test.ts
 //
 // Durable memory must never become stale authority. These tests pin the rule
 // the module exists for: fresh inspection > stored fact > unknown.
 import { afterAll, describe, expect, test } from "bun:test";
 import { applyProjectFactChanges, projectFactSchema, type ProjectFact } from "@designflow/sdk";
 
-import { nextAppRouterFixture, writeProject, type FixtureProject } from "../../test/support/project-fixtures";
-import { compileProjectContext } from "./project-context-compiler";
-import { durableFactChanges, durableFactsAreCurrent, selectDurableProjectFacts, DURABLE_FACT_KEYS } from "./durable-fact-bridge";
+import { nextAppRouterFixture, writeProject, type FixtureProject } from "./fixtures/project-fixtures";
+import { compileProjectContext } from "../project-context-compiler";
+import { durableFactChanges, durableFactsAreCurrent, selectDurableProjectFacts, DURABLE_FACT_KEYS } from "../durable-fact-bridge";
 
 const fixtures: FixtureProject[] = [];
 function fixture(project: FixtureProject): FixtureProject {

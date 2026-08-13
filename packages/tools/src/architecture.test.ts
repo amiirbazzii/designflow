@@ -24,6 +24,12 @@ function sources(dir: string): readonly string[] {
     const path = join(dir, entry);
 
     if (statSync(path).isDirectory()) {
+      // A feature's tests, fixtures and helpers live in its own `test/`
+      // directory beside its runtime files. They are test-only by location —
+      // a fixture that writes a temporary project tree is exactly what a
+      // filesystem-mutation guard should ignore, and exactly what it would
+      // otherwise flag.
+      if (entry === "test") continue;
       found.push(...sources(path));
       continue;
     }

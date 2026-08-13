@@ -44,3 +44,8 @@ UIBlueprint (design truth) + CanonicalProjectContext (project truth)
 | `mapping-report.ts` | deterministic human-readable view of a map |
 
 Contracts live in `@designflow/sdk` under `src/implementation-map/`.
+
+## Tests
+
+Runtime source: this directory.
+Feature tests, fixtures and helpers: `./test/`.

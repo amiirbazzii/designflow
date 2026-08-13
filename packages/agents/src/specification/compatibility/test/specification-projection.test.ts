@@ -1,14 +1,14 @@
-// packages/agents/src/specification/compatibility/specification-projection.test.ts
+// packages/agents/src/specification/compatibility/test/specification-projection.test.ts
 //
 // The Specification is a view: both projections state Blueprint facts and
 // nothing else, with or without semantic enrichment.
 import { describe, expect, test } from "bun:test";
 import { UI_SEMANTIC_PATCH_SCHEMA_VERSION, type UISemanticPatch } from "@designflow/sdk";
 
-import { SPENDLY_SNAPSHOT } from "../../../test/fixtures/spendly-blueprint-snapshot";
-import { compileUIBlueprintDraft } from "../../ui-blueprint/ui-blueprint-compiler";
-import { applySemanticPatches } from "../../design-interpreter/semantic-patch-merge";
-import { blueprintToDesignSpecification, renderBlueprintSpecification } from "./specification-projection";
+import { SPENDLY_SNAPSHOT } from "../../../../test/fixtures/spendly-blueprint-snapshot";
+import { compileUIBlueprintDraft } from "../../../ui-blueprint/ui-blueprint-compiler";
+import { applySemanticPatches } from "../../../design-interpreter/semantic-patch-merge";
+import { blueprintToDesignSpecification, renderBlueprintSpecification } from "../specification-projection";
 
 const blueprint = compileUIBlueprintDraft(SPENDLY_SNAPSHOT, { snapshotArtifactId: "snapshot-1" });
 

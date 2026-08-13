@@ -1,4 +1,4 @@
-// packages/tools/src/project-context/project-context-compiler.test.ts
+// packages/tools/src/project-context/test/project-context-compiler.test.ts
 //
 // V2-2 acceptance: the project is understood deterministically, once, with
 // provenance — and the compiler stays truthful when there is little to find.
@@ -12,8 +12,8 @@ import {
   sparseFixture,
   writeProject,
   type FixtureProject,
-} from "../../test/support/project-fixtures";
-import { compileProjectContext, MAX_COMPONENT_INVENTORY } from "./project-context-compiler";
+} from "./fixtures/project-fixtures";
+import { compileProjectContext, MAX_COMPONENT_INVENTORY } from "../project-context-compiler";
 
 const fixtures: FixtureProject[] = [];
 function fixture(project: FixtureProject): FixtureProject {

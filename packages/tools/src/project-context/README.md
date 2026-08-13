@@ -37,3 +37,8 @@ of being rediscovered.
 | `durable-fact-bridge.ts` | selects the durable subset, and says when stored memory is stale |
 
 Contracts live in `@designflow/sdk` under `src/project-context/`.
+
+## Tests
+
+Runtime source: this directory.
+Feature tests, fixtures and helpers: `./test/`.

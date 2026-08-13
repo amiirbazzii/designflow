@@ -21,3 +21,8 @@ and fingerprints every compiler-owned fact before and after the merge.
 
 Enrichment is allowed to fail: a Blueprint with no semantics is valid, and the
 artifact records `semanticEnrichment.status` rather than pretending otherwise.
+
+## Tests
+
+Runtime source: this directory.
+Feature tests, fixtures and helpers: `./test/`.

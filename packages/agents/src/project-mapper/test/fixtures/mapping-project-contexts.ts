@@ -1,4 +1,4 @@
-// packages/agents/test/fixtures/mapping-project-contexts.ts
+// packages/agents/src/project-mapper/test/fixtures/mapping-project-contexts.ts
 //
 // Deterministic project fixtures for mapping, shaped like the projects
 // DesignFlow actually meets. These are `CanonicalProjectContext` values, not

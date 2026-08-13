@@ -1,12 +1,12 @@
-// packages/agents/src/ui-blueprint/ui-blueprint-compiler.test.ts
+// packages/agents/src/ui-blueprint/test/ui-blueprint-compiler.test.ts
 //
 // The deterministic half of V2-1: design facts compiled from Figma evidence,
 // with no model involved and none required for the result to be valid.
 import { describe, expect, test } from "bun:test";
 
-import { SPENDLY_SNAPSHOT, largeSnapshot } from "../../test/fixtures/spendly-blueprint-snapshot";
-import { compileUIBlueprintDraft, measureUIBlueprint } from "./ui-blueprint-compiler";
-import { validateBlueprintCompleteness } from "./ui-blueprint-validator";
+import { SPENDLY_SNAPSHOT, largeSnapshot } from "../../../test/fixtures/spendly-blueprint-snapshot";
+import { compileUIBlueprintDraft, measureUIBlueprint } from "../ui-blueprint-compiler";
+import { validateBlueprintCompleteness } from "../ui-blueprint-validator";
 
 const blueprint = compileUIBlueprintDraft(SPENDLY_SNAPSHOT, { snapshotArtifactId: "snapshot-1" });
 const serialized = JSON.stringify(blueprint);

@@ -1,12 +1,12 @@
-// packages/tools/src/project-context/alias-inspector.test.ts
+// packages/tools/src/project-context/test/alias-inspector.test.ts
 //
 // The gap this closes: `structure.aliases` was hardcoded `{}`, so every
 // project looked alias-free. These tests pin what a declaration means, and
 // keep "declared" distinguishable from "resolves to something that exists".
 import { afterAll, describe, expect, test } from "bun:test";
 
-import { writeProject, type FixtureProject } from "../../test/support/project-fixtures";
-import { inspectProjectAliases, MAX_EXTENDS_DEPTH } from "./alias-inspector";
+import { writeProject, type FixtureProject } from "./fixtures/project-fixtures";
+import { inspectProjectAliases, MAX_EXTENDS_DEPTH } from "../alias-inspector";
 
 const fixtures: FixtureProject[] = [];
 function fixture(files: Record<string, string>): FixtureProject {

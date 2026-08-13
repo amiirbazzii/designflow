@@ -1,4 +1,4 @@
-// packages/agents/src/specification/evidence/specification-evidence-bundle.test.ts
+// packages/agents/src/specification/evidence/test/specification-evidence-bundle.test.ts
 //
 // DF-SPEC-05: the deterministic evidence compiler. The Specification AI stops
 // receiving the raw `FigmaSourceSnapshot` and receives a compact bundle
@@ -17,11 +17,11 @@ import {
 import {
   compileSpecificationEvidenceBundle,
   estimateTokens,
-} from "./specification-evidence-bundle";
+} from "../specification-evidence-bundle";
 import {
   figmaSpecificationAgentManifest,
   modelFigmaSpecificationStrategy,
-} from "../legacy/figma-specification-agent";
+} from "../../legacy/figma-specification-agent";
 
 const FIELD_STYLE = {
   cornerRadius: 10,

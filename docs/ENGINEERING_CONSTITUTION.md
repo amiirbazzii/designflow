@@ -89,6 +89,36 @@ designflow/
 └── README.md
 ```
 
+### V2 Feature Module Layout
+
+Agent Architecture V2 modules own their tests locally. A feature directory is
+the architectural boundary, and everything the feature owns — runtime files,
+its README, its tests, its fixtures and its helpers — lives inside it:
+
+```text
+packages/<package>/src/<feature>/
+├── <runtime files>.ts
+├── index.ts
+├── README.md
+└── test/
+    ├── <feature>.test.ts
+    ├── fixtures/
+    └── helpers/
+```
+
+- A `*.test.ts` MUST NOT sit directly beside the runtime file it covers.
+- A package-level `test/<feature>/` tree that separates a feature from its own
+  tests is equally forbidden; only genuinely cross-feature fixtures may live
+  in a shared `test/` directory, and each one must justify why.
+- Runtime code MUST NEVER import from a `test/` directory.
+- `test/` directories are excluded from compiled output (`src/**/test/**` in
+  every package `tsconfig.json`) — `.test.ts` naming alone does not protect
+  distribution, because a fixture or helper carries no such suffix.
+
+`packages/sdk/src/architecture/test/feature-test-layout.test.ts` enforces all
+four rules across the repository. New V2 features (UI Builder, Visual Critic,
+and everything after) use this layout from their first commit.
+
 ### Repository Hygiene Constraints
 - **Package Manager & Runtime:** Bun is the mandatory package manager and execution runtime (`bun install`, `bun run`, `bun test`).
 - **Build & Pipeline Orchestration:** Turborepo (`turbo.json`) handles task scheduling, caching, and cross-package build pipelines.

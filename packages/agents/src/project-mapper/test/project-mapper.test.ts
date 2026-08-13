@@ -1,11 +1,11 @@
-// packages/agents/src/project-mapper/project-mapper.test.ts
+// packages/agents/src/project-mapper/test/project-mapper.test.ts
 //
 // V2-3 acceptance: design requirements meet project facts, and every decision
 // is a choice among things that exist.
 import { describe, expect, test } from "bun:test";
 import { MAPPING_PATCH_SCHEMA_VERSION, type SpecializedAgentContext } from "@designflow/sdk";
 
-import { SPENDLY_SNAPSHOT } from "../../test/fixtures/spendly-blueprint-snapshot";
+import { SPENDLY_SNAPSHOT } from "../../../test/fixtures/spendly-blueprint-snapshot";
 import {
   EXTENSION_REQUIRED_PROJECT,
   MULTI_CANDIDATE_PROJECT,
@@ -13,25 +13,25 @@ import {
   REUSE_READY_PROJECT,
   SPARSE_PROJECT,
   manyCandidateProject,
-} from "../../test/fixtures/mapping-project-contexts";
-import { compileUIBlueprintDraft } from "../ui-blueprint/ui-blueprint-compiler";
+} from "./fixtures/mapping-project-contexts";
+import { compileUIBlueprintDraft } from "../../ui-blueprint/ui-blueprint-compiler";
 import {
   compileImplementationMapDraft,
   componentRequirementId,
   SCREEN_REACHABILITY_REQUIREMENT_ID,
-} from "./mapping-skeleton";
-import { MAX_CANDIDATES_PER_REQUIREMENT } from "./candidate-builder";
-import { partitionMappingDraft } from "./partitioner";
-import { compileMappingEvidence } from "./evidence-compiler";
-import { applyProjectMappingPatches, mapSkeletonFingerprint, validateMappingPatch } from "./mapping-patch-merge";
-import { renderMappingReport } from "./mapping-report";
+} from "../mapping-skeleton";
+import { MAX_CANDIDATES_PER_REQUIREMENT } from "../candidate-builder";
+import { partitionMappingDraft } from "../partitioner";
+import { compileMappingEvidence } from "../evidence-compiler";
+import { applyProjectMappingPatches, mapSkeletonFingerprint, validateMappingPatch } from "../mapping-patch-merge";
+import { renderMappingReport } from "../mapping-report";
 import {
   deterministicProjectMapperStrategy,
   modelProjectMapperStrategy,
   projectMapperAgentManifest,
   projectMapperDefaultModelProfile,
   MAX_MAPPING_PATCH_OUTPUT_TOKENS,
-} from "./project-mapper-agent";
+} from "../project-mapper-agent";
 
 const blueprint = compileUIBlueprintDraft(SPENDLY_SNAPSHOT, { snapshotArtifactId: "snapshot-1" });
 const draft = compileImplementationMapDraft(blueprint, REUSE_READY_PROJECT, {

@@ -1,7 +1,7 @@
-// packages/capabilities/figma-mcp/src/desktop/desktop-design-context-parser.test.ts
+// packages/capabilities/figma-mcp/src/desktop/test/desktop-design-context-parser.test.ts
 import { describe, expect, test } from "bun:test";
 
-import { parseDesignContextFacts } from "./desktop-design-context-parser";
+import { parseDesignContextFacts } from "../desktop-design-context-parser";
 
 /**
  * Sanitized fixture mirroring the real Figma Desktop MCP

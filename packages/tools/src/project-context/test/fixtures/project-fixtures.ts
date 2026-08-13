@@ -1,4 +1,4 @@
-// packages/tools/test/support/project-fixtures.ts
+// packages/tools/src/project-context/test/fixtures/project-fixtures.ts
 //
 // Real-project-shaped fixtures written to a temporary directory. Shapes only:
 // no user project is ever read, and no real project path appears in product

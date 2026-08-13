@@ -18,3 +18,8 @@ consults a model.
 | `ui-blueprint-validator.ts` | evidence-relative completeness of a compiled Blueprint |
 
 The contracts themselves live in `@designflow/sdk` under `src/ui-blueprint/`.
+
+## Tests
+
+Runtime source: this directory.
+Feature tests, fixtures and helpers: `./test/`.

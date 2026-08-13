@@ -1,22 +1,22 @@
-// packages/agents/src/design-interpreter/semantic-enrichment.test.ts
+// packages/agents/src/design-interpreter/test/semantic-enrichment.test.ts
 //
 // The semantic half of V2-1: patches are additive, bounded, validated against
 // the Blueprint they annotate, and structurally incapable of changing a fact.
 import { describe, expect, test } from "bun:test";
 import { UI_SEMANTIC_PATCH_SCHEMA_VERSION, type SpecializedAgentContext, type UISemanticPatch } from "@designflow/sdk";
 
-import { SPENDLY_SNAPSHOT, largeSnapshot } from "../../test/fixtures/spendly-blueprint-snapshot";
-import { compileUIBlueprintDraft } from "../ui-blueprint/ui-blueprint-compiler";
-import { validateBlueprintCompleteness, collectBlueprintVisibleText } from "../ui-blueprint/ui-blueprint-validator";
-import { applySemanticPatches, blueprintFactsFingerprint, validateSemanticPatch } from "./semantic-patch-merge";
-import { partitionBlueprintForEnrichment, MAX_PARTITION_ELEMENTS } from "./semantic-partitioner";
+import { SPENDLY_SNAPSHOT, largeSnapshot } from "../../../test/fixtures/spendly-blueprint-snapshot";
+import { compileUIBlueprintDraft } from "../../ui-blueprint/ui-blueprint-compiler";
+import { validateBlueprintCompleteness, collectBlueprintVisibleText } from "../../ui-blueprint/ui-blueprint-validator";
+import { applySemanticPatches, blueprintFactsFingerprint, validateSemanticPatch } from "../semantic-patch-merge";
+import { partitionBlueprintForEnrichment, MAX_PARTITION_ELEMENTS } from "../semantic-partitioner";
 import {
   designInterpreterAgentManifest,
   designInterpreterDefaultModelProfile,
   deterministicDesignInterpreterStrategy,
   modelDesignInterpreterStrategy,
   MAX_SEMANTIC_PATCH_OUTPUT_TOKENS,
-} from "./design-interpreter-agent";
+} from "../design-interpreter-agent";
 
 const blueprint = compileUIBlueprintDraft(SPENDLY_SNAPSHOT, { snapshotArtifactId: "snapshot-1" });
 
