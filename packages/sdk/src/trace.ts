@@ -138,6 +138,17 @@ export const traceEvidenceMetricsSchema = z
     bundleComponentCount: z.number().int().nonnegative(),
     bundleInstanceCount: z.number().int().nonnegative(),
     bundleBytes: z.number().int().nonnegative(),
+    /**
+     * Canonical UI Blueprint sizing (Agent Architecture V2). Optional, so a
+     * trace written by the legacy Specification path stays valid and a V2 run
+     * can be told apart from it by the presence of these fields alone.
+     */
+    blueprintDraftBytes: z.number().int().nonnegative().optional(),
+    blueprintElementCount: z.number().int().nonnegative().optional(),
+    blueprintComponentCount: z.number().int().nonnegative().optional(),
+    semanticPartitionCount: z.number().int().nonnegative().optional(),
+    semanticPatchBytes: z.number().int().nonnegative().optional(),
+    finalBlueprintBytes: z.number().int().nonnegative().optional(),
   })
   .strict();
 
