@@ -27,7 +27,7 @@ import {
 import { applyVisualCriticPatches } from "./critic-patch-merge";
 import { compileVisualExpectations } from "./visual-expectation-compiler";
 import { evaluateVisualDeltas } from "./visual-delta-evaluator";
-import { assembleVisualDeltaReport } from "./visual-delta-report";
+import { assembleVisualDeltaReport, pixelComparisonFindings } from "./visual-delta-report";
 import {
   compileCriticEvidence,
   partitionCriticFindings,
@@ -68,13 +68,23 @@ export async function evaluateRenderedState(
   const evaluation = evaluateVisualDeltas(expectations, options.renderedState);
   const policy = options.policy ?? { ...DEFAULT_VISUAL_PASS_FAIL_POLICY };
 
+  // Pixel evidence is a second deterministic source, independent of DOM
+  // correspondence: it catches what neither the Blueprint's facts nor the
+  // element measurements can — everything about the render being wrong at
+  // once. A comparison that never happened contributes nothing.
+  const deterministic = [
+    ...evaluation.findings,
+    ...pixelComparisonFindings(options.renderedState.pixelComparisons),
+  ];
+
   // No findings, or no critic: the deterministic report is already complete
   // and there is nothing worth spending a model call on.
-  if (options.critic === undefined || evaluation.findings.length === 0)
+  if (options.critic === undefined || deterministic.length === 0)
     return {
       report: assembleVisualDeltaReport({
         renderedState: options.renderedState,
-        findings: evaluation.findings,
+        findings: deterministic,
+        correspondences: evaluation.correspondences,
         expectationCount: expectations.length,
         policy,
         critic: { status: "not_requested", partitionCount: 0, patchCount: 0, summaries: [] },
@@ -82,7 +92,7 @@ export async function evaluateRenderedState(
       unevaluatedExpectationIds: evaluation.unevaluatedExpectationIds,
     };
 
-  const partitions = partitionCriticFindings(evaluation.findings, expectations);
+  const partitions = partitionCriticFindings(deterministic, expectations);
   const patches: unknown[] = [];
   const failures: { partitionId: string; code: string }[] = [];
 
@@ -96,7 +106,7 @@ export async function evaluateRenderedState(
     }
   }
 
-  const merged = applyVisualCriticPatches(evaluation.findings, patches, {
+  const merged = applyVisualCriticPatches(deterministic, patches, {
     failures,
     allowSeverityEscalation: policy.criticSeverityMayEscalate,
   });
@@ -109,6 +119,7 @@ export async function evaluateRenderedState(
       renderedState: options.renderedState,
       findings: merged.findings,
       annotations: merged.annotations,
+      correspondences: evaluation.correspondences,
       expectationCount: expectations.length,
       policy,
       critic: {

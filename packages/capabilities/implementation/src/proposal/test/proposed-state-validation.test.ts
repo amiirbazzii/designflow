@@ -46,8 +46,23 @@ function snapshotTree(root: string): string {
   return entries.join("|");
 }
 
+/**
+ * Workspaces this run leaked.
+ *
+ * Scoped to the current execution on purpose. The assertion is about whether
+ * *this* validation cleaned up after itself, and the system temp directory
+ * outlives every test — a workspace left behind weeks ago by a crashed process
+ * would otherwise fail an unrelated test forever, and deleting other people's
+ * temp data to make an assertion pass is not a fix.
+ */
+const workspacesBefore = new Set(
+  readdirSync(tmpdir()).filter((name) => name.startsWith("designflow-proposed-state-")),
+);
+
 function lingeringWorkspaces(): string[] {
-  return readdirSync(tmpdir()).filter((name) => name.startsWith("designflow-proposed-state-"));
+  return readdirSync(tmpdir()).filter(
+    (name) => name.startsWith("designflow-proposed-state-") && !workspacesBefore.has(name),
+  );
 }
 
 describe("proposed-module compile validation", () => {

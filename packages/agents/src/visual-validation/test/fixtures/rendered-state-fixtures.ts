@@ -42,10 +42,16 @@ function state(overrides: Partial<RenderedState>): RenderedState {
 export interface ElementSeed {
   readonly text?: string;
   readonly height?: number;
+  readonly width?: number;
   readonly fontSize?: string;
   readonly color?: string;
   readonly backgroundColor?: string;
   readonly borderRadius?: string;
+  readonly instrumentationRef?: string;
+  readonly tagName?: string;
+  readonly ancestorPath?: readonly string[];
+  readonly siblingIndex?: number;
+  readonly assetSource?: string;
 }
 
 export function renderedWith(seeds: readonly ElementSeed[], overrides: Partial<RenderedState> = {}): RenderedState {
@@ -54,9 +60,14 @@ export function renderedWith(seeds: readonly ElementSeed[], overrides: Partial<R
       viewportId: "desktop",
       selector: `#element-${index}`,
       ...(seed.text !== undefined ? { text: seed.text } : {}),
+      ...(seed.instrumentationRef !== undefined ? { instrumentationRef: seed.instrumentationRef } : {}),
+      tagName: seed.tagName ?? "span",
+      ancestorPath: [...(seed.ancestorPath ?? ["body", "div"])],
+      ...(seed.siblingIndex !== undefined ? { siblingIndex: seed.siblingIndex } : {}),
+      ...(seed.assetSource !== undefined ? { assetSource: seed.assetSource } : {}),
       x: 0,
       y: index * 10,
-      width: 200,
+      width: seed.width ?? 200,
       height: seed.height ?? 24,
       ...(seed.fontSize !== undefined ? { fontSize: seed.fontSize } : {}),
       ...(seed.color !== undefined ? { color: seed.color } : {}),

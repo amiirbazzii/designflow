@@ -8,9 +8,15 @@
 // path, and nothing in V2 should reach it by reaching for "visual".
 export {
   compileVisualExpectations,
+  instrumentationRefFor,
   normalizeText,
   type CompiledExpectations,
 } from "./visual-expectation-compiler";
+
+export {
+  resolveCorrespondence,
+  type CorrespondenceResult,
+} from "./element-correspondence";
 
 export {
   evaluateVisualDeltas,
@@ -50,5 +56,8 @@ export {
   assembleVisualDeltaReport,
   decideVisualOutcome,
   formatVisualDeltaReport,
+  pixelComparisonFindings,
+  PIXEL_MISMATCH_MAJOR_RATIO,
+  PIXEL_MISMATCH_MINOR_RATIO,
   type AssembleVisualDeltaReportInput,
 } from "./visual-delta-report";

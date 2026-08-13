@@ -7,10 +7,17 @@ those differences matter.
 **Owns**
 
 - `visual-expectation-compiler.ts` — Blueprint facts → checkable expectations.
-  No model. Only elements carrying exact visible copy are anchored, because
-  copy is the only correspondence that does not require a guess.
+  No model. Every expectation carries an `anchor` describing how the host
+  intends to identify its element, decided before anything is rendered.
+- `element-correspondence.ts` — which rendered element an expectation is
+  about: `matched | ambiguous | unmatched`, resolved from host markers, the
+  Implementation Map, DOM structure, exact content and (only to break a tie)
+  geometry. Two candidates that survive every signal stay ambiguous; nothing
+  here picks the nearest or the first.
 - `visual-delta-evaluator.ts` — expectations × `RenderedState` → findings with
-  `origin: "deterministic"`, each carrying a real measurement.
+  `origin: "deterministic"`, each carrying a real measurement. Identification
+  happens first: a measurement is only taken once its element is certain, and
+  a finding is never more confident than the correspondence underneath it.
 - `visual-critic-agent.ts` / `critic-patch-response-schema.ts` — the Visual
   Critic: severity, priority, user-visible impact, likely cause. It is given
   `findingId`s the host minted and has no field in which to report a
@@ -30,6 +37,9 @@ and live in `workflows/workflow-design-to-code/src/visual-validation/`
 
 **The division** — a browser can measure a height, a color and a bounding box,
 so nothing here asks a model what those are. The model's contribution is
-judgment, added beside the measurements and never over them.
+judgment, added beside the measurements and never over them. Correspondence is
+evidence, not judgment: a model asked "which div is the header?" will always
+answer, which is exactly the failure mode, so the Critic never sees the
+question.
 
 **Tests** — `./test/`.

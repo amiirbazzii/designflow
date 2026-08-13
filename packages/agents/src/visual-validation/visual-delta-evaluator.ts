@@ -1,6 +1,6 @@
 // packages/agents/src/visual-validation/visual-delta-evaluator.ts
 //
-// Expectations × RenderedState → deterministic findings (V2-5).
+// Expectations × RenderedState → deterministic findings (V2-5 / V2-5.1).
 //
 // This is the half of visual evaluation that must never be a model's opinion.
 // Whether the heading says "Add Transaction", whether the card is 56px tall,
@@ -8,25 +8,38 @@
 // and asking a model to look at a screenshot and re-answer them is how the
 // product previously produced confident, unverifiable claims.
 //
-// Every finding here carries `origin: "deterministic"` and a real measurement
-// in `expectedValue`/`actualValue`. The Visual Critic runs afterwards and may
-// say which of these matter — it cannot add one, remove one, or change what
-// was measured.
+// V2-5.1 puts identification first:
+//
+//   expectation → correspondence → matched   → measure the delta
+//                                → ambiguous → say so, measure nothing
+//                                → unmatched → missing / unresolved finding
+//
+// The old order — find the text, assume the element, measure confidently —
+// could attach one element's expected geometry to a different element that
+// merely shared a string. A finding's confidence is now bounded by the
+// confidence of the identification underneath it.
+//
+// Every finding here carries `origin: "deterministic"` and a real measurement.
+// The Visual Critic runs afterwards and may say which of these matter — it
+// cannot add one, remove one, resolve an ambiguity, or change what was
+// measured.
 import {
   VISUAL_VALIDATION_SCHEMA_VERSION,
+  type ElementCorrespondence,
   type RenderedElementEvidence,
   type RenderedState,
   type VisualExpectation,
   type VisualFindingV1,
 } from "@designflow/sdk";
 
-import { normalizeText } from "./visual-expectation-compiler";
+import { resolveCorrespondence } from "./element-correspondence";
 
 export interface DeltaEvaluation {
   readonly findings: readonly VisualFindingV1[];
   /** Expectations no rendered element could be anchored to, so never judged. */
   readonly unevaluatedExpectationIds: readonly string[];
   readonly evaluatedViewportId?: string;
+  readonly correspondences: readonly ElementCorrespondence[];
 }
 
 /** `rgb(248, 248, 248)` / `#f8f8f8` / `#fff` → `[r, g, b]`. */
@@ -76,11 +89,15 @@ function finding(
     category: VisualFindingV1["category"];
     severity: VisualFindingV1["severity"];
     explanation: string;
+    /** Confidence in the identification; the finding can be no surer. */
+    confidence: number;
+    status?: VisualFindingV1["status"];
     expectedValue?: string;
     actualValue?: string;
     measurableDelta?: number;
     element?: RenderedElementEvidence;
     viewportId?: string;
+    signals?: readonly string[];
   },
 ): VisualFindingV1 {
   return {
@@ -88,10 +105,8 @@ function finding(
     findingId: `finding:${expectation.id}`,
     category: parts.category,
     severity: parts.severity,
-    // A measurement is not a guess. Deterministic findings are certain about
-    // what was measured; whether it matters is the Critic's business.
-    confidence: 1,
-    status: "confirmed",
+    confidence: Math.max(0, Math.min(1, parts.confidence)),
+    status: parts.status ?? "confirmed",
     affectedComponent: expectation.label.slice(0, 200),
     ...(parts.expectedValue !== undefined ? { expectedValue: parts.expectedValue.slice(0, 2_000) } : {}),
     ...(parts.actualValue !== undefined ? { actualValue: parts.actualValue.slice(0, 2_000) } : {}),
@@ -111,30 +126,10 @@ function finding(
       expectation.blueprintRef,
       ...(parts.viewportId !== undefined ? [`viewport:${parts.viewportId}`] : []),
       ...(parts.element !== undefined ? [`selector:${parts.element.selector}`] : []),
+      ...(parts.signals ?? []).map((signal) => `signal:${signal}`),
     ].slice(0, 32),
     origin: "deterministic",
   };
-}
-
-/**
- * The rendered element that corresponds to an expectation's design element.
- *
- * Matched on exact copy, then on containment, then by smallest box — the
- * smallest node carrying the text is the label itself rather than one of its
- * ancestors, which is what makes a height measurement meaningful.
- */
-function anchorFor(
-  expected: string,
-  elements: readonly RenderedElementEvidence[],
-): RenderedElementEvidence | undefined {
-  const needle = normalizeText(expected);
-  if (needle.length === 0) return undefined;
-
-  const exact = elements.filter((element) => normalizeText(element.text ?? "") === needle);
-  const pool = exact.length > 0 ? exact : elements.filter((element) => normalizeText(element.text ?? "").includes(needle));
-  if (pool.length === 0) return undefined;
-
-  return [...pool].sort((left, right) => left.width * left.height - right.width * right.height)[0];
 }
 
 export function evaluateVisualDeltas(
@@ -142,24 +137,30 @@ export function evaluateVisualDeltas(
   renderedState: RenderedState,
 ): DeltaEvaluation {
   if (renderedState.status !== "rendered" || renderedState.elements.length === 0)
-    return { findings: [], unevaluatedExpectationIds: expectations.map((expectation) => expectation.id) };
+    return {
+      findings: [],
+      unevaluatedExpectationIds: expectations.map((expectation) => expectation.id),
+      correspondences: [],
+    };
 
   // One viewport carries the comparison. Repeating every finding three times
   // because the design has three breakpoints buries the actual problem, and
   // the Blueprint's facts describe one frame, not a responsive matrix.
   const viewportId = renderedState.elements[0]!.viewportId;
   const elements = renderedState.elements.filter((element) => element.viewportId === viewportId);
-  const allText = elements.map((element) => element.text ?? "").join("\n");
   const allColors = elements.flatMap((element) =>
     [element.color, element.backgroundColor, element.borderColor].filter(
       (value): value is string => value !== undefined,
     ),
   );
 
+  const { correspondences, matches, byRef } = resolveCorrespondence(expectations, elements, viewportId);
+
   const findings: VisualFindingV1[] = [];
   const unevaluated: string[] = [];
 
   for (const expectation of expectations) {
+    // A raw design color is a property of the page, not of one element.
     if (expectation.property === "anyColor") {
       const present = allColors.some((color) => colorsMatch(expectation.expected, color) === true);
       if (!present)
@@ -167,6 +168,7 @@ export function evaluateVisualDeltas(
           finding(expectation, {
             category: "color",
             severity: expectation.severityIfMissing,
+            confidence: 1,
             expectedValue: expectation.expected,
             explanation: `The map kept ${expectation.expected} as a raw design value, but nothing rendered uses it.`,
             viewportId,
@@ -175,52 +177,82 @@ export function evaluateVisualDeltas(
       continue;
     }
 
-    if (expectation.property === "text") {
-      if (normalizeText(allText).includes(normalizeText(expectation.expected))) continue;
+    const correspondence = byRef.get(expectation.blueprintRef);
+    const element = matches.get(expectation.blueprintRef);
+    const isPresence = expectation.property === "text" || expectation.property === "presence";
+
+    // A. Nothing in the render corresponds to this design element.
+    if (correspondence === undefined || correspondence.state === "unmatched") {
+      if (!isPresence) {
+        unevaluated.push(expectation.id);
+        continue;
+      }
       findings.push(
         finding(expectation, {
           category: "missing-element",
           severity: expectation.severityIfMissing,
+          // Certain that nothing matched; that is itself a measurement.
+          confidence: 1,
           expectedValue: expectation.expected,
-          explanation: `The design shows "${expectation.expected}", but no rendered element carries that text.`,
+          explanation:
+            expectation.property === "text"
+              ? `The design shows "${expectation.expected}", but no rendered element carries that text.`
+              : `The design includes ${expectation.label}, but no rendered element corresponds to it.`,
           viewportId,
         }),
       );
       continue;
     }
 
-    // Every other expectation needs the element the copy identifies. If the
-    // copy itself is missing, the content finding above already said so and a
-    // second one about its font size would only be noise.
-    const contentExpectation = expectations.find(
-      (candidate) => candidate.blueprintRef === expectation.blueprintRef && candidate.property === "text",
-    );
-    const anchor = contentExpectation === undefined ? undefined : anchorFor(contentExpectation.expected, elements);
-    if (anchor === undefined) {
-      unevaluated.push(expectation.id);
+    // B. Several rendered elements remain plausible. Saying which one is wrong
+    // would be a guess, and a guess with a pixel value attached reads as fact.
+    if (correspondence.state === "ambiguous") {
+      if (isPresence)
+        findings.push(
+          finding(expectation, {
+            category: "component-structure",
+            severity: "info",
+            confidence: 0,
+            status: "not-applicable",
+            expectedValue: expectation.expected,
+            explanation: `${expectation.label} could not be identified uniquely in the rendered output: ${correspondence.candidateCount} elements matched every available signal, so no measurement was taken.`,
+            viewportId,
+            signals: correspondence.signals,
+          }),
+        );
+      else unevaluated.push(expectation.id);
       continue;
     }
 
+    // C. Identified. Now — and only now — measure.
+    if (element === undefined) {
+      unevaluated.push(expectation.id);
+      continue;
+    }
+    if (isPresence) continue;
+
     if (expectation.property === "color" || expectation.property === "backgroundColor") {
-      const actual = expectation.property === "color" ? anchor.color : anchor.backgroundColor;
+      const actual = expectation.property === "color" ? element.color : element.backgroundColor;
       if (actual === undefined) {
         unevaluated.push(expectation.id);
         continue;
       }
-      const matches = colorsMatch(expectation.expected, actual);
-      if (matches === undefined) {
+      const matched = colorsMatch(expectation.expected, actual);
+      if (matched === undefined) {
         unevaluated.push(expectation.id);
         continue;
       }
-      if (!matches)
+      if (!matched)
         findings.push(
           finding(expectation, {
             category: "color",
             severity: expectation.severityIfMissing,
+            confidence: correspondence.confidence,
             expectedValue: expectation.expected,
             actualValue: actual,
-            element: anchor,
+            element,
             viewportId,
+            signals: correspondence.signals,
             explanation: `${expectation.label} renders ${actual} where the design specifies ${expectation.expected}.`,
           }),
         );
@@ -229,12 +261,14 @@ export function evaluateVisualDeltas(
 
     const actualNumber =
       expectation.property === "height"
-        ? anchor.height
-        : expectation.property === "fontSize"
-          ? parsePx(anchor.fontSize)
-          : expectation.property === "borderRadius"
-            ? parsePx(anchor.borderRadius)
-            : undefined;
+        ? element.height
+        : expectation.property === "width"
+          ? element.width
+          : expectation.property === "fontSize"
+            ? parsePx(element.fontSize)
+            : expectation.property === "borderRadius"
+              ? parsePx(element.borderRadius)
+              : undefined;
 
     if (actualNumber === undefined || expectation.expectedNumber === undefined) {
       unevaluated.push(expectation.id);
@@ -246,17 +280,24 @@ export function evaluateVisualDeltas(
 
     findings.push(
       finding(expectation, {
-        category: expectation.property === "fontSize" ? "typography" : expectation.property === "height" ? "size" : "radius",
+        category:
+          expectation.property === "fontSize"
+            ? "typography"
+            : expectation.property === "borderRadius"
+              ? "radius"
+              : "size",
         severity: expectation.severityIfMissing,
+        confidence: correspondence.confidence,
         expectedValue: expectation.expected,
         actualValue: `${Math.round(actualNumber * 100) / 100}px`,
         measurableDelta: Math.round(delta * 100) / 100,
-        element: anchor,
+        element,
         viewportId,
+        signals: correspondence.signals,
         explanation: `${expectation.label} renders at ${Math.round(actualNumber * 100) / 100}px where the design specifies ${expectation.expected}.`,
       }),
     );
   }
 
-  return { findings, unevaluatedExpectationIds: unevaluated, evaluatedViewportId: viewportId };
+  return { findings, unevaluatedExpectationIds: unevaluated, evaluatedViewportId: viewportId, correspondences };
 }

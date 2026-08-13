@@ -26,7 +26,9 @@ function missingOneString() {
 describe("pre-approval visual evaluation", () => {
   test("an implementation that carries the design's copy is not reported as missing it", async () => {
     const { report } = await evaluateRenderedState({ renderedState: faithful(), blueprint: BLUEPRINT });
-    expect(report.findings.filter((finding) => finding.category === "missing-element")).toHaveLength(0);
+    expect(
+      report.findings.filter((finding) => finding.explanation.includes("no rendered element carries that text")),
+    ).toHaveLength(0);
     expect(report.expectationCount).toBeGreaterThan(0);
   });
 

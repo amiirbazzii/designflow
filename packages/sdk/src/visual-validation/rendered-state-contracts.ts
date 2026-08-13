@@ -57,6 +57,9 @@ export const renderedViewportSchema = z
     id: z.string().min(1).max(80),
     width: z.number().int().positive().max(4096),
     height: z.number().int().positive().max(4096),
+    /** The image the browser actually produced, which a full-page capture grows. */
+    capturedWidth: z.number().int().nonnegative().max(32_768).optional(),
+    capturedHeight: z.number().int().nonnegative().max(32_768).optional(),
     captureStatus: z.enum(["captured", "failed", "skipped"]),
     /** Content-addressed screenshot artifact; never inline image bytes. */
     screenshotArtifactId: z.string().min(1).max(200).optional(),
@@ -84,6 +87,22 @@ export const renderedElementEvidenceSchema = z
     selector: z.string().min(1).max(400),
     /** Blueprint element/component id, when correspondence was established. */
     blueprintRef: z.string().min(1).max(200).optional(),
+    /**
+     * A host-owned marker read straight off the rendered node.
+     *
+     * Present only when the isolated workspace was instrumented. It is the
+     * strongest correspondence signal there is — the host wrote it and the
+     * browser read it back — and it never reaches the user's project.
+     */
+    instrumentationRef: z.string().min(1).max(200).optional(),
+    /** Element tag, for structural correspondence of nodes with no copy. */
+    tagName: z.string().min(1).max(40).optional(),
+    /** Bounded ancestor tag/marker path, outermost first. */
+    ancestorPath: z.array(z.string().min(1).max(120)).max(12).default([]),
+    /** Position among siblings, so design order can be compared to render order. */
+    siblingIndex: z.number().int().nonnegative().optional(),
+    /** Set when the node renders an image or an inline icon. */
+    assetSource: z.string().max(500).optional(),
     text: z.string().max(2_000).optional(),
     x: z.number().finite(),
     y: z.number().finite(),
@@ -106,6 +125,57 @@ export const renderedElementEvidenceSchema = z
 
 export type RenderedElementEvidence = z.infer<typeof renderedElementEvidenceSchema>;
 
+// ── Correspondence ──────────────────────────────────────────────
+
+/**
+ * Which rendered element a design expectation is about.
+ *
+ * This exists because the honest answer is sometimes "I don't know". A
+ * measurement is only meaningful once the element it measures is the right
+ * one, and copy alone cannot establish that — a screen with two "Optional"
+ * labels will match the wrong one half the time, and then report a confident
+ * pixel-accurate delta about an element nobody asked about.
+ *
+ * So correspondence is resolved first, deterministically, and its uncertainty
+ * is carried rather than rounded away.
+ */
+export const correspondenceStateSchema = z.enum(["matched", "ambiguous", "unmatched"]);
+
+export type CorrespondenceState = z.infer<typeof correspondenceStateSchema>;
+
+/**
+ * The evidence that established (or failed to establish) a correspondence,
+ * strongest first. Recorded so a finding's confidence can be traced to what
+ * actually identified the element rather than to a number someone chose.
+ */
+export const correspondenceSignalSchema = z.enum([
+  "instrumentation",
+  "mapped_component",
+  "structure",
+  "content",
+  "geometry",
+]);
+
+export type CorrespondenceSignal = z.infer<typeof correspondenceSignalSchema>;
+
+export const elementCorrespondenceSchema = z
+  .object({
+    blueprintRef: z.string().min(1).max(200),
+    state: correspondenceStateSchema,
+    signals: z.array(correspondenceSignalSchema).max(5).default([]),
+    /** Confidence in the *identification*, which bounds any finding's confidence. */
+    confidence: z.number().min(0).max(1),
+    /** The resolved element, present only when `state` is `matched`. */
+    selector: z.string().min(1).max(400).optional(),
+    viewportId: z.string().min(1).max(80).optional(),
+    /** How many rendered elements remained plausible after every signal. */
+    candidateCount: z.number().int().nonnegative(),
+    reason: z.string().min(1).max(300).optional(),
+  })
+  .strict();
+
+export type ElementCorrespondence = z.infer<typeof elementCorrespondenceSchema>;
+
 export const renderedStateStatusSchema = z.enum([
   "rendered",
   "render_failed",
@@ -116,6 +186,61 @@ export const renderedStateStatusSchema = z.enum([
 
 export type RenderedStateStatus = z.infer<typeof renderedStateStatusSchema>;
 
+// ── Pixel comparison ────────────────────────────────────────────
+
+/**
+ * One viewport's comparison against the design's own screenshot.
+ *
+ * `status` is load-bearing. A comparison that did not happen must not read as
+ * a comparison that found nothing wrong, so "no reference image" and "the
+ * images are not comparable" are their own answers rather than a `0`.
+ */
+export const pixelComparisonStatusSchema = z.enum([
+  "compared",
+  "unavailable",
+  "incompatible",
+  "identity_mismatch",
+]);
+
+export type PixelComparisonStatus = z.infer<typeof pixelComparisonStatusSchema>;
+
+export const pixelComparisonSchema = z
+  .object({
+    viewportId: z.string().min(1).max(80),
+    status: pixelComparisonStatusSchema,
+    algorithmVersion: z.string().min(1).max(80).optional(),
+    mismatchRatio: z.number().min(0).max(1).optional(),
+    dimensionCompatible: z.boolean().optional(),
+    /** Comparable region when the two images differ in size. */
+    overlapCoverage: z.number().min(0).max(1).optional(),
+    overlapMismatchRatio: z.number().min(0).max(1).optional(),
+    changedPixelCount: z.number().int().nonnegative().optional(),
+    expectedViewport: z
+      .object({ width: z.number().int().nonnegative(), height: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
+    actualViewport: z
+      .object({ width: z.number().int().nonnegative(), height: z.number().int().nonnegative() })
+      .strict()
+      .optional(),
+    alignmentStatus: z.enum(["aligned", "overlap-compared", "incompatible", "unknown"]).optional(),
+    referenceEvidenceId: z.string().min(1).max(200).optional(),
+    referenceArtifactId: z.string().min(1).max(200).optional(),
+    /** The design identity the reference image came from. */
+    referenceIdentity: z
+      .object({
+        fileKey: z.string().min(1).max(200).optional(),
+        nodeId: z.string().min(1).max(200).optional(),
+        captureMethod: z.string().min(1).max(120).optional(),
+      })
+      .strict()
+      .optional(),
+    reason: z.string().min(1).max(300).optional(),
+  })
+  .strict();
+
+export type PixelComparison = z.infer<typeof pixelComparisonSchema>;
+
 export const renderedStateSchema = z
   .object({
     schemaVersion: z.literal(RENDERED_STATE_SCHEMA_VERSION),
@@ -124,20 +249,7 @@ export const renderedStateSchema = z
     viewports: z.array(renderedViewportSchema).max(8).default([]),
     elements: z.array(renderedElementEvidenceSchema).max(256).default([]),
     /** Deterministic pixel comparison, when a reference was available. */
-    pixelComparisons: z
-      .array(
-        z
-          .object({
-            viewportId: z.string().min(1).max(80),
-            algorithmVersion: z.string().min(1).max(80),
-            mismatchRatio: z.number().min(0).max(1),
-            dimensionCompatible: z.boolean(),
-            referenceEvidenceId: z.string().min(1).max(200).optional(),
-          })
-          .strict(),
-      )
-      .max(8)
-      .default([]),
+    pixelComparisons: z.array(pixelComparisonSchema).max(8).default([]),
     runtime: z
       .object({
         buildStatus: z.enum(["passed", "failed", "unavailable"]),
@@ -150,10 +262,25 @@ export const renderedStateSchema = z
         diagnostics: z.array(z.string().min(1).max(400)).max(12).default([]),
       })
       .strict(),
+    correspondences: z.array(elementCorrespondenceSchema).max(256).default([]),
     provenance: z
       .object({
         rendererVersion: z.string().min(1).max(40),
         workspaceIsolated: z.literal(true),
+        /**
+         * Whether the isolated workspace carried host-owned correspondence
+         * markers.
+         *
+         * When true, the built source is deliberately *not* byte-identical to
+         * the proposal a person will approve, and this field is how the report
+         * says so instead of implying otherwise. `binding.proposalHash` still
+         * names the validated proposal; `instrumentedProposalHash` names what
+         * was actually built.
+         */
+        renderInstrumentationApplied: z.boolean().default(false),
+        instrumentedProposalHash: z.string().min(1).max(200).optional(),
+        instrumentedFileCount: z.number().int().nonnegative().default(0),
+        instrumentationNotes: z.array(z.string().min(1).max(300)).max(8).default([]),
       })
       .strict(),
   })
@@ -179,6 +306,34 @@ export const visualExpectationKindSchema = z.enum([
  * copy share one shape; `expectedNumber` carries the comparable value when
  * there is one, so a delta is arithmetic rather than string diffing.
  */
+/**
+ * How the host expects to identify this expectation's element.
+ *
+ * Compiled from the Blueprint and the Implementation Map before anything is
+ * rendered, so identification never depends on reading the result and
+ * choosing whatever fits.
+ */
+export const expectationAnchorSchema = z
+  .object({
+    /** What kind of thing this is, which decides which signals can apply. */
+    elementKind: z.enum(["text", "component", "region", "asset", "container"]),
+    /** The marker the host would have written into the isolated workspace. */
+    instrumentationRef: z.string().min(1).max(200).optional(),
+    /** The project component the map says realizes this, e.g. `Button`. */
+    mappedComponentName: z.string().min(1).max(200).optional(),
+    /** Exact visible copy, when the element has any. */
+    text: z.string().max(400).optional(),
+    /** Expected tag family, e.g. `img`, `nav`, `button`. */
+    tagHints: z.array(z.string().min(1).max(40)).max(8).default([]),
+    /** Blueprint order among its siblings. */
+    order: z.number().int().nonnegative().optional(),
+    /** Exact copy carried by descendants, for containers and components. */
+    containedText: z.array(z.string().min(1).max(200)).max(16).default([]),
+  })
+  .strict();
+
+export type ExpectationAnchor = z.infer<typeof expectationAnchorSchema>;
+
 export const visualExpectationSchema = z
   .object({
     id: z.string().min(1).max(200),
@@ -191,6 +346,7 @@ export const visualExpectationSchema = z
     /** Absolute tolerance for a numeric expectation, in the property's unit. */
     tolerance: z.number().nonnegative().optional(),
     severityIfMissing: visualFindingSeverityV1Schema.default("major"),
+    anchor: expectationAnchorSchema,
   })
   .strict();
 
@@ -273,6 +429,17 @@ export const visualDeltaReportSchema = z
     findings: z.array(visualFindingV1Schema).max(256).default([]),
     annotations: z.array(visualCriticAnnotationSchema).max(256).default([]),
     expectationCount: z.number().int().nonnegative(),
+    /** What the run could and could not identify, carried into the report. */
+    correspondence: z
+      .object({
+        matched: z.number().int().nonnegative().default(0),
+        ambiguous: z.number().int().nonnegative().default(0),
+        unmatched: z.number().int().nonnegative().default(0),
+        signalsUsed: z.array(correspondenceSignalSchema).max(5).default([]),
+      })
+      .strict()
+      .default({}),
+    pixelComparisons: z.array(pixelComparisonSchema).max(8).default([]),
     critic: z
       .object({
         status: z.enum(["completed", "partial", "unavailable", "not_requested"]),

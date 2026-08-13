@@ -10,7 +10,10 @@
 import {
   DEFAULT_VISUAL_PASS_FAIL_POLICY,
   VISUAL_DELTA_REPORT_SCHEMA_VERSION,
+  VISUAL_VALIDATION_SCHEMA_VERSION,
   visualDeltaReportSchema,
+  type ElementCorrespondence,
+  type PixelComparison,
   type RenderedState,
   type VisualCriticAnnotation,
   type VisualDeltaReport,
@@ -23,8 +26,58 @@ export interface AssembleVisualDeltaReportInput {
   readonly findings: readonly VisualFindingV1[];
   readonly annotations?: readonly VisualCriticAnnotation[];
   readonly expectationCount: number;
+  readonly correspondences?: readonly ElementCorrespondence[];
   readonly critic?: VisualDeltaReport["critic"];
   readonly policy?: VisualDeltaReport["passFailPolicy"];
+}
+
+/** Above this, the rendered page and the design are visibly different. */
+export const PIXEL_MISMATCH_MAJOR_RATIO = 0.15;
+/** Below this, the difference is anti-aliasing and font hinting. */
+export const PIXEL_MISMATCH_MINOR_RATIO = 0.02;
+
+/**
+ * Turns a completed pixel comparison into a deterministic finding.
+ *
+ * A comparison that did not happen produces nothing — `unavailable` is not a
+ * clean bill of health and must not read as one, so it stays visible in
+ * `pixelComparisons` and never becomes a silent pass.
+ */
+export function pixelComparisonFindings(
+  comparisons: readonly PixelComparison[],
+): readonly VisualFindingV1[] {
+  const findings: VisualFindingV1[] = [];
+
+  for (const comparison of comparisons) {
+    if (comparison.status !== "compared") continue;
+    const ratio = comparison.overlapMismatchRatio ?? comparison.mismatchRatio;
+    if (ratio === undefined || ratio <= PIXEL_MISMATCH_MINOR_RATIO) continue;
+
+    const percentage = Math.round(ratio * 1000) / 10;
+    findings.push({
+      schemaVersion: VISUAL_VALIDATION_SCHEMA_VERSION,
+      findingId: `finding:pixel:${comparison.viewportId}`,
+      category: "layout",
+      severity: ratio > PIXEL_MISMATCH_MAJOR_RATIO ? "major" : "minor",
+      confidence: 1,
+      status: "confirmed",
+      expectedValue: "the design's own screenshot",
+      actualValue: `${percentage}% of compared pixels differ`,
+      measurableDelta: Math.round(ratio * 10_000) / 10_000,
+      explanation:
+        `At ${comparison.viewportId}, ${percentage}% of the pixels the rendered implementation and the design share differ` +
+        (comparison.alignmentStatus === "overlap-compared"
+          ? ", measured over the region both images cover."
+          : "."),
+      evidenceReferences: [
+        `viewport:${comparison.viewportId}`,
+        ...(comparison.referenceEvidenceId !== undefined ? [comparison.referenceEvidenceId] : []),
+      ],
+      origin: "deterministic",
+    });
+  }
+
+  return findings;
 }
 
 /**
@@ -95,6 +148,8 @@ export function assembleVisualDeltaReport(input: AssembleVisualDeltaReportInput)
   const policy = input.policy ?? { ...DEFAULT_VISUAL_PASS_FAIL_POLICY };
   const { outcome, reason } = decideVisualOutcome(input.renderedState, input.findings, policy);
 
+  const correspondences = input.correspondences ?? input.renderedState.correspondences;
+
   return visualDeltaReportSchema.parse({
     schemaVersion: VISUAL_DELTA_REPORT_SCHEMA_VERSION,
     outcome,
@@ -102,6 +157,13 @@ export function assembleVisualDeltaReport(input: AssembleVisualDeltaReportInput)
     findings: input.findings.slice(0, 256),
     annotations: (input.annotations ?? []).slice(0, 256),
     expectationCount: input.expectationCount,
+    correspondence: {
+      matched: correspondences.filter((entry) => entry.state === "matched").length,
+      ambiguous: correspondences.filter((entry) => entry.state === "ambiguous").length,
+      unmatched: correspondences.filter((entry) => entry.state === "unmatched").length,
+      signalsUsed: [...new Set(correspondences.flatMap((entry) => entry.signals))],
+    },
+    pixelComparisons: input.renderedState.pixelComparisons,
     critic: input.critic ?? { status: "not_requested", partitionCount: 0, patchCount: 0, summaries: [] },
     passFailPolicy: policy,
     ...(reason !== undefined ? { reason } : {}),
@@ -124,6 +186,18 @@ export function formatVisualDeltaReport(report: VisualDeltaReport): string {
     `Visual evaluation: ${report.outcome.replace(/_/g, " ")}${report.reason !== undefined ? ` — ${report.reason}` : ""}`,
     `${report.findings.length} finding${report.findings.length === 1 ? "" : "s"} from ${report.expectationCount} design expectation${report.expectationCount === 1 ? "" : "s"}.`,
   ];
+
+  const { matched, ambiguous, unmatched } = report.correspondence;
+  if (ambiguous > 0 || unmatched > 0)
+    lines.push(
+      `Identified ${matched} design element${matched === 1 ? "" : "s"} in the render; ${ambiguous} could not be told apart and ${unmatched} were not found. No measurement was taken for those.`,
+    );
+
+  for (const comparison of report.pixelComparisons)
+    if (comparison.status !== "compared")
+      lines.push(
+        `Pixel comparison at ${comparison.viewportId}: ${comparison.status.replace(/_/g, " ")}${comparison.reason !== undefined ? ` — ${comparison.reason}` : ""}.`,
+      );
 
   for (const finding of [...report.findings].sort((left, right) => order[left.severity] - order[right.severity])) {
     lines.push(`- [${finding.severity}] ${finding.explanation}`);

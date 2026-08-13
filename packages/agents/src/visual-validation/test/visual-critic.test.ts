@@ -43,16 +43,20 @@ describe("expectation compiler", () => {
     expect(compiled.expectations.every((expectation) => expectation.blueprintRef.length > 0)).toBe(true);
   });
 
-  test("every expectation is anchored to exact design copy", () => {
-    const refs = new Set(
-      EXPECTATIONS.filter((expectation) => expectation.property === "text").map(
-        (expectation) => expectation.blueprintRef,
-      ),
-    );
-    // A geometry or color expectation on an element with no copy could never
-    // be matched to a rendered node without guessing, so none is emitted.
-    for (const expectation of EXPECTATIONS)
-      if (!expectation.id.startsWith("expectation:style:")) expect(refs.has(expectation.blueprintRef)).toBe(true);
+  test("every expectation carries a deterministic anchor", () => {
+    // V2-5.1: copy is no longer the only way in. An expectation is emitted
+    // only when *something* deterministic could identify its element again.
+    for (const expectation of EXPECTATIONS) {
+      if (expectation.id.startsWith("expectation:style:")) continue;
+      const anchor = expectation.anchor;
+      expect(
+        anchor.instrumentationRef !== undefined ||
+          anchor.mappedComponentName !== undefined ||
+          anchor.text !== undefined ||
+          anchor.containedText.length > 0 ||
+          anchor.elementKind === "asset",
+      ).toBe(true);
+    }
   });
 
   test("expected copy is the design's exact text", () => {
@@ -71,10 +75,12 @@ describe("expectation compiler", () => {
 });
 
 describe("deterministic delta evaluation", () => {
-  test("a render that carries every design string produces no content finding", () => {
+  test("a render that carries every design string reports no missing copy", () => {
     const rendered = renderedWith(textsOf().map((text) => ({ text })));
     const { findings } = evaluateVisualDeltas(EXPECTATIONS, rendered);
-    expect(findings.filter((finding) => finding.category === "missing-element")).toHaveLength(0);
+    expect(
+      findings.filter((finding) => finding.explanation.includes("no rendered element carries that text")),
+    ).toHaveLength(0);
   });
 
   test("missing copy is reported as a missing element", () => {
@@ -96,7 +102,9 @@ describe("deterministic delta evaluation", () => {
       expect(finding.actualValue).toBeDefined();
       expect(finding.expectedValue).toBeDefined();
       expect(typeof finding.measurableDelta).toBe("number");
-      expect(finding.confidence).toBe(1);
+      // Bounded by the correspondence underneath: these were identified by
+      // copy alone, which is good evidence and not proof.
+      expect(finding.confidence).toBe(0.7);
     }
   });
 
