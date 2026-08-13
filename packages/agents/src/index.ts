@@ -4,7 +4,7 @@ import {
   createDesignEngineerAgent,
   designEngineerAgent,
   type DesignEngineerStrategy,
-} from "./catalog/design-engineer-agent";
+} from "./design-engineer/design-engineer-agent";
 
 import {
   createQaReviewerAgent,
@@ -27,7 +27,7 @@ import {
 import {
   createDesignEngineerCoordinator,
   designEngineerCoordinator,
-} from "./catalog/design-engineer-coordinator";
+} from "./design-engineer/design-engineer-coordinator";
 
 import {
   createFigmaSpecificationAgent,
@@ -38,17 +38,17 @@ import {
   createImplementationAgent,
   implementationAgent,
   type ImplementationStrategy,
-} from "./catalog/implementation-agent";
+} from "./implementation/implementation-agent";
 import {
   createVisualValidationAgent,
   visualValidationAgent,
   type VisualValidationStrategy,
-} from "./catalog/visual-validation-agent";
+} from "./visual-validation/visual-validation-agent";
 import {
   createVisualCorrectionAgent,
   visualCorrectionAgent,
   type VisualCorrectionStrategy,
-} from "./catalog/visual-correction-agent";
+} from "./visual-correction/visual-correction-agent";
 
 import { InMemorySpecializedAgentRegistry } from "./specialized-registry";
 
@@ -100,8 +100,8 @@ export {
   createDesignEngineerAgent,
   deterministicDesignEngineerStrategy,
   modelDesignEngineerStrategy,
-} from "./catalog/design-engineer-agent";
-export type { DesignEngineerStrategy } from "./catalog/design-engineer-agent";
+} from "./design-engineer/design-engineer-agent";
+export type { DesignEngineerStrategy } from "./design-engineer/design-engineer-agent";
 
 export {
   qaReviewerAgent,
@@ -159,7 +159,7 @@ export {
   designEngineerCoordinatorManifest,
   designEngineerCoordinatorDefaultModelProfile,
   createDesignEngineerCoordinator,
-} from "./catalog/design-engineer-coordinator";
+} from "./design-engineer/design-engineer-coordinator";
 
 export {
   figmaSpecificationAgent,
@@ -178,8 +178,8 @@ export {
   createImplementationAgent,
   deterministicImplementationStrategy,
   modelImplementationStrategy,
-} from "./catalog/implementation-agent";
-export type { ImplementationStrategy } from "./catalog/implementation-agent";
+} from "./implementation/implementation-agent";
+export type { ImplementationStrategy } from "./implementation/implementation-agent";
 
 export {
   visualValidationAgent,
@@ -188,8 +188,8 @@ export {
   createVisualValidationAgent,
   deterministicVisualValidationStrategy,
   modelVisualValidationStrategy,
-} from "./catalog/visual-validation-agent";
-export type { VisualValidationStrategy } from "./catalog/visual-validation-agent";
+} from "./visual-validation/visual-validation-agent";
+export type { VisualValidationStrategy } from "./visual-validation/visual-validation-agent";
 
 export {
   visualCorrectionAgent,
@@ -198,8 +198,8 @@ export {
   createVisualCorrectionAgent,
   deterministicVisualCorrectionStrategy,
   modelVisualCorrectionStrategy,
-} from "./catalog/visual-correction-agent";
-export type { VisualCorrectionStrategy } from "./catalog/visual-correction-agent";
+} from "./visual-correction/visual-correction-agent";
+export type { VisualCorrectionStrategy } from "./visual-correction/visual-correction-agent";
 
 /** Every agent that ships with DesignFlow, in its default (deterministic) form. */
 export const BUILT_IN_AGENTS = [

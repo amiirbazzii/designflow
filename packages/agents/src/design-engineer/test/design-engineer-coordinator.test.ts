@@ -1,14 +1,14 @@
 // packages/agents/src/catalog/design-engineer-coordinator.test.ts
 import { describe, expect, test } from "bun:test";
-import { createAgentRegistry } from "../index";
+import { createAgentRegistry } from "../../index";
 import {
   designEngineerAgentManifest,
   designEngineerDefaultModelProfile,
-} from "./design-engineer-agent";
+} from "../design-engineer-agent";
 import {
   designEngineerCoordinatorManifest,
   designEngineerCoordinatorDefaultModelProfile,
-} from "./design-engineer-coordinator";
+} from "../design-engineer-coordinator";
 
 describe("the coordinator and the retained alias", () => {
   test("both register under distinct ids in the built-in catalogue", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { visualValidationAgentOutputV1Schema, visualValidationInputV1Schema } from "@designflow/sdk";
-import { SpecializedAgentOutputInvalidError } from "../errors";
-import { deterministicVisualValidationStrategy, modelVisualValidationStrategy, visualValidationAgentManifest } from "./visual-validation-agent";
+import { SpecializedAgentOutputInvalidError } from "../../errors";
+import { deterministicVisualValidationStrategy, modelVisualValidationStrategy, visualValidationAgentManifest } from "../visual-validation-agent";
 
 const EMPTY_CONTEXT = { tools: { call: async () => { throw new Error("tools unavailable"); } }, model: { generate: async () => { throw new Error("model unavailable"); } }, metadata: {}, signal: new AbortController().signal, logger: { info() {}, warn() {}, error() {}, debug() {} } };
 const INPUT = visualValidationInputV1Schema.parse({

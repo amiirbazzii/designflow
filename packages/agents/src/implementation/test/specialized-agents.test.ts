@@ -13,16 +13,16 @@ import {
 import {
   deterministicFigmaSpecificationStrategy,
   figmaSpecificationAgentManifest,
-} from "../specification/legacy/figma-specification-agent";
+} from "../../specification/legacy/figma-specification-agent";
 import {
   deterministicImplementationStrategy,
   implementationAgentManifest,
   modelImplementationStrategy,
-} from "./implementation-agent";
+} from "../implementation-agent";
 import {
   deterministicVisualValidationStrategy,
   visualValidationAgentManifest,
-} from "./visual-validation-agent";
+} from "../../visual-validation/visual-validation-agent";
 
 const EMPTY_CONTEXT: SpecializedAgentContext = {
   tools: { call: async () => { throw new Error("no tools in this test"); } },

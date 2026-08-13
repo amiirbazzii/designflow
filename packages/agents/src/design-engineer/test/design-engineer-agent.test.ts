@@ -8,14 +8,14 @@ import type {
   ToolInvoker,
   ToolResult,
 } from "@designflow/sdk";
-import { InMemoryAgentRegistry } from "../registry";
-import { AgentRuntime } from "../runtime";
+import { InMemoryAgentRegistry } from "../../registry";
+import { AgentRuntime } from "../../runtime";
 import {
   createDesignEngineerAgent,
   deterministicDesignEngineerStrategy,
   designEngineerAgent,
   modelDesignEngineerStrategy,
-} from "./design-engineer-agent";
+} from "../design-engineer-agent";
 
 /**
  * The MVP-3B routing contract, exercised through the real `AgentRuntime`.

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createProjectInspector } from "./project-inspector";
+import { createProjectInspector } from "../project-inspector";
 
 /**
  * The product-facing inspector, exercised the same way `registry.test.ts`

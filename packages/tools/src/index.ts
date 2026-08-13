@@ -1,7 +1,7 @@
 // packages/tools/src/index.ts
 import { InMemoryToolRegistry } from "./registry";
-import { classifyDesignTaskTool } from "./catalog/classify-design-task";
-import { createProjectSummaryTool } from "./catalog/project-summary";
+import { classifyDesignTaskTool } from "./design-engineer/classify-design-task";
+import { createProjectSummaryTool } from "./project-context/project-summary";
 import { classifyReviewTargetTool } from "./catalog/classify-review-target";
 import { summarizeArtifactSetTool } from "./catalog/summarize-artifact-set";
 import { accessibilityChecklistTool } from "./catalog/accessibility-checklist";
@@ -33,27 +33,27 @@ export {
   classifyDesignTaskInputSchema,
   classifyDesignTaskOutputSchema,
   designTaskTypeSchema,
-} from "./catalog/classify-design-task";
+} from "./design-engineer/classify-design-task";
 export type {
   ClassifyDesignTaskInput,
   ClassifyDesignTaskOutput,
   DesignTaskType,
-} from "./catalog/classify-design-task";
+} from "./design-engineer/classify-design-task";
 
 export {
   createProjectSummaryTool,
   projectSummaryManifest,
   projectSummaryInputSchema,
   projectSummaryOutputSchema,
-} from "./catalog/project-summary";
+} from "./project-context/project-summary";
 export type {
   ProjectSummaryInput,
   ProjectSummaryOutput,
   ProjectSummaryToolOptions,
-} from "./catalog/project-summary";
+} from "./project-context/project-summary";
 
-export { createProjectInspector } from "./catalog/project-inspector";
-export type { ProjectInspector, ProjectInspectionResult, ProjectFactCandidate } from "./catalog/project-inspector";
+export { createProjectInspector } from "./project-context/project-inspector";
+export type { ProjectInspector, ProjectInspectionResult, ProjectFactCandidate } from "./project-context/project-inspector";
 
 // ── QA Reviewer's tools ─────────────────────────────────────────
 export {

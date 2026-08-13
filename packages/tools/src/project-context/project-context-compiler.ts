@@ -37,7 +37,7 @@ import {
   MAX_ENTRIES,
   MAX_REPORTED_FILES,
   type ProjectInspectionRaw,
-} from "../catalog/project-inspection";
+} from "./project-inspection";
 import { inspectProjectAliases } from "./alias-inspector";
 
 export const PROJECT_CONTEXT_COMPILER_VERSION = "1";

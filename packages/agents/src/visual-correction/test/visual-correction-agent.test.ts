@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { EMPTY_MODEL_SERVICE, EMPTY_TOOL_SERVICE } from "../index";
-import { deterministicVisualCorrectionStrategy, visualCorrectionAgentManifest } from "./visual-correction-agent";
+import { EMPTY_MODEL_SERVICE, EMPTY_TOOL_SERVICE } from "../../index";
+import { deterministicVisualCorrectionStrategy, visualCorrectionAgentManifest } from "../visual-correction-agent";
 
 const hash = "a".repeat(64);
 const context = {

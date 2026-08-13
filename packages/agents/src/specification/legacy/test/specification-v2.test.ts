@@ -19,10 +19,10 @@ import {
   figmaSpecificationDefaultModelProfile,
   modelFigmaSpecificationStrategy,
 } from "../figma-specification-agent";
-import { designEngineerCoordinatorDefaultModelProfile } from "../../../catalog/design-engineer-coordinator";
-import { implementationDefaultModelProfile } from "../../../catalog/implementation-agent";
-import { visualValidationDefaultModelProfile } from "../../../catalog/visual-validation-agent";
-import { visualCorrectionDefaultModelProfile } from "../../../catalog/visual-correction-agent";
+import { designEngineerCoordinatorDefaultModelProfile } from "../../../design-engineer/design-engineer-coordinator";
+import { implementationDefaultModelProfile } from "../../../implementation/implementation-agent";
+import { visualValidationDefaultModelProfile } from "../../../visual-validation/visual-validation-agent";
+import { visualCorrectionDefaultModelProfile } from "../../../visual-correction/visual-correction-agent";
 
 const EMPTY_CONTEXT: SpecializedAgentContext = {
   tools: { call: async () => { throw new Error("no tools in this test"); } },

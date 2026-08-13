@@ -14,8 +14,8 @@ import { z } from "zod";
 import { InMemoryToolRegistry } from "./registry";
 import { ToolRuntime } from "./runtime";
 import { builtInTools, createToolRegistry } from "./index";
-import { classifyDesignTaskTool } from "./catalog/classify-design-task";
-import { createProjectSummaryTool } from "./catalog/project-summary";
+import { classifyDesignTaskTool } from "./design-engineer/classify-design-task";
+import { createProjectSummaryTool } from "./project-context/project-summary";
 
 /**
  * The tool catalogue and the two tools that ship with it.
