@@ -111,3 +111,19 @@ export type {
   FigmaSpecificationInput,
   Stage3Summary,
 } from "./figma-specification/figma-specification-types";
+
+// ── V2-5 / V2-5.1: pre-approval visual evaluation (internal) ────
+export { renderProposedState, comparePixels, RENDERER_VERSION } from "./visual-validation/render-proposed-state";
+export type {
+  RenderProposedStateOptions,
+  RenderProposedStateResult,
+  RenderedCapture,
+  ReferenceScreenshot,
+} from "./visual-validation/render-proposed-state";
+export { instrumentProposal, INSTRUMENTATION_ATTRIBUTE } from "./visual-validation/render-instrumentation";
+export type { InstrumentationResult } from "./visual-validation/render-instrumentation";
+export { designToCodeV2VisualWorkflow, designToCodeV2VisualWorkflowPackage } from "./v2-visual/v2-visual-workflow";
+export { v2VisualCapabilities, configuredVisualEvaluator } from "./v2-visual/v2-visual-capabilities";
+export type { VisualEvaluator } from "./v2-visual/v2-visual-capabilities";
+export { V2_VISUAL_ARTIFACT_IDS, V2_VISUAL_ARTIFACT_TYPES, v2VisualStageInputSchema } from "./v2-visual/v2-visual-types";
+export type { V2VisualStageInput } from "./v2-visual/v2-visual-types";

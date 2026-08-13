@@ -5,7 +5,7 @@
     "outDir": "dist"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test-support.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-support.ts", "src/**/test/**"],
   "references": [
     { "path": "../../packages/sdk" },
     { "path": "../../packages/capabilities/figma-mcp" }

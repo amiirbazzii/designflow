@@ -46,6 +46,14 @@ export interface BrowserCapture {
 
 export interface DomElementEvidence {
   readonly selector: string;
+  /** A host-owned marker read back off the node; see render instrumentation. */
+  readonly instrumentationRef?: string;
+  readonly tagName?: string;
+  readonly ancestorPath?: readonly string[];
+  readonly siblingIndex?: number;
+  readonly assetSource?: string;
+  readonly borderColor?: string;
+  readonly fontFamily?: string;
   readonly text?: string;
   readonly display?: string;
   readonly visibility?: string;
@@ -463,17 +471,65 @@ function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
         const bytes = await pageValue.screenshot({ fullPage: options.fullPage, type: "png" });
         if (bytes.byteLength > options.maxImageBytes || viewport.width * viewport.height > options.maxImagePixels) throw new RendererUnavailableError("Screenshot exceeded configured limits.");
         const dom = await pageValue.evaluate(`(() => {
-          const elements = Array.from(document.querySelectorAll('[data-designflow-evidence], [data-designflow-element]')).slice(0, 64).map((element) => {
+          // Every visible node the page actually renders, not only ones a
+          // host marker already named. A generated project carries no
+          // DesignFlow attributes, so selecting by marker alone returned an
+          // empty DOM evidence set for exactly the pages this exists to check.
+          // Host markers, when an isolated render injected them, are read back
+          // here as the strongest correspondence signal there is.
+          const MARKER = 'data-designflow-ref';
+          const identify = (node) => {
+            const marker = node.getAttribute(MARKER);
+            if (marker) return 'marker:' + marker;
+            if (node.id) return '#' + node.id;
+            const className = typeof node.className === 'string' ? node.className.trim().split(/\\s+/).slice(0, 3).join('.') : '';
+            const parent = node.parentElement;
+            const index = parent ? Array.prototype.indexOf.call(parent.children, node) : 0;
+            return node.tagName.toLowerCase() + (className ? '.' + className : '') + ':nth-child(' + (index + 1) + ')';
+          };
+          const ancestorsOf = (node) => {
+            const path = [];
+            let current = node.parentElement;
+            while (current && path.length < 12) {
+              const marker = current.getAttribute(MARKER);
+              path.unshift(marker ? 'marker:' + marker : current.tagName.toLowerCase());
+              current = current.parentElement;
+            }
+            return path;
+          };
+          const candidates = Array.from(document.querySelectorAll('body *')).filter((node) => {
+            const rect = node.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            const styles = getComputedStyle(node);
+            if (styles.display === 'none' || styles.visibility === 'hidden') return false;
+            if (node.hasAttribute(MARKER)) return true;
+            const tag = node.tagName.toLowerCase();
+            if (tag === 'img' || tag === 'svg' || tag === 'nav' || tag === 'header' || tag === 'footer' || tag === 'button' || tag === 'input') return true;
+            // A node whose own text is not merely its children's text.
+            const own = Array.from(node.childNodes).filter((child) => child.nodeType === 3).map((child) => child.textContent || '').join('').trim();
+            if (own.length > 0) return true;
+            return (node.textContent || '').trim().length > 0;
+          });
+          const elements = candidates.slice(0, 220).map((element) => {
             const node = element;
             const rect = node.getBoundingClientRect();
             const styles = getComputedStyle(node);
+            const marker = node.getAttribute(MARKER);
+            const parent = node.parentElement;
             return {
-              selector: node.getAttribute('data-designflow-evidence') || node.getAttribute('data-designflow-element') || node.tagName.toLowerCase(),
+              selector: identify(node),
+              instrumentationRef: marker || undefined,
+              tagName: node.tagName.toLowerCase(),
+              ancestorPath: ancestorsOf(node),
+              siblingIndex: parent ? Array.prototype.indexOf.call(parent.children, node) : 0,
+              assetSource: node.tagName.toLowerCase() === 'img' ? (node.getAttribute('src') || '').slice(0, 500) : undefined,
               text: (node.textContent || '').trim().slice(0, 1000),
               display: styles.display,
               visibility: styles.visibility,
               x: rect.x, y: rect.y, width: rect.width, height: rect.height,
               color: styles.color, backgroundColor: styles.backgroundColor,
+              borderColor: styles.borderColor,
+              fontFamily: styles.fontFamily,
               fontSize: styles.fontSize, fontWeight: styles.fontWeight, lineHeight: styles.lineHeight,
               borderRadius: styles.borderRadius, overflow: styles.overflow,
               alignItems: styles.alignItems, justifyContent: styles.justifyContent, gap: styles.gap,

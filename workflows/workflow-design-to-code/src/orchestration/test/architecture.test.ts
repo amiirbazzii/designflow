@@ -28,6 +28,11 @@ function realSources(dir: string): readonly string[] {
     const path = join(dir, entry);
 
     if (statSync(path).isDirectory()) {
+      // A feature-local `test/` directory is test source by this repo's own
+      // convention and is excluded from the build, exactly like the
+      // package-level `test/support/harness.ts` this rule always exempted.
+      // Its fixtures and hosts are where a test legitimately wires an engine.
+      if (entry === "test") continue;
       found.push(...realSources(path));
       continue;
     }

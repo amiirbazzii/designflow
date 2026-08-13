@@ -29,6 +29,8 @@ import {
 import {
   RENDERED_STATE_SCHEMA_VERSION,
   renderedStateSchema,
+  type ImplementationMap,
+  type PixelComparison,
   type ProposedFileChanges,
   type RenderedState,
   type RenderedViewport,
@@ -37,8 +39,10 @@ import {
 } from "@designflow/sdk";
 import { createHash } from "node:crypto";
 
+import { instrumentProposal } from "./render-instrumentation";
 import {
   captureWithPreview,
+  comparePngImages,
   loadOptionalPlaywrightRenderer,
   makePreviewTarget,
   type BrowserCapture,
@@ -71,6 +75,34 @@ export interface RenderProposedStateOptions {
    */
   readonly expectedProjectFingerprint?: string;
   readonly currentProjectFingerprint?: string;
+  /**
+   * The plan, used to derive host-owned correspondence markers.
+   *
+   * Without it the render still works and still measures; elements with no
+   * visible copy simply cannot be identified as confidently.
+   */
+  readonly implementationMap?: ImplementationMap;
+  /** Set false to render exactly the proposal bytes, with no markers. */
+  readonly instrument?: boolean;
+  /** The design's own screenshots, for real pixel comparison. */
+  readonly reference?: readonly ReferenceScreenshot[];
+  /** The design identity the Blueprint was compiled from, checked before comparing. */
+  readonly referenceIdentity?: { readonly fileKey?: string; readonly nodeId?: string };
+}
+
+/**
+ * A design screenshot to compare against.
+ *
+ * `identity` is checked before comparing: an image from another file or
+ * another node is not a reference, it is a different design, and comparing
+ * against it would produce a large, confident, meaningless mismatch.
+ */
+export interface ReferenceScreenshot {
+  readonly viewportId: string;
+  readonly bytes: Uint8Array;
+  readonly evidenceId?: string;
+  readonly artifactId?: string;
+  readonly identity?: { readonly fileKey?: string; readonly nodeId?: string; readonly captureMethod?: string };
 }
 
 export interface RenderedCapture {
@@ -222,11 +254,91 @@ async function renderInWorkspace(
   }
 }
 
+/**
+ * Compares one rendered viewport against the design's own screenshot.
+ *
+ * Every outcome is named. "No reference existed", "the images are not
+ * comparable" and "the reference is of a different design" are three different
+ * answers, and none of them is a mismatch ratio of zero — a comparison that
+ * did not happen must never read as a comparison that found nothing wrong.
+ */
+export function comparePixels(
+  entry: RenderedCapture,
+  references: readonly ReferenceScreenshot[],
+  expectedIdentity?: { readonly fileKey?: string; readonly nodeId?: string },
+): PixelComparison {
+  const reference = references.find((candidate) => candidate.viewportId === entry.viewport.id);
+  const actualViewport = { width: entry.capture.width, height: entry.capture.height };
+
+  if (reference === undefined)
+    return {
+      viewportId: entry.viewport.id,
+      status: "unavailable",
+      actualViewport,
+      alignmentStatus: "unknown",
+      reason: "The design evidence carried no reference screenshot for this viewport.",
+    };
+
+  // The reference must be of the same design the Blueprint was compiled from.
+  if (expectedIdentity !== undefined && reference.identity !== undefined) {
+    const fileMismatch =
+      expectedIdentity.fileKey !== undefined &&
+      reference.identity.fileKey !== undefined &&
+      expectedIdentity.fileKey !== reference.identity.fileKey;
+    const nodeMismatch =
+      expectedIdentity.nodeId !== undefined &&
+      reference.identity.nodeId !== undefined &&
+      expectedIdentity.nodeId !== reference.identity.nodeId;
+    if (fileMismatch || nodeMismatch)
+      return {
+        viewportId: entry.viewport.id,
+        status: "identity_mismatch",
+        actualViewport,
+        alignmentStatus: "unknown",
+        ...(reference.evidenceId !== undefined ? { referenceEvidenceId: reference.evidenceId } : {}),
+        ...(reference.artifactId !== undefined ? { referenceArtifactId: reference.artifactId } : {}),
+        referenceIdentity: reference.identity,
+        reason: "The available reference screenshot is of a different design node than this Blueprint.",
+      };
+  }
+
+  try {
+    const comparison = comparePngImages(reference.bytes, entry.capture.bytes);
+    return {
+      viewportId: entry.viewport.id,
+      status: "compared",
+      algorithmVersion: comparison.algorithmVersion,
+      mismatchRatio: comparison.mismatchRatio,
+      dimensionCompatible: comparison.dimensionCompatible,
+      overlapCoverage: comparison.overlapCoverage,
+      overlapMismatchRatio: comparison.overlapMismatchRatio,
+      changedPixelCount: comparison.changedPixelCount,
+      expectedViewport: { width: comparison.referenceWidth, height: comparison.referenceHeight },
+      actualViewport: { width: comparison.implementationWidth, height: comparison.implementationHeight },
+      alignmentStatus: comparison.dimensionCompatible ? "aligned" : "overlap-compared",
+      ...(reference.evidenceId !== undefined ? { referenceEvidenceId: reference.evidenceId } : {}),
+      ...(reference.artifactId !== undefined ? { referenceArtifactId: reference.artifactId } : {}),
+      ...(reference.identity !== undefined ? { referenceIdentity: reference.identity } : {}),
+    };
+  } catch (error) {
+    return {
+      viewportId: entry.viewport.id,
+      status: "incompatible",
+      actualViewport,
+      alignmentStatus: "incompatible",
+      ...(reference.evidenceId !== undefined ? { referenceEvidenceId: reference.evidenceId } : {}),
+      reason: (error instanceof Error ? error.message : "The two images could not be compared.").slice(0, 300),
+    };
+  }
+}
+
 function toViewportRecord(entry: RenderedCapture): RenderedViewport {
   return {
     id: entry.viewport.id,
     width: entry.viewport.width,
     height: entry.viewport.height,
+    capturedWidth: entry.capture.width,
+    capturedHeight: entry.capture.height,
     captureStatus: "captured",
     screenshotContentHash: hash(entry.capture.bytes),
     domEvidenceStatus: entry.capture.dom === undefined ? "unavailable" : "captured",
@@ -240,6 +352,17 @@ function toElementEvidence(entry: RenderedCapture, element: DomElementEvidence) 
   return {
     viewportId: entry.viewport.id,
     selector: element.selector.slice(0, 400),
+    ...(element.instrumentationRef !== undefined && element.instrumentationRef.length > 0
+      ? { instrumentationRef: element.instrumentationRef.slice(0, 200) }
+      : {}),
+    ...(element.tagName !== undefined ? { tagName: element.tagName.slice(0, 40) } : {}),
+    ancestorPath: (element.ancestorPath ?? []).slice(0, 12).map((step) => step.slice(0, 120)),
+    ...(element.siblingIndex !== undefined ? { siblingIndex: element.siblingIndex } : {}),
+    ...(element.assetSource !== undefined && element.assetSource.length > 0
+      ? { assetSource: element.assetSource.slice(0, 500) }
+      : {}),
+    ...(element.borderColor !== undefined ? { borderColor: element.borderColor } : {}),
+    ...(element.fontFamily !== undefined ? { fontFamily: element.fontFamily.slice(0, 160) } : {}),
     ...(element.text !== undefined ? { text: element.text.slice(0, 2_000) } : {}),
     x: element.x,
     y: element.y,
@@ -261,6 +384,7 @@ function emptyState(
   status: RenderedState["status"],
   proposalHash: string,
   options: RenderProposedStateOptions,
+  provenance: RenderedState["provenance"],
   runtime: RenderedState["runtime"],
 ): RenderedState {
   return renderedStateSchema.parse({
@@ -270,10 +394,20 @@ function emptyState(
     viewports: [],
     elements: [],
     pixelComparisons: [],
+    correspondences: [],
     runtime,
-    provenance: { rendererVersion: RENDERER_VERSION, workspaceIsolated: true },
+    provenance,
   });
 }
+
+/** Provenance for a render that never reached the workspace. */
+const UNINSTRUMENTED_PROVENANCE: RenderedState["provenance"] = {
+  rendererVersion: RENDERER_VERSION,
+  workspaceIsolated: true,
+  renderInstrumentationApplied: false,
+  instrumentedFileCount: 0,
+  instrumentationNotes: [],
+};
 
 /**
  * Materializes a validated proposal in an isolated workspace and renders it.
@@ -300,7 +434,7 @@ export async function renderProposedState(
     options.expectedProjectFingerprint !== options.currentProjectFingerprint
   ) {
     return {
-      renderedState: emptyState("project_changed_before_render", proposalHash, options, {
+      renderedState: emptyState("project_changed_before_render", proposalHash, options, UNINSTRUMENTED_PROVENANCE, {
         buildStatus: "unavailable",
         previewStatus: "unavailable",
         diagnostics: ["The project changed after this proposal was planned, so it was not rendered."],
@@ -315,33 +449,83 @@ export async function renderProposedState(
     };
   }
 
+  // Host-owned correspondence markers, for the throwaway copy only.
+  const instrumentation =
+    options.instrument === false
+      ? { proposal, applied: false, instrumentedFileCount: 0, notes: [] as readonly string[] }
+      : instrumentProposal(proposal, options.implementationMap);
+
   let outcome: WorkspaceRenderOutcome | undefined;
   let workspacePath = "";
-  const buildStartedAt = performance.now();
   let buildMs: number | undefined;
 
-  const compile = await validateProposedModules(root, proposal, {
-    ...(project.commands.build !== undefined
-      ? { buildCommand: { executable: project.commands.build.executable, args: project.commands.build.args ?? [] } }
-      : {}),
-    signal: options.signal,
-    postBuild: async (workspace) => {
-      workspacePath = workspace;
-      buildMs = performance.now() - buildStartedAt;
-      outcome = await renderInWorkspace(workspace, project, options);
-      // The validator's own vocabulary: it gates on pass/fail, and a render
-      // that produced evidence has passed whatever gate the caller wanted.
-      return {
-        status:
-          outcome.status === "rendered" ? "passed" : outcome.status === "browser_unavailable" ? "unavailable" : "failed",
-        diagnostics: outcome.diagnostics,
-      };
-    },
-  });
+  const runOnce = async (
+    candidate: ProposedFileChanges,
+  ): Promise<Awaited<ReturnType<typeof validateProposedModules>>> => {
+    outcome = undefined;
+    const buildStartedAt = performance.now();
+    return validateProposedModules(root, candidate, {
+      ...(project.commands.build !== undefined
+        ? { buildCommand: { executable: project.commands.build.executable, args: project.commands.build.args ?? [] } }
+        : {}),
+      signal: options.signal,
+      postBuild: async (workspace) => {
+        workspacePath = workspace;
+        buildMs = performance.now() - buildStartedAt;
+        outcome = await renderInWorkspace(workspace, project, options);
+        // The validator's own vocabulary: it gates on pass/fail, and a render
+        // that produced evidence has passed whatever gate the caller wanted.
+        return {
+          status:
+            outcome.status === "rendered"
+              ? "passed"
+              : outcome.status === "browser_unavailable"
+                ? "unavailable"
+                : "failed",
+          diagnostics: outcome.diagnostics,
+        };
+      },
+    });
+  };
+
+  let compile = await runOnce(instrumentation.proposal);
+  const instrumentationNotes = [...instrumentation.notes];
+  let instrumented = instrumentation.applied;
+
+  // Build-verified: markers are a convenience, never a reason a proposal fails
+  // to render. If the instrumented copy will not build, the original does the
+  // work and the report says correspondence had weaker evidence to go on.
+  if (instrumented && compile.status === "failed" && !options.signal.aborted) {
+    const fallback = await runOnce(proposal);
+    if (fallback.status !== "failed") {
+      instrumentationNotes.push(
+        "The instrumented workspace did not build, so the exact proposal was rendered without correspondence markers.",
+      );
+      instrumented = false;
+      compile = fallback;
+    } else {
+      // Both failed: the proposal itself is broken, which is the real finding.
+      compile = fallback;
+      instrumented = false;
+    }
+  }
+
+  const instrumentedProposalHash = instrumented
+    ? createHash("sha256").update(JSON.stringify(instrumentation.proposal)).digest("hex")
+    : undefined;
+
+  const provenance = {
+    rendererVersion: RENDERER_VERSION,
+    workspaceIsolated: true as const,
+    renderInstrumentationApplied: instrumented,
+    ...(instrumentedProposalHash !== undefined ? { instrumentedProposalHash } : {}),
+    instrumentedFileCount: instrumented ? instrumentation.instrumentedFileCount : 0,
+    instrumentationNotes: instrumentationNotes.slice(0, 8),
+  };
 
   if (options.signal.aborted)
     return {
-      renderedState: emptyState("cancelled", compile.proposalHash, options, {
+      renderedState: emptyState("cancelled", proposalHash, options, provenance, {
         buildStatus: compile.status === "passed" ? "passed" : "failed",
         previewStatus: "unavailable",
         diagnostics: ["Rendering was cancelled."],
@@ -354,10 +538,10 @@ export async function renderProposedState(
   // compile diagnostics are the answer, and they already exist.
   if (outcome === undefined)
     return {
-      renderedState: emptyState("render_failed", compile.proposalHash, options, {
+      renderedState: emptyState("render_failed", proposalHash, options, provenance, {
         buildStatus: compile.status === "passed" ? "unavailable" : "failed",
         previewStatus: "unavailable",
-        buildMs: buildMs ?? performance.now() - buildStartedAt,
+        ...(buildMs !== undefined ? { buildMs } : {}),
         diagnostics: compile.diagnostics
           .slice(0, 12)
           .map((entry) => redactDiagnostic(entry.message, workspacePath || root)),
@@ -371,13 +555,21 @@ export async function renderProposedState(
     .flatMap((entry) => (entry.capture.dom?.elements ?? []).map((element) => toElementEvidence(entry, element)))
     .slice(0, MAX_RENDERED_ELEMENTS);
 
+  const references = options.reference ?? [];
+  const pixelComparisons = captures.slice(0, 8).map((entry) =>
+    comparePixels(entry, references, options.referenceIdentity),
+  );
+
   const renderedState = renderedStateSchema.parse({
     schemaVersion: RENDERED_STATE_SCHEMA_VERSION,
     status: outcome.status,
-    binding: { proposalHash: compile.proposalHash, ...(options.binding ?? {}) },
+    // Always the validated proposal, never the instrumented copy. What was
+    // built is named separately in `provenance.instrumentedProposalHash`.
+    binding: { proposalHash, ...(options.binding ?? {}) },
     viewports: captures.slice(0, 8).map(toViewportRecord),
     elements,
-    pixelComparisons: [],
+    pixelComparisons,
+    correspondences: [],
     runtime: {
       buildStatus: compile.status === "passed" ? "passed" : "failed",
       previewStatus: outcome.previewStatus,
@@ -386,7 +578,7 @@ export async function renderProposedState(
       ...(outcome.captureMs !== undefined ? { captureMs: outcome.captureMs } : {}),
       diagnostics: outcome.diagnostics.slice(0, 12).map((entry) => entry.message),
     },
-    provenance: { rendererVersion: RENDERER_VERSION, workspaceIsolated: true },
+    provenance,
   });
 
   return { renderedState, compile, captures };
