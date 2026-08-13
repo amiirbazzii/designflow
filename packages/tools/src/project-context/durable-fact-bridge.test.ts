@@ -154,3 +154,32 @@ describe("E/F. scope and provenance", () => {
     expect(facts.every((fact) => projectFactSchema.safeParse(fact).success)).toBe(true);
   });
 });
+
+describe("store bounds", () => {
+  test("an oversized fact is trimmed rather than failing the whole durable write", () => {
+    // The store caps one fact's serialized value at 4,000 characters and
+    // parses the entire change set at once, so an unbounded alias list would
+    // take the framework and routing facts down with it.
+    const paths: Record<string, string[]> = {};
+    for (let index = 0; index < 60; index += 1) {
+      paths[`@feature-with-a-fairly-long-name-${index}/*`] = [`./src/features/feature-with-a-fairly-long-name-${index}/*`];
+    }
+    const project = fixture(writeProject({
+      "package.json": JSON.stringify({ name: "big", dependencies: { next: "15.0.0", react: "18.3.1" } }, null, 2),
+      "tsconfig.json": JSON.stringify({ compilerOptions: { baseUrl: ".", paths } }, null, 2),
+      "src/app/page.tsx": "export default function Page() { return null; }\n",
+    }));
+    const oversized = compileProjectContext({ root: project.root, projectId: "project-big" });
+    expect(oversized.structure.aliases.length).toBe(60);
+
+    const facts = persist([], durableFactChanges([], oversized));
+    const aliasFact = facts.find((fact) => fact.key === "project.aliases");
+
+    // the canonical context keeps all 60; memory keeps a stable prefix
+    expect((aliasFact?.value as unknown[]).length).toBeLessThan(60);
+    expect(JSON.stringify(aliasFact?.value).length).toBeLessThanOrEqual(4_000);
+    // and the facts that matter most are still written
+    expect(facts.find((fact) => fact.key === "project.framework")?.value).toBe("next");
+    expect(facts.find((fact) => fact.key === "project.routingKind")?.value).toBe("next-app-router");
+  });
+});

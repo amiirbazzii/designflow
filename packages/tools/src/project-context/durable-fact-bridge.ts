@@ -40,6 +40,37 @@ export const DURABLE_FACT_KEYS = [
 export type DurableFactKey = (typeof DURABLE_FACT_KEYS)[number];
 
 /**
+ * The per-fact value ceiling `projectFactSchema` enforces.
+ *
+ * Mirrored here on purpose: the store rejects an oversized value by throwing,
+ * and `applyProjectFactChanges` parses the whole change set at once — so one
+ * project with sixty declared aliases would take down the entire durable
+ * write, losing the framework and routing facts along with it. Memory is
+ * optional; the canonical per-run context always carries the complete truth.
+ */
+const MAX_FACT_VALUE_CHARS = 4_000;
+
+/**
+ * Fits a value inside the store's per-fact bound.
+ *
+ * An oversized array is trimmed from the end (its order is deterministic, so
+ * the retained prefix is stable across runs); anything still too large is
+ * dropped rather than written, and the caller records nothing rather than
+ * something false.
+ */
+function fitWithinFactBounds(value: unknown): unknown | undefined {
+  const size = (candidate: unknown): number => JSON.stringify(candidate)?.length ?? Number.MAX_SAFE_INTEGER;
+  if (size(value) <= MAX_FACT_VALUE_CHARS) return value;
+  if (!Array.isArray(value)) return undefined;
+
+  let retained = [...value];
+  while (retained.length > 0 && size(retained) > MAX_FACT_VALUE_CHARS) {
+    retained = retained.slice(0, Math.max(0, Math.floor(retained.length * 0.8) - 1));
+  }
+  return retained.length > 0 ? retained : undefined;
+}
+
+/**
  * Selects the durable subset of a compiled context.
  *
  * `source: "inspection"` throughout — every one of these was read from the
@@ -53,7 +84,9 @@ export function selectDurableProjectFacts(context: CanonicalProjectContext): Pro
   const add = (key: DurableFactKey, value: unknown): void => {
     if (value === undefined) return;
     if (Array.isArray(value) && value.length === 0) return;
-    facts.push({ key, value, source: "inspection" });
+    const fitted = fitWithinFactBounds(value);
+    if (fitted === undefined) return;
+    facts.push({ key, value: fitted, source: "inspection" });
   };
 
   add("project.framework", context.runtime.framework?.value);
