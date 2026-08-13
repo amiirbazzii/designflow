@@ -7,7 +7,7 @@ import {
   hasTrustedPersistedReference,
   resolveTrustedVisualReference,
   visualValidationInconclusiveReason,
-} from "./feedback-loop-revalidation";
+} from "../../visual-correction/feedback-loop-revalidation";
 
 const hash = "a".repeat(64);
 

@@ -5,7 +5,7 @@ import {
   classifyReferenceSource,
   comparisonModeForReferenceEvidence,
   referencesForViewport,
-} from "./visual-validation-capabilities";
+} from "../../visual-validation/visual-validation-capabilities";
 
 const pngHash = "a".repeat(64);
 

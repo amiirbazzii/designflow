@@ -1,21 +1,21 @@
 // workflows/workflow-design-to-code/src/index.test.ts
 import { describe, expect, test } from "bun:test";
 import { workflowDefinitionSchema } from "@designflow/sdk";
-import { designToCodeWorkflowPackage } from "./manifest";
-import { designToCodeApprovalPolicy, designToCodeWorkflow } from "./workflow";
+import { designToCodeWorkflowPackage } from "../../orchestration/manifest";
+import { designToCodeApprovalPolicy, designToCodeWorkflow } from "../../orchestration/workflow";
 import {
   ARTIFACT_IDS,
   componentTreeSchema,
   designTokensSchema,
   sourceCodeSchema,
   validationReportSchema,
-} from "./types";
+} from "../../orchestration/types";
 import {
   SAMPLE_DESIGN,
   createHost,
   incrementalMetadata,
   type DesignToCodeHost,
-} from "../test/support/harness";
+} from "../../../test/support/harness";
 
 // ── Helpers ─────────────────────────────────────────────────────
 

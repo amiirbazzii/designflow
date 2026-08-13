@@ -1,6 +1,6 @@
 import type { ExecutionPolicy, WorkflowPackage } from "@designflow/sdk";
-import { designToCodeFeedbackLoopWorkflow } from "./feedback-loop-workflow";
-import { feedbackLoopCapabilities } from "./feedback-loop-capabilities";
+import { designToCodeFeedbackLoopWorkflow } from "../visual-correction/feedback-loop-workflow";
+import { feedbackLoopCapabilities } from "../visual-correction/feedback-loop-capabilities";
 
 export const designToCodeFeedbackLoopApprovalPolicy: ExecutionPolicy = {
   id: "design-to-code-feedback-loop-approval",

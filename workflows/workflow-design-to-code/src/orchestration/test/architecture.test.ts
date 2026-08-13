@@ -72,7 +72,7 @@ describe("this workflow package is deterministic and depends on the SDK alone", 
   test("no real source file imports another engine, product or model package", () => {
     const offenders: string[] = [];
 
-    for (const path of realSources(import.meta.dir)) {
+    for (const path of realSources(join(import.meta.dir, "..", ".."))) {
       const contents = readFileSync(path, "utf8");
 
       for (const pkg of FORBIDDEN_PACKAGES) {
@@ -88,7 +88,7 @@ describe("this workflow package is deterministic and depends on the SDK alone", 
   test("no real source file makes a network or model call", () => {
     const offenders: string[] = [];
 
-    for (const path of realSources(import.meta.dir)) {
+    for (const path of realSources(join(import.meta.dir, "..", ".."))) {
       // Stage 5's explicitly isolated renderer boundary is the one approved
       // exception: it probes only the registered localhost preview and owns
       // cleanup. Workflow capabilities still remain deterministic and call
@@ -108,7 +108,7 @@ describe("this workflow package is deterministic and depends on the SDK alone", 
 
   test("declares no real (non-test) dependency beyond the SDK", () => {
     const manifest: unknown = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"),
+      readFileSync(join(import.meta.dir, "..", "..", "..", "package.json"), "utf8"),
     );
 
     const dependencies =
@@ -134,7 +134,7 @@ describe("this workflow package is deterministic and depends on the SDK alone", 
 
   test("the tsconfig references no package beyond the SDK", () => {
     const tsconfig: unknown = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "tsconfig.json"), "utf8"),
+      readFileSync(join(import.meta.dir, "..", "..", "..", "tsconfig.json"), "utf8"),
     );
 
     const references =

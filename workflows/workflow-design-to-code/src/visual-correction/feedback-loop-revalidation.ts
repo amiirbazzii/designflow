@@ -20,14 +20,14 @@ import {
   startPreviewServerCapability,
   storeDomEvidenceCapability,
   storeVisualValidationReportCapability,
-} from "./visual-validation-capabilities";
+} from "../visual-validation/visual-validation-capabilities";
 import { inspectRegisteredProject } from "@designflow/capability-implementation";
 import {
   parseFigmaSourceCapability,
   retrieveFigmaSourceSnapshotCapability,
 } from "@designflow/capability-figma-mcp";
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { FEEDBACK_LOOP_ARTIFACT_IDS, type FeedbackLoopWorkflowInput } from "./feedback-loop-types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { FEEDBACK_LOOP_ARTIFACT_IDS, type FeedbackLoopWorkflowInput } from "../visual-correction/feedback-loop-types";
 
 type Stage5Ref = { id: string; type: string; metadata: Record<string, unknown> };
 

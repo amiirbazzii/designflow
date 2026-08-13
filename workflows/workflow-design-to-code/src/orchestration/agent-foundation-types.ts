@@ -1,7 +1,7 @@
 // workflows/workflow-design-to-code/src/agent-foundation-types.ts
 import { z } from "zod";
 import { projectImplementationContextSchema } from "@designflow/sdk";
-import { capabilityOutputSchema } from "./types";
+import { capabilityOutputSchema } from "../orchestration/types";
 
 /**
  * Types and stable artifact identity for `design-to-code-agent-foundation`.
@@ -124,4 +124,4 @@ export type Stage2Summary = z.infer<typeof stage2SummarySchema>;
 
 /** Every capability in this workflow returns exactly one artifact reference. */
 export { capabilityOutputSchema };
-export type { CapabilityOutput } from "./types";
+export type { CapabilityOutput } from "../orchestration/types";

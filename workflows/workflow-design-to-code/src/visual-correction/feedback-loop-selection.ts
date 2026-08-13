@@ -1,5 +1,5 @@
 import { visualValidationReportV1Schema, type VisualFindingV1, type VisualValidationReportV1 } from "@designflow/sdk";
-import { actionableFindingSelectionSchema, feedbackLoopWorkflowInputSchema, type ActionableFindingSelection, type FeedbackLoopWorkflowInput } from "./feedback-loop-types";
+import { actionableFindingSelectionSchema, feedbackLoopWorkflowInputSchema, type ActionableFindingSelection, type FeedbackLoopWorkflowInput } from "../visual-correction/feedback-loop-types";
 
 const forbidden = /(^|\/)(\.env(?:\.|$)|\.npmrc|\.pypirc|\.ssh|\.aws|secrets?|credentials?|private[-_.]?key|node_modules|dist|build|\.designflow)(\/|$)|\.(pem|key|p12|pfx)$/i;
 

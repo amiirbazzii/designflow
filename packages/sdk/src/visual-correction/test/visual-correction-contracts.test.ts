@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { correctionApprovalBindingV1Schema, feedbackLoopInputV1Schema, proposedCorrectionChangeV1Schema } from "./visual-correction-contracts";
+import { correctionApprovalBindingV1Schema, feedbackLoopInputV1Schema, proposedCorrectionChangeV1Schema } from "../../visual-correction/visual-correction-contracts";
 
 const hash = "a".repeat(64);
 

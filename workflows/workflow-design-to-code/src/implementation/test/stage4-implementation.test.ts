@@ -2,10 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createFigmaSpecificationHost, SAMPLE_FIGMA_MCP_FIXTURES, type FigmaSpecificationHost } from "../test/support/harness";
-import { designToCodeImplementationApprovalPolicy } from "./implementation-manifest";
-import { IMPLEMENTATION_ARTIFACT_IDS } from "./implementation-types";
-import { VISUAL_VALIDATION_ARTIFACT_IDS } from "./visual-validation-types";
+import { createFigmaSpecificationHost, SAMPLE_FIGMA_MCP_FIXTURES, type FigmaSpecificationHost } from "../../../test/support/harness";
+import { designToCodeImplementationApprovalPolicy } from "../../implementation/implementation-manifest";
+import { IMPLEMENTATION_ARTIFACT_IDS } from "../../implementation/implementation-types";
+import { VISUAL_VALIDATION_ARTIFACT_IDS } from "../../visual-validation/visual-validation-types";
 
 const hosts: FigmaSpecificationHost[] = [];
 afterEach(async () => { for (const host of hosts.splice(0)) host.close(); });
@@ -126,7 +126,7 @@ describe("generated-implementation provenance", () => {
   });
 
   test("the capability carries no hardcoded provenance literals", async () => {
-    const source = await readFile(new URL("./implementation-side-effect-capabilities.ts", import.meta.url), "utf8");
+    const source = await readFile(new URL("../implementation-side-effect-capabilities.ts", import.meta.url), "utf8");
     const body = source.replace(/\/\*[\s\S]*?\*\//g, "");
 
     expect(body).not.toContain('agentVersion: "0.1.0"');

@@ -1,7 +1,7 @@
 // workflows/workflow-design-to-code/src/manifest.ts
 import type { WorkflowPackage } from "@designflow/sdk";
-import { designToCodeWorkflow } from "./workflow";
-import { designToCodeCapabilities } from "./capabilities";
+import { designToCodeWorkflow } from "../orchestration/workflow";
+import { designToCodeCapabilities } from "../capabilities";
 
 /**
  * The installable package.

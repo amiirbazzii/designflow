@@ -13,7 +13,7 @@ import {
   loadOptionalPlaywrightRenderer,
   makePreviewTarget,
   type BrowserRenderer,
-} from "./visual-validation-runtime";
+} from "../visual-validation/visual-validation-runtime";
 
 export const MAX_CORRECTION_PROPOSAL_ATTEMPTS = 3;
 

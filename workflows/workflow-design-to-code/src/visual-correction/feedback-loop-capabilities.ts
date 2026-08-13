@@ -19,8 +19,8 @@ import {
   visualValidationReportV1Schema,
   type Capability,
 } from "@designflow/sdk";
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { capabilityOutputSchema, type CapabilityOutput } from "./types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { capabilityOutputSchema, type CapabilityOutput } from "../orchestration/types";
 import {
   actionableFindingSelectionSchema,
   correctionAgentOutputSchema,
@@ -29,30 +29,30 @@ import {
   feedbackLoopWorkflowInputSchema,
   proposedCorrectionChangesSchema,
   type FeedbackLoopWorkflowInput,
-} from "./feedback-loop-types";
+} from "../visual-correction/feedback-loop-types";
 import {
   affectedFilesForFinding,
   selectActionableFindings,
   selectedFindingRecords,
-} from "./feedback-loop-selection";
+} from "../visual-correction/feedback-loop-selection";
 import {
   correctionToImplementationProposal,
   objectHash,
   readBoundedExcerpt,
   sha256,
   validateCorrectionAgentOutput,
-} from "./feedback-loop-utils";
+} from "../visual-correction/feedback-loop-utils";
 import {
   runFreshStage5Validation,
   storeRevalidatedReport,
   visualValidationInconclusiveReason,
-} from "./feedback-loop-revalidation";
-import { configuredBrowserRenderer } from "./visual-validation-runtime";
-import { deriveCompositionScope } from "./composition-scope";
+} from "../visual-correction/feedback-loop-revalidation";
+import { configuredBrowserRenderer } from "../visual-validation/visual-validation-runtime";
+import { deriveCompositionScope } from "../visual-correction/composition-scope";
 import {
   MAX_CORRECTION_PROPOSAL_ATTEMPTS,
   preflightCorrectionProposal,
-} from "./correction-runtime-preflight";
+} from "../visual-correction/correction-runtime-preflight";
 
 const inputSchema = feedbackLoopWorkflowInputSchema;
 const projectInput = (raw: unknown): FeedbackLoopWorkflowInput =>

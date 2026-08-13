@@ -22,9 +22,9 @@ import {
   stage6FailpointEnabled,
   terminateAtStage6Failpoint,
 } from "@designflow/sdk";
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { captureWithPreview, comparePngImages, configuredBrowserRenderer, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, storeImplementationEvidence, type PreviewRuntimeRecord, type BrowserRenderer, type SpatialComparison, type BrowserCapture } from "./visual-validation-runtime";
-import { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, domEvidenceCollectionSchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema, visualValidationSummarySchema, visualValidationWorkflowInputSchema, type VisualValidationReport } from "./visual-validation-types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { captureWithPreview, comparePngImages, configuredBrowserRenderer, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, storeImplementationEvidence, type PreviewRuntimeRecord, type BrowserRenderer, type SpatialComparison, type BrowserCapture } from "../visual-validation/visual-validation-runtime";
+import { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, domEvidenceCollectionSchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema, visualValidationSummarySchema, visualValidationWorkflowInputSchema, type VisualValidationReport } from "../visual-validation/visual-validation-types";
 
 const outputSchema = z.object({ artifactRef: z.object({ id: z.string(), type: z.string(), metadata: z.record(z.unknown()) }).strict() }).strict();
 type CapabilityOutput = z.infer<typeof outputSchema>;

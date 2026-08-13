@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspectRegisteredProject, projectFileHash } from "@designflow/capability-implementation";
 import { proposedFileChangesSchema } from "@designflow/sdk";
-import { preflightCorrectionProposal } from "./correction-runtime-preflight";
+import { preflightCorrectionProposal } from "../../visual-correction/correction-runtime-preflight";
 
 async function fixture(build: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "designflow-correction-preflight-"));

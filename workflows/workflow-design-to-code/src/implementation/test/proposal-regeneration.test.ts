@@ -11,8 +11,8 @@ import {
   invokeImplementationAgentStage4Capability,
   MAX_CORRECTION_PROPOSAL_ATTEMPTS,
   REPAIRABLE_PROPOSAL_ERROR_CODES,
-} from "./implementation-capabilities";
-import { IMPLEMENTATION_ARTIFACT_IDS } from "./implementation-types";
+} from "../../implementation/implementation-capabilities";
+import { IMPLEMENTATION_ARTIFACT_IDS } from "../../implementation/implementation-types";
 
 async function fixtureRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "designflow-regen-"));

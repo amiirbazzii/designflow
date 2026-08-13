@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { visualValidationReportV1Schema } from "@designflow/sdk";
-import { selectActionableFindings } from "./feedback-loop-selection";
-import { type FeedbackLoopWorkflowInput } from "./feedback-loop-types";
+import { selectActionableFindings } from "../../visual-correction/feedback-loop-selection";
+import { type FeedbackLoopWorkflowInput } from "../../visual-correction/feedback-loop-types";
 
 const hash = "a".repeat(64);
 const input = (): FeedbackLoopWorkflowInput => ({

@@ -4,12 +4,12 @@ import { withReuseIdentity } from "@designflow/sdk";
 import {
   ARTIFACT_IDS,
   designToCodeApprovalPolicy,
-} from "./index";
+} from "../../index";
 import {
   SAMPLE_DESIGN,
   createHost,
   type DesignToCodeHost,
-} from "../test/support/harness";
+} from "../../../test/support/harness";
 
 /**
  * Stage 1 regression suite: reuse must depend on the true identity of a run

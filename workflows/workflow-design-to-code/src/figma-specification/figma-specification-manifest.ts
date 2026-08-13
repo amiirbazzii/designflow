@@ -1,7 +1,7 @@
 // workflows/workflow-design-to-code/src/figma-specification-manifest.ts
 import type { WorkflowPackage } from "@designflow/sdk";
-import { designToCodeFigmaSpecificationWorkflow } from "./figma-specification-workflow";
-import { figmaSpecificationCapabilities, storeStage3SummaryCapability } from "./figma-specification-capabilities";
+import { designToCodeFigmaSpecificationWorkflow } from "../figma-specification/figma-specification-workflow";
+import { figmaSpecificationCapabilities, storeStage3SummaryCapability } from "../figma-specification/figma-specification-capabilities";
 
 /**
  * The installable package for `design-to-code-figma-specification`.

@@ -8,7 +8,7 @@ import {
   type EvaluableArtifact,
   type WorkerEvaluationResult,
 } from "@designflow/sdk";
-import { ARTIFACT_IDS, validationReportSchema } from "./types";
+import { ARTIFACT_IDS, validationReportSchema } from "../orchestration/types";
 
 /**
  * The Design Engineer's first deterministic evaluation layer.

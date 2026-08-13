@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createProjectSnapshot } from "@designflow/capability-implementation";
 import { correctionContextV1Schema, MAX_CORRECTION_COMPOSITION_FILES, type CorrectionContextV1 } from "@designflow/sdk";
-import { analyzeRenderReachability, deriveCompositionScope } from "./composition-scope";
-import { readBoundedExcerpt, sha256, validateCorrectionAgentOutput } from "./feedback-loop-utils";
-import { type FeedbackLoopWorkflowInput } from "./feedback-loop-types";
+import { analyzeRenderReachability, deriveCompositionScope } from "../../visual-correction/composition-scope";
+import { readBoundedExcerpt, sha256, validateCorrectionAgentOutput } from "../../visual-correction/feedback-loop-utils";
+import { type FeedbackLoopWorkflowInput } from "../../visual-correction/feedback-loop-types";
 
 const HASH = "a".repeat(64);
 

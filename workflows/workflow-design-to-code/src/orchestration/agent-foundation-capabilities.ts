@@ -12,8 +12,8 @@ import {
   type FigmaSourceSnapshot,
 } from "@designflow/sdk";
 
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { capabilityOutputSchema } from "./types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { capabilityOutputSchema } from "../orchestration/types";
 import {
   AGENT_FOUNDATION_ARTIFACT_IDS,
   AGENT_FOUNDATION_ARTIFACT_TYPES,
@@ -24,7 +24,7 @@ import {
   stage2SummarySchema,
   visualValidationInvocationInputSchema,
   type CapabilityOutput,
-} from "./agent-foundation-types";
+} from "../orchestration/agent-foundation-types";
 
 /**
  * `design-to-code-agent-foundation`'s five capabilities.

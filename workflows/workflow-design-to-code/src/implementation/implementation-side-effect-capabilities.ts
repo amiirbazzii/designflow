@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { DesignFlowError, implementationApprovalBindingSchema, implementationValidationReportSchema, proposedFileChangesSchema, type Capability } from "@designflow/sdk";
 import { applyProjectFileChanges, createApprovalBinding, createProjectSnapshot, inspectRegisteredProject, proposalHash, rollbackProjectSnapshot, validateProposedFileChanges, validateProject, type ProjectSnapshot } from "@designflow/capability-implementation";
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { capabilityOutputSchema, type CapabilityOutput } from "./types";
-import { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema, projectImplementationContextV1Schema } from "./implementation-types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { capabilityOutputSchema, type CapabilityOutput } from "../orchestration/types";
+import { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema, projectImplementationContextV1Schema } from "../implementation/implementation-types";
 
 const inputSchema = implementationWorkflowInputSchema;
 const projectInput = (input: unknown) => inputSchema.parse(input);

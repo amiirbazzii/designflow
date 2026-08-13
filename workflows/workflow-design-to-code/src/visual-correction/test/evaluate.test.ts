@@ -1,8 +1,8 @@
 // workflows/workflow-design-to-code/src/evaluate.test.ts
 import { describe, expect, test } from "bun:test";
 import type { EvaluableArtifact } from "@designflow/sdk";
-import { evaluateDesignEngineerCriterion } from "./evaluate";
-import { ARTIFACT_IDS } from "./types";
+import { evaluateDesignEngineerCriterion } from "../../visual-correction/evaluate";
+import { ARTIFACT_IDS } from "../../orchestration/types";
 
 /**
  * Proves the Design Engineer's first deterministic evaluation layer against

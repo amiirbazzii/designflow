@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { DesignFlowError, designSpecificationSchema, generatedImplementationSchema, type Capability, implementationPlanV1Schema, proposedFileChangesSchema } from "@designflow/sdk";
 import { changedExecutableFiles, deriveImplementationCoveragePlan, inspectRegisteredProject, mapDesignSystem, projectFileHash, validateImplementationCoverage, validateProposedFileChanges, validateProposedModules, type ProposedModuleDiagnostic } from "@designflow/capability-implementation";
-import { analyzeRenderReachability } from "./composition-scope";
+import { analyzeRenderReachability } from "../visual-correction/composition-scope";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { capabilityOutputSchema, type CapabilityOutput } from "./types";
-import { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema, projectImplementationContextV1Schema, designSystemMappingSchema } from "./implementation-types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { capabilityOutputSchema, type CapabilityOutput } from "../orchestration/types";
+import { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES, implementationWorkflowInputSchema, projectImplementationContextV1Schema, designSystemMappingSchema } from "../implementation/implementation-types";
 function requireAgents(context: import("@designflow/sdk").CapabilityContext): NonNullable<import("@designflow/sdk").CapabilityContext["agents"]> { if (!context.agents) throw new Error("Implementation Agent invocation is unavailable."); return context.agents; }
 
 // version 2: component discovery recognizes separate export statements

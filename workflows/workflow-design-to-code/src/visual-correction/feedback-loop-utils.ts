@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { join, normalize, relative, sep } from "node:path";
 import { correctionAgentOutputV1Schema, proposedCorrectionChangeV1Schema, type CorrectionAgentOutputV1, type CorrectionContextV1 } from "@designflow/sdk";
-import { proposedCorrectionChangesSchema, type FeedbackLoopWorkflowInput } from "./feedback-loop-types";
+import { proposedCorrectionChangesSchema, type FeedbackLoopWorkflowInput } from "../visual-correction/feedback-loop-types";
 
 export const sha256 = (value: string): string => createHash("sha256").update(value, "utf8").digest("hex");
 export const objectHash = (value: unknown): string => sha256(JSON.stringify(value));

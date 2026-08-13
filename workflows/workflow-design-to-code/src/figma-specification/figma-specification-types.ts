@@ -1,6 +1,6 @@
 // workflows/workflow-design-to-code/src/figma-specification-types.ts
 import { z } from "zod";
-import { AGENT_FOUNDATION_ARTIFACT_IDS } from "./agent-foundation-types";
+import { AGENT_FOUNDATION_ARTIFACT_IDS } from "../orchestration/agent-foundation-types";
 
 /**
  * Types and stable artifact identity for `design-to-code-figma-specification`

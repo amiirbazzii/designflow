@@ -4,8 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { inspectRegisteredProject } from "@designflow/capability-implementation";
-import { previewRuntimeRecordSchema } from "./visual-validation-types";
-import { comparePngImages, compareScreenshotBytes, discoverPreviewCommand, makePreviewTarget, PreviewRuntime } from "./visual-validation-runtime";
+import { previewRuntimeRecordSchema } from "../../visual-validation/visual-validation-types";
+import { comparePngImages, compareScreenshotBytes, discoverPreviewCommand, makePreviewTarget, PreviewRuntime } from "../../visual-validation/visual-validation-runtime";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -38,7 +38,7 @@ function png(width: number, height: number, color: (x: number, y: number) => [nu
 
 describe("Stage 5 preview runtime", () => {
   test("the tracked React acceptance fixture exposes a safe declared preview script", async () => {
-    const root = resolve(import.meta.dir, "../../../test-fixtures/designflow-stage7-preview");
+    const root = resolve(import.meta.dir, "../../../../../test-fixtures/designflow-stage7-preview");
     const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
     const context = inspectRegisteredProject({ id: "stage7-preview", name: "Stage 7 preview", rootPath: root });
     expect(packageJson.scripts?.preview).toBe("vite --host 127.0.0.1");

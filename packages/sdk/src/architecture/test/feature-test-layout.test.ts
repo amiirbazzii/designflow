@@ -34,26 +34,59 @@ const GOVERNED_ROOTS = [
   "packages/product/src",
   "packages/capabilities/figma-mcp/src",
   "packages/capabilities/implementation/src",
+  "workflows/workflow-design-to-code/src",
 ];
 
 /**
- * Directories that predate the convention.
+ * Package roots holding generic infrastructure rather than a feature.
  *
- * Kept explicit and small rather than silently skipped: each entry is a
- * module whose tests still sit beside their source, and the list is the
- * migration backlog. Nothing may be added to it without a reason.
+ * Every Design-to-Code feature now owns a module with its own `test/`
+ * directory. What remains flat at these roots is shared machinery that serves
+ * every workflow — the agent runtime and its registries, the model runtime,
+ * the product session/worker services, the generic SDK contracts — and a file
+ * there is expected to be generic. Adding a Design-to-Code feature file to one
+ * of these is the regression `noDesignToCodeFileInGenericRoot` catches.
  */
-const LEGACY_FLAT_DIRECTORIES = new Set([
+const GENERIC_INFRASTRUCTURE_ROOTS = new Set([
   "packages/sdk/src",
   "packages/agents/src",
-  "packages/agents/src/catalog",
   "packages/tools/src",
   "packages/tools/src/catalog",
   "packages/models/src",
   "packages/product/src",
   "packages/capabilities/figma-mcp/src",
   "packages/capabilities/implementation/src",
+  "workflows/workflow-design-to-code/src",
 ]);
+
+/**
+ * Design-to-Code concepts that must live in a named feature module.
+ *
+ * The check is on file names rather than contents: a file called
+ * `visual-correction-agent.ts` in a generic `catalog/` is exactly the drift
+ * this whole reorganization removed.
+ */
+const FEATURE_OWNED_NAMES = [
+  "figma-specification",
+  "design-interpreter",
+  "ui-blueprint",
+  "project-mapper",
+  "project-context",
+  "implementation-agent",
+  "visual-validation",
+  "visual-correction",
+  "proposed-state",
+  "coverage",
+  "approval",
+  "rollback",
+  "snapshot",
+];
+
+/** Generic directories a Design-to-Code feature file must never be dumped into. */
+const PROHIBITED_GENERIC_DIRECTORIES = [
+  "packages/agents/src/catalog",
+  "packages/tools/src/catalog",
+];
 
 function walk(directory: string, visit: (path: string) => void): void {
   let entries: string[];
@@ -90,7 +123,7 @@ describe("V2 feature modules own their tests in a local test/ directory", () => 
         // Allowed: anywhere under a `test/` segment.
         if (relativePath.includes("/test/")) return;
         const directory = relativePath.split("/").slice(0, -1).join("/");
-        if (LEGACY_FLAT_DIRECTORIES.has(directory)) return;
+        if (GENERIC_INFRASTRUCTURE_ROOTS.has(directory)) return;
         offenders.push(relativePath);
       });
     }
@@ -120,17 +153,50 @@ describe("V2 feature modules own their tests in a local test/ directory", () => 
     expect(offenders).toEqual([]);
   });
 
-  test("the migrated V2 modules each keep their tests locally", () => {
+  test("no Design-to-Code feature file sits in a generic catalog directory", () => {
+    const offenders: string[] = [];
+
+    for (const directory of PROHIBITED_GENERIC_DIRECTORIES) {
+      walk(join(REPOSITORY_ROOT, directory), (path) => {
+        const relativePath = posix(relative(REPOSITORY_ROOT, path));
+        const name = relativePath.split("/").at(-1) ?? "";
+        if (FEATURE_OWNED_NAMES.some((concept) => name.includes(concept))) offenders.push(relativePath);
+      });
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  test("every migrated Design-to-Code module keeps its tests locally", () => {
     const modules = [
       "packages/agents/src/project-mapper",
       "packages/agents/src/ui-blueprint",
       "packages/agents/src/design-interpreter",
+      "packages/agents/src/design-engineer",
+      "packages/agents/src/implementation",
+      "packages/agents/src/visual-validation",
+      "packages/agents/src/visual-correction",
       "packages/agents/src/specification/evidence",
       "packages/agents/src/specification/compatibility",
       "packages/agents/src/specification/legacy",
       "packages/sdk/src/project-context",
+      "packages/sdk/src/visual-validation",
+      "packages/sdk/src/visual-correction",
       "packages/tools/src/project-context",
       "packages/capabilities/figma-mcp/src/desktop",
+      "packages/capabilities/figma-mcp/src/source",
+      "packages/capabilities/figma-mcp/src/transport",
+      "packages/capabilities/figma-mcp/src/normalization",
+      "packages/capabilities/figma-mcp/src/snapshot",
+      "packages/capabilities/figma-mcp/src/screenshot",
+      "packages/capabilities/implementation/src/proposal",
+      "packages/capabilities/implementation/src/project-mutation",
+      "packages/capabilities/implementation/src/validation",
+      "workflows/workflow-design-to-code/src/orchestration",
+      "workflows/workflow-design-to-code/src/figma-specification",
+      "workflows/workflow-design-to-code/src/implementation",
+      "workflows/workflow-design-to-code/src/visual-validation",
+      "workflows/workflow-design-to-code/src/visual-correction",
     ];
 
     for (const module of modules) {

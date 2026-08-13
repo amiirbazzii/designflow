@@ -1,7 +1,7 @@
 // workflows/workflow-design-to-code/src/agent-foundation-manifest.ts
 import type { WorkflowPackage } from "@designflow/sdk";
-import { designToCodeAgentFoundationWorkflow } from "./agent-foundation-workflow";
-import { agentFoundationCapabilities } from "./agent-foundation-capabilities";
+import { designToCodeAgentFoundationWorkflow } from "../orchestration/agent-foundation-workflow";
+import { agentFoundationCapabilities } from "../orchestration/agent-foundation-capabilities";
 
 /**
  * The installable package for `design-to-code-agent-foundation`.

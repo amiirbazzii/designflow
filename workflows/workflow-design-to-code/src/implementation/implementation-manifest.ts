@@ -1,8 +1,8 @@
 import type { ExecutionPolicy, WorkflowPackage } from "@designflow/sdk";
-import { designToCodeImplementationWorkflow } from "./implementation-workflow";
-import { implementationCapabilities } from "./implementation-capabilities";
-import { figmaSpecificationCapabilities } from "./figma-specification-capabilities";
-import { implementationSideEffectCapabilities } from "./implementation-side-effect-capabilities";
-import { visualValidationCapabilities } from "./visual-validation-capabilities";
+import { designToCodeImplementationWorkflow } from "../implementation/implementation-workflow";
+import { implementationCapabilities } from "../implementation/implementation-capabilities";
+import { figmaSpecificationCapabilities } from "../figma-specification/figma-specification-capabilities";
+import { implementationSideEffectCapabilities } from "../implementation/implementation-side-effect-capabilities";
+import { visualValidationCapabilities } from "../visual-validation/visual-validation-capabilities";
 export const designToCodeImplementationApprovalPolicy: ExecutionPolicy = { id: "design-to-code-implementation-approval", name: "Design → Code implementation approval", rules: [{ id: "approve-project-write", type: "require_approval", target: { workflowId: "design-to-code-implementation", nodeId: "create-project-snapshot" }, metadata: { prompt: "Apply the reviewed implementation to the registered project?", reason: "DesignFlow will create a rollback snapshot and modify only the approved project files.", proposalArtifactId: "proposed-file-changes", projectContextArtifactId: "project-implementation-context", approvalModes: ["manual", "designflow"], designflowManaged: true } }] };
 export const designToCodeImplementationWorkflowPackage: WorkflowPackage = { id: "design-to-code-implementation", name: "Design → Code (Implementation)", version: "0.1.0", description: "Experimental bounded implementation planning and proposal workflow", capabilities: [...figmaSpecificationCapabilities.map((capability) => capability.id), ...implementationCapabilities.map((capability) => capability.id), ...implementationSideEffectCapabilities.map((capability) => capability.id), ...visualValidationCapabilities.map((capability) => capability.id)], metadata: { author: "DesignFlow Team", tags: ["design", "figma", "implementation", "stage-4", "stage-5", "experimental"] }, definition: designToCodeImplementationWorkflow, load(registry) { for (const capability of [...figmaSpecificationCapabilities, ...implementationCapabilities, ...implementationSideEffectCapabilities, ...visualValidationCapabilities]) registry.register(capability); } };

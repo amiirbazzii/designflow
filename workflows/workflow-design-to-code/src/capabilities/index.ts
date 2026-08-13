@@ -17,8 +17,8 @@ import {
   type SourceCode,
   type ValidationReport,
   type CapabilityOutput,
-} from "../types";
-import { readArtifact, writeArtifact } from "../artifact-io";
+} from "../orchestration/types";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
 
 /**
  * The five capabilities of the Design → Code workflow.

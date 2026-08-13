@@ -438,7 +438,7 @@ export {
   visualValidationDiscrepancySchema,
   visualValidationReportSchema,
   revisionRequestSchema,
-} from "./design-engineer-contracts";
+} from "./design-engineer/design-engineer-contracts";
 
 export {
   VISUAL_VALIDATION_SCHEMA_VERSION,
@@ -458,7 +458,7 @@ export {
   visualValidationInconclusivePhaseSchema,
   visualValidationInconclusiveReasonSchema,
   visualValidationAgentOutputV1Schema,
-} from "./visual-validation-contracts";
+} from "./visual-validation/visual-validation-contracts";
 
 export {
   VISUAL_CORRECTION_SCHEMA_VERSION,
@@ -476,7 +476,7 @@ export {
   correctionApprovalBindingV1Schema,
   feedbackLoopIterationV1Schema,
   feedbackLoopReportV1Schema,
-} from "./visual-correction-contracts";
+} from "./visual-correction/visual-correction-contracts";
 
 export {
   feedbackLoopParentStateSchema,
@@ -485,7 +485,7 @@ export {
   feedbackLoopParentIterationSchema,
   feedbackLoopParentRecordV1Schema,
   feedbackLoopParentReportV1Schema,
-} from "./feedback-loop-parent-contracts";
+} from "./visual-correction/feedback-loop-parent-contracts";
 export {
   STAGE6_FAILPOINT_EXIT_CODE,
   stage6FailpointSchema,
@@ -499,7 +499,7 @@ export type {
   FeedbackLoopParentState,
   FeedbackLoopParentRecordV1,
   FeedbackLoopParentReportV1,
-} from "./feedback-loop-parent-contracts";
+} from "./visual-correction/feedback-loop-parent-contracts";
 
 export type {
   FeedbackLoopStopReason,
@@ -513,7 +513,7 @@ export type {
   CorrectionApprovalBindingV1,
   FeedbackLoopIterationV1,
   FeedbackLoopReportV1,
-} from "./visual-correction-contracts";
+} from "./visual-correction/visual-correction-contracts";
 
 export type {
   VisualViewportV1,
@@ -529,7 +529,7 @@ export type {
   VisualValidationInconclusivePhase,
   VisualValidationInconclusiveReason,
   VisualValidationAgentOutputV1,
-} from "./visual-validation-contracts";
+} from "./visual-validation/visual-validation-contracts";
 
 export {
   STAGE4_SCHEMA_VERSION,
@@ -547,7 +547,7 @@ export {
   implementationApprovalBindingSchema,
   implementationValidationReportSchema,
   generatedImplementationV1Schema,
-} from "./stage4-contracts";
+} from "./implementation/stage4-contracts";
 
 export type {
   ProjectInspectionWarning,
@@ -563,7 +563,7 @@ export type {
   ImplementationApprovalBinding,
   ImplementationValidationReport,
   GeneratedImplementationV1,
-} from "./stage4-contracts";
+} from "./implementation/stage4-contracts";
 
 export type {
   FigmaNodeSnapshot,
@@ -595,7 +595,7 @@ export type {
   VisualValidationDiscrepancy,
   VisualValidationReport,
   RevisionRequest,
-} from "./design-engineer-contracts";
+} from "./design-engineer/design-engineer-contracts";
 
 export type { Capability, CapabilityPackage, CapabilityProvider } from "./capability";
 export { capabilityPackageSchema, parseCapabilityPackage } from "./capability-manifest";

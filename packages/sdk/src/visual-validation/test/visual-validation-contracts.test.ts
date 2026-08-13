@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { visualFindingV1Schema, visualValidationReportV1Schema, visualViewportV1Schema } from "./visual-validation-contracts";
+import { visualFindingV1Schema, visualValidationReportV1Schema, visualViewportV1Schema } from "../../visual-validation/visual-validation-contracts";
 
 describe("Stage 5 visual validation contracts", () => {
   test("accepts bounded viewport definitions", () => {

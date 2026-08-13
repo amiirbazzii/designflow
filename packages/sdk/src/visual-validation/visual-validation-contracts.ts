@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { figmaSourceProvenanceSchema } from "./design-engineer-contracts";
+import { figmaSourceProvenanceSchema } from "../design-engineer/design-engineer-contracts";
 
 const boundedText = (limit: number) => z.string().max(limit);
 

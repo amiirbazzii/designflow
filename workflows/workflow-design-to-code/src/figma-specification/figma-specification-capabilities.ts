@@ -6,14 +6,14 @@ import {
   retrieveFigmaSourceSnapshotCapability,
 } from "@designflow/capability-figma-mcp";
 
-import { readArtifact, writeArtifact } from "./artifact-io";
-import { capabilityOutputSchema, type CapabilityOutput } from "./types";
-import { invokeFigmaSpecificationAgentCapability } from "./agent-foundation-capabilities";
+import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
+import { capabilityOutputSchema, type CapabilityOutput } from "../orchestration/types";
+import { invokeFigmaSpecificationAgentCapability } from "../orchestration/agent-foundation-capabilities";
 import {
   FIGMA_SPECIFICATION_ARTIFACT_IDS,
   FIGMA_SPECIFICATION_ARTIFACT_TYPES,
   stage3SummarySchema,
-} from "./figma-specification-types";
+} from "../figma-specification/figma-specification-types";
 
 /**
  * `design-to-code-figma-specification`'s capabilities.

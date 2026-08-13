@@ -30,10 +30,10 @@ import {
   createSpecializedAgentRegistry,
   type SpecializedAgentCatalogOptions,
 } from "@designflow/agents";
-import { designToCodeWorkflowPackage } from "../../src/manifest";
-import { designToCodeAgentFoundationWorkflowPackage } from "../../src/agent-foundation-manifest";
-import { designToCodeFigmaSpecificationWorkflowPackage } from "../../src/figma-specification-manifest";
-import { designToCodeImplementationWorkflowPackage } from "../../src/implementation-manifest";
+import { designToCodeWorkflowPackage } from "../../src/orchestration/manifest";
+import { designToCodeAgentFoundationWorkflowPackage } from "../../src/orchestration/agent-foundation-manifest";
+import { designToCodeFigmaSpecificationWorkflowPackage } from "../../src/figma-specification/figma-specification-manifest";
+import { designToCodeImplementationWorkflowPackage } from "../../src/implementation/implementation-manifest";
 
 /**
  * A fully wired DesignFlow host, for the workflow's integration tests.

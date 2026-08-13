@@ -5,7 +5,7 @@ import {
   type ArtifactRef,
   type CapabilityContext,
 } from "@designflow/sdk";
-import type { CapabilityOutput } from "./types";
+import type { CapabilityOutput } from "../orchestration/types";
 
 /**
  * Reading and writing the artifacts that carry data between nodes.

@@ -1,7 +1,7 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { posix } from "node:path";
 import { MAX_CORRECTION_COMPOSITION_FILES, type CompositionScopeEntry } from "@designflow/sdk";
-import { safeProjectPath } from "./feedback-loop-utils";
+import { safeProjectPath } from "../visual-correction/feedback-loop-utils";
 
 const SOURCE_EXTENSIONS = [".jsx", ".tsx", ".js", ".ts", ".mjs", ".vue", ".svelte"] as const;
 const NON_COMPONENT_IMPORT = /\.(css|scss|sass|less|json|svg|png|jpe?g|gif|webp|ico|woff2?)$/i;

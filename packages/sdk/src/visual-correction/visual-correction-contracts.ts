@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { figmaSourceProvenanceSchema } from "./design-engineer-contracts";
-import { visualFindingV1Schema, visualValidationInconclusiveReasonSchema, visualValidationReportV1Schema } from "./visual-validation-contracts";
+import { figmaSourceProvenanceSchema } from "../design-engineer/design-engineer-contracts";
+import { visualFindingV1Schema, visualValidationInconclusiveReasonSchema, visualValidationReportV1Schema } from "../visual-validation/visual-validation-contracts";
 
 export const VISUAL_CORRECTION_SCHEMA_VERSION = "1" as const;
 export const VISUAL_CORRECTION_AGENT_ID = "visual-correction-agent" as const;

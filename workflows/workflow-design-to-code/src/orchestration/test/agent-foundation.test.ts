@@ -4,8 +4,8 @@ import {
   createAgentFoundationHost,
   SAMPLE_AGENT_FOUNDATION_INPUT,
   type AgentFoundationHost,
-} from "../test/support/harness";
-import { AGENT_FOUNDATION_ARTIFACT_IDS } from "./agent-foundation-types";
+} from "../../../test/support/harness";
+import { AGENT_FOUNDATION_ARTIFACT_IDS } from "../agent-foundation-types";
 
 /**
  * Proves the Stage 2 "proof flow":
@@ -203,7 +203,7 @@ describe("reuse: agent-version and model-profile isolation", () => {
     // the coordinator's own decision — so there is structurally no field
     // whose change could reach any node here. Asserted by exhaustively
     // confirming the workflow input schema's own keys.
-    const { agentFoundationInputSchema } = await import("./agent-foundation-types");
+    const { agentFoundationInputSchema } = await import("../agent-foundation-types");
     const keys = Object.keys(agentFoundationInputSchema.shape);
 
     for (const key of keys) {
