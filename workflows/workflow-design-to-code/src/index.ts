@@ -150,3 +150,19 @@ export { SELECTION_POLICY_VERSION, selectBestCandidate } from "./visual-converge
 export { compileVisualRepairEvidence } from "./visual-convergence/repair-evidence";
 export type { VisualRepairEvidence, RepairFindingEvidence } from "./visual-convergence/repair-evidence";
 export { renderConvergenceReport } from "./visual-convergence/convergence-report";
+
+export {
+  designToCodeV2FinalizeWorkflow,
+  designToCodeV2FinalizeWorkflowPackage,
+  designToCodeV2FinalizeApprovalPolicy,
+} from "./finalization/finalization-workflow";
+export {
+  inspectFinalizationProjectCapability,
+  resolveSelectedProposalCapability,
+  storeFinalReviewCapability,
+  storeFinalizationResultCapability,
+  unappliedFinalizationResult,
+} from "./finalization/finalization-capabilities";
+export { v2FinalizeInputSchema } from "./finalization/finalization-types";
+export type { V2FinalizeInput } from "./finalization/finalization-types";
+export { renderFinalizationReport } from "./finalization/finalization-report";

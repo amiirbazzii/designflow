@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
-import { proposedFileChangesSchema, type ProposedFileChanges } from "@designflow/sdk";
+import { canonicalProposalHash, proposedFileChangesSchema, type ProposedFileChanges } from "@designflow/sdk";
 import { ImplementationError } from "../errors";
 
 /**
@@ -64,8 +63,8 @@ export function changedExecutableFiles(proposal: ProposedFileChanges): string[] 
     .map((file) => file.path);
 }
 
-const hashProposal = (proposal: ProposedFileChanges): string =>
-  createHash("sha256").update(JSON.stringify(proposal), "utf8").digest("hex");
+// One canonical proposal hash, owned by the SDK (V2-7).
+const hashProposal = (proposal: ProposedFileChanges): string => canonicalProposalHash(proposal);
 
 function copyProjectInto(root: string, workspace: string): void {
   let files = 0;

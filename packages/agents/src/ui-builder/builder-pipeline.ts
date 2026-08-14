@@ -17,7 +17,13 @@
 // build) lives in `@designflow/capability-implementation` and is injected —
 // the agents package must not depend on a capability package, and this file
 // must not become a second place that knows how to compile a project.
-import type { CanonicalProjectContext, ImplementationMap, ProposedFileChanges, UIBlueprint } from "@designflow/sdk";
+import {
+  verifyProjectProposalBinding,
+  type CanonicalProjectContext,
+  type ImplementationMap,
+  type ProposedFileChanges,
+  type UIBlueprint,
+} from "@designflow/sdk";
 
 import { compileUIBuilderEvidence, type BuilderEvidenceBundle } from "./builder-evidence-compiler";
 import type { BuilderSourceExcerpt } from "./builder-source-selection";
@@ -93,17 +99,19 @@ function byteLength(value: unknown): number {
  * Confirms the source the plan was made against still looks like the source
  * in front of us.
  *
- * Deliberately narrow: it compares the excerpts the host just read to the
- * map's recorded project fingerprint identity, and reports staleness. It does
- * NOT re-implement approval's fingerprint verification — that duplication is
- * already scheduled for consolidation before V2-7, and a fifth copy here is
- * exactly what that consolidation would have to unpick.
+ * Deliberately narrow: it compares the map's recorded project fingerprint to
+ * the context in front of us — through the one authoritative binding verifier
+ * (V2-7), so this is a call site, not another comparison implementation.
  */
 function projectLooksStale(map: ImplementationMap, context: CanonicalProjectContext): string | undefined {
   const planned = map.binding.projectFingerprint;
   const current = context.project.contextFingerprint;
   if (planned === undefined || current === undefined) return undefined;
-  if (planned === current) return undefined;
+  const result = verifyProjectProposalBinding({
+    expectedProjectFingerprint: planned,
+    actualProjectFingerprint: current,
+  });
+  if (result.ok) return undefined;
   return `The Implementation Map was planned against project state ${planned.slice(0, 12)}…, but the project is now ${current.slice(0, 12)}…`;
 }
 

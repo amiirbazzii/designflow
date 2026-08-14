@@ -14,6 +14,7 @@ import {
   feedbackLoopParentIterationSchema,
   feedbackLoopParentReportV1Schema,
   terminateAtStage6Failpoint,
+  verifyProjectProposalBinding,
   type FeedbackLoopParentRecordV1,
   type FeedbackLoopParentReportV1,
 } from "@designflow/sdk";
@@ -1018,7 +1019,10 @@ export async function runParentLoop(
       parent.state !== "validating_project" &&
       parent.state !== "revalidating_visuals" &&
       parent.state !== "evaluating_iteration" &&
-      observed.project.contextFingerprint !== parent.currentProjectFingerprint
+      !verifyProjectProposalBinding({
+        expectedProjectFingerprint: parent.currentProjectFingerprint,
+        actualProjectFingerprint: observed.project.contextFingerprint,
+      }).ok
     ) {
       parent = await finalizeParent(context, parent, "stopped", "stale_state");
       printCorrectionSummary(terminal, parent);

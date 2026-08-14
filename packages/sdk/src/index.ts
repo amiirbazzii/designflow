@@ -507,6 +507,19 @@ export type {
 } from "./visual-validation/rendered-state-contracts";
 
 export {
+  BindingVerificationError,
+  assertProjectProposalBinding,
+  canonicalProposalHash,
+  verifyProjectProposalBinding,
+} from "./binding-verification/binding-verification";
+export type {
+  ApprovalBindingFacts,
+  BindingVerificationCode,
+  BindingVerificationInput,
+  BindingVerificationResult,
+} from "./binding-verification/binding-verification";
+
+export {
   VISUAL_CONVERGENCE_SCHEMA_VERSION,
   VISUAL_CONVERGENCE_ARTIFACT_ID,
   VISUAL_CONVERGENCE_ARTIFACT_TYPE,
@@ -533,6 +546,22 @@ export type {
   VisualConvergenceMetrics,
   VisualConvergenceArtifact,
 } from "./visual-convergence/visual-convergence-contracts";
+
+export {
+  V2_FINALIZATION_SCHEMA_VERSION,
+  V2_FINAL_REVIEW_ARTIFACT_ID,
+  V2_FINAL_REVIEW_ARTIFACT_TYPE,
+  V2_FINALIZATION_RESULT_ARTIFACT_ID,
+  V2_FINALIZATION_RESULT_ARTIFACT_TYPE,
+  finalImplementationReviewSchema,
+  v2FinalizationStatusSchema,
+  v2FinalizationResultSchema,
+} from "./finalization/finalization-contracts";
+export type {
+  FinalImplementationReview,
+  V2FinalizationStatus,
+  V2FinalizationResult,
+} from "./finalization/finalization-contracts";
 
 export {
   VISUAL_CORRECTION_SCHEMA_VERSION,

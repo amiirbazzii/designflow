@@ -1,5 +1,4 @@
 // packages/core/src/application/execution/execution-service.ts
-import { createHash } from "node:crypto";
 import {
   executionRequestSchema,
   executionResultSchema,
@@ -38,6 +37,8 @@ import {
   boundedAttemptDiagnostics,
   approvalAuthorizationSchema,
   APPROVAL_AUTHORIZATION_METADATA_KEY,
+  assertProjectProposalBinding,
+  canonicalProposalHash,
 } from "@designflow/sdk";
 
 import { CapabilityRegistry } from "../../registry";
@@ -1037,9 +1038,29 @@ export class ExecutionService
     const proposalRef = refs.find((ref) => ref.id === binding.proposalArtifactId);
     const payloadId = typeof proposalRef?.metadata?.payloadId === "string" ? proposalRef.metadata.payloadId : undefined;
     const proposal = payloadId === undefined ? null : await this.artifactStore.get(payloadId);
-    if (proposal === null || (proposalRef?.version ?? 1) !== binding.proposalVersion || await hashApprovalPayload(proposal.data) !== binding.proposalHash) throw new ApprovalError("The approved proposal changed or is unavailable.");
+    if (proposal === null || (proposalRef?.version ?? 1) !== binding.proposalVersion) throw new ApprovalError("The approved proposal changed or is unavailable.");
     const proposalData = proposal.data as { projectId?: unknown; baseProjectFingerprint?: unknown };
-    if (proposalData.projectId !== binding.projectId || proposalData.baseProjectFingerprint !== binding.baseProjectFingerprint) throw new ApprovalError("The approved project state no longer matches the proposal.");
+    // The one authoritative binding verifier (V2-7): proposal identity first,
+    // then project identity/state — with this call site's pre-existing
+    // ApprovalError prose preserved through mapping.
+    assertProjectProposalBinding(
+      {
+        expectedProposalHash: binding.proposalHash,
+        actualProposalHash: await hashApprovalPayload(proposal.data),
+        expectedProjectId: binding.projectId,
+        ...(typeof proposalData.projectId === "string" ? { actualProjectId: proposalData.projectId } : {}),
+        expectedProjectFingerprint: binding.baseProjectFingerprint,
+        ...(typeof proposalData.baseProjectFingerprint === "string"
+          ? { actualProjectFingerprint: proposalData.baseProjectFingerprint }
+          : {}),
+      },
+      (code) =>
+        code === "ERR_PROPOSAL_BINDING_MISMATCH"
+          ? new ApprovalError("The approved proposal changed or is unavailable.")
+          : new ApprovalError("The approved project state no longer matches the proposal."),
+    );
+    if (typeof proposalData.projectId !== "string" || typeof proposalData.baseProjectFingerprint !== "string")
+      throw new ApprovalError("The approved project state no longer matches the proposal.");
   }
 
   private async appendEvent(
@@ -1134,5 +1155,7 @@ function extractAttemptDiagnostics(
 }
 
 async function hashApprovalPayload(value: unknown): Promise<string> {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  // The canonical algorithm is owned by the SDK; this wrapper only keeps the
+  // pre-existing async signature stable for its callers.
+  return canonicalProposalHash(value);
 }

@@ -27,6 +27,7 @@ import {
   type ProposedModuleValidationResult,
 } from "@designflow/capability-implementation";
 import {
+  canonicalProposalHash,
   RENDERED_STATE_SCHEMA_VERSION,
   renderedStateSchema,
   type ImplementationMap,
@@ -424,7 +425,7 @@ export async function renderProposedState(
   proposal: ProposedFileChanges,
   options: RenderProposedStateOptions,
 ): Promise<RenderProposedStateResult> {
-  const proposalHash = createHash("sha256").update(JSON.stringify(proposal)).digest("hex");
+  const proposalHash = canonicalProposalHash(proposal);
 
   // The plan described a project state. If that state moved, screenshots of
   // the new one would be evidence about something nobody planned.
@@ -510,9 +511,7 @@ export async function renderProposedState(
     }
   }
 
-  const instrumentedProposalHash = instrumented
-    ? createHash("sha256").update(JSON.stringify(instrumentation.proposal)).digest("hex")
-    : undefined;
+  const instrumentedProposalHash = instrumented ? canonicalProposalHash(instrumentation.proposal) : undefined;
 
   const provenance = {
     rendererVersion: RENDERER_VERSION,

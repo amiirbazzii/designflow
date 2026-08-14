@@ -18,6 +18,7 @@ import {
   proposedFileChangesSchema,
   visualValidationReportV1Schema,
   type Capability,
+  verifyProjectProposalBinding,
 } from "@designflow/sdk";
 import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
 import { capabilityOutputSchema, type CapabilityOutput } from "../orchestration/types";
@@ -204,7 +205,7 @@ export const prepareCorrectionContextCapability: Capability<
     if (selection.stopReason || selection.selectedFindingIds.length === 0)
       throw new DesignFlowError("ERR_NO_ACTIONABLE_FINDINGS", selection.reason);
     const project = inspectRegisteredProject(requested.project);
-    if (project.project.contextFingerprint !== requested.projectFingerprint)
+    if (!verifyProjectProposalBinding({ expectedProjectFingerprint: requested.projectFingerprint, actualProjectFingerprint: project.project.contextFingerprint }).ok)
       throw new DesignFlowError(
         "ERR_PROJECT_FINGERPRINT_CHANGED",
         "The registered project changed before correction planning.",
@@ -378,7 +379,7 @@ export const invokeVisualCorrectionAgentCapability: Capability<
       correctionContextV1Schema,
     );
     const project = inspectRegisteredProject(input.project, {}, context.signal);
-    if (project.project.contextFingerprint !== input.projectFingerprint)
+    if (!verifyProjectProposalBinding({ expectedProjectFingerprint: input.projectFingerprint, actualProjectFingerprint: project.project.contextFingerprint }).ok)
       throw new DesignFlowError(
         "ERR_PROJECT_FINGERPRINT_CHANGED",
         "The registered project changed before correction preflight.",
@@ -734,7 +735,7 @@ export const createCorrectionSnapshotCapability: Capability<
       binding.canonicalRootIdentity !==
         requested.project.canonicalRootIdentity ||
       binding.currentProjectFingerprint !== requested.projectFingerprint ||
-      current.project.contextFingerprint !== requested.projectFingerprint
+      !verifyProjectProposalBinding({ expectedProjectFingerprint: requested.projectFingerprint, actualProjectFingerprint: current.project.contextFingerprint }).ok
     )
       throw new DesignFlowError(
         "ERR_CORRECTION_APPROVAL_MISMATCH",

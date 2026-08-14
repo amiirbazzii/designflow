@@ -13,10 +13,11 @@
 // approval, or writes to the registered project: every render happens in a
 // fresh isolated workspace, and the run ends at a persisted record naming one
 // selected proposal for the future approval stage.
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   DesignFlowError,
+  canonicalProposalHash,
+  verifyProjectProposalBinding,
   VISUAL_CONVERGENCE_LIMITS,
   implementationMapSchema,
   proposedFileChangesSchema,
@@ -63,7 +64,7 @@ const outputSchema = z
 type CapabilityOutput = z.infer<typeof outputSchema>;
 
 function proposalHashOf(proposal: ProposedFileChanges): string {
-  return createHash("sha256").update(JSON.stringify(proposal)).digest("hex");
+  return canonicalProposalHash(proposal);
 }
 
 interface RenderedIteration {
@@ -336,7 +337,12 @@ export const runVisualConvergenceCapability: Capability<unknown, CapabilityOutpu
       // Every proposal must remain independently applicable to the original
       // base — nothing has been applied, and a proposal that assumes its
       // predecessor's files exist would be un-approvable.
-      if (repaired.baseProjectFingerprint !== baseProjectFingerprint) {
+      if (
+        !verifyProjectProposalBinding({
+          expectedProjectFingerprint: baseProjectFingerprint,
+          actualProjectFingerprint: repaired.baseProjectFingerprint,
+        }).ok
+      ) {
         status = "builder_failed";
         stopReason = "builder_exhausted";
         notes.push("The repair proposal is not bound to the original project base and was refused.");
