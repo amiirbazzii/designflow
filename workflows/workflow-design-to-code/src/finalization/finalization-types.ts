@@ -1,6 +1,14 @@
 // workflows/workflow-design-to-code/src/finalization/finalization-types.ts
 import { z } from "zod";
-import { visualConvergenceArtifactSchema, type CapabilityContext } from "@designflow/sdk";
+import {
+  DesignFlowError,
+  VISUAL_CONVERGENCE_ARTIFACT_ID,
+  visualConvergenceArtifactSchema,
+  type CapabilityContext,
+  type VisualConvergenceArtifact,
+} from "@designflow/sdk";
+
+import { readArtifact } from "../orchestration/artifact-io";
 
 /**
  * The internal V2 finalization stage (V2-7).
@@ -13,9 +21,33 @@ export const v2FinalizeInputSchema = z
   .object({
     project: z.object({ id: z.string().min(1), name: z.string().min(1), rootPath: z.string().min(1) }).strict(),
     stateDirectory: z.string().min(1),
-    convergence: visualConvergenceArtifactSchema,
+    /**
+     * The convergence record, inline when finalization runs standalone.
+     * Absent in the flagship workflow, where the convergence node already
+     * persisted it — `resolveConvergence` then reads the artifact instead.
+     */
+    convergence: visualConvergenceArtifactSchema.optional(),
   })
-  .strict();
+  .passthrough();
+
+/** The convergence record: from the input, or from the artifact lineage. */
+export async function resolveConvergence(
+  context: CapabilityContext,
+  input: V2FinalizeInput,
+): Promise<VisualConvergenceArtifact> {
+  if (input.convergence !== undefined) return input.convergence;
+  try {
+    return visualConvergenceArtifactSchema.parse(
+      await readArtifact(context, VISUAL_CONVERGENCE_ARTIFACT_ID, visualConvergenceArtifactSchema),
+    );
+  } catch {
+    throw new DesignFlowError(
+      "ERR_CONVERGENCE_NOT_SELECTABLE",
+      "No visual convergence record was provided or produced; nothing can be finalized.",
+      { capabilityId: context.capabilityId },
+    );
+  }
+}
 
 export type V2FinalizeInput = z.infer<typeof v2FinalizeInputSchema>;
 

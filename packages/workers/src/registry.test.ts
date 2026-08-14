@@ -119,6 +119,7 @@ describe("worker manifest validation", () => {
     expect(() => workerManifestSchema.parse(designEngineer)).not.toThrow();
     expect(designEngineer.workflows).toEqual([
       "design-to-code-figma-specification",
+      "design-to-code-v2",
       "design-to-code-implementation",
       "design-to-code",
     ]);
@@ -366,6 +367,7 @@ describe("stage 41 worker catalogue", () => {
   test("design-engineer exposes its product input form and not the compatibility scaffold", () => {
     expect(designEngineer.workflows).toEqual([
       "design-to-code-figma-specification",
+      "design-to-code-v2",
       "design-to-code-implementation",
       "design-to-code",
     ]);

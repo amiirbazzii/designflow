@@ -29,6 +29,13 @@ export const workerInputFieldSchema = z.object({
   list: z.boolean().optional(),
   /** Restricts the answer to a fixed set. */
   choices: z.array(z.string().min(1)).optional(),
+  /**
+   * Deterministic dispatch (V2-8) asks for this field before starting the
+   * worker's workflow when it is absent. Product state, not AI reasoning:
+   * an agent-free worker with a missing required input clarifies instead of
+   * running with a hole in its request.
+   */
+  required: z.boolean().optional(),
 });
 
 export type WorkerInputField = z.infer<typeof workerInputFieldSchema>;

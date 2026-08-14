@@ -41,6 +41,12 @@ export const v2ConvergenceInputSchema = v2VisualStageInputSchema.extend({
 export type V2ConvergenceInput = z.infer<typeof v2ConvergenceInputSchema>;
 
 /**
+ * The same contract, tolerant of sibling-stage keys — the flagship workflow
+ * passes one input to every node, and convergence reads only its own fields.
+ */
+export const v2ConvergenceInputLoose = v2ConvergenceInputSchema.passthrough();
+
+/**
  * The Builder seam.
  *
  * The UI Builder lives in the agents package, which this workflow must not
@@ -66,6 +72,10 @@ export interface VisualRepairBuilder {
     readonly repairEvidence: unknown;
     /** 1-based repair number within this convergence run. */
     readonly repairNumber: number;
+    /** The registered project, so a production builder can read real sources. */
+    readonly project?: { readonly id: string; readonly name: string; readonly rootPath: string };
+    /** The canonical Project Context, when the run has one persisted. */
+    readonly projectContext?: unknown;
   }): Promise<VisualRepairBuilderResult>;
 }
 

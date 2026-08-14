@@ -286,7 +286,7 @@ export interface FigmaSpecificationHost extends DesignToCodeHost {
 const require = createRequire(import.meta.url);
 
 /** The fake MCP server `@designflow/mcp`'s own tests spawn — reused here for the same reason. */
-function fakeMcpServerPath(): string {
+export function fakeMcpServerPath(): string {
   const packageDir = fileURLToPath(new URL(".", `file://${require.resolve("@designflow/mcp/package.json")}`));
   return `${packageDir}test/fixtures/fake-server/fake-server-entry.ts`;
 }

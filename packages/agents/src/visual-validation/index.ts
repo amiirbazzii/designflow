@@ -40,7 +40,12 @@ export {
   VISUAL_CRITIC_AGENT_VERSION,
   MAX_CRITIC_OUTPUT_TOKENS,
   MAX_FINDINGS_PER_PARTITION,
+  createVisualCriticAgent,
+  visualCriticAgent,
+  deterministicVisualCriticStrategy,
+  modelVisualCriticStrategy,
   type CriticPartition,
+  type VisualCriticStrategy,
 } from "./visual-critic-agent";
 
 export { criticPatchResponseSchema } from "./critic-patch-response-schema";

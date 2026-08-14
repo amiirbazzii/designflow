@@ -102,7 +102,7 @@ export { selectActionableFindings, selectedFindingRecords } from "./visual-corre
 export { validateCorrectionAgentOutput, correctionToImplementationProposal } from "./visual-correction/feedback-loop-utils";
 export { FEEDBACK_LOOP_ARTIFACT_IDS, FEEDBACK_LOOP_ARTIFACT_TYPES, feedbackLoopWorkflowInputSchema, actionableFindingSelectionSchema, proposedCorrectionChangesSchema } from "./visual-correction/feedback-loop-types";
 export type { FeedbackLoopWorkflowInput, FeedbackLoopInput, ActionableFindingSelection, ProposedCorrectionChanges } from "./visual-correction/feedback-loop-types";
-export { inspectRegisteredProject, projectRootIdentity, deriveImplementationCoveragePlan } from "@designflow/capability-implementation";
+export { inspectRegisteredProject, projectRootIdentity, deriveImplementationCoveragePlan, validateProposedModules } from "@designflow/capability-implementation";
 export { visualValidationCapabilities } from "./visual-validation/visual-validation-capabilities";
 export { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, visualValidationWorkflowInputSchema, visualValidationSummarySchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema } from "./visual-validation/visual-validation-types";
 export type { VisualValidationWorkflowInput, VisualValidationSummaryV1, PreviewRuntimeRecordV1, VisualValidationInput, VisualValidationReport, VisualComparisonMetricsV1 } from "./visual-validation/visual-validation-types";
@@ -166,3 +166,33 @@ export {
 export { v2FinalizeInputSchema } from "./finalization/finalization-types";
 export type { V2FinalizeInput } from "./finalization/finalization-types";
 export { renderFinalizationReport } from "./finalization/finalization-report";
+
+export {
+  designToCodeV2Workflow,
+  designToCodeV2WorkflowPackage,
+  designToCodeV2ApprovalPolicy,
+} from "./flagship/flagship-workflow";
+export {
+  FINALIZABLE_CONVERGENCE_STATUSES,
+  isConvergenceFinalizable,
+  validateDestinationBinding,
+  flagshipCapabilities,
+} from "./flagship/flagship-capabilities";
+export {
+  DESIGN_TO_CODE_V2_WORKFLOW_ID,
+  flagshipInputSchema,
+  configuredBlueprintCompiler,
+  configuredProjectContextCompiler,
+  configuredProjectMapper,
+  configuredUiBuilder,
+} from "./flagship/flagship-types";
+export type {
+  FlagshipInput,
+  V2BlueprintCompiler,
+  V2BlueprintCompilation,
+  V2ProjectContextCompiler,
+  V2ProjectMapper,
+  V2ProjectMapperResult,
+  V2UiBuilder,
+  V2UiBuilderResult,
+} from "./flagship/flagship-types";

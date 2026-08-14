@@ -26,6 +26,7 @@
     "@designflow/core": "workspace:*",
     "@designflow/product": "workspace:*",
     "@designflow/agents": "workspace:*",
-    "@designflow/mcp": "workspace:*"
+    "@designflow/mcp": "workspace:*",
+    "@designflow/workers": "workspace:*"
   }
 }

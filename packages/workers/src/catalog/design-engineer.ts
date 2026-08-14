@@ -4,11 +4,18 @@ import { workerManifestSchema, type WorkerManifest } from "@designflow/sdk";
 /**
  * Design Engineer.
  *
- * The canonical entry point is the read-only Figma specification journey.
- * The coordinator may subsequently select the consent-gated implementation
- * journey. The generic `design-to-code` scaffold remains a final
- * compatibility alias for historical execution presentation; it is never
- * primary and the public CLI rejects it as an entry point.
+ * V2-8: dispatch is deterministic and product-owned. There is deliberately no
+ * `agentId` — the Coordinator is not part of the normal Design Engineer
+ * execution path. With a design, a project and a destination decision, the
+ * product starts the flagship `design-to-code-v2` workflow directly through
+ * `startDeterministicSession`; without a project it starts the read-only
+ * specification journey. Missing information is a product question, never a
+ * model call.
+ *
+ * `workflows[0]` remains the read-only specification journey: it is the only
+ * safe default for a consumer that routes without product context. The legacy
+ * `design-to-code-implementation` and `design-to-code` entries are retained
+ * for historical execution reads only; the normal path never dispatches them.
  *
  * Parsed at module load, so a malformed manifest fails on import rather than
  * when someone tries to run it.
@@ -20,25 +27,10 @@ export const designEngineer: WorkerManifest = workerManifestSchema.parse({
   category: "development",
   workflows: [
     "design-to-code-figma-specification",
+    "design-to-code-v2",
     "design-to-code-implementation",
     "design-to-code",
   ],
-  /**
-   * Delegates its decision to the coordinating agent.
-   *
-   * `workflows` stays: it declares what the catalogue can associate with this
-   * worker for routing and historical reads. Its first entry is the only
-   * fallback for a consumer without an agent runtime; the final generic entry
-   * is retained solely to read pre-productization executions.
-   *
-   * Points at `design-engineer-coordinator` (Stage 2) rather than the
-   * original `design-engineer-agent` — the coordinator is the new, public
-   * routing agent, and `design-engineer-agent` is retained only as a
-   * compatibility alias for state (a stored session, a saved trace) that
-   * already recorded the old id. See
-   * `packages/agents/src/catalog/design-engineer-coordinator.ts`.
-   */
-  agentId: "design-engineer-coordinator",
   inputs: [
     {
       key: "request",
@@ -49,6 +41,7 @@ export const designEngineer: WorkerManifest = workerManifestSchema.parse({
       key: "designFile",
       label: "Figma design URL or file",
       placeholder: "https://www.figma.com/design/...",
+      required: true,
     },
     {
       key: "frames",

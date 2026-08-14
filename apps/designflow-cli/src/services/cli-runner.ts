@@ -53,7 +53,16 @@ import {
   modelVisualValidationStrategy,
   visualCorrectionDefaultModelProfile,
   modelVisualCorrectionStrategy,
+  modelDesignInterpreterStrategy,
+  modelProjectMapperStrategy,
+  modelUIBuilderStrategy,
+  modelVisualCriticStrategy,
+  designInterpreterDefaultModelProfile,
+  projectMapperDefaultModelProfile,
+  uiBuilderDefaultModelProfile,
+  visualCriticDefaultModelProfile,
 } from "@designflow/agents";
+import { createV2CapabilityConfig } from "./v2-composition";
 import { HttpMcpRuntime, McpRuntime } from "@designflow/mcp";
 import {
   ToolRuntime,
@@ -118,6 +127,9 @@ import {
   designToCodeImplementationApprovalPolicy,
   designToCodeFeedbackLoopWorkflowPackage,
   designToCodeFeedbackLoopApprovalPolicy,
+  designToCodeV2WorkflowPackage,
+  designToCodeV2ApprovalPolicy,
+  DESIGN_TO_CODE_V2_WORKFLOW_ID,
   feedbackLoopWorkflowInputSchema,
   implementationWorkflowInputSchema,
   selectActionableFindings,
@@ -220,7 +232,17 @@ export function registerExperimentalDesignToCodeWorkflows(options: {
       designToCodeFeedbackLoopWorkflowPackage,
     );
   }
+  // V2-8: the flagship Design-to-Code V2 workflow. Loaded after the legacy
+  // packages so its `load()` registers only what they did not already
+  // provide (the shared Figma and side-effect capabilities are shared).
+  if (options.figmaMcpEnabled && options.implementationEnabled) {
+    designToCodeV2WorkflowPackage.load(options.registry);
+    options.workflows.set(designToCodeV2WorkflowPackage.id, designToCodeV2WorkflowPackage);
+  }
 }
+
+/** Re-exported so commands can dispatch the flagship without naming packages. */
+export { DESIGN_TO_CODE_V2_WORKFLOW_ID };
 import { readSessionConfig, type SessionConfig } from "./session-config";
 
 /**
@@ -277,6 +299,13 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
   implementationDefaultModelProfile,
   visualValidationDefaultModelProfile,
   visualCorrectionDefaultModelProfile,
+  // The four V2 flagship roles (V2-8). Registered like every other profile,
+  // so resolution, overrides, gateway routing and `designflow settings` all
+  // see them; the legacy profiles above remain for compatibility only.
+  designInterpreterDefaultModelProfile,
+  projectMapperDefaultModelProfile,
+  uiBuilderDefaultModelProfile,
+  visualCriticDefaultModelProfile,
 ];
 
 /**
@@ -809,6 +838,13 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           visualCorrectionStrategy: modelModeRequested
             ? modelVisualCorrectionStrategy
             : undefined,
+          // The four V2 roles (V2-8): the same registry, the same runtime,
+          // the same gateway routing. Deterministic defaults refuse honestly
+          // when no model is configured.
+          designInterpreterStrategy: modelModeRequested ? modelDesignInterpreterStrategy : undefined,
+          projectMapperStrategy: modelModeRequested ? modelProjectMapperStrategy : undefined,
+          uiBuilderStrategy: modelModeRequested ? modelUIBuilderStrategy : undefined,
+          visualCriticStrategy: modelModeRequested ? modelVisualCriticStrategy : undefined,
         }),
         ...(modelRuntime !== undefined ? { models: modelRuntime } : {}),
         modelsRequired: modelModeRequested,
@@ -879,6 +915,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
               ...researchAnalysisApprovalPolicy.rules,
               ...productBriefApprovalPolicy.rules,
               ...designToCodeImplementationApprovalPolicy.rules,
+              ...designToCodeV2ApprovalPolicy.rules,
               ...designToCodeFeedbackLoopApprovalPolicy.rules,
             ],
           },
@@ -900,9 +937,15 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     }),
     executionReconciler: new ArtifactSetReconciler({ registry: artifactStore }),
     ...(mcpClient !== undefined ? { mcpClient } : {}),
-    ...(options?.capabilityConfig !== undefined
-      ? { capabilityConfig: options.capabilityConfig }
-      : {}),
+    // V2-8: production V2 seams first, test-injected collaborators winning on
+    // conflict so deterministic host tests keep their fakes.
+    capabilityConfig: {
+      ...createV2CapabilityConfig({
+        runtime: figmaAgentInvocationRuntime,
+        modelModeRequested,
+      }),
+      ...(options?.capabilityConfig ?? {}),
+    },
     ...(figmaAgentInvocationRuntime !== undefined
       ? { agentInvoker: figmaAgentInvocationRuntime }
       : {}),
@@ -1115,6 +1158,9 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     "design-to-code-implementation",
     "design-to-code-feedback-loop",
     "design-to-code-agent-foundation",
+    // V2-8: the flagship workflow id is internal too. The public identity is
+    // the design-engineer worker; nobody should need to know this id.
+    DESIGN_TO_CODE_V2_WORKFLOW_ID,
   ]);
 
   const resolveName = (name: string): ResolvedWorker | null => {

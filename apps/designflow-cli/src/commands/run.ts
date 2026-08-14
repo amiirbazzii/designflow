@@ -6,8 +6,8 @@ import {
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
-import type { DestinationCandidate } from "../services/destinations";
+import { DESIGN_TO_CODE_V2_WORKFLOW_ID, EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, type CliContext, type ResolvedWorker } from "../services/cli-runner";
+import { findDestinationCandidates, type DestinationCandidate } from "../services/destinations";
 import type { ApprovalMode, SessionResult, WorkerInputField } from "@designflow/sdk";
 import { clarify, finishSession, watchProgress, type ProductReviewRequest } from "./session-flow";
 import { buildDesignEngineerReadiness, readFigmaConnection } from "../services/readiness";
@@ -212,14 +212,55 @@ export async function runCommand(
     ...(options?.onProgress === undefined ? {} : { onProgress: options.onProgress }),
   });
 
-  // The collected answers are the request. What to do with them is not this
-  // command's call — a session starts, and the session decides.
-  const started = await context.sessions.startSessionForWorker(resolved.worker, {
-    workerId: resolved.worker.id,
-    request: describeRequest(input, options?.destination),
-    input,
-    ...(options?.projectId !== undefined ? { projectId: options.projectId } : {}),
-  });
+  // V2-8: Design Engineer dispatch is deterministic and product-owned. With a
+  // project and a destination decision the flagship V2 workflow starts
+  // directly; without a project the read-only specification journey does.
+  // No Coordinator model call decides this — missing information is a product
+  // question asked above, never AI reasoning.
+  let started: SessionResult;
+  if (isDesignEngineer && figmaAvailable) {
+    const implementationProject = input.project as { id: string; name: string; rootPath: string } | undefined;
+    let destination = options?.destination;
+
+    if (implementationProject !== undefined && destination === undefined) {
+      // Product-owned clarification (§5): where should the design go?
+      const registered = await context.projects.getProject(implementationProject.id).catch(() => null);
+      const candidates = await findDestinationCandidates(context, registered).catch(() => [] as const);
+      const answer = (
+        await terminal.ask(
+          "Where should this design go?",
+          candidates.length > 0 ? candidates.map((candidate) => candidate.label) : undefined,
+        )
+      ).trim();
+      destination =
+        candidates.find((candidate) => candidate.label === answer) ??
+        (answer.length > 0 ? { label: answer, kind: "new-page", path: answer } : undefined);
+      if (destination === undefined) {
+        terminal.print("A destination is required to prepare implementation changes. Nothing was run.");
+        return 1;
+      }
+    }
+
+    const flagship = implementationProject !== undefined && destination !== undefined;
+    started = await context.sessions.startDeterministicSession(
+      resolved.worker,
+      {
+        workerId: resolved.worker.id,
+        request: describeRequest(input, destination),
+        input: flagship ? buildFlagshipInput(input, implementationProject!, destination!) : input,
+        ...(options?.projectId !== undefined ? { projectId: options.projectId } : {}),
+      },
+      flagship ? DESIGN_TO_CODE_V2_WORKFLOW_ID : resolved.workflowId,
+    );
+  } else {
+    // Other workers keep their existing (possibly agent-routed) dispatch.
+    started = await context.sessions.startSessionForWorker(resolved.worker, {
+      workerId: resolved.worker.id,
+      request: describeRequest(input, options?.destination),
+      input,
+      ...(options?.projectId !== undefined ? { projectId: options.projectId } : {}),
+    });
+  }
   options?.onSessionResult?.(started);
 
   const result = await clarify(context, terminal, worker.name, started, options?.onSessionResult);
@@ -280,6 +321,33 @@ export async function collectInput(
   }
 
   return input;
+}
+
+/**
+ * The flagship V2 workflow input, assembled from the collected legacy-shaped
+ * form: the user's two decisions (design, destination), the registered
+ * project, and the already-validated Figma source facts. Everything else the
+ * V2 chain discovers or compiles itself.
+ */
+function buildFlagshipInput(
+  input: Record<string, unknown>,
+  project: { id: string; name: string; rootPath: string },
+  destination: DestinationCandidate,
+): Record<string, unknown> {
+  return {
+    project,
+    stateDirectory: input.stateDirectory,
+    designFile: input.designFile,
+    frames: Array.isArray(input.frames) ? input.frames : [],
+    destination: { ...destination },
+    captureScreenshots: input.captureScreenshots ?? true,
+    refreshFigmaSource: input.refreshFigmaSource ?? true,
+    allowFixtureNames: input.allowFixtureNames ?? false,
+    ...(typeof input.figmaSourceMode === "string" ? { figmaSourceMode: input.figmaSourceMode } : {}),
+    ...(typeof input.figmaSourceKind === "string" ? { figmaSourceKind: input.figmaSourceKind } : {}),
+    ...(typeof input.figmaServerIdentity === "string" ? { figmaServerIdentity: input.figmaServerIdentity } : {}),
+    ...(typeof input.figmaCacheBypass === "string" ? { figmaCacheBypass: input.figmaCacheBypass } : {}),
+  };
 }
 
 /**

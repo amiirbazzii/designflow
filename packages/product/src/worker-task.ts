@@ -158,6 +158,29 @@ export class WorkerTaskRouter {
     // manifest written before agents existed reaches exactly the workflow it
     // always did.
     if (agentId === undefined) {
+      // Deterministic product clarification (V2-8): a required input the
+      // manifest declares must be present before the workflow starts. This is
+      // product state, never a model call — the same question the Coordinator
+      // used to spend an LLM invocation discovering.
+      const input = (validated.input ?? {}) as Record<string, unknown>;
+      const missing = worker.inputs.find((field) => {
+        if (field.required !== true) return false;
+        const value = input[field.key];
+        if (value === undefined || value === null) return true;
+        if (typeof value === "string") return value.trim().length === 0;
+        if (Array.isArray(value)) return value.length === 0;
+        return false;
+      });
+      if (missing !== undefined) {
+        return {
+          worker,
+          decision: {
+            type: "request_clarification",
+            question: `${missing.label} (${missing.placeholder})`,
+          },
+        };
+      }
+
       return {
         worker,
         decision: {

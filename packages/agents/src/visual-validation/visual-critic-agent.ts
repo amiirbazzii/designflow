@@ -15,12 +15,19 @@
 import {
   agentManifestSchema,
   modelProfileSchema,
+  type AgentInvocationRequest,
   type AgentManifest,
   type ModelProfile,
+  type SpecializedAgent,
+  type SpecializedAgentContext,
   type VisualCriticPatch,
   type VisualExpectation,
   type VisualFindingV1,
 } from "@designflow/sdk";
+
+import { SpecializedAgentOutputInvalidError } from "../errors";
+import { generateValidatedModelOutput } from "../model-structured-output";
+import { criticPatchResponseSchema } from "./critic-patch-response-schema";
 
 const MODEL_PROFILE_ID = "visual-critic-default";
 
@@ -183,3 +190,72 @@ export function toCriticPatch(raw: unknown, partitionId: string): VisualCriticPa
     ),
   };
 }
+
+// ── The Critic as an invocable specialized agent (V2-8) ─────────
+//
+// The evaluator's `critic` seam is a plain function; the production
+// composition needs the model call behind it to live where every other V2
+// role's does — a registered specialized agent invoked through the shared
+// runtime, with the same tracing, budgets and profile resolution.
+
+export type VisualCriticStrategy = (
+  request: AgentInvocationRequest,
+  context: SpecializedAgentContext,
+  manifest: AgentManifest,
+) => Promise<VisualCriticPatch>;
+
+function readCriticInput(request: AgentInvocationRequest): { evidence: unknown; partitionId: string } {
+  const raw = request.input as { evidence?: unknown; partitionId?: unknown } | undefined;
+  if (raw?.evidence === undefined || typeof raw.partitionId !== "string") {
+    throw new SpecializedAgentOutputInvalidError(VISUAL_CRITIC_AGENT_ID, [
+      "input: critic evidence and a partitionId are required",
+    ]);
+  }
+  return { evidence: raw.evidence, partitionId: raw.partitionId };
+}
+
+/** Offline: the Critic is advisory, and an absent model is an absent Critic. */
+export const deterministicVisualCriticStrategy: VisualCriticStrategy = async (request) => {
+  readCriticInput(request);
+  throw new SpecializedAgentOutputInvalidError(VISUAL_CRITIC_AGENT_ID, [
+    "No critic model was available; deterministic evaluation proceeds without interpretation.",
+  ]);
+};
+
+export const modelVisualCriticStrategy: VisualCriticStrategy = async (request, context, manifest) => {
+  const { evidence, partitionId } = readCriticInput(request);
+
+  return generateValidatedModelOutput({
+    agentId: VISUAL_CRITIC_AGENT_ID,
+    context,
+    messages: [
+      { role: "system", content: manifest.instructions },
+      { role: "user", content: `Measured findings (authoritative):\n${JSON.stringify(evidence)}` },
+    ],
+    responseSchema: criticPatchResponseSchema,
+    maxOutputTokens: MAX_CRITIC_OUTPUT_TOKENS,
+    validate: (output) => toCriticPatch(output, partitionId),
+  });
+};
+
+class VisualCriticAgent implements SpecializedAgent {
+  public readonly manifest: AgentManifest;
+  private readonly strategy: VisualCriticStrategy;
+
+  public constructor(manifest: AgentManifest, strategy: VisualCriticStrategy) {
+    this.manifest = manifest;
+    this.strategy = strategy;
+  }
+
+  public perform(request: AgentInvocationRequest, context: SpecializedAgentContext): Promise<VisualCriticPatch> {
+    return this.strategy(request, context, this.manifest);
+  }
+}
+
+export function createVisualCriticAgent(
+  strategy: VisualCriticStrategy = deterministicVisualCriticStrategy,
+): SpecializedAgent {
+  return new VisualCriticAgent(visualCriticAgentManifest, strategy);
+}
+
+export const visualCriticAgent: SpecializedAgent = createVisualCriticAgent();

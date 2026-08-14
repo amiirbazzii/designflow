@@ -481,6 +481,9 @@ describe("architecture", () => {
 
     for (const path of sources(import.meta.dir)) {
       if (path.endsWith("services/cli-runner.ts")) continue;
+      // V2-8: the flagship seam wiring is composition-root material, split
+      // into its own file solely for size; only cli-runner imports it.
+      if (path.endsWith("services/v2-composition.ts")) continue;
       if (readFileSync(path, "utf8").includes("@designflow/agents")) {
         offenders.push(path.split("/").slice(-2).join("/"));
       }
@@ -547,6 +550,7 @@ describe("architecture", () => {
 
     for (const path of sources(import.meta.dir)) {
       if (path.endsWith("services/cli-runner.ts")) continue;
+      if (path.endsWith("services/v2-composition.ts")) continue;
       if (readFileSync(path, "utf8").includes("@designflow/tools")) {
         offenders.push(path.split("/").slice(-2).join("/"));
       }
@@ -895,10 +899,11 @@ describe("running a worker", () => {
 // ── Agent-backed workers ────────────────────────────────────────
 
 describe("running through an agent", () => {
-  test("the shipped Design Engineer delegates to an agent", () => {
+  test("the shipped Design Engineer dispatches deterministically — no Coordinator (V2-8)", () => {
     const worker = context().workers.getWorker("design-engineer");
 
-    expect(worker?.agentId).toBe("design-engineer-coordinator");
+    expect(worker?.agentId).toBeUndefined();
+    expect(worker?.workflows).toContain("design-to-code-v2");
   });
 
   test("the agent resolves the request to the workflow that handles it", async () => {
@@ -1110,12 +1115,12 @@ describe("running through a tool-backed agent", () => {
       input: { reviewTarget: "src/components/Header.tsx" },
     });
 
-    // Design Engineer asks instead — it has no connected Figma design to work
-    // from, so it clarifies rather than reaching for the legacy scaffold.
+    // Design Engineer dispatches deterministically (V2-8): with no design
+    // selected it asks the product question; no Coordinator is consulted.
     const asked = await created.routeTask({
       workerId: "design-engineer",
       request: "build a login page",
-      input: { designFile: "homepage.fig" },
+      input: {},
     });
 
     expect(reviewed.decision.type).toBe("run_workflow");

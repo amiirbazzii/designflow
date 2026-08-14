@@ -246,6 +246,84 @@ export class AgentSessionService {
     return attempt;
   }
 
+  /**
+   * Starts a session whose workflow the product already decided (V2-8).
+   *
+   * The normal Design Engineer journey is deterministic: when the product has
+   * a valid project, a valid design selection and a destination decision,
+   * which workflow runs is product state, not AI reasoning. No router, no
+   * agent, no Coordinator — the session is created and the workflow starts
+   * through exactly the same `applyDecision` transition every other decision
+   * uses, so history, traces, reuse identity and events are identical to an
+   * agent-routed run.
+   *
+   * The workflow must be one the worker declares; a product surface cannot
+   * use this to smuggle an arbitrary workflow id under a worker's identity.
+   */
+  public async startDeterministicSession(
+    worker: WorkerManifest,
+    request: StartSessionRequest,
+    workflowId: string,
+  ): Promise<SessionResult> {
+    const validated = startSessionRequestSchema.parse(request);
+
+    if (!worker.workflows.includes(workflowId)) {
+      throw new DesignFlowError(
+        "ERR_WORKFLOW_NOT_DECLARED",
+        `Worker ${worker.id} does not declare workflow ${workflowId}.`,
+        { workerId: worker.id, workflowId },
+      );
+    }
+
+    const agentId = worker.agentId ?? worker.id;
+    const knowledgeContext = await this.assembleKnowledge(
+      buildInitialSessionContext(validated.request, validated.input),
+      validated.projectId,
+      agentId,
+    );
+
+    const now = this.clock.now();
+    const modelProfileId = this.resolveModelProfileId?.(agentId);
+
+    const session = agentSessionSchema.parse({
+      id: this.generateId(),
+      workerId: worker.id,
+      agentId,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      version: 1,
+      turnCount: 0,
+      originalRequest: validated.request,
+      ...(validated.input !== undefined ? { originalInput: validated.input } : {}),
+      answers: [],
+      traceIds: [],
+      expiresAt: addDays(now, this.expirationDays),
+      ...(modelProfileId !== undefined ? { modelProfileId } : {}),
+      ...(validated.projectId !== undefined ? { projectId: validated.projectId } : {}),
+    });
+
+    await this.persistCreate(session);
+    await this.emit({
+      type: "session.created",
+      sessionId: session.id,
+      workerId: session.workerId,
+      agentId,
+      timestamp: now,
+    });
+
+    return this.applyDecision(
+      session,
+      {
+        type: "run_workflow",
+        workflowId,
+        ...(validated.input !== undefined ? { input: validated.input } : {}),
+      },
+      undefined,
+      knowledgeContext,
+    );
+  }
+
   private async startSessionForWorkerOnce(
     worker: WorkerManifest,
     validated: StartSessionRequest,

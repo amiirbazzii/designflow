@@ -58,6 +58,16 @@ type CapabilityOutput = z.infer<typeof outputSchema>;
  */
 const stageInput = v2VisualStageInputSchema.passthrough();
 
+/** A seed capability requires the field it persists, typed rather than a TypeError. */
+function required<T>(value: T | undefined, field: string, capabilityId: string): T {
+  if (value === undefined)
+    throw new DesignFlowError("ERR_V2_STAGE_INPUT_MISSING", `The V2 stage input is missing "${field}".`, {
+      field,
+      capabilityId,
+    });
+  return value;
+}
+
 /**
  * The evaluator seam.
  *
@@ -90,10 +100,10 @@ export const storeUIBlueprintCapability: Capability<unknown, CapabilityOutput> =
       artifactId: V2_VISUAL_ARTIFACT_IDS.blueprint,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.blueprint,
       name: "UI Blueprint",
-      payload: input.blueprint,
+      payload: required(input.blueprint, "blueprint", "store-v2-ui-blueprint"),
       summary: {
-        elementCount: input.blueprint.elements.length,
-        componentCount: input.blueprint.components.length,
+        elementCount: required(input.blueprint, "blueprint", "store-v2-ui-blueprint").elements.length,
+        componentCount: input.blueprint!.components.length,
         projectFilesChanged: false,
       },
     });
@@ -122,10 +132,10 @@ export const storeImplementationMapCapability: Capability<unknown, CapabilityOut
       artifactId: V2_VISUAL_ARTIFACT_IDS.implementationMap,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.implementationMap,
       name: "Implementation Map",
-      payload: input.implementationMap,
+      payload: required(input.implementationMap, "implementationMap", "store-v2-implementation-map"),
       summary: {
-        componentCount: input.implementationMap.components.length,
-        blueprintArtifactId: input.implementationMap.binding.blueprintArtifactId ?? V2_VISUAL_ARTIFACT_IDS.blueprint,
+        componentCount: input.implementationMap!.components.length,
+        blueprintArtifactId: input.implementationMap!.binding.blueprintArtifactId ?? V2_VISUAL_ARTIFACT_IDS.blueprint,
         projectFilesChanged: false,
       },
     });
@@ -140,8 +150,8 @@ export const storeBuilderProposalCapability: Capability<unknown, CapabilityOutpu
       artifactId: V2_VISUAL_ARTIFACT_IDS.proposal,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.proposal,
       name: "Builder Proposal",
-      payload: input.proposal,
-      summary: { fileCount: input.proposal.files.length, projectFilesChanged: false },
+      payload: required(input.proposal, "proposal", "store-v2-builder-proposal"),
+      summary: { fileCount: input.proposal!.files.length, projectFilesChanged: false },
     });
   },
 };

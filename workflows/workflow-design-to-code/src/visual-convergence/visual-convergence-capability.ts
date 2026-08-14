@@ -47,7 +47,7 @@ import {
   V2_CONVERGENCE_ARTIFACT_IDS,
   V2_CONVERGENCE_ARTIFACT_TYPES,
   configuredVisualRepairBuilder,
-  v2ConvergenceInputSchema,
+  v2ConvergenceInputLoose,
   type V2ConvergenceInput,
 } from "./visual-convergence-types";
 import { acceptanceStatus, deriveIterationQuality, evidenceUsable } from "./convergence-policy";
@@ -159,7 +159,7 @@ export const runVisualConvergenceCapability: Capability<unknown, CapabilityOutpu
   inputSchema: z.unknown(),
   outputSchema,
   async execute(context, raw): Promise<CapabilityOutput> {
-    const input = v2ConvergenceInputSchema.parse(raw);
+    const input = v2ConvergenceInputLoose.parse(raw) as V2ConvergenceInput;
     const blueprint: UIBlueprint = uiBlueprintSchema.parse(
       await readArtifact(context, V2_VISUAL_ARTIFACT_IDS.blueprint, z.unknown()),
     );
@@ -317,12 +317,17 @@ export const runVisualConvergenceCapability: Capability<unknown, CapabilityOutpu
         correspondences: renderedState.correspondences,
       });
 
+      const projectContext = await readArtifact(context, V2_VISUAL_ARTIFACT_IDS.projectContext, z.unknown()).catch(
+        () => undefined,
+      );
       const built = await repairBuilder({
         blueprint,
         implementationMap: map,
         previousProposal: currentProposal,
         repairEvidence,
         repairNumber: iteration + 1,
+        project: input.project,
+        ...(projectContext !== undefined ? { projectContext } : {}),
       });
 
       if (built.status !== "valid" || built.proposal === undefined) {

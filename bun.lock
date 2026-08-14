@@ -272,6 +272,7 @@
         "@designflow/core": "workspace:*",
         "@designflow/mcp": "workspace:*",
         "@designflow/product": "workspace:*",
+        "@designflow/workers": "workspace:*",
       },
     },
     "workflows/workflow-product-brief": {

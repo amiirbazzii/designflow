@@ -30,7 +30,9 @@ describe("experimental workflow composition", () => {
   test("Stage 4 alone enables the shared Figma path", () => {
     const { registry, workflows } = compose({ figmaMcpEnabled: true, implementationEnabled: true });
     expect(workflows.has(designToCodeImplementationWorkflowPackage.id)).toBe(true);
-    expect(registry.list()).toHaveLength(15 + visualValidationCapabilities.length + feedbackLoopCapabilities.length);
+    // 15 stage-4 + shared capabilities, plus the V2-8 flagship package's ten
+    // owned capabilities (five glue steps, convergence, four finalization).
+    expect(registry.list()).toHaveLength(15 + visualValidationCapabilities.length + feedbackLoopCapabilities.length + 10);
   });
 
   test("both stages start and shared Figma capabilities register exactly once", () => {

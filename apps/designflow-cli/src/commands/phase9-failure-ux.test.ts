@@ -49,6 +49,10 @@ function contextFor(options: {
     home: { layout: { home: "/tmp/designflow-phase9" } },
     projects: { getProject: async () => project },
     sessions: {
+      // V2-8: the deterministic dispatch delegates to the same stub.
+      startDeterministicSession(worker: unknown, request: never) {
+        return (this as unknown as { startSessionForWorker: (w: unknown, r: never) => unknown }).startSessionForWorker(worker, request);
+      },
       startSessionForWorker: async (_worker: unknown, request: { input?: unknown }) => ({
         session: { status: "completed", executionId: "execution-9", originalInput: request.input },
       }),

@@ -57,6 +57,10 @@ function contextFor(options: {
     home: { layout: { home: "/tmp/designflow-phase7" } },
     projects: { getProject: async () => project },
     sessions: {
+      // V2-8: the deterministic dispatch delegates to the same stub.
+      startDeterministicSession(worker: unknown, request: never) {
+        return (this as unknown as { startSessionForWorker: (w: unknown, r: never) => unknown }).startSessionForWorker(worker, request);
+      },
       startSessionForWorker: async (_worker: unknown, request: { input?: unknown; request: string }) => {
         options.onStarted({ request: request.request, input: request.input });
         return {
@@ -101,12 +105,16 @@ describe("Phase 7 two-decision product flow", () => {
     expect(result).toBe(0);
     expect(terminal.questions).toEqual([]);
     expect(started).toHaveLength(1);
+    // V2-8: the flagship input carries the two product decisions plus the
+    // registered project; the legacy intent/consent flags are gone with the
+    // legacy dispatch.
     expect(started[0]?.input).toMatchObject({
-      implementationIntent: true,
       project: { id: project.id, name: project.name, rootPath: project.rootPath },
-      destination,
+      destination: { ...destination },
+      designFile: design.designFile,
     });
     expect(started[0]?.input).not.toHaveProperty("projectWriteConsent");
+    expect(started[0]?.input).not.toHaveProperty("implementationIntent");
     expect(String(started[0]?.request)).toContain("Implement the selected design");
   });
 

@@ -60,10 +60,16 @@ export const v2VisualStageInputSchema = z
         rootPath: z.string().min(1),
       })
       .strict(),
-    blueprint: uiBlueprintSchema,
+    /**
+     * The canonical V2 inputs. Optional at the schema level because the
+     * flagship workflow produces these as artifacts of earlier nodes rather
+     * than carrying them in the input; the seed (store-*) capabilities still
+     * require whichever field they persist and fail typed when it is absent.
+     */
+    blueprint: uiBlueprintSchema.optional(),
     projectContext: z.unknown(),
-    implementationMap: implementationMapSchema,
-    proposal: proposedFileChangesSchema,
+    implementationMap: implementationMapSchema.optional(),
+    proposal: proposedFileChangesSchema.optional(),
     viewports: z.array(visualViewportV1Schema).min(1).max(8).optional(),
     route: z.string().min(1).max(200).optional(),
     /** Set false to render the proposal bytes with no correspondence markers. */

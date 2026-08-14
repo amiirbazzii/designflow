@@ -34,7 +34,7 @@ import { inspectRegisteredProject } from "@designflow/capability-implementation"
 import { readArtifact, writeArtifact } from "../orchestration/artifact-io";
 import { capabilityOutputSchema, type CapabilityOutput } from "../orchestration/types";
 import { IMPLEMENTATION_ARTIFACT_IDS, IMPLEMENTATION_ARTIFACT_TYPES } from "../implementation/implementation-types";
-import { resolveStoredPayload, v2FinalizeInputSchema } from "./finalization-types";
+import { resolveConvergence, resolveStoredPayload, v2FinalizeInputSchema } from "./finalization-types";
 
 function fail(code: string, message: string): never {
   throw new DesignFlowError(code, message);
@@ -54,12 +54,13 @@ export const inspectFinalizationProjectCapability: Capability<unknown, Capabilit
   outputSchema: capabilityOutputSchema,
   async execute(context, raw): Promise<CapabilityOutput> {
     const input = v2FinalizeInputSchema.parse(raw);
+    const convergence = await resolveConvergence(context, input);
     const inspected = inspectRegisteredProject(input.project);
 
     assertProjectProposalBinding(
       {
-        ...(input.convergence.baseProjectFingerprint !== undefined
-          ? { expectedProjectFingerprint: input.convergence.baseProjectFingerprint }
+        ...(convergence.baseProjectFingerprint !== undefined
+          ? { expectedProjectFingerprint: convergence.baseProjectFingerprint }
           : {}),
         actualProjectFingerprint: inspected.project.contextFingerprint,
       },
@@ -119,7 +120,8 @@ export const resolveSelectedProposalCapability: Capability<unknown, CapabilityOu
   outputSchema: capabilityOutputSchema,
   async execute(context, raw): Promise<CapabilityOutput> {
     const input = v2FinalizeInputSchema.parse(raw);
-    const selection = validateSelection(input.convergence);
+    const convergence = await resolveConvergence(context, input);
+    const selection = validateSelection(convergence);
 
     const payload = await resolveStoredPayload(context, selection.ref);
     if (payload === undefined)
@@ -138,8 +140,8 @@ export const resolveSelectedProposalCapability: Capability<unknown, CapabilityOu
         actualProposalHash: canonicalProposalHash(proposal),
         expectedProjectId: input.project.id,
         actualProjectId: proposal.projectId,
-        ...(input.convergence.baseProjectFingerprint !== undefined
-          ? { expectedProjectFingerprint: input.convergence.baseProjectFingerprint }
+        ...(convergence.baseProjectFingerprint !== undefined
+          ? { expectedProjectFingerprint: convergence.baseProjectFingerprint }
           : {}),
         actualProjectFingerprint: proposal.baseProjectFingerprint,
       },
@@ -177,9 +179,10 @@ export const storeFinalReviewCapability: Capability<unknown, CapabilityOutput> =
   outputSchema: capabilityOutputSchema,
   async execute(context, raw): Promise<CapabilityOutput> {
     const input = v2FinalizeInputSchema.parse(raw);
+    const convergence = await resolveConvergence(context, input);
     const proposal = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.proposal, proposedFileChangesSchema);
-    const selection = validateSelection(input.convergence);
-    const selected = input.convergence.iterations.find((entry) => entry.iteration === selection.iteration)!;
+    const selection = validateSelection(convergence);
+    const selected = convergence.iterations.find((entry) => entry.iteration === selection.iteration)!;
 
     const review: FinalImplementationReview = finalImplementationReviewSchema.parse({
       schemaVersion: "1",
@@ -188,9 +191,9 @@ export const storeFinalReviewCapability: Capability<unknown, CapabilityOutput> =
       projectId: proposal.projectId,
       baseProjectFingerprint: proposal.baseProjectFingerprint,
       convergence: {
-        status: input.convergence.status,
+        status: convergence.status,
         selectedIteration: selection.iteration,
-        iterationsPerformed: input.convergence.iterationsPerformed,
+        iterationsPerformed: convergence.iterationsPerformed,
       },
       visual: {
         outcome: selected.outcome,
@@ -210,8 +213,8 @@ export const storeFinalReviewCapability: Capability<unknown, CapabilityOutput> =
         "Proposal validated",
         "Project unchanged",
         "Snapshot will be created before apply",
-        ...(input.convergence.status === "converged" ? ["Visual refinement complete"] : []),
-        ...(input.convergence.status === "converged_with_findings" ? ["Visual result acceptable with findings"] : []),
+        ...(convergence.status === "converged" ? ["Visual refinement complete"] : []),
+        ...(convergence.status === "converged_with_findings" ? ["Visual result acceptable with findings"] : []),
       ],
     });
 
@@ -246,7 +249,8 @@ export const storeFinalizationResultCapability: Capability<unknown, CapabilityOu
   outputSchema: capabilityOutputSchema,
   async execute(context, raw): Promise<CapabilityOutput> {
     const input = v2FinalizeInputSchema.parse(raw);
-    const selection = validateSelection(input.convergence);
+    const convergence = await resolveConvergence(context, input);
+    const selection = validateSelection(convergence);
     const proposal = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.proposal, proposedFileChangesSchema);
     const approval = await readArtifact(context, IMPLEMENTATION_ARTIFACT_IDS.approval, implementationApprovalBindingSchema);
     const application = await readArtifact(

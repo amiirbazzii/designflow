@@ -126,7 +126,7 @@ describe("installed-CLI Stage 4 routing", () => {
     expect(created.resolve("design-to-code-implementation")).toBeNull();
   });
 
-  test("selected project routes the CLI session to implementation and shows a pre-approval proposal", async () => {
+  test("selected project routes the CLI session to the V2 flagship and fails honestly without a model (V2-8)", async () => {
     const created = context();
     const projectId = await registeredProject(created);
     await dispatch(["projects", "inspect", projectId], created, new ScriptedTerminal([]));
@@ -137,18 +137,19 @@ describe("installed-CLI Stage 4 routing", () => {
       // MVP-3B journey consent: the project is only where changes COULD go;
       // preparing an implementation proposal is an explicit yes.
       "yes",
-      "reject",
+      // V2-8: destination is the user's decision, asked deterministically.
+      "src/App.tsx",
     ]);
 
     const code = await dispatch(["run", "design-engineer", "--project", projectId], created, terminal);
     expect(code).toBe(1);
     const [run] = await created.runner.history();
-    expect(run?.workflowId).toBe("design-to-code-implementation");
-    expect(terminal.transcript).toMatch(/Files to create: [1-9]/);
-    expect(terminal.transcript).toContain("Design coverage:");
-    expect(terminal.transcript).toContain("✓ Root frame");
-    expect(terminal.transcript).toContain("Proposed changes (bounded review):");
-    expect(terminal.transcript).toContain("No files have been changed yet");
+    // The Coordinator-free flagship dispatch: one V2 execution, and in
+    // deterministic mode (no model provider) the required Project Mapper is
+    // honestly unavailable — never a silent fall back to the legacy path.
+    expect(run?.workflowId).toBe("design-to-code-v2");
+    expect(terminal.questions.some((question) => question.startsWith("Where should this design go?"))).toBe(true);
+    expect(terminal.transcript).toContain("No changes were applied to your project.");
     expect(terminal.transcript).not.toContain("Store the generated result as a DesignFlow artifact");
   }, 20_000);
 });

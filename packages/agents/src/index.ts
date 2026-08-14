@@ -49,6 +49,22 @@ import {
   visualCorrectionAgent,
   type VisualCorrectionStrategy,
 } from "./visual-correction/visual-correction-agent";
+import {
+  createDesignInterpreterAgent,
+  designInterpreterAgent,
+  type DesignInterpreterStrategy,
+} from "./design-interpreter/design-interpreter-agent";
+import {
+  createProjectMapperAgent,
+  projectMapperAgent,
+  type ProjectMapperStrategy,
+} from "./project-mapper/project-mapper-agent";
+import { createUIBuilderAgent, uiBuilderAgent, type UIBuilderStrategy } from "./ui-builder/ui-builder-agent";
+import {
+  createVisualCriticAgent,
+  visualCriticAgent,
+  type VisualCriticStrategy,
+} from "./visual-validation/visual-critic-agent";
 
 import { InMemorySpecializedAgentRegistry } from "./specialized-registry";
 
@@ -253,6 +269,11 @@ export interface SpecializedAgentCatalogOptions {
   readonly implementationStrategy?: ImplementationStrategy | undefined;
   readonly visualValidationStrategy?: VisualValidationStrategy | undefined;
   readonly visualCorrectionStrategy?: VisualCorrectionStrategy | undefined;
+  /** The four V2 roles (V2-8). Absent means their deterministic defaults. */
+  readonly designInterpreterStrategy?: DesignInterpreterStrategy | undefined;
+  readonly projectMapperStrategy?: ProjectMapperStrategy | undefined;
+  readonly uiBuilderStrategy?: UIBuilderStrategy | undefined;
+  readonly visualCriticStrategy?: VisualCriticStrategy | undefined;
 }
 
 /**
@@ -335,11 +356,35 @@ export function createSpecializedAgentRegistry(
       ? visualCorrectionAgent
       : createVisualCorrectionAgent(options.visualCorrectionStrategy);
 
+  // The four V2 roles are always registered (V2-8): the flagship path
+  // invokes them through the shared runtime, and their deterministic
+  // defaults refuse honestly rather than fabricate when no model is wired.
+  const designInterpreter =
+    options?.designInterpreterStrategy === undefined
+      ? designInterpreterAgent
+      : createDesignInterpreterAgent(options.designInterpreterStrategy);
+  const projectMapper =
+    options?.projectMapperStrategy === undefined
+      ? projectMapperAgent
+      : createProjectMapperAgent(options.projectMapperStrategy);
+  const uiBuilder =
+    options?.uiBuilderStrategy === undefined
+      ? uiBuilderAgent
+      : createUIBuilderAgent(options.uiBuilderStrategy);
+  const visualCritic =
+    options?.visualCriticStrategy === undefined
+      ? visualCriticAgent
+      : createVisualCriticAgent(options.visualCriticStrategy);
+
   return new InMemorySpecializedAgentRegistry([
     figmaSpecification,
     implementation,
     visualValidation,
     visualCorrection,
+    designInterpreter,
+    projectMapper,
+    uiBuilder,
+    visualCritic,
   ]);
 }
 

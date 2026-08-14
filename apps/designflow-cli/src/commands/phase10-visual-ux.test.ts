@@ -51,6 +51,10 @@ function contextFor(options: {
     feedbackLoopParents: { get: async () => null, list: async () => [] },
     listWorkflows: () => [],
     sessions: {
+      // V2-8: the deterministic dispatch delegates to the same stub.
+      startDeterministicSession(worker: unknown, request: never) {
+        return (this as unknown as { startSessionForWorker: (w: unknown, r: never) => unknown }).startSessionForWorker(worker, request);
+      },
       startSessionForWorker: async (_worker: unknown, request: { input?: unknown }) => ({
         session: { status: "completed", executionId: "execution-10", originalInput: request.input },
       }),
