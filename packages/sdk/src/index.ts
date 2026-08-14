@@ -507,6 +507,34 @@ export type {
 } from "./visual-validation/rendered-state-contracts";
 
 export {
+  VISUAL_CONVERGENCE_SCHEMA_VERSION,
+  VISUAL_CONVERGENCE_ARTIFACT_ID,
+  VISUAL_CONVERGENCE_ARTIFACT_TYPE,
+  VISUAL_CONVERGENCE_LIMITS,
+  visualConvergenceStatusSchema,
+  visualConvergenceStopReasonSchema,
+  findingDeltaStateSchema,
+  findingComparisonEntrySchema,
+  iterationComparisonSchema,
+  iterationQualitySchema,
+  convergenceIterationSchema,
+  visualConvergenceMetricsSchema,
+  visualConvergenceArtifactSchema,
+} from "./visual-convergence/visual-convergence-contracts";
+
+export type {
+  VisualConvergenceStatus,
+  VisualConvergenceStopReason,
+  FindingDeltaState,
+  FindingComparisonEntry,
+  IterationComparison,
+  IterationQuality,
+  ConvergenceIteration,
+  VisualConvergenceMetrics,
+  VisualConvergenceArtifact,
+} from "./visual-convergence/visual-convergence-contracts";
+
+export {
   VISUAL_CORRECTION_SCHEMA_VERSION,
   VISUAL_CORRECTION_AGENT_ID,
   VISUAL_CORRECTION_AGENT_VERSION,

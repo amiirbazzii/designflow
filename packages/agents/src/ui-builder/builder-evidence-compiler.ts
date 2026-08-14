@@ -32,6 +32,8 @@ export interface BuilderEvidenceBundle {
   readonly sources: unknown;
   readonly constraints: unknown;
   readonly repair?: unknown;
+  /** Bounded measured visual mismatches, present only in `visual_repair` mode. */
+  readonly visualRepair?: unknown;
   readonly bytes: number;
   readonly relevantFileCount: number;
 }
@@ -45,6 +47,12 @@ export interface CompileBuilderEvidenceOptions {
   /** Bounded deterministic findings from a previous attempt. */
   readonly repairFeedback?: unknown;
   readonly mode?: "initial" | "visual_repair";
+  /**
+   * Host-compiled visual repair evidence: measured mismatches, allowed
+   * implementation targets, and clearly separated advisory Critic context.
+   * Never raw reports, screenshots, logs or previous conversations.
+   */
+  readonly visualRepairEvidence?: unknown;
 }
 
 function encodedLength(value: unknown): number {
@@ -156,6 +164,7 @@ export function compileUIBuilderEvidence(options: CompileBuilderEvidenceOptions)
     sources,
     constraints,
     ...(options.repairFeedback !== undefined ? { repair: options.repairFeedback } : {}),
+    ...(options.visualRepairEvidence !== undefined ? { visualRepair: options.visualRepairEvidence } : {}),
   };
 
   return {

@@ -353,6 +353,81 @@ describe("bounded build", () => {
   });
 });
 
+// ── Visual repair mode (V2-6) ───────────────────────────────────
+
+describe("visual repair is the same Builder in an explicit mode", () => {
+  const repairEvidence = {
+    planIsImmutable: true,
+    findings: [
+      { label: "Header", property: "height", expected: "64px", actual: "72px", delta: 8, severity: "major", targetPaths: [DESTINATION_PATH] },
+    ],
+    allowedTargets: [DESTINATION_PATH],
+  };
+
+  test("the request carries the mode and the bounded visual evidence, not raw logs", () => {
+    const evidence = compileUIBuilderEvidence({
+      blueprint: BLUEPRINT,
+      map: MIXED_MAP,
+      context: PROJECT,
+      mode: "visual_repair",
+      visualRepairEvidence: repairEvidence,
+    });
+
+    expect(evidence.mode).toBe("visual_repair");
+    expect(evidence.visualRepair).toEqual(repairEvidence);
+    // The write allow-list is unchanged by repair mode: same plan, same files.
+    const constraints = evidence.constraints as { allowedWritePaths: readonly string[] };
+    expect(constraints.allowedWritePaths).toEqual(allowedWritePaths(MIXED_MAP));
+  });
+
+  test("a repair that creates a component the map said to reuse never becomes a proposal", async () => {
+    // §53: the Critic flagged the button; the model tries NewButton.tsx anyway.
+    const violating = mutate(validProposal(), (files) => [
+      ...files,
+      { path: "src/components/NewButton.tsx", action: "create", content: "export function NewButton() { return null; }", reason: "repair", relatedDesignNodeIds: [] },
+    ]);
+    const builder = scriptedBuilder([violating, validProposal()]);
+    const result = await buildImplementation({
+      blueprint: BLUEPRINT,
+      map: MIXED_MAP,
+      context: PROJECT,
+      projectId: "project-fixture",
+      baseProjectFingerprint: "fingerprint-1",
+      mode: "visual_repair",
+      visualRepairEvidence: repairEvidence,
+      generate: builder.generate,
+    });
+
+    // The invalid attempt is rejected by map enforcement, never returned; the
+    // Builder's own bounded attempts recover with a plan-conforming proposal.
+    expect(result.status).toBe("valid");
+    expect(result.attempts).toBe(2);
+    expect(result.failures[0]!.code).toBe("ERR_IMPLEMENTATION_MAP_VIOLATION");
+    expect(result.proposal!.files.some((file) => file.path.includes("NewButton"))).toBe(false);
+  });
+
+  test("every repair attempt still receives the immutable plan and the visual evidence", async () => {
+    const seen: unknown[] = [];
+    await buildImplementation({
+      blueprint: BLUEPRINT,
+      map: MIXED_MAP,
+      context: PROJECT,
+      projectId: "project-fixture",
+      baseProjectFingerprint: "fingerprint-1",
+      mode: "visual_repair",
+      visualRepairEvidence: repairEvidence,
+      generate: async (evidence) => {
+        seen.push({ mode: evidence.mode, visualRepair: evidence.visualRepair, decisions: evidence.decisions });
+        return validProposal();
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect((seen[0] as { mode: string }).mode).toBe("visual_repair");
+    expect((seen[0] as { visualRepair: unknown }).visualRepair).toEqual(repairEvidence);
+  });
+});
+
 // ── The agent ───────────────────────────────────────────────────
 
 describe("UI Builder agent", () => {

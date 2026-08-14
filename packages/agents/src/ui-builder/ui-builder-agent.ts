@@ -236,6 +236,13 @@ export const modelUIBuilderStrategy: UIBuilderStrategy = async (request, context
           `Project conventions:\n${JSON.stringify(input.evidence.project)}\n\n` +
           `Source you may read:\n${JSON.stringify(input.evidence.sources)}\n\n` +
           `Constraints:\n${JSON.stringify(input.evidence.constraints)}` +
+          (input.evidence.visualRepair !== undefined
+            ? `\n\nVisual repair. Your previous implementation was rendered and measured against the design. ` +
+              `The plan above is unchanged and remains binding — same components, same destinations, same decisions. ` +
+              `Emit the next complete proposal against the original project base (nothing has been applied), ` +
+              `fixing exactly these measured visual mismatches within the allowed targets:\n` +
+              `${JSON.stringify(input.evidence.visualRepair)}`
+            : "") +
           (input.evidence.repair !== undefined
             ? `\n\nYour previous attempt failed deterministic validation. The plan above is unchanged and remains binding — fix the implementation:\n${JSON.stringify(input.evidence.repair)}`
             : ""),

@@ -52,6 +52,13 @@ const outputSchema = z
 type CapabilityOutput = z.infer<typeof outputSchema>;
 
 /**
+ * The seed capabilities are shared with the convergence workflow, whose input
+ * extends this stage's with loop-only fields. They read only their own field,
+ * so unknown keys pass through rather than failing another stage's contract.
+ */
+const stageInput = v2VisualStageInputSchema.passthrough();
+
+/**
  * The evaluator seam.
  *
  * Deliberately typed structurally rather than imported: this package needs the
@@ -78,7 +85,7 @@ function base(id: string, name: string, description: string): Omit<Capability<un
 export const storeUIBlueprintCapability: Capability<unknown, CapabilityOutput> = {
   ...base("store-v2-ui-blueprint", "Store UI Blueprint", "Persists the canonical UI Blueprint this stage evaluates against."),
   async execute(context, raw): Promise<CapabilityOutput> {
-    const input = v2VisualStageInputSchema.parse(raw);
+    const input = stageInput.parse(raw) as V2VisualStageInput;
     return writeArtifact(context, {
       artifactId: V2_VISUAL_ARTIFACT_IDS.blueprint,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.blueprint,
@@ -96,7 +103,7 @@ export const storeUIBlueprintCapability: Capability<unknown, CapabilityOutput> =
 export const storeProjectContextCapability: Capability<unknown, CapabilityOutput> = {
   ...base("store-v2-project-context", "Store Project Context", "Persists the canonical Project Context the plan was made against."),
   async execute(context, raw): Promise<CapabilityOutput> {
-    const input = v2VisualStageInputSchema.parse(raw);
+    const input = stageInput.parse(raw) as V2VisualStageInput;
     return writeArtifact(context, {
       artifactId: V2_VISUAL_ARTIFACT_IDS.projectContext,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.projectContext,
@@ -110,7 +117,7 @@ export const storeProjectContextCapability: Capability<unknown, CapabilityOutput
 export const storeImplementationMapCapability: Capability<unknown, CapabilityOutput> = {
   ...base("store-v2-implementation-map", "Store Implementation Map", "Persists the canonical Implementation Map the Builder executed."),
   async execute(context, raw): Promise<CapabilityOutput> {
-    const input = v2VisualStageInputSchema.parse(raw);
+    const input = stageInput.parse(raw) as V2VisualStageInput;
     return writeArtifact(context, {
       artifactId: V2_VISUAL_ARTIFACT_IDS.implementationMap,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.implementationMap,
@@ -128,7 +135,7 @@ export const storeImplementationMapCapability: Capability<unknown, CapabilityOut
 export const storeBuilderProposalCapability: Capability<unknown, CapabilityOutput> = {
   ...base("store-v2-builder-proposal", "Store Builder proposal", "Persists the validated proposal this stage will render."),
   async execute(context, raw): Promise<CapabilityOutput> {
-    const input = v2VisualStageInputSchema.parse(raw);
+    const input = stageInput.parse(raw) as V2VisualStageInput;
     return writeArtifact(context, {
       artifactId: V2_VISUAL_ARTIFACT_IDS.proposal,
       artifactType: V2_VISUAL_ARTIFACT_TYPES.proposal,
@@ -148,7 +155,7 @@ export const storeBuilderProposalCapability: Capability<unknown, CapabilityOutpu
  * reference image, and a reference that cannot be loaded is simply absent —
  * which the comparison reports as `unavailable` rather than as a match.
  */
-async function resolveReferences(
+export async function resolveReferences(
   context: CapabilityContext,
   input: V2VisualStageInput,
 ): Promise<readonly ReferenceScreenshot[]> {
@@ -180,7 +187,7 @@ export const renderProposedStateCapability: Capability<unknown, CapabilityOutput
     "Builds and renders the validated proposal in an isolated workspace and persists the result.",
   ),
   async execute(context, raw): Promise<CapabilityOutput> {
-    const input = v2VisualStageInputSchema.parse(raw);
+    const input = stageInput.parse(raw) as V2VisualStageInput;
     // Parsed after loading rather than through `readArtifact`'s generic, whose
     // inferred type follows the schema's *input* side and would drop defaults.
     const blueprint = uiBlueprintSchema.parse(await readArtifact(context, V2_VISUAL_ARTIFACT_IDS.blueprint, z.unknown()));
@@ -276,7 +283,7 @@ export const evaluateVisualDeltaCapability: Capability<unknown, CapabilityOutput
     "Compares the rendered state against the Blueprint and persists the visual delta report.",
   ),
   async execute(context, raw): Promise<CapabilityOutput> {
-    v2VisualStageInputSchema.parse(raw);
+    stageInput.parse(raw) as V2VisualStageInput;
     const blueprint = uiBlueprintSchema.parse(await readArtifact(context, V2_VISUAL_ARTIFACT_IDS.blueprint, z.unknown()));
     const map = implementationMapSchema.parse(
       await readArtifact(context, V2_VISUAL_ARTIFACT_IDS.implementationMap, z.unknown()),

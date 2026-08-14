@@ -47,6 +47,10 @@ export interface BuildImplementationOptions {
   readonly projectId: string;
   readonly baseProjectFingerprint: string;
   readonly sourceExcerpts?: readonly BuilderSourceExcerpt[];
+  /** `initial` builds the plan; `visual_repair` fixes measured mismatches in it. */
+  readonly mode?: "initial" | "visual_repair";
+  /** Host-compiled repair evidence, required to mean anything in repair mode. */
+  readonly visualRepairEvidence?: unknown;
   /** Produces one proposal for one bounded request. */
   readonly generate: (evidence: BuilderEvidenceBundle, attempt: number) => Promise<ProposedFileChanges>;
   /** Injected isolated build; absent means the gate is skipped and said to be. */
@@ -145,6 +149,8 @@ export async function buildImplementation(options: BuildImplementationOptions): 
       map: options.map,
       context: options.context,
       ...(options.sourceExcerpts !== undefined ? { sourceExcerpts: options.sourceExcerpts } : {}),
+      ...(options.mode !== undefined ? { mode: options.mode } : {}),
+      ...(options.visualRepairEvidence !== undefined ? { visualRepairEvidence: options.visualRepairEvidence } : {}),
       ...(failures.length > 0 ? { repairFeedback: repairInstruction(failures) } : {}),
     });
     requestBytes = evidence.bytes;

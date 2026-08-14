@@ -127,3 +127,26 @@ export { v2VisualCapabilities, configuredVisualEvaluator } from "./v2-visual/v2-
 export type { VisualEvaluator } from "./v2-visual/v2-visual-capabilities";
 export { V2_VISUAL_ARTIFACT_IDS, V2_VISUAL_ARTIFACT_TYPES, v2VisualStageInputSchema } from "./v2-visual/v2-visual-types";
 export type { V2VisualStageInput } from "./v2-visual/v2-visual-types";
+
+export {
+  designToCodeV2ConvergenceWorkflow,
+  designToCodeV2ConvergenceWorkflowPackage,
+} from "./visual-convergence/visual-convergence-workflow";
+export { runVisualConvergenceCapability } from "./visual-convergence/visual-convergence-capability";
+export {
+  V2_CONVERGENCE_ARTIFACT_IDS,
+  V2_CONVERGENCE_ARTIFACT_TYPES,
+  v2ConvergenceInputSchema,
+  configuredVisualRepairBuilder,
+} from "./visual-convergence/visual-convergence-types";
+export type {
+  V2ConvergenceInput,
+  VisualRepairBuilder,
+  VisualRepairBuilderResult,
+} from "./visual-convergence/visual-convergence-types";
+export { acceptanceStatus, actionableFindings, deriveIterationQuality, isActionable } from "./visual-convergence/convergence-policy";
+export { compareReports, findingKey } from "./visual-convergence/finding-comparison";
+export { SELECTION_POLICY_VERSION, selectBestCandidate } from "./visual-convergence/candidate-selection";
+export { compileVisualRepairEvidence } from "./visual-convergence/repair-evidence";
+export type { VisualRepairEvidence, RepairFindingEvidence } from "./visual-convergence/repair-evidence";
+export { renderConvergenceReport } from "./visual-convergence/convergence-report";

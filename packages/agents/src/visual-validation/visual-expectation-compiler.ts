@@ -68,7 +68,12 @@ function tagHintsFor(nodeType: string | undefined, hasText: boolean): readonly s
     case "GROUP":
     case "COMPONENT":
     case "INSTANCE":
-      return hasText ? ["div", "section", "nav", "header", "footer", "article", "ul", "form"] : ["div", "section", "nav", "header", "footer", "article", "ul", "svg", "img"];
+      // `main` included deliberately: a faithful screen implementation very
+      // often *is* `<main>`, and a hint list that excludes it structurally
+      // filters out the screen's own wrapper before content can identify it.
+      return hasText
+        ? ["div", "main", "section", "nav", "header", "footer", "article", "ul", "form"]
+        : ["div", "main", "section", "nav", "header", "footer", "article", "ul", "svg", "img"];
     default:
       return [];
   }
