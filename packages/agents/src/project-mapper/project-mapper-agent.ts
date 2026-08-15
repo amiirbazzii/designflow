@@ -82,11 +82,23 @@ export const projectMapperDefaultModelProfile: ModelProfile = modelProfileSchema
   providerId: "openrouter",
   // Its own profile id, deliberately separate from the Design Interpreter's,
   // so a per-agent override never crosses between two very different jobs.
-  // The candidate order is the repository's field-proven one; no premature
-  // model tuning, and no raised timeout — a partition that needed one would
-  // be a partition that is too big.
+  // No raised timeout — a partition that needed one would be a partition
+  // that is too big.
+  //
+  // Single candidate, deliberately: `openai/gpt-5.6-luna` and
+  // `deepseek/deepseek-v4-pro` are the same two fallback candidates
+  // `figma-specification-default` already proved never resolve on the
+  // managed gateway (field run d840ab80, ERR_MODEL_UNAVAILABLE upstream),
+  // and V2-10 field evidence (executionId
+  // 0506a14f-a052-4ff7-a0ce-95ad40126677) reconfirmed both as
+  // ERR_MODEL_ROUTE_NOT_FOUND for this profile too. Removing them is not a
+  // guess at a replacement, only removing two candidates already proven
+  // dead. That same run showed the primary `openai/gpt-4o-mini` candidate
+  // also failing with ERR_MODEL_ROUTE_NOT_FOUND for this profile id, unlike
+  // the legacy `figma-specification-default` profile — root-causing that
+  // gap is a managed-gateway route-configuration question outside this
+  // repository, not something this profile's code can resolve.
   model: "openai/gpt-4o-mini",
-  fallbackModels: ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro"],
 });
 
 /**

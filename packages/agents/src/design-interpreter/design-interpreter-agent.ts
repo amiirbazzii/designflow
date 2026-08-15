@@ -80,10 +80,20 @@ export const designInterpreterAgentManifest: AgentManifest = agentManifestSchema
 export const designInterpreterDefaultModelProfile: ModelProfile = modelProfileSchema.parse({
   id: MODEL_PROFILE_ID,
   providerId: "openrouter",
-  // The same ordered-candidate policy every agent uses, with the candidate
-  // field evidence actually supports first.
+  // Single candidate, deliberately: `openai/gpt-5.6-luna` and
+  // `deepseek/deepseek-v4-pro` are the same two fallback candidates
+  // `figma-specification-default` already proved never resolve on the
+  // managed gateway (see that profile's comment — field run d840ab80, both
+  // returned ERR_MODEL_UNAVAILABLE upstream). V2-10 field evidence
+  // (run 0506a14f, executionId 0506a14f-a052-4ff7-a0ce-95ad40126677)
+  // reconfirmed both as ERR_MODEL_ROUTE_NOT_FOUND for this profile too.
+  // Listing them wastes ~2s per invocation and produces a misleading
+  // "3 candidates tried" diagnostic for what is really one real candidate;
+  // removing them is not a guess at a replacement, only removing two
+  // candidates already proven dead. Root-causing why the managed gateway
+  // has no route for `openai/gpt-4o-mini` under *this* profile id remains a
+  // managed-gateway route-configuration question, not a code fix.
   model: "openai/gpt-4o-mini",
-  fallbackModels: ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro"],
   // No raised timeout, deliberately. A semantic patch for one partition is a
   // small structured answer; if it ever needs a 145-second budget, the
   // partition is too big and the fix is to partition further — not to wait

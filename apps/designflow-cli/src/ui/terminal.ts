@@ -317,7 +317,19 @@ export function settings(
   }
 
   if (values.aiStatus !== undefined) {
-    lines.push("", "  AI access", `    Status:      ${aiLabel(values.aiStatus)}`);
+    lines.push(
+      "",
+      "  AI access",
+      `    Status:      ${aiLabel(values.aiStatus)}`,
+      // "Connected" reports session authentication only — the managed
+      // gateway reaching a route for a given role's model profile is a
+      // separate fact this command does not check without a live call.
+      // A connected session can still fail a role's model call with
+      // ERR_MODEL_ROUTE_NOT_FOUND (see the V2-10 corrective task).
+      ...(values.aiStatus === "connected"
+        ? ["                 Confirms sign-in only — a role's model call can still fail if the gateway has no route for its profile."]
+        : []),
+    );
   }
 
   const roles = values.roles ?? [];

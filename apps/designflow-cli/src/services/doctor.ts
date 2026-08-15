@@ -117,7 +117,18 @@ async function browser(): Promise<BrowserInspection> {
 function provider(context: CliContext): DoctorCheck {
   const configured = context.modelProviderConfigured;
   if (context.aiStatus() === "connected") {
-    return check("model-provider", "healthy", "A DesignFlow AI session is available; its token is never displayed.");
+    // "healthy" here reports session authentication only. Whether the
+    // managed gateway has a configured route for a given role's model
+    // profile is a separate, deployed-configuration fact this check does
+    // not verify — see the V2-10 field defect (executionId
+    // 0506a14f-a052-4ff7-a0ce-95ad40126677): a connected session still hit
+    // ERR_MODEL_ROUTE_NOT_FOUND on every candidate for two flagship roles.
+    return check(
+      "model-provider",
+      "healthy",
+      "A DesignFlow AI session is available; its token is never displayed. " +
+        "This confirms sign-in only — a role's model call can still fail if the managed gateway has no route configured for its profile.",
+    );
   }
   if (context.aiStatus() === "development-provider" && configured) {
     return check("model-provider", "healthy", "A development model-provider credential is present in the environment; its value is never displayed.");

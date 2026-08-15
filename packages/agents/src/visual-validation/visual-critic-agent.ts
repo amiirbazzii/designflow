@@ -80,8 +80,14 @@ export const visualCriticDefaultModelProfile: ModelProfile = modelProfileSchema.
   providerId: "openrouter",
   // Its own profile, so an override for the Builder or the Mapper never
   // silently moves the Critic.
+  //
+  // Single candidate, deliberately: `openai/gpt-5.6-luna` and
+  // `deepseek/deepseek-v4-pro` are the same two fallback candidates already
+  // proven dead for `figma-specification-default` (field run d840ab80,
+  // ERR_MODEL_UNAVAILABLE) and for the two V2 profiles exercised in V2-10
+  // (executionId 0506a14f-a052-4ff7-a0ce-95ad40126677, ERR_MODEL_ROUTE_NOT_FOUND).
+  // This is a managed-gateway route-configuration question, not a code fix.
   model: "openai/gpt-4o-mini",
-  fallbackModels: ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro"],
 });
 
 export interface CriticPartition {

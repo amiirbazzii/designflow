@@ -79,10 +79,16 @@ export const uiBuilderDefaultModelProfile: ModelProfile = modelProfileSchema.par
   providerId: "openrouter",
   // Its own profile, distinct from implementation-default, project-mapper-default
   // and design-interpreter-default, so an override for one never moves another.
-  model: "openai/gpt-4o-mini",
-  fallbackModels: ["openai/gpt-5.6-luna", "deepseek/deepseek-v4-pro"],
   // No raised timeout. Source generation is the largest V2 output, but the
   // work is bounded by the map: a handful of files for one screen.
+  //
+  // Single candidate, deliberately: `openai/gpt-5.6-luna` and
+  // `deepseek/deepseek-v4-pro` are the same two fallback candidates already
+  // proven dead for `figma-specification-default` (field run d840ab80,
+  // ERR_MODEL_UNAVAILABLE) and for the two V2 profiles exercised in V2-10
+  // (executionId 0506a14f-a052-4ff7-a0ce-95ad40126677, ERR_MODEL_ROUTE_NOT_FOUND).
+  // This is a managed-gateway route-configuration question, not a code fix.
+  model: "openai/gpt-4o-mini",
 });
 
 /**
