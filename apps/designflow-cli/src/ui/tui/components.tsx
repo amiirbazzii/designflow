@@ -188,9 +188,14 @@ export function WorkflowList({
   return (
     <Box flexDirection="column" marginTop={1}>
       {stages.map((stage, index) => (
-        <Text key={stage.id} color={index === selectedStage ? designFlowTheme.focus : statusColor(stage.status)}>
-          {index === selectedStage ? ">" : " "} {stageMarker(stage)} {stage.label}
-        </Text>
+        <Box key={stage.id} flexDirection="column">
+          <Text color={index === selectedStage ? designFlowTheme.focus : statusColor(stage.status)}>
+            {index === selectedStage ? ">" : " "} {stageMarker(stage)} {stage.label}
+          </Text>
+          {stage.note !== undefined && (
+            <Text color={designFlowTheme.warning}>    {stage.note}</Text>
+          )}
+        </Box>
       ))}
     </Box>
   );
@@ -618,5 +623,6 @@ function InlineMessage({
 export function stageMarker(stage: WorkflowStageView): string {
   if (stage.status === "complete") return "✓";
   if (stage.status === "active") return "→";
+  if (stage.status === "needs-attention") return "!";
   return "○";
 }

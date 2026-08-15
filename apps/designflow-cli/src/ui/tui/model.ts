@@ -103,6 +103,13 @@ export interface WorkflowStageView {
   readonly id: string;
   readonly label: string;
   readonly status: "complete" | "active" | "pending" | "needs-attention" | "failed" | "skipped";
+  /**
+   * A short, non-fatal caveat about this stage — e.g. semantic enrichment
+   * being unavailable while Understanding still completed via the
+   * deterministic Blueprint. Never a model name, gateway error code or
+   * candidate list; those stay in Details.
+   */
+  readonly note?: string;
 }
 
 export interface OutputView {

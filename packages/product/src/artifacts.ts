@@ -1,8 +1,10 @@
 // packages/product/src/artifacts.ts
 import {
   artifactSummarySchema,
+  semanticEnrichmentStatusSchema,
   type ArtifactStatus,
   type ArtifactSummary,
+  type SemanticEnrichmentStatus,
 } from "./schemas";
 
 import type { Artifact, ArtifactRegistry, ExecutionEvent } from "@designflow/sdk";
@@ -92,7 +94,26 @@ async function summarize(
       ? { createdBy: artifact.provenance.capabilityId }
       : {}),
     dependencies,
+    ...semanticEnrichmentOf(artifact),
   });
+}
+
+/**
+ * Whether the Design Interpreter's optional semantic pass ran, for a UI
+ * Blueprint artifact only.
+ *
+ * Reads `metadata.semanticStatus` — the exact fact
+ * `compileV2BlueprintCapability` (workflow-design-to-code) already persists —
+ * so a resumed session reconstructs the same degraded-Understanding
+ * presentation from the durable artifact record rather than from an
+ * ephemeral error event that only existed for the failing run.
+ */
+const UI_BLUEPRINT_ARTIFACT_TYPE = "design.ui-blueprint";
+
+function semanticEnrichmentOf(artifact: Artifact): { semanticEnrichment?: SemanticEnrichmentStatus } {
+  if (artifact.type !== UI_BLUEPRINT_ARTIFACT_TYPE) return {};
+  const parsed = semanticEnrichmentStatusSchema.safeParse(artifact.metadata.semanticStatus);
+  return parsed.success ? { semanticEnrichment: parsed.data } : {};
 }
 
 /**

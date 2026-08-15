@@ -94,6 +94,20 @@ export const artifactStatusSchema = z.enum([
 
 export type ArtifactStatus = z.infer<typeof artifactStatusSchema>;
 
+/**
+ * Whether a UI Blueprint's optional AI semantic pass actually ran.
+ *
+ * Narrow and typed rather than a generic metadata passthrough, deliberately:
+ * the Blueprint's own `metadata.semanticStatus` (set in
+ * `compileV2BlueprintCapability`) can stay whatever the compiler needs
+ * internally, while this is the one bounded fact the product surface is
+ * allowed to show — never the underlying model/candidate/gateway detail,
+ * which stays in Details via `ExecutionOverview.failure`.
+ */
+export const semanticEnrichmentStatusSchema = z.enum(["enriched", "unavailable", "not_requested"]);
+
+export type SemanticEnrichmentStatus = z.infer<typeof semanticEnrichmentStatusSchema>;
+
 export const artifactSummarySchema = z.object({
   artifactId: z.string().min(1),
   /** `metadata.name` when the producer supplied one, else the id. */
@@ -105,6 +119,8 @@ export const artifactSummarySchema = z.object({
   createdBy: z.string().min(1).optional(),
   /** Names of the artifacts it was built from, nearest first. */
   dependencies: z.array(z.string().min(1)),
+  /** Present only for a `design.ui-blueprint` artifact. */
+  semanticEnrichment: semanticEnrichmentStatusSchema.optional(),
 });
 
 export type ArtifactSummary = z.infer<typeof artifactSummarySchema>;

@@ -85,10 +85,28 @@ function curatedFor(facts: ProductFailureFacts): CuratedFailure {
     case "ERR_PROJECT_MAPPER_UNAVAILABLE":
       return {
         title: "Implementation could not be safely planned.",
-        summary: "DesignFlow couldn't complete the project mapping step.",
-        recovery: ["No files were changed.", "Try again, or check AI sign-in from the menu."],
+        summary: "DesignFlow AI could not run Project Mapper.",
+        // Deliberately "check AI status", not "check AI sign-in": a
+        // connected, signed-in session can still reach this state if the
+        // managed gateway has no route configured for the role (V2-10 field
+        // defect, executionId 0506a14f-a052-4ff7-a0ce-95ad40126677) — the
+        // recovery hint must not imply the cause is always authentication.
+        recovery: ["No files were changed.", "Try again, or check AI status from the menu."],
       };
+    // `ERR_UI_BUILDER_UNAVAILABLE` means the AI service itself could not run
+    // UI Builder (no builder configured, or every model candidate
+    // exhausted) — the same class of infrastructure failure as Project
+    // Mapper's, and presented the same way rather than as an "attempt
+    // limit" the user might read as a project/output-quality problem.
+    // `ERR_UI_BUILDER_EXHAUSTED` is the different, legitimate case: the
+    // model ran and answered, but never produced a valid proposal within
+    // the bounded repair-attempt budget — that keeps its own wording.
     case "ERR_UI_BUILDER_UNAVAILABLE":
+      return {
+        title: "Implementation unavailable.",
+        summary: "DesignFlow AI could not run UI Builder.",
+        recovery: ["No files were changed.", "Try again, or check AI status from the menu."],
+      };
     case "ERR_UI_BUILDER_EXHAUSTED":
       return {
         title: "Implementation needs another attempt.",

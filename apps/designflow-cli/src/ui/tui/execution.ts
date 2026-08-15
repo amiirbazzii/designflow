@@ -292,14 +292,15 @@ export function applyExecutionReport(
     .map(outputForArtifact)
     .filter((output): output is OutputView => output !== undefined);
   const outputs = mergeOutputs(session.outputs, outputEntries);
+  const note = understandingNote(artifacts);
   const state = typeof overview.state === "string" ? overview.state : "";
   if (state === "ready") {
-    return {
+    return applyUnderstandingNote({
       ...applyExecutionUpdate(session, { status: "completed" }),
       outputs,
-    };
+    }, note);
   }
-  if (state !== "failed") return { ...session, outputs };
+  if (state !== "failed") return applyUnderstandingNote({ ...session, outputs }, note);
 
   const failure = record(overview.failure);
   const attemptDiagnostics = Array.isArray(failure?.attemptDiagnostics)
@@ -336,10 +337,35 @@ export function applyExecutionReport(
     ...(attemptDiagnostics.length > 0 ? { attemptDiagnostics } : {}),
     ...(modelCandidates.length > 0 ? { modelCandidates } : {}),
   });
-  return {
+  return applyUnderstandingNote({
     ...applyExecutionUpdate(session, { status: "failed", diagnostics: [productFailure.title, ...productFailure.lines.filter((line) => line.trim().length > 0).slice(0, 8)] }),
     technicalDetails: productFailure.technicalDetails,
     outputs,
+  }, note);
+}
+
+/**
+ * Attaches the Understanding-stage degradation note, if any.
+ *
+ * A `needs-attention` Understanding stage is deliberately never demoted back
+ * to `complete` by a later report (see `applyExecutionUpdate`'s "completed"
+ * handler) or promoted to `failed` by a later-stage failure (as in the
+ * V2-10 field defect, where Design Interpreter degraded and Project Mapper
+ * then failed the whole run): semantic enrichment being unavailable is its
+ * own bounded, non-fatal fact about one stage, independent of what happens
+ * afterward.
+ */
+function applyUnderstandingNote(session: DesignFlowSessionView, note: string | undefined): DesignFlowSessionView {
+  if (note === undefined) return session;
+  return {
+    ...session,
+    workflow: {
+      ...session.workflow,
+      stages: session.workflow.stages.map((stage) =>
+        stage.id === "understanding" && stage.status !== "failed"
+          ? { ...stage, status: "needs-attention" as const, note }
+          : stage),
+    },
   };
 }
 
@@ -386,7 +412,24 @@ function safeArtifactSummary(value: Record<string, unknown>): ArtifactSummary | 
     ...(typeof value.version === "number" ? { version: value.version } : {}),
     ...(typeof value.createdBy === "string" ? { createdBy: value.createdBy } : {}),
     dependencies: Array.isArray(value.dependencies) ? value.dependencies.filter((item): item is string => typeof item === "string") : [],
+    ...(value.semanticEnrichment === "enriched" || value.semanticEnrichment === "unavailable" || value.semanticEnrichment === "not_requested"
+      ? { semanticEnrichment: value.semanticEnrichment }
+      : {}),
   };
+}
+
+/**
+ * A short, non-fatal note for the Understanding stage row.
+ *
+ * Reconstructed the same way whether this is a live report or a resumed
+ * session's snapshot, because both paths call `applyExecutionReport` with
+ * the same durable artifact summaries (§6/§17 of the V2-10 follow-up) — the
+ * Blueprint artifact's `semanticEnrichment` fact never depends on the
+ * now-discarded model-call error that produced it.
+ */
+function understandingNote(artifacts: readonly ArtifactSummary[]): string | undefined {
+  const blueprint = artifacts.find((artifact) => artifact.type === "design.ui-blueprint");
+  return blueprint?.semanticEnrichment === "unavailable" ? "AI semantic enrichment unavailable" : undefined;
 }
 
 export function outputForArtifact(artifact: ArtifactSummary): OutputView | undefined {

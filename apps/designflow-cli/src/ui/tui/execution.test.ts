@@ -186,6 +186,91 @@ describe("Phase 6B technical details reach the session view (DF-TUI-06)", () => 
   });
 });
 
+describe("V2-10 corrective follow-up: AI readiness and semantic degradation presentation", () => {
+  const blueprintArtifact = (semanticEnrichment: "enriched" | "unavailable" | "not_requested") => ({
+    artifactId: "ui-blueprint",
+    name: "UI Blueprint",
+    type: "design.ui-blueprint",
+    status: "created" as const,
+    dependencies: [],
+    semanticEnrichment,
+  });
+
+  test("Design Interpreter degradation is visible without exposing model/gateway detail, and Understanding is not marked failed", () => {
+    // Reproduces the first half of the V2-10 field defect (executionId
+    // 0506a14f-a052-4ff7-a0ce-95ad40126677): Design Interpreter exhausted
+    // every model candidate with ERR_MODEL_ROUTE_NOT_FOUND, and the
+    // deterministic Blueprint compiler completed anyway.
+    const next = applyExecutionReport(session(), {
+      overview: { state: "ready", status: "completed" },
+      artifacts: [blueprintArtifact("unavailable")],
+    });
+
+    const understanding = next.workflow.stages.find((stage) => stage.id === "understanding");
+    expect(understanding?.status).toBe("needs-attention");
+    expect(understanding?.note).toBe("AI semantic enrichment unavailable");
+    // Normal presentation names the degraded capability, never the
+    // technical cause — no model id, error code, or gateway detail.
+    expect(understanding?.note).not.toMatch(/gpt|ERR_|route|gateway/i);
+    // The run itself still reads as successful — degradation is additive,
+    // not a failure of Understanding.
+    expect(next.finalResult?.status).toBe("success");
+  });
+
+  test("a subsequent required-role failure does not erase the Understanding degradation note, and zero legacy fallback occurs", () => {
+    // Reproduces the full V2-10 scenario: Design Interpreter degrades, then
+    // Project Mapper exhausts every candidate the same way and the whole
+    // run fails. Understanding's note must survive a later-stage failure.
+    const next = applyExecutionReport(session(), {
+      overview: {
+        state: "failed",
+        status: "failed",
+        failure: { errorCode: "ERR_PROJECT_MAPPER_UNAVAILABLE", failedCapabilityId: "map-v2-project" },
+      },
+      artifacts: [blueprintArtifact("unavailable")],
+    });
+
+    const understanding = next.workflow.stages.find((stage) => stage.id === "understanding");
+    expect(understanding?.status).toBe("needs-attention");
+    expect(understanding?.note).toBe("AI semantic enrichment unavailable");
+
+    // Required-role failure presentation: AI service availability, not a
+    // project/mapping-correctness claim, and no legacy-agent language.
+    expect(next.diagnostics[0]).toBe("Implementation could not be safely planned.");
+    expect(next.diagnostics.join(" ")).toMatch(/DesignFlow AI could not run Project Mapper/);
+    expect(next.diagnostics.join(" ")).not.toMatch(/coordinator|specification agent|implementation agent/i);
+  });
+
+  test("enriched Blueprint carries no degradation note", () => {
+    const next = applyExecutionReport(session(), {
+      overview: { state: "ready", status: "completed" },
+      artifacts: [blueprintArtifact("enriched")],
+    });
+    const understanding = next.workflow.stages.find((stage) => stage.id === "understanding");
+    expect(understanding?.note).toBeUndefined();
+    expect(understanding?.status).not.toBe("needs-attention");
+  });
+
+  test("resumed-session reconstruction: a fresh session fed the same persisted artifact reproduces the identical degraded presentation", () => {
+    // The degradation fact comes from the durable artifact summary
+    // (`semanticEnrichment`, backed by the Blueprint's persisted
+    // `metadata.semanticStatus`), not from any ephemeral error event — so a
+    // brand-new session view fed the same report reconstructs identically,
+    // exactly as re-opening a resumed session would.
+    const liveRun = applyExecutionReport(session(), {
+      overview: { state: "ready", status: "completed" },
+      artifacts: [blueprintArtifact("unavailable")],
+    });
+    const resumedSession = applyExecutionReport(session(), {
+      overview: { state: "ready", status: "completed" },
+      artifacts: [blueprintArtifact("unavailable")],
+    });
+
+    const understandingOf = (view: typeof liveRun) => view.workflow.stages.find((stage) => stage.id === "understanding");
+    expect(understandingOf(resumedSession)).toEqual(understandingOf(liveRun));
+  });
+});
+
 describe("DF-CORR-01 stage truthfulness on completion", () => {
   test("a completed run marks only stages that ran; correction stays pending", () => {
     let view = session();
