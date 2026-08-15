@@ -576,8 +576,8 @@ describe("architecture", () => {
   test("no command reaches a trace store", () => {
     const commandDir = join(import.meta.dir, "commands");
 
-    for (const entry of readdirSync(commandDir)) {
-      const contents = codeOf(join(commandDir, entry));
+    for (const path of sources(commandDir)) {
+      const contents = codeOf(path);
 
       // Commands read `context.traces`, the product service. A command holding
       // a store could write the record it displays, and a record its own
@@ -597,8 +597,8 @@ describe("architecture", () => {
   test("no command reaches the tool layer or knows a tool id", () => {
     const commandDir = join(import.meta.dir, "commands");
 
-    for (const entry of readdirSync(commandDir)) {
-      const contents = readFileSync(join(commandDir, entry), "utf8");
+    for (const path of sources(commandDir)) {
+      const contents = readFileSync(path, "utf8");
 
       // The CLI asks what should happen. Which tools exist, which are
       // permitted and what they are called is none of its business.
@@ -1530,12 +1530,22 @@ describe("explaining an agent failure", () => {
 // ── The CLI does not bypass WorkflowRunner ──────────────────────
 
 describe("execution boundary", () => {
+  function sources(dir: string): readonly string[] {
+    const found: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const path = join(dir, entry);
+      if (statSync(path).isDirectory()) found.push(...sources(path));
+      else found.push(path);
+    }
+    return found;
+  }
+
   test("every command call goes through WorkflowRunner", () => {
     const commandDir = join(import.meta.dir, "commands");
     const calls: string[] = [];
 
-    for (const entry of readdirSync(commandDir)) {
-      const contents = readFileSync(join(commandDir, entry), "utf8");
+    for (const path of sources(commandDir)) {
+      const contents = readFileSync(path, "utf8");
 
       for (const match of contents.matchAll(/context\.runner\.(\w+)\(/g)) {
         const method = match[1];
@@ -1579,8 +1589,8 @@ describe("execution boundary", () => {
   test("no command reaches the agent layer", () => {
     const commandDir = join(import.meta.dir, "commands");
 
-    for (const entry of readdirSync(commandDir)) {
-      const contents = readFileSync(join(commandDir, entry), "utf8");
+    for (const path of sources(commandDir)) {
+      const contents = readFileSync(path, "utf8");
 
       // The CLI asks what should happen; it does not resolve agents, read
       // manifests or implement a decision rule of its own.

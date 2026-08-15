@@ -62,13 +62,18 @@ export const mappingPatchResponseSchema: JsonSchemaObject = {
         ],
       },
     },
+    // Required object with nullable fields, never a nullable object union —
+    // the portable strict subset rejects `type: ["object","null"]` at the
+    // request layer (found by the first end-to-end model-path run, V2-9).
+    // A partition with no destination to decide answers with a null
+    // `requirementId`, which the host drops before validation.
     destinationDecision: {
-      type: ["object", "null"],
+      type: "object",
       additionalProperties: false,
       properties: {
-        requirementId: text,
+        requirementId: { type: ["string", "null"] },
         action: { type: "string", enum: ["use_existing", "create_route", "create_page", "integrate_existing_root"] },
-        candidateId: text,
+        candidateId: { type: ["string", "null"] },
         compositionRootCandidateId: { type: ["string", "null"] },
         reason: text,
         confidence: { type: "string", enum: ["high", "medium", "low"] },

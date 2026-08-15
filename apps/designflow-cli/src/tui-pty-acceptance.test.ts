@@ -95,9 +95,10 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
               name: "Expense Form",
               document: {
                 id: "1:2", name: "Expense Form", type: "FRAME",
+                absoluteBoundingBox: { x: 0, y: 0, width: 390, height: 600 },
                 children: [
-                  { id: "1:3", name: "Button", type: "COMPONENT", children: [] },
-                  { id: "1:4", name: "TextField", type: "COMPONENT", children: [] },
+                  { id: "1:3", name: "Title", type: "TEXT", characters: "Add expense", absoluteBoundingBox: { x: 16, y: 24, width: 200, height: 40 }, children: [] },
+                  { id: "1:4", name: "Save", type: "TEXT", characters: "Save expense", absoluteBoundingBox: { x: 16, y: 520, width: 160, height: 48 }, children: [] },
                 ],
               },
             },
@@ -169,13 +170,10 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
     expect(status).toBe(0);
   }, 300_000);
 
-  // V2-8: the normal journey now runs the V2 architecture, whose Mapper and
-  // Builder require V2-shaped model responses the fake gateway does not yet
-  // synthesize. Reaching the review/diff screens deterministically therefore
-  // needs V2 gateway fixtures — scheduled with the V2-9/V2-10 TUI work. The
-  // review/diff input handling itself remains covered by the phase-8 scripted
-  // terminal suite and the flagship product-session acceptance.
-  test.skip("proposal review and diff own their input: d opens diff, ]/[ switch files, scroll works, Esc returns, Reject leaves files unchanged (DF-TUI-08)", () => {
+  // V2-9: the fake gateway now synthesizes real V2 role responses (mapping
+  // patches, builder proposals) from each request's own evidence, so the
+  // packaged journey runs the actual flagship architecture end to end.
+  test("proposal review and diff own their input: d opens diff, ]/[ switch files, scroll works, Esc returns, Reject leaves files unchanged (DF-TUI-08)", () => {
     const { status, stdout } = runScenario("proposal-review", { figmaSucceeds: true, isolatedProject: true });
     expect(stdout).not.toContain("FAIL ");
     expect(stdout).toContain("PASS ready-to-apply");
@@ -190,8 +188,7 @@ describePty("product TUI input lifecycle (real PTY, built CLI)", () => {
     expect(status).toBe(0);
   }, 300_000);
 
-  // Deferred with DF-TUI-08 above, for the same V2 gateway-fixture reason.
-  test.skip("fresh run reaches the visual result with no consumed correction iteration and no fake ✓ Correction (DF-CORR-01)", () => {
+  test("fresh run reaches the visual result with no consumed correction iteration and no fake ✓ Correction (DF-CORR-01)", () => {
     const { status, stdout } = runScenario("visual-result", { figmaSucceeds: true, isolatedProject: true });
     expect(stdout).not.toContain("FAIL ");
     expect(stdout).toContain("PASS visual-result-reached");

@@ -44,6 +44,12 @@ export function ExecutionView({
 function actorLabel(actor: DesignFlowSessionView["activity"][number]["actor"]): string {
   return {
     designflow: "DesignFlow",
+    // Current V2 roles (V2-9).
+    "design-interpreter": "Design Interpreter",
+    "project-mapper": "Project Mapper",
+    "ui-builder": "UI Builder",
+    "visual-critic": "Visual Critic",
+    // Historical actors, for legacy traces only.
     coordinator: "DesignFlow",
     "specification-ai": "Specification AI",
     "implementation-ai": "Implementation AI",

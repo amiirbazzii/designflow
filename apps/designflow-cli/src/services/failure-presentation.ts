@@ -80,6 +80,50 @@ function curatedFor(facts: ProductFailureFacts): CuratedFailure {
   const stage = stageSuffix(facts);
 
   switch (facts.errorCode) {
+    // ── Current V2 flagship outcomes (V2-9). Deterministic typed failures;
+    //    technical codes stay in Details. ──
+    case "ERR_PROJECT_MAPPER_UNAVAILABLE":
+      return {
+        title: "Implementation could not be safely planned.",
+        summary: "DesignFlow couldn't complete the project mapping step.",
+        recovery: ["No files were changed.", "Try again, or check AI sign-in from the menu."],
+      };
+    case "ERR_UI_BUILDER_UNAVAILABLE":
+    case "ERR_UI_BUILDER_EXHAUSTED":
+      return {
+        title: "Implementation needs another attempt.",
+        summary: "DesignFlow couldn't produce a valid implementation within the safe attempt limit.",
+        recovery: ["No files were changed.", "Start the run again — your design and destination are kept."],
+      };
+    case "ERR_IMPLEMENTATION_MAP_UNEXECUTABLE":
+      return {
+        title: "The implementation plan could not be executed.",
+        recovery: ["No files were changed.", "Start the run again from the menu."],
+      };
+    case "ERR_DESTINATION_BINDING_MISMATCH":
+      return {
+        title: "The plan did not match your chosen destination.",
+        summary: "Your destination decision is binding; DesignFlow stopped rather than placing the design somewhere else.",
+        recovery: ["No files were changed.", "Choose the destination again and start the run."],
+      };
+    case "ERR_VISUAL_RESULT_NOT_FINALIZABLE":
+      return {
+        title: "Visual verification couldn't be completed.",
+        summary: "The implementation was not sent for approval.",
+        recovery: ["No files were changed.", "Fix browser or preview support if needed, then run again."],
+      };
+    case "ERR_CONVERGENCE_NOT_SELECTABLE":
+      return {
+        title: "No safe implementation could be selected.",
+        recovery: ["No files were changed.", "Start the run again from the menu."],
+      };
+    case "ERR_PROJECT_CHANGED":
+    case "ERR_PROJECT_FINGERPRINT_CHANGED":
+      return {
+        title: "Project changed while DesignFlow was working.",
+        summary: "The implementation was created against an earlier project state.",
+        recovery: ["No DesignFlow changes were applied.", "Run again to generate an implementation against the current project."],
+      };
     case "ERR_PROPOSAL_ATTEMPTS_EXHAUSTED":
       return {
         title: "Implementation could not produce a safe change.",

@@ -64,7 +64,19 @@ export async function resolveStoredPayload(
 ): Promise<unknown | undefined> {
   const direct = await context.artifactStore.get(ref);
   if (direct !== null) return direct.data;
-  // Registry-backed stores can resolve a logical artifact id to its payload.
+
+  // A logical artifact id resolves through this node's own upstream refs —
+  // the flagship chain produced it earlier in the same execution, and the
+  // ref's metadata names the stored payload. Engine-agnostic, unlike a
+  // registry lookup, which not every store surface exposes the same way.
+  const upstream = [...context.parentArtifacts].reverse().find((artifact) => artifact.id === ref);
+  const upstreamPayloadId = upstream?.metadata?.["payloadId"];
+  if (typeof upstreamPayloadId === "string") {
+    const stored = await context.artifactStore.get(upstreamPayloadId);
+    if (stored !== null) return stored.data;
+  }
+
+  // Registry-backed stores can also resolve a logical artifact id directly.
   const registry = context.artifactStore as {
     getArtifact?: (id: string) => Promise<{ metadata?: Record<string, unknown> } | null>;
   };

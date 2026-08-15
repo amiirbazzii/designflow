@@ -322,7 +322,7 @@ describe("designflow settings, in model mode", () => {
 
     expect(await dispatch(["settings"], created, terminal)).toBe(0);
 
-    expect(terminal.transcript).toContain("Design Engineer");
+    expect(terminal.transcript).toContain("Design Interpreter");
     expect(terminal.transcript).toContain("OpenRouter");
     expect(terminal.transcript).toContain("openai/gpt-4o-mini");
     expect(terminal.transcript).toContain("configured");
@@ -369,8 +369,8 @@ describe("architecture: the provider stays out of the application", () => {
   test("no command imports the OpenRouter provider or the models package", () => {
     const commandDir = join(import.meta.dir, "commands");
 
-    for (const entry of readdirSync(commandDir)) {
-      const contents = code(join(commandDir, entry));
+    for (const path of sources(commandDir)) {
+      const contents = code(path);
 
       for (const forbidden of [
         "@designflow/model-provider-openrouter",

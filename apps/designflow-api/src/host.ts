@@ -36,6 +36,7 @@ import { ToolRuntime, createToolRegistry } from "@designflow/tools";
 import { createWorkerRegistry } from "@designflow/workers";
 import {
   designToCodeApprovalPolicy,
+  designToCodeFigmaSpecificationWorkflowPackage,
   designToCodeWorkflowPackage,
   evaluateDesignEngineerCriterion,
 } from "@designflow/workflow-design-to-code";
@@ -112,6 +113,9 @@ export function createApiHost(options?: ApiHostOptions): ApiHost {
 
   for (const workflowPackage of [
     designToCodeWorkflowPackage,
+    // The read-only specification journey is the design-engineer worker's
+    // default workflow since the V2 flagship migration.
+    designToCodeFigmaSpecificationWorkflowPackage,
     qaReviewWorkflowPackage,
     researchAnalysisWorkflowPackage,
     productBriefWorkflowPackage,

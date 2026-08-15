@@ -88,30 +88,31 @@ describe("DesignFlow TUI presentation model", () => {
     expect(session.destination).toEqual({ label: "Not selected", status: "idle" });
   });
 
-  test("keeps the seven workflow stages in product order", () => {
+  test("keeps the canonical product stages in order (V2-9)", () => {
     const session = buildSessionView({ figma: "not-configured", ai: "not-configured" });
 
+    // Derived from the one SDK product-stage source; Refining is conditional
+    // and Done is the result, so neither pads the initial list.
     expect(session.workflow.stages.map((stage) => stage.label)).toEqual([
       "Understanding",
-      "Specification",
-      "Project analysis",
-      "Implementation",
-      "Validation",
-      "Visual check",
-      "Correction",
+      "Planning",
+      "Building",
+      "Checking",
+      "Review",
+      "Applying",
     ]);
     expect(session.outputs).toEqual([]);
   });
 
   test("represents an active stage without mutating the source view", () => {
     const session = buildSessionView({ figma: "connected", ai: "connected" });
-    const active = setActiveStage(session, "implementation");
+    const active = setActiveStage(session, "building");
 
     expect(active.workflow.status).toBe("active");
-    expect(active.workflow.activeStage).toBe("implementation");
-    expect(active.workflow.stages[3]?.status).toBe("active");
-    expect(session.workflow.stages[3]?.status).toBe("pending");
-    expect(stageMarker(active.workflow.stages[3]!)).toBe("→");
+    expect(active.workflow.activeStage).toBe("building");
+    expect(active.workflow.stages[2]?.status).toBe("active");
+    expect(session.workflow.stages[2]?.status).toBe("pending");
+    expect(stageMarker(active.workflow.stages[2]!)).toBe("→");
   });
 
   test("keeps presentation input immutable", () => {

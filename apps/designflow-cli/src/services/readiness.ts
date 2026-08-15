@@ -416,6 +416,13 @@ export const FEATURE_TIERS: readonly FeatureTier[] = [
  * agent packages already own.
  */
 export type DesignRoleId =
+  // The four current Design Engineer roles (V2-9).
+  | "design-interpreter"
+  | "project-mapper"
+  | "ui-builder"
+  | "visual-critic"
+  // Historical roles: rendered for legacy traces/history, never presented as
+  // the active architecture.
   | "coordinator"
   | "specification"
   | "implementation"
@@ -423,6 +430,10 @@ export type DesignRoleId =
   | "visual-correction";
 
 const ROLE_NAMES: Readonly<Record<DesignRoleId, string>> = {
+  "design-interpreter": "Design Interpreter",
+  "project-mapper": "Project Mapper",
+  "ui-builder": "UI Builder",
+  "visual-critic": "Visual Critic",
   coordinator: "Design Engineer Coordinator",
   specification: "Figma Specification Specialist",
   implementation: "Implementation Specialist",
@@ -441,12 +452,12 @@ export function designRoleName(roleId: DesignRoleId): string {
   return ROLE_NAMES[roleId];
 }
 
+/** The roles the CURRENT Design Engineer uses, in presentation order (V2-9). */
 export const DESIGN_ROLE_ORDER: readonly DesignRoleId[] = [
-  "coordinator",
-  "specification",
-  "implementation",
-  "visual-validation",
-  "visual-correction",
+  "design-interpreter",
+  "project-mapper",
+  "ui-builder",
+  "visual-critic",
 ];
 
 /** The fields a local override may change — the same five `model-config.ts` extracts. */

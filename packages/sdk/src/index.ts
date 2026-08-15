@@ -507,6 +507,23 @@ export type {
 } from "./visual-validation/rendered-state-contracts";
 
 export {
+  DESIGN_TO_CODE_STAGE_IDS,
+  DESIGN_TO_CODE_PRODUCT_STAGES,
+  DESIGN_TO_CODE_V2_STAGE_BY_CAPABILITY,
+  DESIGN_TO_CODE_LEGACY_STAGE_BY_CAPABILITY,
+  DESIGN_TO_CODE_AI_ROLES,
+  LEGACY_AI_ROLE_LABELS,
+  UI_BUILDER_REPAIR_ACTIVITY_LABEL,
+  designToCodeStage,
+  designToCodeStageForCapability,
+} from "./product-stages/design-to-code-stages";
+export type {
+  DesignToCodeStageId,
+  DesignToCodeProductStage,
+  DesignToCodeAiRoleId,
+} from "./product-stages/design-to-code-stages";
+
+export {
   BindingVerificationError,
   assertProjectProposalBinding,
   canonicalProposalHash,

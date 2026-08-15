@@ -36,7 +36,7 @@ import {
   type BuilderSourceExcerpt,
 } from "@designflow/agents";
 import { compileProjectContext } from "@designflow/tools";
-import { inspectRegisteredProject, validateProposedModules } from "@designflow/workflow-design-to-code";
+import { inspectRegisteredProject, projectFileHash, validateProposedModules } from "@designflow/workflow-design-to-code";
 import {
   canonicalProjectContextSchema,
   figmaSourceSnapshotSchema,
@@ -107,13 +107,25 @@ function builderRunner(options: {
     mode: options.mode,
     ...(options.visualRepairEvidence !== undefined ? { visualRepairEvidence: options.visualRepairEvidence } : {}),
     sourceExcerpts: readSourceExcerpts(options.project.rootPath, options.map),
-    generate: async (evidence, attempt) =>
-      (await invokeAgent(options.runtime, UI_BUILDER_AGENT_ID, {
+    generate: async (evidence, attempt) => {
+      const proposal = (await invokeAgent(options.runtime, UI_BUILDER_AGENT_ID, {
         evidence,
         projectId: options.project.id,
         baseProjectFingerprint,
         attempt,
-      })) as ProposedFileChanges,
+      })) as ProposedFileChanges;
+      // The snapshot/apply integrity gates require each modified file to name
+      // the exact base it was proposed against; the host stamps it from disk —
+      // never from anything the model said.
+      return {
+        ...proposal,
+        files: proposal.files.map((file) => {
+          if (file.action !== "modify" || file.expectedBaseHash !== undefined) return file;
+          const hash = projectFileHash(join(options.project.rootPath, file.path));
+          return hash === undefined ? file : { ...file, expectedBaseHash: hash };
+        }),
+      };
+    },
     validateProposedState: async (proposal) => {
       const result = await validateProposedModules(options.project.rootPath, proposal, {
         ...(buildCommand !== undefined

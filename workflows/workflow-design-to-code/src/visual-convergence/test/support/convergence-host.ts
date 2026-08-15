@@ -33,7 +33,7 @@ export interface ConvergenceHost {
  * A renderer whose DOM changes per render, the way a repaired proposal's
  * would. Each capture consumes the next scripted DOM; the last one repeats.
  */
-export function queuedRenderer(domQueue: readonly (readonly FakeElement[])[], onCapture?: () => void) {
+export function queuedRenderer(domQueue: readonly (readonly FakeElement[])[], onCapture?: () => void, bytes?: Uint8Array) {
   let calls = 0;
   return {
     calls: () => calls,
@@ -43,7 +43,7 @@ export function queuedRenderer(domQueue: readonly (readonly FakeElement[])[], on
         calls += 1;
         onCapture?.();
         return {
-          bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+          bytes: bytes ?? new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
           width: viewport.width,
           height: viewport.height,
           consoleErrors: [],

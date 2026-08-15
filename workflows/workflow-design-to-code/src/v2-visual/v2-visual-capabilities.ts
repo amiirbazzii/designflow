@@ -171,6 +171,50 @@ export async function resolveReferences(
 ): Promise<readonly ReferenceScreenshot[]> {
   const resolved: ReferenceScreenshot[] = [];
 
+  // V2-9: in the flagship, the canonical Figma evidence is already in the
+  // run's own snapshot — no input plumbing required. When the caller supplied
+  // no explicit references, the design's own screenshot (matched by node id,
+  // with its file identity preserved for the comparison's identity check) is
+  // resolved from `figma-source-snapshot`. Absent or unloadable evidence
+  // simply yields no reference, which the comparison reports honestly as
+  // `unavailable` — never as a match, and never fabricated.
+  if ((input.referenceScreenshots ?? []).length === 0) {
+    try {
+      const snapshot = (await readArtifact(context, "figma-source-snapshot", z.unknown())) as {
+        source?: { fileKey?: string; resolvedFrames?: { id?: string }[] };
+        screenshots?: { nodeId?: string; artifactId?: string }[];
+      };
+      const wantedNodeId = input.designIdentity?.nodeId ?? snapshot.source?.resolvedFrames?.[0]?.id;
+      const screenshot =
+        (snapshot.screenshots ?? []).find((entry) => entry.nodeId === wantedNodeId) ??
+        (snapshot.screenshots ?? [])[0];
+      if (screenshot?.artifactId !== undefined) {
+        const stored = await context.artifactStore.get(screenshot.artifactId);
+        if (stored !== null && typeof stored.data === "string") {
+          const bytes = new Uint8Array(Buffer.from(stored.data, "base64"));
+          const identity = {
+            ...(snapshot.source?.fileKey !== undefined ? { fileKey: snapshot.source.fileKey } : {}),
+            ...(screenshot.nodeId !== undefined ? { nodeId: screenshot.nodeId } : {}),
+            captureMethod: "figma",
+          };
+          for (const viewport of input.viewports ?? DEFAULT_VISUAL_VIEWPORTS) {
+            resolved.push({
+              viewportId: viewport.id,
+              bytes,
+              artifactId: screenshot.artifactId,
+              evidenceId: `reference-${screenshot.nodeId ?? "frame"}-${viewport.id}`,
+              identity,
+            });
+          }
+        }
+      }
+    } catch {
+      // No snapshot in this run's lineage: standalone V2 stages keep their
+      // explicit-input behavior unchanged.
+    }
+    return resolved;
+  }
+
   for (const reference of input.referenceScreenshots ?? []) {
     const stored = await context.artifactStore.get(reference.artifactId);
     if (stored === null || typeof stored.data !== "string") continue;

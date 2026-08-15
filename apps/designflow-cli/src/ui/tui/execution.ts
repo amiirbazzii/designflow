@@ -1,5 +1,11 @@
 import type { ArtifactSummary, ExecutionProgress } from "@designflow/product";
-import type { SessionResult } from "@designflow/sdk";
+import {
+  DESIGN_TO_CODE_PRODUCT_STAGES,
+  designToCodeStage,
+  designToCodeStageForCapability,
+  type DesignToCodeStageId,
+  type SessionResult,
+} from "@designflow/sdk";
 import type {
   ActivityActor,
   ActivityView,
@@ -32,49 +38,35 @@ export interface TuiExecutionBridge {
   readonly authRequired: (message?: string) => void;
 }
 
-const STAGE_ORDER = [
-  "understanding",
-  "specification",
-  "project-analysis",
-  "implementation",
-  "validation",
-  "visual-check",
-  "correction",
-] as const;
+// ── Canonical stage derivation (V2-9) ──────────────────────────
+//
+// The stage vocabulary is owned by the SDK's product-stage contract
+// (`DESIGN_TO_CODE_PRODUCT_STAGES`) — this file no longer keeps its own list.
+// Both the current V2 flagship capabilities and the historical legacy
+// capabilities resolve into that one vocabulary, so old runs still render.
 
-type StageId = (typeof STAGE_ORDER)[number];
+type StageId = DesignToCodeStageId;
 
-const STAGE_LABELS: Readonly<Record<StageId, string>> = {
-  understanding: "Understanding",
-  specification: "Specification",
-  "project-analysis": "Project analysis",
-  implementation: "Implementation",
-  validation: "Validation",
-  "visual-check": "Visual check",
-  correction: "Correction",
-};
+/**
+ * The stage rows a run shows: canonical order, with the conditional stages
+ * (`refining`) included only when observed and `done` rendered as the result
+ * rather than a row.
+ */
+function stageRows(observedStages: ReadonlySet<StageId>): readonly DesignToCodeStageId[] {
+  return DESIGN_TO_CODE_PRODUCT_STAGES.filter(
+    (stage) => stage.id !== "done" && (stage.normalVisible || observedStages.has(stage.id)),
+  ).map((stage) => stage.id);
+}
 
-const STAGE_CAPABILITIES: Readonly<Record<StageId, readonly string[]>> = {
-  understanding: ["parse-figma-source", "retrieve-figma-source-snapshot", "prepare-figma-source-fixture"],
-  specification: ["invoke-figma-specification-agent", "store-stage-3-summary"],
-  "project-analysis": ["inspect-registered-project", "map-design-system", "store-implementation-plan"],
-  implementation: ["invoke-implementation-agent", "store-proposed-file-changes", "store-generated-implementation"],
-  validation: ["run-project-validation", "create-project-snapshot", "apply-approved-file-changes", "store-implementation-validation"],
-  "visual-check": [
-    "prepare-visual-validation", "start-preview-server", "capture-implementation-screenshots",
-    "resolve-reference-evidence", "store-dom-and-computed-style-evidence", "compare-visual-evidence",
-    "invoke-visual-validation-agent", "invoke-visual-validation-agent-stage5", "store-visual-validation-report", "store-stage-5-summary",
-  ],
-  correction: [
-    "select-actionable-findings", "prepare-correction-context", "store-correction-plan",
-    "store-proposed-correction-changes", "request-correction-approval", "consume-correction-approval",
-    "create-correction-snapshot", "apply-approved-correction", "run-correction-project-validation",
-    "rerun-stage5-visual-validation", "evaluate-feedback-loop", "store-feedback-loop-input",
-    "store-feedback-loop-iteration", "normalize-feedback-loop-revalidation-gate", "store-stage-6-summary",
-  ],
-};
-
+/**
+ * Live activity attribution. The V2 Mapper and Builder nodes run their agent
+ * when one is configured; every other node is deterministic host work and is
+ * deliberately NOT presented as AI (§62). Legacy actor ids remain so
+ * historical runs keep their labels.
+ */
 const AI_ACTORS: Readonly<Record<string, ActivityActor>> = {
+  "map-v2-project": "project-mapper",
+  "build-v2-implementation": "ui-builder",
   "invoke-figma-specification-agent": "specification-ai",
   "invoke-implementation-agent": "implementation-ai",
   "invoke-visual-validation-agent": "visual-validation-ai",
@@ -83,6 +75,10 @@ const AI_ACTORS: Readonly<Record<string, ActivityActor>> = {
 };
 
 const AI_DETAILS: Readonly<Record<string, string>> = {
+  "compile-v2-blueprint": "Understanding the design",
+  "map-v2-project": "Matching the design to this project",
+  "build-v2-implementation": "Preparing the implementation",
+  "run-visual-convergence": "Checking the rendered implementation",
   "invoke-figma-specification-agent": "Reading design evidence",
   "invoke-implementation-agent": "Preparing proposal",
   "invoke-visual-validation-agent": "Comparing implementation with design",
@@ -90,10 +86,12 @@ const AI_DETAILS: Readonly<Record<string, string>> = {
   "invoke-visual-correction-agent": "Preparing improvement",
 };
 
-export const LIVE_STAGE_ORDER: readonly StageId[] = STAGE_ORDER;
+export const LIVE_STAGE_ORDER: readonly StageId[] = DESIGN_TO_CODE_PRODUCT_STAGES.filter(
+  (stage) => stage.normalVisible,
+).map((stage) => stage.id);
 
 export function stageForCapability(capabilityId: string): StageId | undefined {
-  return STAGE_ORDER.find((stage) => STAGE_CAPABILITIES[stage].includes(capabilityId));
+  return designToCodeStageForCapability(capabilityId);
 }
 
 export function actorForCapability(capabilityId: string): ActivityActor {
@@ -110,11 +108,17 @@ export function applyExecutionProgress(
     observed.set(step.capabilityId, { status: step.status, label: step.label });
   }
 
-  const stages: WorkflowStageView[] = STAGE_ORDER.map((id) => {
+  const observedStages = new Set(
+    [...observed.keys()]
+      .map((capabilityId) => stageForCapability(capabilityId))
+      .filter((stage): stage is StageId => stage !== undefined),
+  );
+  const stages: WorkflowStageView[] = stageRows(observedStages).map((id) => {
+    const label = designToCodeStage(id).label;
     const steps = [...observed.entries()].filter(([capabilityId]) => stageForCapability(capabilityId) === id);
-    if (steps.some(([, step]) => step.status === "active")) return { id, label: STAGE_LABELS[id], status: "active" };
-    if (steps.length > 0 && steps.every(([, step]) => step.status === "done")) return { id, label: STAGE_LABELS[id], status: "complete" };
-    return { id, label: STAGE_LABELS[id], status: "pending" };
+    if (steps.some(([, step]) => step.status === "active")) return { id, label, status: "active" };
+    if (steps.length > 0 && steps.every(([, step]) => step.status === "done")) return { id, label, status: "complete" };
+    return { id, label, status: "pending" };
   });
 
   const activeStep = progress.steps.findLast((step) => step.status === "active" && step.capabilityId !== undefined) as
@@ -137,20 +141,31 @@ export function applyExecutionProgress(
   }
 
   const checks: CheckView[] = progress.steps
-    .filter((step) => step.capabilityId !== undefined && (stageForCapability(step.capabilityId) === "validation" || step.capabilityId === "run-project-validation"))
+    .filter((step) => step.capabilityId !== undefined && (stageForCapability(step.capabilityId) === "applying" || step.capabilityId === "run-project-validation"))
     .map((step) => ({
       id: step.capabilityId!,
       label: step.label,
       status: step.status === "done" ? "passed" : step.status === "active" ? "running" : "pending",
     }));
 
+  // §55: while the run waits for the human, the product stage is Review —
+  // never Applying, and never a generic pause. This also holds across
+  // resume, because approval state is re-derived from the same progress.
+  const waitingForApproval = progress.approval === "waiting";
+
   return {
     ...session,
     workflow: {
       ...session.workflow,
       status: "active",
-      ...(activeStage === undefined ? {} : { activeStage }),
-      stages,
+      ...(waitingForApproval
+        ? { activeStage: "review" as const }
+        : activeStage === undefined
+          ? {}
+          : { activeStage }),
+      stages: waitingForApproval
+        ? stages.map((stage) => (stage.id === "review" ? { ...stage, status: "active" as const } : stage))
+        : stages,
     },
     activity: progress.approval === "waiting"
       ? [{
@@ -335,21 +350,29 @@ const OUTPUT_DEFINITIONS: Readonly<Record<string, {
   readonly viewerType: OutputView["viewerType"];
   readonly priority: number;
 }>> = {
-  "design-specification": { label: "Specification", kind: "specification", stage: "Specification", viewerType: "specification", priority: 5 },
-  "stage-3-summary": { label: "Specification", kind: "specification", stage: "Specification", viewerType: "specification", priority: 1 },
-  "stage-2-summary": { label: "Project analysis", kind: "project-analysis", stage: "Understanding", viewerType: "project-analysis", priority: 1 },
-  "project-implementation-context": { label: "Project analysis", kind: "project-analysis", stage: "Project analysis", viewerType: "project-analysis", priority: 5 },
-  "design-system-mapping": { label: "Design system", kind: "component-mapping", stage: "Project analysis", viewerType: "component-mapping", priority: 5 },
-  "implementation-plan": { label: "Proposal", kind: "proposal", stage: "Implementation", viewerType: "proposal", priority: 2 },
-  "proposed-file-changes": { label: "Proposal", kind: "proposal", stage: "Implementation", viewerType: "proposal", priority: 5 },
-  "stage-4-summary": { label: "Proposal", kind: "proposal", stage: "Implementation", viewerType: "proposal", priority: 1 },
-  "implementation-validation": { label: "Validation", kind: "validation", stage: "Validation", viewerType: "validation", priority: 5 },
-  "visual-validation-report": { label: "Visual validation", kind: "visual-validation", stage: "Visual check", viewerType: "visual-validation", priority: 5 },
-  "stage-5-summary": { label: "Visual validation", kind: "visual-validation", stage: "Visual check", viewerType: "visual-validation", priority: 1 },
-  "correction-plan": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 3 },
-  "proposed-correction-changes": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 5 },
-  "feedback-loop-report": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 4 },
-  "stage-6-summary": { label: "Correction proposal", kind: "correction", stage: "Correction", viewerType: "correction", priority: 1 },
+  // ── Current V2 flagship artifacts, grouped by canonical stage labels ──
+  "ui-blueprint": { label: "Design blueprint", kind: "project-analysis", stage: designToCodeStage("understanding").label, viewerType: "unknown", priority: 2 },
+  "implementation-map": { label: "Implementation plan", kind: "component-mapping", stage: designToCodeStage("planning").label, viewerType: "unknown", priority: 5 },
+  "visual-convergence": { label: "Visual refinement", kind: "visual-validation", stage: designToCodeStage("checking").label, viewerType: "unknown", priority: 4 },
+  "v2-final-review": { label: "Review summary", kind: "proposal", stage: designToCodeStage("review").label, viewerType: "unknown", priority: 3 },
+  "v2-finalization-result": { label: "Result", kind: "validation", stage: designToCodeStage("applying").label, viewerType: "unknown", priority: 4 },
+  "proposed-file-changes": { label: "Proposal", kind: "proposal", stage: designToCodeStage("building").label, viewerType: "proposal", priority: 5 },
+  "implementation-validation": { label: "Validation", kind: "validation", stage: designToCodeStage("applying").label, viewerType: "validation", priority: 5 },
+  // ── Historical (legacy architecture) artifacts, translated into the same
+  //    canonical vocabulary — compatibility only ──
+  "design-specification": { label: "Specification", kind: "specification", stage: designToCodeStage("understanding").label, viewerType: "specification", priority: 5 },
+  "stage-3-summary": { label: "Specification", kind: "specification", stage: designToCodeStage("understanding").label, viewerType: "specification", priority: 1 },
+  "stage-2-summary": { label: "Project analysis", kind: "project-analysis", stage: designToCodeStage("understanding").label, viewerType: "project-analysis", priority: 1 },
+  "project-implementation-context": { label: "Project analysis", kind: "project-analysis", stage: designToCodeStage("understanding").label, viewerType: "project-analysis", priority: 5 },
+  "design-system-mapping": { label: "Design system", kind: "component-mapping", stage: designToCodeStage("planning").label, viewerType: "component-mapping", priority: 5 },
+  "implementation-plan": { label: "Proposal", kind: "proposal", stage: designToCodeStage("building").label, viewerType: "proposal", priority: 2 },
+  "stage-4-summary": { label: "Proposal", kind: "proposal", stage: designToCodeStage("building").label, viewerType: "proposal", priority: 1 },
+  "visual-validation-report": { label: "Visual validation", kind: "visual-validation", stage: designToCodeStage("checking").label, viewerType: "visual-validation", priority: 5 },
+  "stage-5-summary": { label: "Visual validation", kind: "visual-validation", stage: designToCodeStage("checking").label, viewerType: "visual-validation", priority: 1 },
+  "correction-plan": { label: "Correction proposal", kind: "correction", stage: designToCodeStage("refining").label, viewerType: "correction", priority: 3 },
+  "proposed-correction-changes": { label: "Correction proposal", kind: "correction", stage: designToCodeStage("refining").label, viewerType: "correction", priority: 5 },
+  "feedback-loop-report": { label: "Correction proposal", kind: "correction", stage: designToCodeStage("refining").label, viewerType: "correction", priority: 4 },
+  "stage-6-summary": { label: "Correction proposal", kind: "correction", stage: designToCodeStage("refining").label, viewerType: "correction", priority: 1 },
 };
 
 function safeArtifactSummary(value: Record<string, unknown>): ArtifactSummary | undefined {

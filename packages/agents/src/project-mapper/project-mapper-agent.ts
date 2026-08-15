@@ -214,9 +214,25 @@ export const modelProjectMapperStrategy: ProjectMapperStrategy = async (request,
     ],
     responseSchema: mappingPatchResponseSchema,
     maxOutputTokens: MAX_MAPPING_PATCH_OUTPUT_TOKENS,
-    validate: (output) => validateAgainstPartition(stripNulls(output), evidence),
+    validate: (output) => validateAgainstPartition(stripNulls(dropInapplicableDestination(output)), evidence),
   });
 };
+
+/**
+ * The wire contract answers "no destination decision here" with a null
+ * `requirementId` (the portable schema subset forbids nullable objects);
+ * the patch contract expresses the same thing by omission.
+ */
+function dropInapplicableDestination(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const record = value as Record<string, unknown>;
+  const destination = record["destinationDecision"] as { requirementId?: unknown } | null | undefined;
+  if (destination == null || destination.requirementId == null) {
+    const { destinationDecision: _destinationDecision, ...rest } = record;
+    return rest;
+  }
+  return value;
+}
 
 /** Strict-JSON providers express optional fields as null; the contract uses omission. */
 function stripNulls(value: unknown): unknown {

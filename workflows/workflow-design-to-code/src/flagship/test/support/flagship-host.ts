@@ -50,6 +50,8 @@ export interface FlagshipHost {
 
 export async function createFlagshipHost(options: {
   readonly config: Readonly<Record<string, unknown>>;
+  /** Overrides the fake Figma server's fixture set (e.g. a real screenshot). */
+  readonly fixtures?: Record<string, unknown>;
 }): Promise<FlagshipHost> {
   const { McpRuntime } = await import("@designflow/mcp");
   const events: ExecutionEvent[] = [];
@@ -77,7 +79,7 @@ export async function createFlagshipHost(options: {
   const mcpClient = new McpRuntime({
     command: "bun",
     args: ["run", fakeMcpServerPath()],
-    env: { FAKE_MCP_FIXTURES: JSON.stringify(SAMPLE_FIGMA_MCP_FIXTURES) },
+    env: { FAKE_MCP_FIXTURES: JSON.stringify(options.fixtures ?? SAMPLE_FIGMA_MCP_FIXTURES) },
     serverIdentity: "fake-figma-mcp",
   });
 

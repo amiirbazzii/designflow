@@ -319,11 +319,14 @@ const BUILT_IN_MODEL_PROFILES: readonly ModelProfile[] = [
  * no profile id is ever spelled out as a literal.
  */
 const ROLE_MODEL_PROFILES: readonly { readonly roleId: DesignRoleId; readonly profile: ModelProfile }[] = [
-  { roleId: "coordinator", profile: designEngineerCoordinatorDefaultModelProfile },
-  { roleId: "specification", profile: figmaSpecificationDefaultModelProfile },
-  { roleId: "implementation", profile: implementationDefaultModelProfile },
-  { roleId: "visual-validation", profile: visualValidationDefaultModelProfile },
-  { roleId: "visual-correction", profile: visualCorrectionDefaultModelProfile },
+  // The CURRENT Design Engineer architecture (V2-9): the four V2 roles.
+  // Legacy specialist profiles remain registered for compatibility and
+  // historical traces, but they are no longer presented as the active
+  // Design Engineer roles.
+  { roleId: "design-interpreter", profile: designInterpreterDefaultModelProfile },
+  { roleId: "project-mapper", profile: projectMapperDefaultModelProfile },
+  { roleId: "ui-builder", profile: uiBuilderDefaultModelProfile },
+  { roleId: "visual-critic", profile: visualCriticDefaultModelProfile },
 ];
 
 function profileFields(profile: ModelProfile): ModelProfileFields {

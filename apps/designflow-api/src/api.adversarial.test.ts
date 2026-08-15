@@ -621,8 +621,9 @@ describe("8. legacy /api/executions results map correctly", () => {
     const workflows = await client.get("/api/workflows");
     const ids = (workflows.body["workflows"] as Record<string, unknown>[]).map((w) => w["workflowId"]);
     const workers = await client.get("/workers/design-engineer", );
-    // Sanity: 4 workflows registered.
-    expect(ids.length).toBe(4);
+    // Sanity: 5 workflows registered (the specification journey joined
+    // the host with the V2 flagship migration).
+    expect(ids.length).toBe(5);
     expect(workers.status).toBe(200);
   });
 });
@@ -635,7 +636,7 @@ describe("9. backward compatibility of /api/workflows and /api/executions", () =
     const response = await client.get("/api/workflows");
     record(response.raw);
     expect(response.status).toBe(200);
-    expect(response.body["workflows"]).toHaveLength(4);
+    expect(response.body["workflows"]).toHaveLength(5);
   });
 
   test("/api/executions/:id and /progress and /explain still 200 for a real run", async () => {

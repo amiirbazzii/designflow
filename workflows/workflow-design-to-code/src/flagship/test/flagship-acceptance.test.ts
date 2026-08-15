@@ -32,9 +32,11 @@ import {
   NAV_REQUIREMENT,
   SCREEN_REQUIREMENT,
   fixtureProject,
+  png,
   proposalFor,
   type FakeElement,
 } from "../../v2-visual/test/support/spendly-v2-fixture";
+import { SAMPLE_FIGMA_MCP_FIXTURES } from "../../../test/support/harness";
 
 const P1_PAGE = IMPERFECT_PAGE.replace("height: 40", "height: 72").replace("height: 32", "height: 56");
 const P2_PAGE = `export default function App() { return <main>{/* regressed */}</main>; }\n`;
@@ -103,6 +105,10 @@ async function scenario(options: {
   readonly onBuild?: () => void;
   readonly config?: Record<string, unknown>;
   readonly repairFiles?: readonly RepairFiles[];
+  readonly captureScreenshots?: boolean;
+  readonly rendererBytes?: Uint8Array;
+  readonly fixtures?: Record<string, unknown>;
+  readonly designIdentity?: { fileKey?: string; nodeId?: string };
 } = {}): Promise<Scenario> {
   const root = await fixtureProject();
   const stateDirectory = await mkdtemp(join(tmpdir(), "designflow-flagship-state-"));
@@ -122,9 +128,12 @@ async function scenario(options: {
 
   const rendererHandle = queuedRenderer(
     options.domQueue ?? [withWrapper(IMPERFECT_DOM), withWrapper(PARTIAL_DOM), withWrapper(FAITHFUL_DOM)],
+    undefined,
+    options.rendererBytes,
   );
 
   const host = await createFlagshipHost({
+    ...(options.fixtures !== undefined ? { fixtures: options.fixtures } : {}),
     config: {
       visualRenderer: rendererHandle.renderer,
       v2BlueprintCompiler: async () => ({ blueprint: BLUEPRINT, semanticStatus: "not_requested" }),
@@ -163,10 +172,17 @@ async function scenario(options: {
     viewports: [{ id: "desktop", width: 390, height: 844 }],
     allowFixtureNames: true,
     figmaSourceMode: "mcp-stdio",
-    captureScreenshots: false,
+    captureScreenshots: options.captureScreenshots ?? false,
+    ...(options.designIdentity !== undefined ? { designIdentity: options.designIdentity } : {}),
   };
 
   return { host, root, builderCalls, repairCalls, mapperCalls, captureCount: rendererHandle.calls, input };
+}
+
+async function payload(host: FlagshipHost, ref: string): Promise<Record<string, unknown>> {
+  const stored = await host.artifactStore.get(ref);
+  expect(stored).not.toBeNull();
+  return stored!.data as Record<string, unknown>;
 }
 
 async function payloadOf(host: FlagshipHost, artifactId: string): Promise<Record<string, unknown>> {
@@ -420,6 +436,83 @@ describe("Critic unavailable keeps deterministic evaluation working (§62)", () 
 
     const convergence = visualConvergenceArtifactSchema.parse(await payloadOf(s.host, "visual-convergence"));
     expect(["converged", "converged_with_findings"]).toContain(convergence.status);
+  }, 60_000);
+});
+
+describe("the canonical Figma screenshot flows into pixel comparison (§29–§32, V2-9)", () => {
+  const REAL_SCREENSHOT_FIXTURES: Record<string, unknown> = {
+    ...SAMPLE_FIGMA_MCP_FIXTURES,
+    toolResults: {
+      ...(SAMPLE_FIGMA_MCP_FIXTURES.toolResults as Record<string, unknown>),
+      capture_screenshot: {
+        data: Buffer.from(png(8, 8, () => [0, 0, 0, 255])).toString("base64"),
+        format: "png",
+        width: 8,
+        height: 8,
+      },
+    },
+  };
+
+  test("with a canonical screenshot in the snapshot, comparisons are populated end to end", async () => {
+    const s = await scenario({
+      captureScreenshots: true,
+      fixtures: REAL_SCREENSHOT_FIXTURES,
+      rendererBytes: png(390, 844, () => [255, 255, 255, 255]),
+      domQueue: [withWrapper(FAITHFUL_DOM)],
+      repairFiles: [],
+    });
+    const result = await s.host.sessions.startDeterministicSession(
+      s.host.worker,
+      { workerId: s.host.worker.id, request: "pixel plumbing", input: s.input },
+      DESIGN_TO_CODE_V2_WORKFLOW_ID,
+    );
+    const convergence = visualConvergenceArtifactSchema.parse(await payloadOf(s.host, "visual-convergence"));
+    const rendered = await payload(s.host, convergence.iterations[0]!.renderedStateRef);
+    const comparisons = rendered.pixelComparisons as Array<Record<string, unknown>>;
+
+    // The reference came from the run's own Figma snapshot — resolved by
+    // node id, identity preserved — and the comparison actually happened.
+    expect(comparisons.length).toBeGreaterThan(0);
+    expect(comparisons[0]!.status).toBe("compared");
+    const identity = comparisons[0]!.referenceIdentity as { fileKey?: string; nodeId?: string };
+    expect(identity.nodeId).toBe("1:1");
+    void result;
+  }, 60_000);
+
+  test("a reference from a different design node is refused, not compared (§30)", async () => {
+    const s = await scenario({
+      captureScreenshots: true,
+      fixtures: REAL_SCREENSHOT_FIXTURES,
+      rendererBytes: png(390, 844, () => [255, 255, 255, 255]),
+      domQueue: [withWrapper(FAITHFUL_DOM)],
+      repairFiles: [],
+      designIdentity: { nodeId: "9:9" },
+    });
+    await s.host.sessions.startDeterministicSession(
+      s.host.worker,
+      { workerId: s.host.worker.id, request: "identity mismatch", input: s.input },
+      DESIGN_TO_CODE_V2_WORKFLOW_ID,
+    );
+    const convergence = visualConvergenceArtifactSchema.parse(await payloadOf(s.host, "visual-convergence"));
+    const rendered = await payload(s.host, convergence.iterations[0]!.renderedStateRef);
+    const comparisons = rendered.pixelComparisons as Array<Record<string, unknown>>;
+    // The Blueprint's declared identity (9:9) does not match the snapshot's
+    // screenshot node — the V2-5.1 identity check refuses the comparison
+    // outright rather than comparing an unrelated image.
+    expect(comparisons[0]!.status).toBe("identity_mismatch");
+  }, 60_000);
+
+  test("no canonical screenshot keeps the honest unavailable behavior (§31)", async () => {
+    const s = await scenario({ domQueue: [withWrapper(FAITHFUL_DOM)], repairFiles: [] });
+    await s.host.sessions.startDeterministicSession(
+      s.host.worker,
+      { workerId: s.host.worker.id, request: "no reference", input: s.input },
+      DESIGN_TO_CODE_V2_WORKFLOW_ID,
+    );
+    const convergence = visualConvergenceArtifactSchema.parse(await payloadOf(s.host, "visual-convergence"));
+    const rendered = await payload(s.host, convergence.iterations[0]!.renderedStateRef);
+    const comparisons = rendered.pixelComparisons as Array<Record<string, unknown>>;
+    expect(comparisons[0]!.status).toBe("unavailable");
   }, 60_000);
 });
 

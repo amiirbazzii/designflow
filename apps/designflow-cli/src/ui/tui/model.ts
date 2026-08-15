@@ -1,4 +1,4 @@
-import type { ApprovalMode, ProjectIdentity } from "@designflow/sdk";
+import { DESIGN_TO_CODE_PRODUCT_STAGES, type ApprovalMode, type ProjectIdentity } from "@designflow/sdk";
 import type { ArtifactSummary } from "@designflow/product";
 import type { CliContext } from "../../services/cli-runner";
 import {
@@ -21,6 +21,12 @@ export type { ApprovalMode } from "@designflow/sdk";
 
 export type ActivityActor =
   | "designflow"
+  // Current V2 roles (V2-9).
+  | "design-interpreter"
+  | "project-mapper"
+  | "ui-builder"
+  | "visual-critic"
+  // Historical actors, kept so legacy traces still render.
   | "coordinator"
   | "specification-ai"
   | "implementation-ai"
@@ -142,15 +148,17 @@ export interface SessionViewRuntime {
   readonly session: DesignFlowSessionView;
 }
 
-export const DESIGNFLOW_WORKFLOW_STAGES: readonly WorkflowStageView[] = [
-  { id: "understanding", label: "Understanding", status: "pending" },
-  { id: "specification", label: "Specification", status: "pending" },
-  { id: "project-analysis", label: "Project analysis", status: "pending" },
-  { id: "implementation", label: "Implementation", status: "pending" },
-  { id: "validation", label: "Validation", status: "pending" },
-  { id: "visual-check", label: "Visual check", status: "pending" },
-  { id: "correction", label: "Correction", status: "pending" },
-];
+/**
+ * The initial pending stage list, derived from the one canonical SDK
+ * product-stage source (V2-9) — never an independent copy. Conditional
+ * stages (Refining) appear only once a run actually reaches them.
+ */
+export const DESIGNFLOW_WORKFLOW_STAGES: readonly WorkflowStageView[] =
+  DESIGN_TO_CODE_PRODUCT_STAGES.filter((stage) => stage.normalVisible).map((stage) => ({
+    id: stage.id,
+    label: stage.label,
+    status: "pending" as const,
+  }));
 
 export function buildSessionView(facts: SessionViewFacts): DesignFlowSessionView {
   const project = facts.project;

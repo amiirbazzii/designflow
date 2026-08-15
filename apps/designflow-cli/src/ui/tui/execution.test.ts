@@ -21,11 +21,13 @@ describe("live workflow presentation adapter", () => {
     ]));
 
     expect(next.workflow.stages.map((stage) => stage.label)).toEqual([
-      "Understanding", "Specification", "Project analysis", "Implementation", "Validation", "Visual check", "Correction",
+      "Understanding", "Planning", "Building", "Checking", "Review", "Applying",
     ]);
-    expect(next.workflow.activeStage).toBe("specification");
-    expect(next.workflow.stages[0]?.status).toBe("complete");
-    expect(next.workflow.stages[1]?.status).toBe("active");
+    // Both legacy capabilities map into the canonical Understanding stage,
+    // which therefore stays active while its second step runs.
+    expect(next.workflow.activeStage).toBe("understanding");
+    expect(next.workflow.stages[0]?.status).toBe("active");
+    expect(next.workflow.stages[1]?.status).toBe("pending");
     expect(next.activity[0]).toMatchObject({ actor: "designflow", state: "completed" });
     expect(next.activity[1]).toMatchObject({ actor: "specification-ai", detail: "Reading design evidence", state: "running" });
     expect(next.attempt).toEqual({ current: 1, maximum: 1 });
@@ -190,14 +192,16 @@ describe("DF-CORR-01 stage truthfulness on completion", () => {
     view = applyExecutionProgress(view, {
       steps: [
         { capabilityId: "parse-figma-source", label: "Parse", status: "done" },
-        { capabilityId: "invoke-implementation-agent", label: "Implement", status: "done" },
+        { capabilityId: "build-v2-implementation", label: "Build", status: "done" },
       ],
     } as never);
     const completed = applyExecutionUpdate(view, { status: "completed" });
     const byId = new Map(completed.workflow.stages.map((stage) => [stage.id, stage.status]));
     expect(byId.get("understanding")).toBe("complete");
-    expect(byId.get("implementation")).toBe("complete");
-    expect(byId.get("correction")).toBe("pending");
-    expect(byId.get("visual-check")).toBe("pending");
+    expect(byId.get("building")).toBe("complete");
+    // Stages that never ran are not claimed, and the conditional Refining
+    // stage is not even a row when no refinement was observed (§54).
+    expect(byId.get("checking")).toBe("pending");
+    expect(byId.has("refining")).toBe(false);
   });
 });

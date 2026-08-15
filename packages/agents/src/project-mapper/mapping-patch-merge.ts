@@ -513,12 +513,16 @@ function deriveCoverage(
     }
     if (requirement.kind === "region") {
       // A region is realized through the components inside it; it counts as
-      // mapped once anything at all was decided for the screen.
+      // mapped once anything at all was decided for the screen. "Anything"
+      // includes the screen destination itself: a simple screen whose
+      // regions hold no components (plain text, inline layout) is realized
+      // entirely by the screen file, and before V2-9 such a screen could
+      // never reach complete coverage at all.
       return {
         requirementId: requirement.id,
         kind: requirement.kind,
         label: requirement.label,
-        status: components.size > 0 ? ("mapped" as const) : ("unresolved" as const),
+        status: components.size > 0 || screen !== undefined ? ("mapped" as const) : ("unresolved" as const),
       };
     }
     const mapping = components.get(requirement.id);

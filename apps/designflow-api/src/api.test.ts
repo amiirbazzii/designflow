@@ -112,7 +112,7 @@ describe("starting a workflow", () => {
     const response = await client.get("/api/workflows");
 
     expect(response.status).toBe(200);
-    expect(response.body.workflows).toHaveLength(4);
+    expect(response.body.workflows).toHaveLength(5);
     // Inputs come from the owning worker's own manifest — proves the
     // deprecated route no longer returns an empty form for a worker whose
     // fields it does not hand-duplicate.

@@ -53,28 +53,30 @@ describe("designflow settings", () => {
   });
 
 
-  test("shows all five specialized agents with distinct profile ids", async () => {
+  test("shows the four V2 AI roles with distinct profile ids", async () => {
     const output = await transcript(context());
 
     for (const role of [
-      "Design Engineer Coordinator",
-      "Figma Specification Specialist",
-      "Implementation Specialist",
-      "Visual Validation Specialist",
-      "Visual Correction Specialist (beta)",
+      "Design Interpreter",
+      "Project Mapper",
+      "UI Builder",
+      "Visual Critic",
     ]) {
       expect(output).toContain(role);
     }
+    // Legacy specialists are compatibility-only and never listed as active.
+    expect(output).not.toContain("Design Engineer Coordinator");
+    expect(output).not.toContain("Figma Specification Specialist");
 
     const profileIds = [...output.matchAll(/Profile:\s+(\S+)/g)].map((match) => match[1]);
-    expect(profileIds).toHaveLength(5);
-    expect(new Set(profileIds).size).toBe(5);
+    expect(profileIds).toHaveLength(4);
+    expect(new Set(profileIds).size).toBe(4);
   });
 
   test("attributes an overridden field to the override and leaves the rest built-in", async () => {
     const output = await transcript(
       context({
-        models: { profiles: { "figma-specification-default": { model: "override/model-slug" } } },
+        models: { profiles: { "ui-builder-default": { model: "override/model-slug" } } },
       }),
     );
 

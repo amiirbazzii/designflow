@@ -83,7 +83,11 @@ def wait_for(marker, timeout=45):
 
 
 def expect(step, marker, timeout=20):
-    check(step, wait_for(marker, timeout))
+    ok = wait_for(marker, timeout)
+    if not ok and os.environ.get("PTY_DEBUG") == "1":
+        print(f"--- screen at failed expect({step}) ---", flush=True)
+        print(screen()[-4000:], flush=True)
+    check(step, ok)
 
 
 def send(data, settle=0.8):
@@ -162,17 +166,21 @@ elif SCENARIO == "proposal-review":
     send(ENTER, 1.0)  # start the run
     expect("ready-to-apply", "Ready to apply", 240)
     read_for(2.0)
-    check("checks-visible", "Build checked" in screen()[-2500:])
+    # V2-9: the flagship review derives its build check from the v2-final-review
+    # artifact ("Build passed"), not the legacy proposal metadata label.
+    check("checks-visible", "Build passed" in screen()[-2500:])
     send(TAB, 0.8)  # sidebar focus must not hijack the review
     send(TAB, 0.8)
     send(b"d", 2.0)  # advertised shortcut opens the diff even after Tab
     check("d-opens-diff", "Diff ·" in screen()[-5000:])
-    check("diff-file-1", "1 of 2" in screen()[-5000:])
+    # V2-9: the V2 journey proposes one exact file for this fixture design;
+    # ]/[ must clamp at the bounds without trapping input.
+    check("diff-file-1", "1 of 1" in screen()[-5000:])
     send(b"]", 1.5)
-    check("bracket-next-file", "2 of 2" in screen()[-5000:])
+    check("bracket-next-file", "1 of 1" in screen()[-5000:])
     send(b"]", 1.0)  # clamped at last file
     send(b"[", 1.5)
-    check("bracket-previous-file", "1 of 2" in screen()[-5000:])
+    check("bracket-previous-file", "1 of 1" in screen()[-5000:])
     send(b"j", 1.2)
     send(DOWN, 1.2)
     send(b"\x1b[6~", 1.2)  # PgDn
@@ -181,7 +189,17 @@ elif SCENARIO == "proposal-review":
     send(b"\x1b[F", 1.0)   # End
     check("home-end-alive", alive())
     send(ESC, 2.0)
-    check("esc-returns-review", "View diff" in screen()[-2000:])
+    # Ink repaints incrementally, so force a selection change: moving down and
+    # back up re-emits the review actions only if Esc actually returned there.
+    send(DOWN, 0.8)
+    send(UP, 0.8)
+    esc_ok = False
+    for _ in range(20):
+        if "View diff" in screen()[-2500:]:
+            esc_ok = True
+            break
+        read_for(0.5)
+    check("esc-returns-review", esc_ok)
     send(DOWN, 0.8)
     check("apply-selectable", "› Apply" in screen()[-2000:])
     send(DOWN, 0.8)

@@ -273,11 +273,10 @@ describe("roles", () => {
     );
 
     expect(views.map((view) => view.roleName)).toEqual([
-      "Design Engineer Coordinator",
-      "Figma Specification Specialist",
-      "Implementation Specialist",
-      "Visual Validation Specialist",
-      "Visual Correction Specialist (beta)",
+      "Design Interpreter",
+      "Project Mapper",
+      "UI Builder",
+      "Visual Critic",
     ]);
 
     const overridden = views[1];

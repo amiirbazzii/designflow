@@ -2,7 +2,7 @@
 import { designRoleName, type DesignRoleId } from "./readiness";
 
 import type { ArtifactSummary } from "@designflow/product";
-import type { FeedbackLoopParentRecordV1 } from "@designflow/sdk";
+import { DESIGN_TO_CODE_PRODUCT_STAGES, type FeedbackLoopParentRecordV1 } from "@designflow/sdk";
 
 /**
  * The view model between what a run recorded and what a person reads.
@@ -54,9 +54,16 @@ const AGENT_CAPABILITIES: Readonly<Record<string, DesignRoleId>> = {
   "invoke-visual-validation-agent": "visual-validation",
   "invoke-visual-validation-agent-stage5": "visual-validation",
   "invoke-visual-correction-agent": "visual-correction",
+  // Current V2 roles (V2-9): the only flagship nodes where an agent runs.
+  "map-v2-project": "project-mapper",
+  "build-v2-implementation": "ui-builder",
 };
 
 const ROLE_MESSAGES: Readonly<Record<DesignRoleId, string>> = {
+  "design-interpreter": "interpreting the design's structure",
+  "project-mapper": "matching the design to this project",
+  "ui-builder": "writing the implementation",
+  "visual-critic": "judging the measured differences",
   coordinator: "deciding what to do",
   specification: "reading the design and writing a specification",
   implementation: "planning the implementation",
@@ -66,6 +73,16 @@ const ROLE_MESSAGES: Readonly<Record<DesignRoleId, string>> = {
 
 /** Deterministic steps, phrased as what the machine did rather than who did it. */
 const STAGE_MESSAGES: Readonly<Record<string, string>> = {
+  // Current V2 flagship deterministic steps (V2-9). Neutral wording: agents
+  // appear only where agents actually run.
+  "compile-v2-blueprint": "Understanding the design",
+  "compile-v2-project-context": "Understanding the project",
+  "run-visual-convergence": "Checking the rendered implementation",
+  "assert-v2-finalizable": "Checking the visual result",
+  "inspect-finalization-project": "Verifying the project state",
+  "resolve-selected-proposal": "Preparing the exact proposal",
+  "store-final-review": "Preparing the review",
+  "store-finalization-result": "Recording the result",
   "parse-figma-source": "Reading the design source",
   "retrieve-figma-source-snapshot": "Retrieving the design source",
   "prepare-figma-source-fixture": "Preparing the design source",
@@ -152,9 +169,12 @@ export function progressLabel(
 
 export type ProductProgressStage =
   | "Understanding"
+  | "Planning"
   | "Building"
   | "Checking"
-  | "Review";
+  | "Refining"
+  | "Review"
+  | "Applying";
 
 export interface ProductProgressDefinition {
   readonly stage: ProductProgressStage;
@@ -181,7 +201,6 @@ const PRODUCT_PROGRESS_DEFINITIONS: Readonly<
   "store-implementation-plan": { stage: "Building", label: "Implementation planned" },
   "store-generated-implementation": { stage: "Building", label: "Implementation prepared" },
 
-  "run-project-validation": { stage: "Checking", label: "Build and validation" },
   "prepare-visual-validation": { stage: "Checking", label: "Browser checks" },
   "start-preview-server": { stage: "Checking", label: "Browser checks" },
   "capture-implementation-screenshots": { stage: "Checking", label: "Browser checks" },
@@ -195,16 +214,28 @@ const PRODUCT_PROGRESS_DEFINITIONS: Readonly<
 
   "store-proposed-file-changes": { stage: "Review", label: "Implementation proposal ready" },
   "request-implementation-approval": { stage: "Review", label: "Waiting for approval" },
-  "create-project-snapshot": { stage: "Review", label: "Rollback snapshot ready" },
-  "apply-approved-file-changes": { stage: "Review", label: "Applying approved implementation" },
+  "create-project-snapshot": { stage: "Applying", label: "Rollback snapshot ready" },
+  "apply-approved-file-changes": { stage: "Applying", label: "Applying approved implementation" },
+
+  // ── Current V2 flagship capabilities (V2-9) ──
+  "compile-v2-blueprint": { stage: "Understanding", label: "Design understood" },
+  "compile-v2-project-context": { stage: "Understanding", label: "Project understood" },
+  "map-v2-project": { stage: "Planning", label: "Destination and components planned" },
+  "build-v2-implementation": { stage: "Building", label: "Implementation prepared" },
+  "run-visual-convergence": { stage: "Checking", label: "Visual comparison" },
+  "assert-v2-finalizable": { stage: "Checking", label: "Visual result" },
+  "inspect-finalization-project": { stage: "Review", label: "Preparing review" },
+  "resolve-selected-proposal": { stage: "Review", label: "Preparing review" },
+  "store-final-review": { stage: "Review", label: "Preparing review" },
+  "run-project-validation": { stage: "Applying", label: "Build and validation" },
+  "store-finalization-result": { stage: "Applying", label: "Result recorded" },
 };
 
-const PRODUCT_PROGRESS_STAGE_ORDER: readonly ProductProgressStage[] = [
-  "Understanding",
-  "Building",
-  "Checking",
-  "Review",
-];
+/** Derived from the one canonical SDK product-stage source (V2-9). */
+const PRODUCT_PROGRESS_STAGE_ORDER: readonly ProductProgressStage[] =
+  DESIGN_TO_CODE_PRODUCT_STAGES.filter((stage) => stage.id !== "done").map(
+    (stage) => stage.label as ProductProgressStage,
+  );
 
 export function productProgressDefinition(
   capabilityId: string,
@@ -345,6 +376,16 @@ export interface ArtifactGroup {
  * id, and not by the order things happened to arrive.
  */
 const ARTIFACT_STAGES: Readonly<Record<string, string>> = {
+  // ── Current V2 flagship artifacts, canonical stage labels (V2-9) ──
+  "ui-blueprint": "Understanding",
+  "project-context": "Understanding",
+  "implementation-map": "Planning",
+  "builder-proposal": "Building",
+  "visual-convergence": "Checking",
+  "v2-finalization-eligibility": "Checking",
+  "v2-final-review": "Review",
+  "v2-finalization-result": "Applying",
+  // ── Historical (legacy architecture) grouping — compatibility only ──
   "parsed-figma-source": "Design source",
   "figma-source-snapshot": "Design source",
   "stage-2-summary": "Design source",
@@ -395,6 +436,9 @@ const ARTIFACT_STAGES: Readonly<Record<string, string>> = {
 };
 
 const STAGE_ORDER: readonly string[] = [
+  // Canonical V2 stage labels first (derived vocabulary)…
+  ...DESIGN_TO_CODE_PRODUCT_STAGES.filter((stage) => stage.id !== "done").map((stage) => stage.label),
+  // …then the historical legacy groupings, for old runs only.
   "Design source",
   "Design specification",
   "Project analysis",

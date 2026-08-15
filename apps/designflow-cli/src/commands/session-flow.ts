@@ -6,6 +6,7 @@ import {
 } from "../ui/terminal";
 
 import {
+  DESIGN_TO_CODE_V2_WORKFLOW_ID,
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
   FEEDBACK_LOOP_WORKFLOW_ID,
   deriveImplementationCoveragePlan,
@@ -35,6 +36,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { renderProposalPreview, type ProposalPreviewEntry } from "../services/proposal-preview";
+import {
+  convergenceFacts,
+  finalOutcomeLines,
+  finalReviewFacts,
+  finalizationFacts,
+  refinementStoryLines,
+  visualSummaryLine,
+  v2ReviewChecks,
+} from "../services/v2-result-presentation";
 import {
   buildProductFailure,
   renderProductFailure,
@@ -227,8 +237,11 @@ async function resolveApproval(
   const pending = await context.runner.pendingApproval(executionId);
   if (pending === null) return undefined;
 
-  if (productExperience && pending.workflowId === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID) {
-    const reviewed = await resolveProductImplementationReview(context, terminal, executionId, originalInput, onReview, pending.reason);
+  const reviewableWorkflow =
+    pending.workflowId === EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID ||
+    pending.workflowId === DESIGN_TO_CODE_V2_WORKFLOW_ID;
+  if (productExperience && reviewableWorkflow) {
+    const reviewed = await resolveProductImplementationReview(context, terminal, executionId, originalInput, onReview, pending.reason, pending.workflowId);
     if (reviewed !== undefined) return reviewed;
     // No proposal artifact to review — fall through to the legacy prompt.
   }
@@ -300,7 +313,20 @@ export async function buildProductReview(
       ...(currentContent !== undefined ? { currentContent } : {}),
     };
   });
-  return { review: buildProposalReview(entries), checks: await buildReviewChecks(context, report) };
+  const checks = await buildReviewChecks(context, report);
+  // V2-9: when the V2 review artifact exists, the review screen also states
+  // the visual outcome and the selected convergence iteration, derived from
+  // the exact selected proposal's own review record.
+  const v2Review = report.artifacts.find((artifact) => artifact.artifactId === "v2-final-review");
+  if (v2Review !== undefined) {
+    try {
+      const facts = finalReviewFacts((await context.artifactInspection.getPayload(v2Review)).payload);
+      if (facts !== undefined) checks.push(...v2ReviewChecks(facts));
+    } catch {
+      // The review still renders from the exact proposal without enrichment.
+    }
+  }
+  return { review: buildProposalReview(entries), checks };
 }
 
 async function report(
@@ -382,6 +408,42 @@ async function report(
         }
       }
       return 1;
+    }
+
+    // V2-9: the flagship's own canonical artifacts drive the outcome story.
+    // The bounded refinement narrative appears only when a repair actually
+    // ran, and the final product outcome comes from the typed finalization
+    // result — never from legacy correction artifacts.
+    const v2Convergence = artifacts.find((artifact) => artifact.artifactId === "visual-convergence");
+    const v2Result = artifacts.find((artifact) => artifact.artifactId === "v2-finalization-result");
+    if (v2Convergence !== undefined || v2Result !== undefined) {
+      let convergence;
+      try {
+        convergence = v2Convergence === undefined
+          ? undefined
+          : convergenceFacts((await context.artifactInspection.getPayload(v2Convergence)).payload);
+      } catch {
+        convergence = undefined;
+      }
+      if (convergence !== undefined) {
+        const story = refinementStoryLines(convergence);
+        if (story.length > 0) {
+          terminal.print();
+          for (const line of story) terminal.print(line);
+        }
+      }
+      if (v2Result !== undefined && overview.state === "ready") {
+        try {
+          const facts = finalizationFacts((await context.artifactInspection.getPayload(v2Result)).payload);
+          if (facts !== undefined) {
+            terminal.print();
+            for (const line of finalOutcomeLines(facts, convergence)) terminal.print(line);
+            return facts.status === "applied_validated" ? 0 : 1;
+          }
+        } catch {
+          // Fall through to the generic outcome below.
+        }
+      }
     }
 
     // Phase 10: a successfully applied implementation continues into the
@@ -757,6 +819,30 @@ export async function buildProductVisualResultView(
       return undefined;
     }
   };
+  // V2-9: a flagship run's visual story comes from the canonical convergence
+  // record — never from legacy correction artifacts. Refinement already
+  // happened pre-approval, so the legacy Improve action is not offered.
+  const v2Convergence = convergenceFacts(await payloadOf("visual-convergence"));
+  if (v2Convergence !== undefined) {
+    const classification =
+      v2Convergence.status === "converged"
+        ? ("pass" as const)
+        : v2Convergence.status === "converged_with_findings"
+          ? ("pass_with_findings" as const)
+          : v2Convergence.status === "inconclusive"
+            ? ("inconclusive" as const)
+            : ("fail" as const);
+    return buildVisualResultView({
+      reportAvailable: true,
+      classification,
+      findingSummaries: [visualSummaryLine(v2Convergence), ...refinementStoryLines(v2Convergence)],
+      correctionEligibility: {
+        status: "unavailable",
+        reason: "Visual refinement already ran before approval in this run.",
+      },
+    });
+  }
+
   const stageSummary = (await payloadOf("stage-5-summary")) as { overallStatus?: VisualResultFacts["overallStatus"] } | undefined;
   const visualReport = (await payloadOf("visual-validation-report")) as { overallStatus?: VisualResultFacts["overallStatus"]; findings?: Array<{ explanation?: string }> } | undefined;
   const reportAvailable = stageSummary !== undefined || visualReport !== undefined;
@@ -990,13 +1076,14 @@ async function resolveProductImplementationReview(
   originalInput?: unknown,
   onReview?: (request: ProductReviewRequest) => Promise<"approve" | "reject">,
   reason = "DesignFlow requires review of the validated proposal.",
+  workflowId: string = EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
 ): Promise<boolean | undefined> {
   const prepared = await buildProductReview(context, executionId, originalInput);
   if (prepared === undefined) return undefined;
   const { review, checks } = prepared;
 
   if (onReview !== undefined) {
-    const decision = await onReview({ executionId, workflowId: EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID, reason, review, checks });
+    const decision = await onReview({ executionId, workflowId, reason, review, checks });
     if (decision === "approve") {
       await context.runner.approve(executionId, "approved from the DesignFlow TUI");
       return true;
