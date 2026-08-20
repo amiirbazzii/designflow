@@ -323,12 +323,23 @@ function FreshMainPanel({
       {navigation.view === "figma-url-entry" ? (
         <FigmaUrlEntryView navigation={navigation} terminalColumns={terminalColumns} />
       ) : navigation.view === "ready-to-generate" && navigation.freshState !== undefined ? (
-        <Box flexDirection="column">
-          <Text bold color={designFlowTheme.textPrimary}>Ready to generate</Text>
-          <Text color={designFlowTheme.success}>✓ {navigation.freshState.design.label}</Text>
-          <Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshState.nodeId}</Text>
-          <Text color={designFlowTheme.accentStrong}>No generation started. Press Esc to choose another source.</Text>
-        </Box>
+        navigation.freshEvidence === undefined ? (
+          <Box flexDirection="column">
+            <Text bold color={designFlowTheme.textPrimary}>Ready to generate</Text>
+            <Text color={designFlowTheme.success}>✓ {navigation.freshState.design.label}</Text>
+            <Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshState.nodeId}</Text>
+            {navigation.loading === "fresh-evidence" && <Text color={designFlowTheme.accent}>Retrieving authoritative Figma evidence…</Text>}
+            <Text color={designFlowTheme.accentStrong}>No generation started. Press Esc to choose another source.</Text>
+          </Box>
+        ) : (
+          <Box flexDirection="column">
+            <Text bold color={designFlowTheme.textPrimary}>Figma evidence ready</Text>
+            <Text color={designFlowTheme.success}>✓ {navigation.freshEvidence.frame.name}</Text>
+            <Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshEvidence.frame.id}</Text>
+            <Text color={designFlowTheme.textSecondary}>Size: {navigation.freshEvidence.frame.width} × {navigation.freshEvidence.frame.height}</Text>
+            <Text color={designFlowTheme.accentStrong}>No generation started. Press Esc to choose another source.</Text>
+          </Box>
+        )
       ) : (
         <DesignSelectionView navigation={navigation} fresh />
       )}

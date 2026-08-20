@@ -2,6 +2,7 @@ import type { DestinationCandidate } from "../../services/destinations";
 import type { InteractiveDesign } from "../../services/figma-selection";
 import type { ApprovalMode } from "./model";
 import type { FreshUiState } from "./fresh-ui";
+import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
 import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
 import {
   backspaceText,
@@ -63,6 +64,7 @@ export interface TuiNavigationState {
   readonly designOption: number;
   readonly design?: InteractiveDesign | undefined;
   readonly freshState?: Extract<FreshUiState, { readonly status: "ready-to-generate" }> | undefined;
+  readonly freshEvidence?: FreshFrameEvidence | undefined;
   readonly urlValue: string;
   readonly urlCursor: number;
   readonly urlViewportStart: number;
@@ -70,7 +72,7 @@ export interface TuiNavigationState {
   readonly destinationCandidates: readonly DestinationCandidate[];
   readonly destinationIndex: number;
   readonly destinationScrollOffset: number;
-  readonly loading: "current-selection" | "destinations" | null;
+  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | null;
   readonly authError?: string | undefined;
   readonly authBrowserFallback?: string | undefined;
   readonly error?: string | undefined;
@@ -141,6 +143,8 @@ export function enterDesignSelection(
     error: undefined,
     urlError: undefined,
     loading: null,
+    freshState: undefined,
+    freshEvidence: undefined,
   };
 }
 
@@ -166,9 +170,26 @@ export function setFreshReady(
     view: "ready-to-generate",
     design: freshState.design,
     freshState,
+    freshEvidence: undefined,
     error: undefined,
     urlError: undefined,
     loading: null,
+  };
+}
+
+export function setFreshEvidenceLoading(state: TuiNavigationState): TuiNavigationState {
+  return { ...state, loading: "fresh-evidence", error: undefined };
+}
+
+export function setFreshEvidence(
+  state: TuiNavigationState,
+  evidence: FreshFrameEvidence,
+): TuiNavigationState {
+  return {
+    ...state,
+    loading: null,
+    freshEvidence: evidence,
+    error: undefined,
   };
 }
 

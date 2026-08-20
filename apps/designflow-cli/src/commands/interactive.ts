@@ -21,6 +21,7 @@ import {
   type InteractiveDesign,
 } from "../services/figma-selection";
 import { readyFreshUiState } from "../ui/tui/fresh-ui";
+import { retrieveFreshFrameEvidence, freshEvidenceErrorMessage } from "../services/fresh-figma-evidence";
 
 import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
@@ -227,10 +228,17 @@ export async function freshCommand(
     if (answer.length === 0 || answer === "1" || answer === "current" || answer === "current figma selection") {
       let selection;
       try {
-        if (context.figmaConnectionStatus() !== "connected") await context.ensureFigmaConnection();
+        const connection = context.figmaConnectionStatus() !== "connected"
+          ? await context.ensureFigmaConnection()
+          : "connected";
+        if (connection !== "connected") {
+          if (reportFailure("Figma Desktop is unavailable. Connect Figma Desktop and try again.")) return 1;
+          continue;
+        }
         selection = await context.getCurrentFigmaSelection();
       } catch {
-        selection = null;
+        if (reportFailure("Figma Desktop is unavailable. Connect Figma Desktop and try again.")) return 1;
+        continue;
       }
       if (selection === null) {
         if (reportFailure("No Figma selection found. Select one frame or paste a frame URL.")) return 1;
@@ -238,10 +246,18 @@ export async function freshCommand(
       }
       try {
         const ready = readyFreshUiState(designFromCurrentSelection(selection));
+        if (context.retrieveFreshFigmaSnapshot !== undefined && context.compileFreshFigmaEvidence !== undefined) {
+          const evidence = await retrieveFreshFrameEvidence({
+            source: ready.source,
+            nodeId: ready.nodeId,
+            sourceKind: "current-selection",
+          }, context.retrieveFreshFigmaSnapshot, context.compileFreshFigmaEvidence);
+          terminal.print(`Figma evidence ready: ${evidence.frame.name} (${evidence.frame.width} × ${evidence.frame.height})`);
+        }
         terminal.print(`Ready to generate: ${ready.nodeId}`);
         return 0;
       } catch (error) {
-        if (reportFailure(error instanceof Error ? error.message : "Invalid Figma selection.")) return 1;
+        if (reportFailure(freshEvidenceErrorMessage(error) || "Invalid Figma selection.")) return 1;
         continue;
       }
     }
@@ -249,10 +265,18 @@ export async function freshCommand(
     if (answer === "2" || answer === "paste" || answer === "paste figma frame url") {
       try {
         const ready = readyFreshUiState(designFromUrl(await terminal.ask("Figma frame URL")));
+        if (context.retrieveFreshFigmaSnapshot !== undefined && context.compileFreshFigmaEvidence !== undefined) {
+          const evidence = await retrieveFreshFrameEvidence({
+            source: ready.source,
+            nodeId: ready.nodeId,
+            sourceKind: "figma-url",
+          }, context.retrieveFreshFigmaSnapshot, context.compileFreshFigmaEvidence);
+          terminal.print(`Figma evidence ready: ${evidence.frame.name} (${evidence.frame.width} × ${evidence.frame.height})`);
+        }
         terminal.print(`Ready to generate: ${ready.nodeId}`);
         return 0;
       } catch (error) {
-        if (reportFailure(error instanceof Error ? error.message : "Invalid Figma source.")) return 1;
+        if (reportFailure(freshEvidenceErrorMessage(error) || "Invalid Figma source.")) return 1;
         continue;
       }
     }

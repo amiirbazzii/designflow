@@ -11,6 +11,7 @@ import { findDestinationCandidates } from "../../services/destinations";
 import type { TuiExecutionBridge } from "./execution";
 import type { TuiArtifactReader } from "./artifact-viewer";
 import type { TuiAuthController } from "./auth";
+import { retrieveFreshFrameEvidence } from "../../services/fresh-figma-evidence";
 
 export type TuiStartHandler = (
   action: Extract<TuiAction, { readonly type: "start" }>,
@@ -50,6 +51,15 @@ export async function runTuiShell(
       return selection === null ? null : designFromCurrentSelection(selection);
     },
     parseFigmaUrl: designFromUrl,
+    ...(mode === "fresh" && context.retrieveFreshFigmaSnapshot !== undefined && context.compileFreshFigmaEvidence !== undefined
+      ? {
+          getFreshEvidence: (ready) => retrieveFreshFrameEvidence({
+            source: ready.source,
+            nodeId: ready.nodeId,
+            sourceKind: ready.design.kind === "current-selection" ? "current-selection" : "figma-url",
+          }, context.retrieveFreshFigmaSnapshot!, context.compileFreshFigmaEvidence!),
+        }
+      : {}),
     ...(mode === "legacy" ? { getDestinations: () => findDestinationCandidates(context, runtime.project) } : {}),
   };
   return runTuiShellWithView(

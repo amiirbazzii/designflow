@@ -32,6 +32,8 @@ import {
   setApprovalOption,
   setUrlError,
   setFreshReady,
+  setFreshEvidenceLoading,
+  setFreshEvidence,
   updateUrlText,
   openProposalReview,
   openDiffView,
@@ -92,6 +94,7 @@ import {
 import { canStartDesignEngineer, requiresInteractiveAuthentication, type TuiAuthController } from "./auth";
 import { appendFileSync } from "node:fs";
 import { readyFreshUiState } from "./fresh-ui";
+import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
 
 export type TuiMode = "legacy" | "fresh";
 
@@ -133,6 +136,9 @@ export interface TuiSelectionHandlers {
   readonly getCurrentDesign: () => Promise<InteractiveDesign | null>;
   readonly parseFigmaUrl: (value: string) => InteractiveDesign;
   readonly getDestinations?: () => Promise<readonly DestinationCandidate[]>;
+  readonly getFreshEvidence?: (
+    ready: Extract<ReturnType<typeof readyFreshUiState>, { readonly status: "ready-to-generate" }>,
+  ) => Promise<FreshFrameEvidence>;
 }
 
 export interface TuiAppProps {
@@ -191,11 +197,17 @@ export function App({
   const executionDoneRef = useRef(false);
   const cancellationRequested = useRef(false);
   const destinationRequest = useRef(0);
+  const freshEvidenceRequest = useRef(0);
   const handoffStarted = useRef(false);
   const rawInputRef = useRef<string | undefined>();
   const authRequestRef = useRef(0);
   const navigationRef = useRef(navigation);
   navigationRef.current = navigation;
+
+  const navigateBackFromUi = (): void => {
+    freshEvidenceRequest.current += 1;
+    setNavigation((current) => navigateBack(current));
+  };
 
   // One input owner: a pending ask() may only capture keys while the
   // execution view renders it. Once the run is over, any pending or late
@@ -350,6 +362,28 @@ export function App({
         const ready = readyFreshUiState(design);
         setSession((current) => setDesignSelection(current, design));
         setNavigation((current) => setFreshReady(current, ready));
+        if (handlers.getFreshEvidence !== undefined) {
+          const requestId = freshEvidenceRequest.current + 1;
+          freshEvidenceRequest.current = requestId;
+          setNavigation((current) => setFreshEvidenceLoading(current));
+          void handlers.getFreshEvidence(ready)
+            .then((evidence) => {
+              if (freshEvidenceRequest.current !== requestId) return;
+              setNavigation((current) => current.view === "ready-to-generate"
+                ? setFreshEvidence(current, evidence)
+                : current);
+            })
+            .catch((error: unknown) => {
+              if (freshEvidenceRequest.current !== requestId) return;
+              setNavigation((current) => current.view === "ready-to-generate"
+                ? {
+                    ...current,
+                    loading: null,
+                    error: error instanceof Error ? error.message : "Figma evidence could not be retrieved.",
+                  }
+                : current);
+            });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Invalid Figma source.";
         setNavigation((current) => ({ ...current, loading: null, error: message }));
@@ -720,7 +754,7 @@ export function App({
       const home = input === "\u001b[H" || input === "\u001bOH";
       const end = input === "\u001b[F" || input === "\u001bOF";
       if (outputAction === "back") {
-        setNavigation((current) => navigateBack(current));
+        navigateBackFromUi();
       } else if (outputAction === "help") {
         setNavigation((current) => openHelp(current));
       } else if (outputAction === "next-focus" || outputAction === "previous-focus") {
@@ -771,7 +805,7 @@ export function App({
       const detailsAction = mapTuiKey(input, key);
       const detailLines = session.technicalDetails.length > 0 ? session.technicalDetails : session.diagnostics;
       const detailsMaximum = Math.max(0, detailLines.length - viewerVisibleLines);
-      if (detailsAction === "back") setNavigation((current) => navigateBack(current));
+      if (detailsAction === "back") navigateBackFromUi();
       else if (key.upArrow || input === "k") setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset - 1, detailsMaximum));
       else if (key.downArrow || input === "j") setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset + 1, detailsMaximum));
       else if (key.pageUp) setNavigation((current) => setOutputScrollOffset(current, current.outputScrollOffset - viewerVisibleLines, detailsMaximum));
@@ -786,7 +820,7 @@ export function App({
 
     if (navigation.view === "figma-url-entry") {
       if (key.escape) {
-        setNavigation((current) => navigateBack(current));
+        navigateBackFromUi();
       } else if (key.return || input === "\n" || input === "\r") {
         activate();
       } else if (isBackspaceInput(input, key, rawInput)) {
@@ -901,7 +935,7 @@ export function App({
         const back = terminalOutcomeActionForShortcut(terminalOutcome?.actions ?? [], "back");
         if (back !== undefined) activateTerminalOutcome(back.id);
       } else {
-        setNavigation((current) => navigateBack(current));
+        navigateBackFromUi();
       }
       return;
     }

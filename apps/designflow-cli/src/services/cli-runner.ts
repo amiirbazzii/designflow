@@ -61,6 +61,7 @@ import {
   projectMapperDefaultModelProfile,
   uiBuilderDefaultModelProfile,
   visualCriticDefaultModelProfile,
+  compileSpecificationEvidenceBundle,
 } from "@designflow/agents";
 import { createV2CapabilityConfig } from "./v2-composition";
 import { HttpMcpRuntime, McpRuntime } from "@designflow/mcp";
@@ -80,10 +81,13 @@ import {
   OpenRouterProvider,
 } from "@designflow/model-provider-openrouter";
 import {
+  buildFigmaSourceSnapshot,
   readFigmaDesktopSelection,
   type FigmaDesktopSelection,
+  type ParsedFigmaSource,
 } from "@designflow/capability-figma-mcp";
 import {
+  DesignFlowError,
   type ModelProfile,
   primaryWorkflowOf,
   type ExecutionEvent,
@@ -91,7 +95,9 @@ import {
   type WorkerManifest,
   type WorkflowPackage,
   type RegistryArtifactStore,
+  type FigmaSourceSnapshot,
 } from "@designflow/sdk";
+import type { FreshEvidenceCompiler } from "./fresh-figma-evidence";
 import {
   FileAgentMemoryStore,
   FileApprovalManager,
@@ -446,6 +452,17 @@ export interface CliContext {
   readonly ensureFigmaConnection: () => Promise<FigmaConnectionStatus>;
   /** Reads the current selection through the existing Desktop MCP adapter. */
   readonly getCurrentFigmaSelection: () => Promise<FigmaDesktopSelection | null>;
+  /**
+   * Retrieves one Fresh frame snapshot directly through the deterministic
+   * Figma capability. This seam deliberately does not start a workflow or
+   * session and is optional for backwards-compatible host/test contexts.
+   */
+  readonly retrieveFreshFigmaSnapshot?: (
+    source: ParsedFigmaSource,
+    sourceKind: "current-selection" | "figma-url",
+  ) => Promise<FigmaSourceSnapshot>;
+  /** Reuses the canonical evidence projection from the composition root. */
+  readonly compileFreshFigmaEvidence?: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>>;
   /** True only for the bare-shell standard endpoint fallback. */
   readonly figmaAutoDetected: boolean;
   /**
@@ -780,6 +797,54 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       return null;
     }
   };
+
+  const retrieveFreshFigmaSnapshot = async (
+    parsedSource: ParsedFigmaSource,
+    sourceKind: "current-selection" | "figma-url",
+  ): Promise<FigmaSourceSnapshot> => {
+    if (mcpClient === undefined) {
+      throw new DesignFlowError(
+        "ERR_FIGMA_MCP_REQUIRED",
+        "Fresh UI evidence requires a configured Figma MCP connection.",
+        { sourceKind },
+      );
+    }
+
+    const connection = await ensureFigmaConnection();
+    if (connection !== "connected") {
+      throw new DesignFlowError(
+        "ERR_FIGMA_MCP_UNAVAILABLE",
+        "Figma Desktop is unavailable. Connect Figma Desktop and try again.",
+        { sourceKind },
+      );
+    }
+
+    const signal = options?.signal ?? new AbortController().signal;
+    return buildFigmaSourceSnapshot(
+      {
+        executionId: "fresh-ui-evidence",
+        workflowId: "fresh-ui",
+        capabilityId: "retrieve-fresh-figma-evidence",
+        logger: silentLogger,
+        artifactRefs: [],
+        parentArtifacts: [],
+        artifactStore,
+        config: {},
+        signal,
+        mcp: mcpClient,
+      },
+      {
+        parsedSource,
+        sourceKind,
+        captureScreenshots: true,
+        screenshotArtifactIdPrefix: "fresh-figma-screenshot",
+        now: () => new Date().toISOString(),
+      },
+    );
+  };
+  const compileFreshFigmaEvidence: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>> = (
+    snapshot,
+  ) => compileSpecificationEvidenceBundle(snapshot);
 
   // Build the specialized model port before constructing the invocation
   // runtime. The coordinator and workflow agents must see the same registered
@@ -1255,6 +1320,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     figmaConnectionStatus: () => figmaConnectionState,
     ensureFigmaConnection,
     getCurrentFigmaSelection,
+    retrieveFreshFigmaSnapshot,
+    compileFreshFigmaEvidence,
     figmaAutoDetected: figmaResolution.source === "automatic",
     traces,
     artifactInspection,
