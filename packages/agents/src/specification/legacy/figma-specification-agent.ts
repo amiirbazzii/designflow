@@ -274,7 +274,7 @@ function completenessIssues(
       const examples = missing.slice(0, 3).map((text) => `"${text.slice(0, 80)}"`).join(", ");
       issues.push(
         `completeness: the snapshot contains visible text that is missing from the specification (${missing.length} of ${evidencedTexts.length} evidenced strings), including ${examples}. ` +
-          "Preserve the exact visible copy from the evidence and associate it with the correct structured elements. Do not summarize or invent replacement text.",
+        "Preserve the exact visible copy from the evidence and associate it with the correct structured elements. Do not summarize or invent replacement text.",
       );
     }
   }
@@ -472,14 +472,14 @@ function elementFrom(node: FigmaNodeSnapshot, byId: ReadonlyMap<string, FigmaNod
     ...(height !== undefined ? { height: `${height}px` } : {}),
     ...(node.layoutMode !== undefined && node.layoutMode !== "NONE"
       ? {
-          layout: {
-            direction: node.layoutMode === "HORIZONTAL" ? ("horizontal" as const) : ("vertical" as const),
-            ...(node.itemSpacing !== undefined ? { gap: `${node.itemSpacing}px` } : {}),
-            ...(node.padding !== undefined
-              ? { padding: `${node.padding.top}px ${node.padding.right}px ${node.padding.bottom}px ${node.padding.left}px` }
-              : {}),
-          },
-        }
+        layout: {
+          direction: node.layoutMode === "HORIZONTAL" ? ("horizontal" as const) : ("vertical" as const),
+          ...(node.itemSpacing !== undefined ? { gap: `${node.itemSpacing}px` } : {}),
+          ...(node.padding !== undefined
+            ? { padding: `${node.padding.top}px ${node.padding.right}px ${node.padding.bottom}px ${node.padding.left}px` }
+            : {}),
+        },
+      }
       : {}),
     ...(background !== undefined ? { background } : {}),
     ...(node.cornerRadius !== undefined ? { radius: `${node.cornerRadius}px` } : {}),
@@ -489,9 +489,9 @@ function elementFrom(node: FigmaNodeSnapshot, byId: ReadonlyMap<string, FigmaNod
     notes: [],
     children: depth > 0
       ? node.childIds
-          .map((childId) => byId.get(childId))
-          .filter((child): child is FigmaNodeSnapshot => child !== undefined)
-          .map((child) => elementFrom(child, byId, depth - 1))
+        .map((childId) => byId.get(childId))
+        .filter((child): child is FigmaNodeSnapshot => child !== undefined)
+        .map((child) => elementFrom(child, byId, depth - 1))
       : [],
   };
 }
@@ -639,7 +639,7 @@ export const modelFigmaSpecificationStrategy: FigmaSpecificationStrategy = async
     responseSchema: figmaSpecificationResponseSchema,
     // Specification V2 carries element-level styles, component contracts and
     // exact copy — 2000 tokens forced the model to discard evidence.
-    maxOutputTokens: 8000,
+    maxOutputTokens: 16000,
     // Portable wire response → deterministic normalization → the same
     // authoritative validation (schema, node ids, completeness) every other
     // strategy passes through. Normalization failures feed the bounded
