@@ -59,12 +59,13 @@ write, retry, or scope expansion.
 
 ## Before implementing, identify:
 
-1. which package owns the change,
-2. which existing files/modules are closest,
-3. which files will be created or modified,
-4. why each new file belongs there.
+1. the owning package/module,
+2. existing related modules and the nearest comparable conventions,
+3. files to modify,
+4. files to create and why each belongs in its chosen location,
+5. existing code or logic that can be reused.
 
-If that ownership is unclear, investigate before writing code.
+Do this before writing code; if ownership is unclear, investigate first.
 
 
 ## Verified validation
@@ -101,13 +102,15 @@ explicitly authorizes that operation.
 ## Code organization rules
 
 - Place new code in the existing package/module that owns the responsibility.
-- Do not create new top-level folders unless the existing architecture cannot represent the responsibility.
+- Do not create new top-level folders or packages unless the existing architecture cannot represent the responsibility.
+- Keep app-specific code in apps and reusable/domain capabilities in their existing package owners.
 - Before creating a new module, search for an existing owner or reusable abstraction.
 - Do not put unrelated responsibilities in the same file.
-- Keep composition/orchestration separate from domain logic and deterministic capabilities.
+- Keep composition/orchestration separate from domain logic and deterministic low-level capabilities.
 - Prefer small cohesive modules over large catch-all files.
+- Split by responsibility when a module starts owning distinct concerns; do not impose arbitrary line-count limits.
 - Do not create "utils.ts", "helpers.ts", or generic dumping-ground modules unless the responsibility is genuinely cross-cutting and well-defined.
-- Keep public APIs narrow; prefer internal/private modules unless cross-package use is required.
+- Keep public APIs narrow; do not widen public package APIs unless required.
 - Do not duplicate logic already owned by another package.
 - Follow existing naming, folder, export, and test conventions of the nearest comparable module.
 - Add tests next to or in the existing test location used by that package.

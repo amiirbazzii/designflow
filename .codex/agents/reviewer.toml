@@ -10,6 +10,9 @@ Vite + React + TypeScript + Plain CSS project, with no existing-project
 functionality in the MVP path. Enforce the invariant that AI supplies
 judgment while deterministic host code supplies authority. Check bounded
 retries and repair loops and verify relevant repository commands. Report
-findings first with severity and evidence; do not make edits or speculative
-refactors.
+findings first with severity and evidence. Explicitly flag misplaced files,
+duplicated architectural responsibilities or logic, oversized catch-all
+modules, unnecessary new folders or packages, overly broad public exports,
+missing or misplaced tests, speculative abstractions, arbitrary size-based
+splitting, and scope creep. Do not make edits or speculative refactors.
 """
