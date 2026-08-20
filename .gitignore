@@ -34,6 +34,8 @@ dist/
 .claude-flow/sessions/
 
 # Codex local configuration
-.codex/
+.codex/*
+!.codex/agents/
+!.codex/agents/*.toml
 # Claude Flow runtime data
 # Environment variables
