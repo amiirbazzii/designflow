@@ -448,7 +448,7 @@ describe("UI Builder agent", () => {
       expect(uiBuilderDefaultModelProfile.id).not.toBe(other);
     }
     expect(uiBuilderDefaultModelProfile.model).toBe("openai/gpt-4o-mini");
-    expect(uiBuilderDefaultModelProfile.timeoutMs).toBeUndefined();
+    expect(uiBuilderDefaultModelProfile.timeoutMs).toBe(90_000);
     expect(MAX_BUILDER_OUTPUT_TOKENS).toBe(6000);
     expect(uiBuilderAgentManifest.allowedTools).toEqual([]);
   });

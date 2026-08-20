@@ -79,8 +79,6 @@ export const uiBuilderDefaultModelProfile: ModelProfile = modelProfileSchema.par
   providerId: "openrouter",
   // Its own profile, distinct from implementation-default, project-mapper-default
   // and design-interpreter-default, so an override for one never moves another.
-  // No raised timeout. Source generation is the largest V2 output, but the
-  // work is bounded by the map: a handful of files for one screen.
   //
   // Single candidate, deliberately: `openai/gpt-5.6-luna` and
   // `deepseek/deepseek-v4-pro` are the same two fallback candidates already
@@ -89,6 +87,12 @@ export const uiBuilderDefaultModelProfile: ModelProfile = modelProfileSchema.par
   // (executionId 0506a14f-a052-4ff7-a0ce-95ad40126677, ERR_MODEL_ROUTE_NOT_FOUND).
   // This is a managed-gateway route-configuration question, not a code fix.
   model: "openai/gpt-4o-mini",
+  // Source generation is materially longer than the short judgment calls
+  // covered by ModelRuntime's 30s default. This is the project-owned Builder
+  // policy: 90s for the 6,000-token output ceiling, below the managed
+  // gateway's 145s upstream limit. Fresh UI uses this same profile id, so its
+  // managed invocation receives the same bounded budget.
+  timeoutMs: 90_000,
 });
 
 /**
