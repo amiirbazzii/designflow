@@ -60,6 +60,9 @@ export async function runTuiShell(
           }, context.retrieveFreshFigmaSnapshot!, context.compileFreshFigmaEvidence!),
         }
       : {}),
+    ...(mode === "fresh" && context.scaffoldFreshProject !== undefined
+      ? { scaffoldFreshProject: context.scaffoldFreshProject }
+      : {}),
     ...(mode === "legacy" ? { getDestinations: () => findDestinationCandidates(context, runtime.project) } : {}),
   };
   return runTuiShellWithView(

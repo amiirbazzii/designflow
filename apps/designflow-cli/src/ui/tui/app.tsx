@@ -34,6 +34,8 @@ import {
   setFreshReady,
   setFreshEvidenceLoading,
   setFreshEvidence,
+  setFreshScaffoldLoading,
+  setFreshScaffold,
   updateUrlText,
   openProposalReview,
   openDiffView,
@@ -95,6 +97,7 @@ import { canStartDesignEngineer, requiresInteractiveAuthentication, type TuiAuth
 import { appendFileSync } from "node:fs";
 import { readyFreshUiState } from "./fresh-ui";
 import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
+import type { FreshScaffoldResult } from "../../services/fresh-project-scaffolder";
 
 export type TuiMode = "legacy" | "fresh";
 
@@ -139,6 +142,7 @@ export interface TuiSelectionHandlers {
   readonly getFreshEvidence?: (
     ready: Extract<ReturnType<typeof readyFreshUiState>, { readonly status: "ready-to-generate" }>,
   ) => Promise<FreshFrameEvidence>;
+  readonly scaffoldFreshProject?: (evidence: FreshFrameEvidence) => Promise<FreshScaffoldResult>;
 }
 
 export interface TuiAppProps {
@@ -369,9 +373,31 @@ export function App({
           void handlers.getFreshEvidence(ready)
             .then((evidence) => {
               if (freshEvidenceRequest.current !== requestId) return;
+              if (handlers.scaffoldFreshProject === undefined) {
+                setNavigation((current) => current.view === "ready-to-generate"
+                  ? setFreshEvidence(current, evidence)
+                  : current);
+                return;
+              }
               setNavigation((current) => current.view === "ready-to-generate"
-                ? setFreshEvidence(current, evidence)
+                ? setFreshScaffoldLoading(setFreshEvidence(current, evidence))
                 : current);
+              void handlers.scaffoldFreshProject(evidence)
+                .then((project) => {
+                  if (freshEvidenceRequest.current !== requestId) return;
+                  setNavigation((current) => current.view === "ready-to-generate"
+                    ? setFreshScaffold(current, evidence, project)
+                    : current);
+                })
+                .catch((error: unknown) => {
+                  if (freshEvidenceRequest.current !== requestId) return;
+                  setNavigation((current) => current.view === "ready-to-generate"
+                    ? {
+                        ...setFreshEvidence(current, evidence),
+                        error: error instanceof Error ? error.message : "Fresh project could not be created.",
+                      }
+                    : current);
+                });
             })
             .catch((error: unknown) => {
               if (freshEvidenceRequest.current !== requestId) return;

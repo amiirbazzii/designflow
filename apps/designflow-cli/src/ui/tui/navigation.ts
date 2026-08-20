@@ -3,6 +3,7 @@ import type { InteractiveDesign } from "../../services/figma-selection";
 import type { ApprovalMode } from "./model";
 import type { FreshUiState } from "./fresh-ui";
 import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
+import type { FreshScaffoldResult } from "../../services/fresh-project-scaffolder";
 import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
 import {
   backspaceText,
@@ -65,6 +66,7 @@ export interface TuiNavigationState {
   readonly design?: InteractiveDesign | undefined;
   readonly freshState?: Extract<FreshUiState, { readonly status: "ready-to-generate" }> | undefined;
   readonly freshEvidence?: FreshFrameEvidence | undefined;
+  readonly freshProject?: FreshScaffoldResult | undefined;
   readonly urlValue: string;
   readonly urlCursor: number;
   readonly urlViewportStart: number;
@@ -72,7 +74,7 @@ export interface TuiNavigationState {
   readonly destinationCandidates: readonly DestinationCandidate[];
   readonly destinationIndex: number;
   readonly destinationScrollOffset: number;
-  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | null;
+  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | "fresh-scaffold" | null;
   readonly authError?: string | undefined;
   readonly authBrowserFallback?: string | undefined;
   readonly error?: string | undefined;
@@ -145,6 +147,7 @@ export function enterDesignSelection(
     loading: null,
     freshState: undefined,
     freshEvidence: undefined,
+    freshProject: undefined,
   };
 }
 
@@ -171,6 +174,7 @@ export function setFreshReady(
     design: freshState.design,
     freshState,
     freshEvidence: undefined,
+    freshProject: undefined,
     error: undefined,
     urlError: undefined,
     loading: null,
@@ -181,6 +185,10 @@ export function setFreshEvidenceLoading(state: TuiNavigationState): TuiNavigatio
   return { ...state, loading: "fresh-evidence", error: undefined };
 }
 
+export function setFreshScaffoldLoading(state: TuiNavigationState): TuiNavigationState {
+  return { ...state, loading: "fresh-scaffold", error: undefined };
+}
+
 export function setFreshEvidence(
   state: TuiNavigationState,
   evidence: FreshFrameEvidence,
@@ -189,6 +197,21 @@ export function setFreshEvidence(
     ...state,
     loading: null,
     freshEvidence: evidence,
+    freshProject: undefined,
+    error: undefined,
+  };
+}
+
+export function setFreshScaffold(
+  state: TuiNavigationState,
+  evidence: FreshFrameEvidence,
+  project: FreshScaffoldResult,
+): TuiNavigationState {
+  return {
+    ...state,
+    loading: null,
+    freshEvidence: evidence,
+    freshProject: project,
     error: undefined,
   };
 }

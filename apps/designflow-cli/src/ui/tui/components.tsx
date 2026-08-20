@@ -337,6 +337,8 @@ function FreshMainPanel({
             <Text color={designFlowTheme.success}>✓ {navigation.freshEvidence.frame.name}</Text>
             <Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshEvidence.frame.id}</Text>
             <Text color={designFlowTheme.textSecondary}>Size: {navigation.freshEvidence.frame.width} × {navigation.freshEvidence.frame.height}</Text>
+            {navigation.loading === "fresh-scaffold" && <Text color={designFlowTheme.accent}>Creating deterministic project scaffold…</Text>}
+            {navigation.freshProject !== undefined && <Text color={designFlowTheme.success}>Project: {navigation.freshProject.targetPath}</Text>}
             <Text color={designFlowTheme.accentStrong}>No generation started. Press Esc to choose another source.</Text>
           </Box>
         )

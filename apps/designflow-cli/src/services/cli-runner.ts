@@ -97,7 +97,11 @@ import {
   type RegistryArtifactStore,
   type FigmaSourceSnapshot,
 } from "@designflow/sdk";
-import type { FreshEvidenceCompiler } from "./fresh-figma-evidence";
+import type { FreshEvidenceCompiler, FreshFrameEvidence } from "./fresh-figma-evidence";
+import {
+  scaffoldFreshUiProject,
+  type FreshScaffoldResult,
+} from "./fresh-project-scaffolder";
 import {
   FileAgentMemoryStore,
   FileApprovalManager,
@@ -463,6 +467,8 @@ export interface CliContext {
   ) => Promise<FigmaSourceSnapshot>;
   /** Reuses the canonical evidence projection from the composition root. */
   readonly compileFreshFigmaEvidence?: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>>;
+  /** Creates the fixed Fresh UI host project without sessions, workflows, or AI. */
+  readonly scaffoldFreshProject?: (evidence: FreshFrameEvidence) => Promise<FreshScaffoldResult>;
   /** True only for the bare-shell standard endpoint fallback. */
   readonly figmaAutoDetected: boolean;
   /**
@@ -845,6 +851,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const compileFreshFigmaEvidence: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>> = (
     snapshot,
   ) => compileSpecificationEvidenceBundle(snapshot);
+  const scaffoldFreshProject = (evidence: FreshFrameEvidence): Promise<FreshScaffoldResult> =>
+    scaffoldFreshUiProject({ evidence });
 
   // Build the specialized model port before constructing the invocation
   // runtime. The coordinator and workflow agents must see the same registered
@@ -1322,6 +1330,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     getCurrentFigmaSelection,
     retrieveFreshFigmaSnapshot,
     compileFreshFigmaEvidence,
+    scaffoldFreshProject,
     figmaAutoDetected: figmaResolution.source === "automatic",
     traces,
     artifactInspection,

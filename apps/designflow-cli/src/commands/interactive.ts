@@ -253,6 +253,10 @@ export async function freshCommand(
             sourceKind: "current-selection",
           }, context.retrieveFreshFigmaSnapshot, context.compileFreshFigmaEvidence);
           terminal.print(`Figma evidence ready: ${evidence.frame.name} (${evidence.frame.width} × ${evidence.frame.height})`);
+          if (context.scaffoldFreshProject !== undefined) {
+            const scaffold = await context.scaffoldFreshProject(evidence);
+            terminal.print(`Fresh project created: ${scaffold.targetPath}`);
+          }
         }
         terminal.print(`Ready to generate: ${ready.nodeId}`);
         return 0;
@@ -272,6 +276,10 @@ export async function freshCommand(
             sourceKind: "figma-url",
           }, context.retrieveFreshFigmaSnapshot, context.compileFreshFigmaEvidence);
           terminal.print(`Figma evidence ready: ${evidence.frame.name} (${evidence.frame.width} × ${evidence.frame.height})`);
+          if (context.scaffoldFreshProject !== undefined) {
+            const scaffold = await context.scaffoldFreshProject(evidence);
+            terminal.print(`Fresh project created: ${scaffold.targetPath}`);
+          }
         }
         terminal.print(`Ready to generate: ${ready.nodeId}`);
         return 0;
