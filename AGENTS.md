@@ -56,6 +56,17 @@ write, retry, or scope expansion.
   `trace_path`, `get_code_snippet`, `query_graph`, `get_architecture`). Fall
   back to `rg` for literals, configuration, and non-code files.
 
+
+## Before implementing, identify:
+
+1. which package owns the change,
+2. which existing files/modules are closest,
+3. which files will be created or modified,
+4. why each new file belongs there.
+
+If that ownership is unclear, investigate before writing code.
+
+
 ## Verified validation
 
 Run the relevant checks for every change. The repository-level validation
@@ -84,3 +95,22 @@ remaining uncertainty in the handoff.
 
 Do not commit, push, merge, rebase, reset, or rewrite history unless the user
 explicitly authorizes that operation.
+
+
+
+## Code organization rules
+
+- Place new code in the existing package/module that owns the responsibility.
+- Do not create new top-level folders unless the existing architecture cannot represent the responsibility.
+- Before creating a new module, search for an existing owner or reusable abstraction.
+- Do not put unrelated responsibilities in the same file.
+- Keep composition/orchestration separate from domain logic and deterministic capabilities.
+- Prefer small cohesive modules over large catch-all files.
+- Do not create "utils.ts", "helpers.ts", or generic dumping-ground modules unless the responsibility is genuinely cross-cutting and well-defined.
+- Keep public APIs narrow; prefer internal/private modules unless cross-package use is required.
+- Do not duplicate logic already owned by another package.
+- Follow existing naming, folder, export, and test conventions of the nearest comparable module.
+- Add tests next to or in the existing test location used by that package.
+- When a file becomes responsible for multiple distinct concerns, split it.
+- Avoid speculative abstractions and premature generic frameworks.
+- New files must have a clear owner and single primary responsibility.
