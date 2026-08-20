@@ -27,6 +27,7 @@ export function CompactView({
   visualResult,
   terminalColumns,
   terminalOutcome,
+  freshMode = false,
 }: {
   readonly session: DesignFlowSessionView;
   readonly navigation: TuiNavigationState;
@@ -40,15 +41,17 @@ export function CompactView({
   readonly visualResult?: VisualResultView | undefined;
   readonly terminalColumns: number;
   readonly terminalOutcome?: TerminalOutcomeView | undefined;
+  readonly freshMode?: boolean;
 }): React.JSX.Element {
   return <Box flexGrow={1} flexDirection="column" paddingX={1}>
     <Text color={designFlowTheme.warning}>Compact terminal mode</Text>
     {navigation.view === "output-viewer" ? <OutputViewer output={selectedOutputView} document={viewerDocument} scrollOffset={navigation.outputScrollOffset} visibleLines={viewerVisibleLines} details={navigation.outputDetails} />
       : session.outputs.length > 0 && focusArea === "outputs" ? <CompactOptions title="Outputs" options={session.outputs.map((output) => `${output.status === "available" ? "✓" : "○"} ${output.label}`)} active={selectedOutput} />
-      : navigation.view === "design-selection" ? <CompactOptions title="Select design" options={["Current Figma selection", "Paste Figma URL"]} active={navigation.designOption} />
-      : navigation.view === "figma-url-entry" ? <Box flexDirection="column"><Text bold>Paste Figma URL</Text><Text wrap="truncate">{renderVisibleUrlWindow(visibleUrlWindow(navigation.urlValue, navigation.urlCursor, urlInputContentWidth(terminalColumns, true)))}</Text>{navigation.urlError !== undefined && <Text color={designFlowTheme.danger}>{navigation.urlError}</Text>}</Box>
+      : navigation.view === "design-selection" ? <CompactOptions title={freshMode ? "Select Figma source" : "Select design"} options={freshMode ? ["Current Figma selection", "Paste Figma frame URL"] : ["Current Figma selection", "Paste Figma URL"]} active={navigation.designOption} />
+      : navigation.view === "figma-url-entry" ? <Box flexDirection="column"><Text bold>{freshMode ? "Paste Figma frame URL" : "Paste Figma URL"}</Text><Text wrap="truncate">{renderVisibleUrlWindow(visibleUrlWindow(navigation.urlValue, navigation.urlCursor, urlInputContentWidth(terminalColumns, true)))}</Text>{navigation.urlError !== undefined && <Text color={designFlowTheme.danger}>{navigation.urlError}</Text>}</Box>
       : navigation.view === "destination-selection" ? <CompactOptions title="Choose destination" options={navigation.destinationCandidates.slice(navigation.destinationScrollOffset, navigation.destinationScrollOffset + destinationVisibleCount).map((candidate) => candidate.label)} active={Math.max(0, navigation.destinationIndex - navigation.destinationScrollOffset)} />
       : navigation.view === "approval-mode" ? <CompactOptions title="Approval mode" options={["Review changes myself", "Let DesignFlow handle approvals"]} active={navigation.approvalOption} />
+      : navigation.view === "ready-to-generate" && navigation.freshState !== undefined ? <Box flexDirection="column"><Text bold>Ready to generate</Text><Text color={designFlowTheme.success}>✓ {navigation.freshState.design.label}</Text><Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshState.nodeId}</Text><Text color={designFlowTheme.accentStrong}>No generation started.</Text></Box>
       : navigation.view === "ready-to-run" ? <Box flexDirection="column"><Text bold>Ready to start</Text><Text color={designFlowTheme.success}>✓ {session.design.label}</Text><Text color={designFlowTheme.success}>✓ {session.destination.value ?? session.destination.label}</Text><Text color={designFlowTheme.accent}>Approval: {session.approval.mode === "designflow" ? "DesignFlow handles approvals" : "Review changes myself"}</Text><Text color={designFlowTheme.accentStrong}>[ Enter ] Start</Text></Box>
       : navigation.view === "execution" ? <ExecutionView session={session} prompt={executionPrompt} />
       : navigation.view === "proposal-review" || navigation.view === "correction-review" ? navigation.review === undefined ? <Text color={designFlowTheme.warning}>Proposal review is unavailable.</Text> : <ProposalReviewView request={navigation.review} selectedAction={navigation.reviewActionIndex} />
@@ -62,6 +65,7 @@ export function CompactView({
       : navigation.view === "diagnostics-view" ? <LifecycleResultView title="Details" sessionLines={session.diagnostics.slice(0, 12)} />
       : navigation.view === "final-result" ? <LifecycleResultView title={terminalOutcome?.title ?? (session.finalResult?.status === "failure" ? "Needs attention" : "Done")} sessionLines={[session.finalResult?.summary ?? "DesignFlow finished.", session.finalResult?.status === "failure" ? "No new mutation is started from this screen." : "Outputs remain available for inspection."]} actions={terminalOutcomeMenuActions(terminalOutcome?.actions ?? []).map((action) => action.label)} selectedAction={navigation.outcomeActionIndex} />
       : <Box flexDirection="column"><Text bold>{session.ai.status === "pending" ? "Sign in required" : "Ready to start"}</Text><Text>{session.ai.status === "pending" ? "Sign in before starting Design Engineer." : "Press Enter to select a design."}</Text></Box>}
+    {navigation.error !== undefined && <Text color={designFlowTheme.danger}>{navigation.error}</Text>}
   </Box>;
 }
 

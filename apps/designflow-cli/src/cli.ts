@@ -13,7 +13,7 @@ import { runCommand } from "./commands/run";
 import { historyCommand } from "./commands/history";
 import { artifactsCommand } from "./commands/artifacts";
 import { tracesCommand } from "./commands/traces";
-import { interactiveCommand } from "./commands/interactive";
+import { freshCommand, interactiveCommand } from "./commands/interactive";
 import { settingsCommand } from "./commands/settings";
 import {
   answerCommand,
@@ -90,6 +90,8 @@ export async function dispatch(
   }
 
   switch (command) {
+    case "fresh":
+      return freshCommand(context, terminal);
     case "doctor":
       return doctorCommand(context, terminal, { json: rest.includes("--json") });
     case "feedback-loop": {

@@ -443,6 +443,7 @@ describe("DesignFlow TUI theme and keyboard contract", () => {
 describe("TUI launch eligibility", () => {
   test("only selects full-screen mode for a bare interactive TTY", () => {
     expect(shouldUseTui({ argv: [], stdinIsTTY: true, stdoutIsTTY: true })).toBe(true);
+    expect(shouldUseTui({ argv: ["fresh"], stdinIsTTY: true, stdoutIsTTY: true })).toBe(true);
     expect(shouldUseTui({ argv: ["--help"], stdinIsTTY: true, stdoutIsTTY: true })).toBe(false);
     expect(shouldUseTui({ argv: [], stdinIsTTY: false, stdoutIsTTY: true })).toBe(false);
     expect(shouldUseTui({ argv: [], stdinIsTTY: true, stdoutIsTTY: false })).toBe(false);

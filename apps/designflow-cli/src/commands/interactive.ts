@@ -20,6 +20,7 @@ import {
   designFromUrl,
   type InteractiveDesign,
 } from "../services/figma-selection";
+import { readyFreshUiState } from "../ui/tui/fresh-ui";
 
 import {
   EXPERIMENTAL_IMPLEMENTATION_WORKFLOW_ID,
@@ -197,6 +198,66 @@ export async function selectDesign(
 
     terminal.print();
     terminal.print("Choose Current Figma selection, Paste Figma URL, or Back.");
+  }
+}
+
+/** Isolated Phase 1 source picker used by `designflow fresh`. */
+export async function freshCommand(
+  context: CliContext,
+  terminal: Terminal,
+): Promise<number> {
+  let failures = 0;
+  const reportFailure = (message: string): boolean => {
+    failures += 1;
+    terminal.print(message);
+    if (failures < 3) return false;
+    terminal.print("Fresh UI stopped after three invalid or unavailable source attempts.");
+    return true;
+  };
+
+  for (;;) {
+    terminal.print("Fresh UI MVP — choose a Figma frame source.");
+    const answer = (await terminal.ask(
+      "Source",
+      ["Current Figma selection", "Paste Figma frame URL"],
+    )).trim().toLowerCase();
+
+    if (answer === "q" || answer === "quit" || answer === "back") return 0;
+
+    if (answer.length === 0 || answer === "1" || answer === "current" || answer === "current figma selection") {
+      let selection;
+      try {
+        if (context.figmaConnectionStatus() !== "connected") await context.ensureFigmaConnection();
+        selection = await context.getCurrentFigmaSelection();
+      } catch {
+        selection = null;
+      }
+      if (selection === null) {
+        if (reportFailure("No Figma selection found. Select one frame or paste a frame URL.")) return 1;
+        continue;
+      }
+      try {
+        const ready = readyFreshUiState(designFromCurrentSelection(selection));
+        terminal.print(`Ready to generate: ${ready.nodeId}`);
+        return 0;
+      } catch (error) {
+        if (reportFailure(error instanceof Error ? error.message : "Invalid Figma selection.")) return 1;
+        continue;
+      }
+    }
+
+    if (answer === "2" || answer === "paste" || answer === "paste figma frame url") {
+      try {
+        const ready = readyFreshUiState(designFromUrl(await terminal.ask("Figma frame URL")));
+        terminal.print(`Ready to generate: ${ready.nodeId}`);
+        return 0;
+      } catch (error) {
+        if (reportFailure(error instanceof Error ? error.message : "Invalid Figma source.")) return 1;
+        continue;
+      }
+    }
+
+    if (reportFailure("Choose Current Figma selection or Paste Figma frame URL.")) return 1;
   }
 }
 

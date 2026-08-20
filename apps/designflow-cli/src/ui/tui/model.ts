@@ -297,6 +297,20 @@ export async function buildSessionViewFromContext(
   return (await buildSessionRuntimeFromContext(context)).session;
 }
 
+/**
+ * Fresh readiness is deliberately not a session runtime. This view supplies
+ * only the presentation facts needed by the isolated source picker and never
+ * detects projects, refreshes AI, or starts a workflow.
+ */
+export function buildFreshUiViewFromContext(
+  context: CliContext,
+): DesignFlowSessionView {
+  return buildSessionView({
+    figma: context.figmaConnectionStatus(),
+    ai: "not-configured",
+  });
+}
+
 export async function buildSessionRuntimeFromContext(
   context: CliContext,
 ): Promise<SessionViewRuntime> {

@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink";
-import { App, type TuiAction, type TuiSelectionHandlers } from "./app";
-import { buildSessionRuntimeFromContext, type DesignFlowSessionView } from "./model";
+import { App, type TuiAction, type TuiMode, type TuiSelectionHandlers } from "./app";
+import { buildFreshUiViewFromContext, buildSessionRuntimeFromContext, type DesignFlowSessionView } from "./model";
 import type { CliContext } from "../../services/cli-runner";
 import {
   designFromCurrentSelection,
@@ -17,6 +17,9 @@ export type TuiStartHandler = (
   bridge: TuiExecutionBridge,
 ) => Promise<number>;
 export type TuiImproveHandler = (bridge: TuiExecutionBridge) => Promise<number>;
+export interface TuiRunOptions {
+  readonly mode?: TuiMode;
+}
 
 const ALT_SCREEN_ENTER = "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l";
 const ALT_SCREEN_EXIT = "\u001b[?25h\u001b[?1049l";
@@ -31,16 +34,23 @@ export async function runTuiShell(
   onInterrupt: () => void,
   onStart: TuiStartHandler,
   onImprove?: TuiImproveHandler,
+  options?: TuiRunOptions,
 ): Promise<TuiAction> {
-  const runtime = await buildSessionRuntimeFromContext(context);
+  const mode = options?.mode ?? "legacy";
+  const runtime = mode === "fresh"
+    ? { session: buildFreshUiViewFromContext(context), project: null }
+    : await buildSessionRuntimeFromContext(context);
   const handlers: TuiSelectionHandlers = {
     getCurrentDesign: async () => {
+      if (mode === "fresh" && context.figmaConnectionStatus() !== "connected") {
+        await context.ensureFigmaConnection();
+      }
       if (context.figmaConnectionStatus() !== "connected") return null;
       const selection = await context.getCurrentFigmaSelection();
       return selection === null ? null : designFromCurrentSelection(selection);
     },
     parseFigmaUrl: designFromUrl,
-    getDestinations: () => findDestinationCandidates(context, runtime.project),
+    ...(mode === "legacy" ? { getDestinations: () => findDestinationCandidates(context, runtime.project) } : {}),
   };
   return runTuiShellWithView(
     runtime.session,
@@ -65,6 +75,7 @@ export async function runTuiShell(
       status: context.aiStatus,
       signInWithGoogle: context.signInWithGoogle,
     },
+    mode,
   );
 }
 
@@ -82,6 +93,7 @@ export async function runTuiShellWithView(
   artifactReader?: TuiArtifactReader,
   onImprove?: TuiImproveHandler,
   auth?: TuiAuthController,
+  mode: TuiMode = "legacy",
 ): Promise<TuiAction> {
   (streams.writeControl ?? ((value: string) => safeWrite(streams.output, value)))(ALT_SCREEN_ENTER);
 
@@ -104,6 +116,7 @@ export async function runTuiShellWithView(
       onInterrupt,
       ...(auth === undefined ? {} : { auth }),
       ...(onImprove === undefined ? {} : { onImprove }),
+      mode,
     }),
     {
       stdin: streams.input,

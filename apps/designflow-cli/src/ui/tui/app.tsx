@@ -31,6 +31,7 @@ import {
   setDestinationCandidates,
   setApprovalOption,
   setUrlError,
+  setFreshReady,
   updateUrlText,
   openProposalReview,
   openDiffView,
@@ -90,6 +91,9 @@ import {
 } from "./outcome";
 import { canStartDesignEngineer, requiresInteractiveAuthentication, type TuiAuthController } from "./auth";
 import { appendFileSync } from "node:fs";
+import { readyFreshUiState } from "./fresh-ui";
+
+export type TuiMode = "legacy" | "fresh";
 
 // TEMPORARY diagnostics for the Phase 6B input-lifecycle investigation.
 // Active only when DESIGNFLOW_TUI_TRACE names a file; removed before release.
@@ -128,7 +132,7 @@ export type TuiAction =
 export interface TuiSelectionHandlers {
   readonly getCurrentDesign: () => Promise<InteractiveDesign | null>;
   readonly parseFigmaUrl: (value: string) => InteractiveDesign;
-  readonly getDestinations: () => Promise<readonly DestinationCandidate[]>;
+  readonly getDestinations?: () => Promise<readonly DestinationCandidate[]>;
 }
 
 export interface TuiAppProps {
@@ -141,6 +145,7 @@ export interface TuiAppProps {
   readonly onInterrupt: () => void;
   readonly onImprove?: (bridge: TuiExecutionBridge) => Promise<number>;
   readonly auth?: TuiAuthController;
+  readonly mode?: TuiMode;
 }
 
 export function App({
@@ -153,6 +158,7 @@ export function App({
   onInterrupt,
   onImprove,
   auth,
+  mode = "legacy",
 }: TuiAppProps): React.JSX.Element {
   const { exit } = useApp();
   const { internal_eventEmitter } = useStdin();
@@ -161,6 +167,7 @@ export function App({
   const [session, setSession] = useState<SessionView>(initialSession);
   const [navigation, setNavigation] = useState<TuiNavigationState>(() => {
     const initial = initialNavigationState();
+    if (mode === "fresh") return { ...initial, view: "design-selection" };
     return (auth !== undefined && requiresInteractiveAuthentication(auth.status()))
       || (auth === undefined && initialSession.ai.status === "pending" && initialSession.ai.label === "Sign-in required")
       ? openSignInRequired(initial)
@@ -315,6 +322,7 @@ export function App({
   }, [executionFinished, navigation.view, session.finalResult?.status, session.workflow.status]);
 
   const loadDestinations = (design: InteractiveDesign): void => {
+    if (handlers.getDestinations === undefined) return;
     const requestId = destinationRequest.current + 1;
     destinationRequest.current = requestId;
     setNavigation((current) => enterDestinationSelection(current, design));
@@ -337,6 +345,17 @@ export function App({
   };
 
   const acceptDesign = (design: InteractiveDesign): void => {
+    if (mode === "fresh") {
+      try {
+        const ready = readyFreshUiState(design);
+        setSession((current) => setDesignSelection(current, design));
+        setNavigation((current) => setFreshReady(current, ready));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid Figma source.";
+        setNavigation((current) => ({ ...current, loading: null, error: message }));
+      }
+      return;
+    }
     setSession((current) => setDesignSelection(current, design));
     loadDestinations(design);
   };
@@ -371,6 +390,10 @@ export function App({
       return;
     }
     if (navigation.view === "start") {
+      if (mode === "fresh") {
+        setNavigation((current) => enterDesignSelection(current));
+        return;
+      }
       if (authenticationRequired()) {
         setNavigation((current) => openSignInRequired(current));
         return;
@@ -422,6 +445,8 @@ export function App({
       }
       return;
     }
+
+    if (navigation.view === "ready-to-generate") return;
 
     if (navigation.view === "destination-selection") {
       if (navigation.loading !== null) return;
@@ -966,6 +991,7 @@ export function App({
       terminalColumns={size.columns}
       executionBusy={executionBusy}
       terminalOutcome={terminalOutcome}
+      freshMode={mode === "fresh"}
     />
   );
 }

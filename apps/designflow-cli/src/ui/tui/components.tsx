@@ -33,6 +33,7 @@ export interface ShellProps {
   readonly terminalColumns: number;
   readonly executionBusy: boolean;
   readonly terminalOutcome?: TerminalOutcomeView | undefined;
+  readonly freshMode?: boolean;
 }
 
 export function Shell({
@@ -52,10 +53,11 @@ export function Shell({
   terminalColumns,
   executionBusy,
   terminalOutcome,
+  freshMode = false,
 }: ShellProps): React.JSX.Element {
   return (
     <Box flexDirection="column" width="100%" height="100%">
-      <Header session={session} executionBusy={executionBusy} terminalOutcome={terminalOutcome} />
+      <Header session={session} executionBusy={executionBusy} terminalOutcome={terminalOutcome} freshMode={freshMode} />
       {helpOpen ? (
         <HelpView />
       ) : compact ? (
@@ -72,38 +74,41 @@ export function Shell({
           visualResult={visualResult}
           terminalColumns={terminalColumns}
           terminalOutcome={terminalOutcome}
+          freshMode={freshMode}
         />
       ) : (
         <Box flexGrow={1} flexDirection="row" overflow="hidden">
-          <Sidebar
-            session={session}
-            focusArea={focusArea}
-            selectedStage={selectedStage}
-            selectedOutput={selectedOutput}
-          />
-          <MainPanel
-            session={session}
-            navigation={navigation}
-            focusArea={focusArea}
-            destinationVisibleCount={destinationVisibleCount}
-            selectedOutputView={selectedOutputView}
-            viewerDocument={viewerDocument}
-            viewerVisibleLines={viewerVisibleLines}
-            viewerScrollOffset={navigation.outputScrollOffset}
-            viewerDetails={navigation.outputDetails}
-            executionPrompt={executionPrompt}
-            visualResult={visualResult}
-            terminalColumns={terminalColumns}
-            terminalOutcome={terminalOutcome}
-          />
+          {freshMode ? <FreshMainPanel navigation={navigation} terminalColumns={terminalColumns} /> : <>
+            <Sidebar
+              session={session}
+              focusArea={focusArea}
+              selectedStage={selectedStage}
+              selectedOutput={selectedOutput}
+            />
+            <MainPanel
+              session={session}
+              navigation={navigation}
+              focusArea={focusArea}
+              destinationVisibleCount={destinationVisibleCount}
+              selectedOutputView={selectedOutputView}
+              viewerDocument={viewerDocument}
+              viewerVisibleLines={viewerVisibleLines}
+              viewerScrollOffset={navigation.outputScrollOffset}
+              viewerDetails={navigation.outputDetails}
+              executionPrompt={executionPrompt}
+              visualResult={visualResult}
+              terminalColumns={terminalColumns}
+              terminalOutcome={terminalOutcome}
+            />
+          </>}
         </Box>
       )}
       <StatusBar compact={compact} helpOpen={helpOpen} view={navigation.view} authRequired={session.ai.status === "pending"} canImprove={visualResult?.canImprove === true} hasVisualReport={visualResult?.reportAvailable === true} hasOutputs={session.outputs.length > 0} executionBusy={executionBusy} terminalOutcome={terminalOutcome} />
     </Box>
   );
 }
-export function Header({ session, executionBusy, terminalOutcome }: { readonly session: DesignFlowSessionView; readonly executionBusy: boolean; readonly terminalOutcome?: TerminalOutcomeView | undefined }): React.JSX.Element {
-  const status = headerStatus(session, executionBusy, terminalOutcome);
+export function Header({ session, executionBusy, terminalOutcome, freshMode = false }: { readonly session: DesignFlowSessionView; readonly executionBusy: boolean; readonly terminalOutcome?: TerminalOutcomeView | undefined; readonly freshMode?: boolean }): React.JSX.Element {
+  const status = freshMode ? "Ready" : headerStatus(session, executionBusy, terminalOutcome);
 
   return (
     <Box
@@ -114,7 +119,7 @@ export function Header({ session, executionBusy, terminalOutcome }: { readonly s
       justifyContent="space-between"
     >
       <Text bold color={designFlowTheme.accentStrong}>DesignFlow</Text>
-      <Text color={designFlowTheme.textSecondary}>{session.project.name}</Text>
+      <Text color={designFlowTheme.textSecondary}>{freshMode ? "Fresh UI MVP" : session.project.name}</Text>
       <Text color={status === "Ready" || status === "Done" ? designFlowTheme.success : status === "Running" ? designFlowTheme.accent : designFlowTheme.warning}>
         {status}
       </Text>
@@ -306,6 +311,32 @@ export function MainPanel({
   );
 }
 
+function FreshMainPanel({
+  navigation,
+  terminalColumns,
+}: {
+  readonly navigation: TuiNavigationState;
+  readonly terminalColumns: number;
+}): React.JSX.Element {
+  return (
+    <Box flexGrow={1} flexDirection="column" paddingX={3} paddingY={2}>
+      {navigation.view === "figma-url-entry" ? (
+        <FigmaUrlEntryView navigation={navigation} terminalColumns={terminalColumns} />
+      ) : navigation.view === "ready-to-generate" && navigation.freshState !== undefined ? (
+        <Box flexDirection="column">
+          <Text bold color={designFlowTheme.textPrimary}>Ready to generate</Text>
+          <Text color={designFlowTheme.success}>✓ {navigation.freshState.design.label}</Text>
+          <Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshState.nodeId}</Text>
+          <Text color={designFlowTheme.accentStrong}>No generation started. Press Esc to choose another source.</Text>
+        </Box>
+      ) : (
+        <DesignSelectionView navigation={navigation} fresh />
+      )}
+      {navigation.error !== undefined && navigation.view !== "design-selection" && <Text color={designFlowTheme.danger}>{navigation.error}</Text>}
+    </Box>
+  );
+}
+
 export function StartView({
   session,
   focused,
@@ -346,17 +377,19 @@ export function StartView({
 }
 export function DesignSelectionView({
   navigation,
+  fresh = false,
 }: {
   readonly navigation: TuiNavigationState;
+  readonly fresh?: boolean;
 }): React.JSX.Element {
   return (
     <Box flexDirection="column">
-      <Text bold color={designFlowTheme.textPrimary}>Select design</Text>
-      <Text color={designFlowTheme.textSecondary}>Use the frame selected in Figma, or paste a Figma URL.</Text>
+      <Text bold color={designFlowTheme.textPrimary}>{fresh ? "Select a Figma frame" : "Select design"}</Text>
+      <Text color={designFlowTheme.textSecondary}>{fresh ? "Use the current selection, or paste a Figma frame URL." : "Use the frame selected in Figma, or paste a Figma URL."}</Text>
       <Box flexDirection="column" marginTop={2}>
         {[
           "Current Figma selection",
-          "Paste Figma URL",
+          fresh ? "Paste Figma frame URL" : "Paste Figma URL",
         ].map((label, index) => (
           <Text key={label} color={index === navigation.designOption ? designFlowTheme.accentStrong : designFlowTheme.textPrimary}>
             {index === navigation.designOption ? "›" : " "} {label}
@@ -550,8 +583,10 @@ export function StatusBar({
         ? "Ctrl+C Cancel   ? Help   q Quit"
       : view === "destination-selection"
             ? "↑↓ Navigate   Enter Select   Esc Back"
-        : view === "approval-mode"
+      : view === "approval-mode"
           ? "↑↓ Navigate   Enter Select   Esc Back"
+      : view === "ready-to-generate"
+              ? "Esc Choose another source   ? Help   q Quit"
       : view === "ready-to-run"
               ? "Enter Start   Esc Change destination   ? Help   q Quit"
                 : view === "execution"

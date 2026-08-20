@@ -161,7 +161,7 @@ async function main(): Promise<number> {
 
   // Reading stdin for a non-interactive command would block on a pipe that
   // never closes, so only the prompting paths drain it.
-  const needsInput = argv.length === 0 || argv[0] === "run" || argv[0] === "answer" || argv[0] === "feedback-loop";
+  const needsInput = argv.length === 0 || argv[0] === "fresh" || argv[0] === "run" || argv[0] === "answer" || argv[0] === "feedback-loop";
   const useTui = shouldUseTui({
     argv,
     stdinIsTTY: process.stdin.isTTY === true,
@@ -190,7 +190,7 @@ async function main(): Promise<number> {
       try {
         context = createCliContext({
           signal,
-          autoConnectFigmaDesktop: argv.length === 0,
+          autoConnectFigmaDesktop: argv.length === 0 || argv[0] === "fresh",
         });
         let commandCode: number;
         if (useTui) {
@@ -310,6 +310,7 @@ async function main(): Promise<number> {
               if (visual.reportAvailable) bridge.visual(visual);
               return code;
             },
+            { mode: argv[0] === "fresh" ? "fresh" : "legacy" },
           );
           commandCode = tuiCommandCode;
         } else {

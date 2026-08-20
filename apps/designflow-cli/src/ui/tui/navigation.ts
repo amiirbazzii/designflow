@@ -1,6 +1,7 @@
 import type { DestinationCandidate } from "../../services/destinations";
 import type { InteractiveDesign } from "../../services/figma-selection";
 import type { ApprovalMode } from "./model";
+import type { FreshUiState } from "./fresh-ui";
 import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
 import {
   backspaceText,
@@ -26,6 +27,7 @@ export type TuiView =
   | "signing-in"
   | "design-selection"
   | "figma-url-entry"
+  | "ready-to-generate"
   | "destination-selection"
   | "approval-mode"
   | "ready-to-run"
@@ -60,6 +62,7 @@ export interface TuiNavigationState {
   readonly approvalMode: ApprovalMode;
   readonly designOption: number;
   readonly design?: InteractiveDesign | undefined;
+  readonly freshState?: Extract<FreshUiState, { readonly status: "ready-to-generate" }> | undefined;
   readonly urlValue: string;
   readonly urlCursor: number;
   readonly urlViewportStart: number;
@@ -150,6 +153,21 @@ export function enterUrlEntry(state: TuiNavigationState): TuiNavigationState {
     urlViewportStart: 0,
     urlError: undefined,
     error: undefined,
+    loading: null,
+  };
+}
+
+export function setFreshReady(
+  state: TuiNavigationState,
+  freshState: Extract<FreshUiState, { readonly status: "ready-to-generate" }>,
+): TuiNavigationState {
+  return {
+    ...state,
+    view: "ready-to-generate",
+    design: freshState.design,
+    freshState,
+    error: undefined,
+    urlError: undefined,
     loading: null,
   };
 }
@@ -412,6 +430,7 @@ export function navigateBack(state: TuiNavigationState): TuiNavigationState {
   }
   if (state.view === "final-result" || state.view === "visual-result" || state.view === "validation-result") return { ...state, view: "start", outcomeActionIndex: 0 };
   if (state.view === "ready-to-run") return { ...state, view: "approval-mode", error: undefined };
+  if (state.view === "ready-to-generate") return enterDesignSelection(state);
   if (state.view === "approval-mode") return { ...state, view: "destination-selection", error: undefined };
   if (state.view === "destination-selection") return enterDesignSelection(state);
   if (state.view === "figma-url-entry") return enterDesignSelection(state);
