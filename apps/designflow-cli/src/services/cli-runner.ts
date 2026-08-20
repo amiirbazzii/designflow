@@ -61,6 +61,8 @@ import {
   projectMapperDefaultModelProfile,
   uiBuilderDefaultModelProfile,
   visualCriticDefaultModelProfile,
+  createFreshUiBuilderAgent,
+  modelFreshUiBuilderStrategy,
   compileSpecificationEvidenceBundle,
 } from "@designflow/agents";
 import { createV2CapabilityConfig } from "./v2-composition";
@@ -98,6 +100,13 @@ import {
   type FigmaSourceSnapshot,
 } from "@designflow/sdk";
 import type { FreshEvidenceCompiler, FreshFrameEvidence } from "./fresh-figma-evidence";
+import {
+  generateFreshUiProject,
+  invokeFreshUiBuilder,
+  installFreshProjectDependencies,
+  type FreshUiBuilderInput,
+  type FreshGenerationResult,
+} from "./fresh-ui-generation";
 import {
   scaffoldFreshUiProject,
   type FreshScaffoldResult,
@@ -469,6 +478,11 @@ export interface CliContext {
   readonly compileFreshFigmaEvidence?: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>>;
   /** Creates the fixed Fresh UI host project without sessions, workflows, or AI. */
   readonly scaffoldFreshProject?: (evidence: FreshFrameEvidence) => Promise<FreshScaffoldResult>;
+  /** Generates implementation only inside the Fresh scaffold, with host validation/build authority. */
+  readonly generateFreshProject?: (
+    evidence: FreshFrameEvidence,
+    scaffold: FreshScaffoldResult,
+  ) => Promise<FreshGenerationResult>;
   /** True only for the bare-shell standard endpoint fallback. */
   readonly figmaAutoDetected: boolean;
   /**
@@ -853,6 +867,22 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   ) => compileSpecificationEvidenceBundle(snapshot);
   const scaffoldFreshProject = (evidence: FreshFrameEvidence): Promise<FreshScaffoldResult> =>
     scaffoldFreshUiProject({ evidence });
+  const generateFreshProject = async (
+    evidence: FreshFrameEvidence,
+    scaffold: FreshScaffoldResult,
+  ): Promise<FreshGenerationResult> => {
+    if (figmaAgentInvocationRuntime === undefined) {
+      throw new DesignFlowError("ERR_FRESH_UI_BUILDER_UNAVAILABLE", "Fresh UI Builder is unavailable.");
+    }
+    return generateFreshUiProject({
+      evidence,
+      scaffold,
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+      installDependencies: installFreshProjectDependencies,
+      invokeBuilder: (input: FreshUiBuilderInput, signal?: AbortSignal) =>
+        invokeFreshUiBuilder(figmaAgentInvocationRuntime, input, signal),
+    });
+  };
 
   // Build the specialized model port before constructing the invocation
   // runtime. The coordinator and workflow agents must see the same registered
@@ -898,9 +928,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   // A dedicated `AgentInvocationRuntime`, independent of the coordinator's
   // `AgentRuntime` below — Stage 2's own boundary between "decides a route"
   // and "invoked by a workflow node for its output" carries through here.
-  const figmaAgentInvocationRuntime = figmaMcpEnabled
-    ? new AgentInvocationRuntime({
-        registry: createSpecializedAgentRegistry({
+  const specializedAgentRegistry = createSpecializedAgentRegistry({
           figmaSpecificationStrategy: modelModeRequested
             ? modelFigmaSpecificationStrategy
             : undefined,
@@ -921,7 +949,14 @@ export function createCliContext(options?: CliContextOptions): CliContext {
           projectMapperStrategy: modelModeRequested ? modelProjectMapperStrategy : undefined,
           uiBuilderStrategy: modelModeRequested ? modelUIBuilderStrategy : undefined,
           visualCriticStrategy: modelModeRequested ? modelVisualCriticStrategy : undefined,
-        }),
+        });
+  specializedAgentRegistry.register(createFreshUiBuilderAgent(
+    modelModeRequested ? modelFreshUiBuilderStrategy : undefined,
+  ));
+
+  const figmaAgentInvocationRuntime = figmaMcpEnabled
+    ? new AgentInvocationRuntime({
+        registry: specializedAgentRegistry,
         ...(modelRuntime !== undefined ? { models: modelRuntime } : {}),
         modelsRequired: modelModeRequested,
         tracer: new TraceCollector(traceStore),
@@ -1331,6 +1366,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     retrieveFreshFigmaSnapshot,
     compileFreshFigmaEvidence,
     scaffoldFreshProject,
+    generateFreshProject,
     figmaAutoDetected: figmaResolution.source === "automatic",
     traces,
     artifactInspection,

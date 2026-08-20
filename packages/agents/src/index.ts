@@ -71,6 +71,18 @@ import { InMemorySpecializedAgentRegistry } from "./specialized-registry";
 export { InMemoryAgentRegistry, assertWorkerAgentAlignment } from "./registry";
 export { InMemorySpecializedAgentRegistry } from "./specialized-registry";
 
+export {
+  createFreshUiBuilderAgent,
+  freshUiBuilderAgent,
+  modelFreshUiBuilderStrategy,
+  deterministicFreshUiBuilderStrategy,
+  freshUiBuilderAgentManifest,
+  freshUiBuilderDefaultModelProfile,
+  FRESH_UI_BUILDER_AGENT_ID,
+  freshUiBuilderProposalSchema,
+} from "./ui-builder/fresh-ui-builder-agent";
+export type { FreshUiBuilderInput, FreshUiBuilderProposal, FreshUiBuilderStrategy } from "./ui-builder/fresh-ui-builder-agent";
+
 export { AgentInvocationRuntime } from "./invocation-runtime";
 export type { AgentInvocationRuntimeOptions } from "./invocation-runtime";
 

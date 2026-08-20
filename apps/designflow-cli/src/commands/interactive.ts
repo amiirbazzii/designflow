@@ -256,6 +256,10 @@ export async function freshCommand(
           if (context.scaffoldFreshProject !== undefined) {
             const scaffold = await context.scaffoldFreshProject(evidence);
             terminal.print(`Fresh project created: ${scaffold.targetPath}`);
+            if (context.generateFreshProject !== undefined) {
+              const generated = await context.generateFreshProject(evidence, scaffold);
+              terminal.print(`Fresh UI generated and built: ${generated.targetPath}`);
+            }
           }
         }
         terminal.print(`Ready to generate: ${ready.nodeId}`);
@@ -279,6 +283,10 @@ export async function freshCommand(
           if (context.scaffoldFreshProject !== undefined) {
             const scaffold = await context.scaffoldFreshProject(evidence);
             terminal.print(`Fresh project created: ${scaffold.targetPath}`);
+            if (context.generateFreshProject !== undefined) {
+              const generated = await context.generateFreshProject(evidence, scaffold);
+              terminal.print(`Fresh UI generated and built: ${generated.targetPath}`);
+            }
           }
         }
         terminal.print(`Ready to generate: ${ready.nodeId}`);

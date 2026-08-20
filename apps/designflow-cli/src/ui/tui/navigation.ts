@@ -4,6 +4,7 @@ import type { ApprovalMode } from "./model";
 import type { FreshUiState } from "./fresh-ui";
 import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
 import type { FreshScaffoldResult } from "../../services/fresh-project-scaffolder";
+import type { FreshGenerationResult } from "../../services/fresh-ui-generation";
 import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
 import {
   backspaceText,
@@ -67,6 +68,7 @@ export interface TuiNavigationState {
   readonly freshState?: Extract<FreshUiState, { readonly status: "ready-to-generate" }> | undefined;
   readonly freshEvidence?: FreshFrameEvidence | undefined;
   readonly freshProject?: FreshScaffoldResult | undefined;
+  readonly freshGeneration?: FreshGenerationResult | undefined;
   readonly urlValue: string;
   readonly urlCursor: number;
   readonly urlViewportStart: number;
@@ -74,7 +76,7 @@ export interface TuiNavigationState {
   readonly destinationCandidates: readonly DestinationCandidate[];
   readonly destinationIndex: number;
   readonly destinationScrollOffset: number;
-  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | "fresh-scaffold" | null;
+  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | "fresh-scaffold" | "fresh-generation" | null;
   readonly authError?: string | undefined;
   readonly authBrowserFallback?: string | undefined;
   readonly error?: string | undefined;
@@ -148,6 +150,7 @@ export function enterDesignSelection(
     freshState: undefined,
     freshEvidence: undefined,
     freshProject: undefined,
+    freshGeneration: undefined,
   };
 }
 
@@ -175,6 +178,7 @@ export function setFreshReady(
     freshState,
     freshEvidence: undefined,
     freshProject: undefined,
+    freshGeneration: undefined,
     error: undefined,
     urlError: undefined,
     loading: null,
@@ -198,6 +202,7 @@ export function setFreshEvidence(
     loading: null,
     freshEvidence: evidence,
     freshProject: undefined,
+    freshGeneration: undefined,
     error: undefined,
   };
 }
@@ -212,8 +217,20 @@ export function setFreshScaffold(
     loading: null,
     freshEvidence: evidence,
     freshProject: project,
+    freshGeneration: undefined,
     error: undefined,
   };
+}
+
+export function setFreshGenerationLoading(state: TuiNavigationState): TuiNavigationState {
+  return { ...state, loading: "fresh-generation", error: undefined };
+}
+
+export function setFreshGeneration(
+  state: TuiNavigationState,
+  generation: FreshGenerationResult,
+): TuiNavigationState {
+  return { ...state, loading: null, freshGeneration: generation, error: undefined };
 }
 
 export function enterDestinationSelection(

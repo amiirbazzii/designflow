@@ -23,6 +23,7 @@ export interface FreshScaffoldRequest {
 }
 
 export interface FreshScaffoldResult {
+  readonly outputRoot: string;
   readonly targetPath: string;
   readonly frameSlug: string;
   readonly files: readonly string[];
@@ -149,7 +150,7 @@ export async function scaffoldFreshUiProject(
       const destination = resolveInside(targetPath, relativePath);
       await writeFile(destination, contents, { encoding: "utf8", flag: "wx" });
     }
-    return { targetPath, frameSlug, files: GENERATED_FILES };
+    return { outputRoot, targetPath, frameSlug, files: GENERATED_FILES };
   } catch (error) {
     throw new FreshScaffoldError(
       "ERR_FRESH_SCAFFOLD_WRITE",

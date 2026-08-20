@@ -338,8 +338,11 @@ function FreshMainPanel({
             <Text color={designFlowTheme.textSecondary}>Frame node: {navigation.freshEvidence.frame.id}</Text>
             <Text color={designFlowTheme.textSecondary}>Size: {navigation.freshEvidence.frame.width} × {navigation.freshEvidence.frame.height}</Text>
             {navigation.loading === "fresh-scaffold" && <Text color={designFlowTheme.accent}>Creating deterministic project scaffold…</Text>}
+            {navigation.loading === "fresh-generation" && <Text color={designFlowTheme.accent}>Generating and validating the Fresh UI…</Text>}
             {navigation.freshProject !== undefined && <Text color={designFlowTheme.success}>Project: {navigation.freshProject.targetPath}</Text>}
-            <Text color={designFlowTheme.accentStrong}>No generation started. Press Esc to choose another source.</Text>
+            {navigation.freshGeneration !== undefined
+              ? <Text color={designFlowTheme.success}>✓ Build passed after {navigation.freshGeneration.repairAttempts} repair attempt(s).</Text>
+              : <Text color={designFlowTheme.accentStrong}>Press Esc to choose another source.</Text>}
           </Box>
         )
       ) : (

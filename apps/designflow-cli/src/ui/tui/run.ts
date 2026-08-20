@@ -63,6 +63,9 @@ export async function runTuiShell(
     ...(mode === "fresh" && context.scaffoldFreshProject !== undefined
       ? { scaffoldFreshProject: context.scaffoldFreshProject }
       : {}),
+    ...(mode === "fresh" && context.generateFreshProject !== undefined
+      ? { generateFreshProject: context.generateFreshProject }
+      : {}),
     ...(mode === "legacy" ? { getDestinations: () => findDestinationCandidates(context, runtime.project) } : {}),
   };
   return runTuiShellWithView(

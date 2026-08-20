@@ -36,6 +36,8 @@ import {
   setFreshEvidence,
   setFreshScaffoldLoading,
   setFreshScaffold,
+  setFreshGenerationLoading,
+  setFreshGeneration,
   updateUrlText,
   openProposalReview,
   openDiffView,
@@ -98,6 +100,7 @@ import { appendFileSync } from "node:fs";
 import { readyFreshUiState } from "./fresh-ui";
 import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
 import type { FreshScaffoldResult } from "../../services/fresh-project-scaffolder";
+import type { FreshGenerationResult } from "../../services/fresh-ui-generation";
 
 export type TuiMode = "legacy" | "fresh";
 
@@ -143,6 +146,7 @@ export interface TuiSelectionHandlers {
     ready: Extract<ReturnType<typeof readyFreshUiState>, { readonly status: "ready-to-generate" }>,
   ) => Promise<FreshFrameEvidence>;
   readonly scaffoldFreshProject?: (evidence: FreshFrameEvidence) => Promise<FreshScaffoldResult>;
+  readonly generateFreshProject?: (evidence: FreshFrameEvidence, scaffold: FreshScaffoldResult) => Promise<FreshGenerationResult>;
 }
 
 export interface TuiAppProps {
@@ -388,6 +392,24 @@ export function App({
                   setNavigation((current) => current.view === "ready-to-generate"
                     ? setFreshScaffold(current, evidence, project)
                     : current);
+                  if (handlers.generateFreshProject !== undefined) {
+                    setNavigation((current) => current.view === "ready-to-generate"
+                      ? setFreshGenerationLoading(current)
+                      : current);
+                    void handlers.generateFreshProject(evidence, project)
+                      .then((generation) => {
+                        if (freshEvidenceRequest.current !== requestId) return;
+                        setNavigation((current) => current.view === "ready-to-generate"
+                          ? setFreshGeneration(current, generation)
+                          : current);
+                      })
+                      .catch((error: unknown) => {
+                        if (freshEvidenceRequest.current !== requestId) return;
+                        setNavigation((current) => current.view === "ready-to-generate"
+                          ? { ...current, loading: null, error: error instanceof Error ? error.message : "Fresh UI generation failed." }
+                          : current);
+                      });
+                  }
                 })
                 .catch((error: unknown) => {
                   if (freshEvidenceRequest.current !== requestId) return;
