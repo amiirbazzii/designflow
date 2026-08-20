@@ -36,6 +36,8 @@ export interface BrowserCapture {
   readonly bytes: Uint8Array;
   readonly width: number;
   readonly height: number;
+  /** Final browser URL after navigation, used by Fresh to enforce same-origin `/`. */
+  readonly finalUrl?: string;
   readonly consoleErrors: readonly string[];
   /** Unhandled page exceptions observed before the screenshot was taken. */
   readonly runtimeErrors?: readonly string[];
@@ -81,7 +83,7 @@ export interface DomEvidence {
 }
 
 export interface BrowserRenderer {
-  capture(url: string, viewport: VisualViewportV1, options: { fullPage: boolean; waitForFontsMs: number; timeoutMs: number; maxImageBytes: number; maxImagePixels: number }, signal: AbortSignal): Promise<BrowserCapture>;
+  capture(url: string, viewport: VisualViewportV1, options: { fullPage: boolean; waitForFontsMs: number; timeoutMs: number; maxImageBytes: number; maxImagePixels: number; allowedOrigin?: string }, signal: AbortSignal): Promise<BrowserCapture>;
   close(): Promise<void>;
 }
 
@@ -349,6 +351,7 @@ export class PreviewRuntime {
       cwd: root,
       env,
       shell: false,
+      detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.child = child;
@@ -358,13 +361,13 @@ export class PreviewRuntime {
     let exited = false;
     child.once("error", (error) => { exited = true; this.stderr = boundedAppend(this.stderr, Buffer.from(error instanceof Error ? error.message : "preview process error")); });
     child.once("close", (code) => { exited = true; exitCode = code ?? 1; });
-    const abort = (): void => { this.child?.kill(); };
+    const abort = (): void => { this.terminateChild(this.child); };
     signal.addEventListener("abort", abort, { once: true });
     try {
       while (Date.now() - started < target.startupTimeoutMs) {
         if (exited) break;
         try {
-          const response = await fetch(target.readinessUrl, { signal: AbortSignal.timeout(500) });
+          const response = await fetch(target.readinessUrl, { redirect: "manual", signal: AbortSignal.timeout(500) });
           if (response.ok) {
             signal.removeEventListener("abort", abort);
             return { status: "ready", target, startedAt, endedAt: new Date().toISOString(), stdout: this.stdout, stderr: this.stderr, warnings: [] };
@@ -396,11 +399,19 @@ export class PreviewRuntime {
     const child = this.child;
     this.child = undefined;
     if (child === undefined || child.exitCode !== null) return;
-    child.kill();
+    this.terminateChild(child);
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, 1_000);
       child.once("close", () => { clearTimeout(timer); resolve(); });
     });
+  }
+
+  private terminateChild(child: ChildProcess | undefined): void {
+    if (child === undefined || child.exitCode !== null) return;
+    if (process.platform !== "win32" && child.pid !== undefined) {
+      try { process.kill(-child.pid, "SIGTERM"); return; } catch { /* fall back to the direct child */ }
+    }
+    child.kill();
   }
 }
 
@@ -440,7 +451,25 @@ function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
       if (signal.aborted) throw new RendererUnavailableError("Visual capture was cancelled.");
       const context = await value.newContext?.({ viewport: { width: viewport.width, height: viewport.height }, serviceWorkers: "block" });
       if (context === undefined) throw new RendererUnavailableError("Playwright could not create an isolated browser context.");
+      const contextValue = context as {
+        route?: (pattern: string, handler: (route: { request: () => { url: () => string }; abort: (reason?: string) => Promise<void>; continue: () => Promise<void> }) => Promise<void>) => Promise<void>;
+      };
+      if (options.allowedOrigin !== undefined && contextValue.route !== undefined) {
+        await contextValue.route("**/*", async (route) => {
+          try {
+            if (new URL(route.request().url()).origin !== options.allowedOrigin) {
+              await route.abort("blockedbyclient");
+              return;
+            }
+          } catch {
+            await route.abort("blockedbyclient");
+            return;
+          }
+          await route.continue();
+        });
+      }
       const page = await (context as { newPage: () => Promise<unknown> }).newPage();
+      let abort: (() => void) | undefined;
       try {
         const pageValue = page as {
           on?: (event: "console" | "requestfailed" | "pageerror", listener: (value: unknown) => void) => void;
@@ -449,6 +478,8 @@ function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
           screenshot: (options: { fullPage: boolean; type: "png" }) => Promise<Uint8Array>;
           close?: () => Promise<void>;
         };
+        abort = (): void => { void pageValue.close?.(); };
+        signal.addEventListener("abort", abort, { once: true });
         const consoleErrors: string[] = [];
         const runtimeErrors: string[] = [];
         const failedResources: string[] = [];
@@ -543,8 +574,20 @@ function createPlaywrightRenderer(browser: unknown): BrowserRenderer {
           return { elements, overflow };
         })()`);
         const decoded = decodePng(bytes, options.maxImageBytes, options.maxImagePixels);
-        return { bytes, width: decoded.width, height: decoded.height, consoleErrors, runtimeErrors, failedResources, warnings: ["browser context: isolated", "source: browser-rendered"], dom: dom as DomEvidence };
+        const finalUrl = (pageValue as { url?: () => string }).url?.();
+        return {
+          bytes,
+          width: decoded.width,
+          height: decoded.height,
+          ...(finalUrl === undefined ? {} : { finalUrl }),
+          consoleErrors,
+          runtimeErrors,
+          failedResources,
+          warnings: ["browser context: isolated", "source: browser-rendered"],
+          dom: dom as DomEvidence,
+        };
       } finally {
+        if (abort !== undefined) signal.removeEventListener("abort", abort);
         await pageValueClose(page);
         await (context as { close: () => Promise<void> }).close();
       }

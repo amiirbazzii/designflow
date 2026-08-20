@@ -53,11 +53,11 @@ export async function runTuiShell(
     parseFigmaUrl: designFromUrl,
     ...(mode === "fresh" && context.retrieveFreshFigmaSnapshot !== undefined && context.compileFreshFigmaEvidence !== undefined
       ? {
-          getFreshEvidence: (ready) => retrieveFreshFrameEvidence({
+          getFreshEvidence: (ready, signal) => retrieveFreshFrameEvidence({
             source: ready.source,
             nodeId: ready.nodeId,
             sourceKind: ready.design.kind === "current-selection" ? "current-selection" : "figma-url",
-          }, context.retrieveFreshFigmaSnapshot!, context.compileFreshFigmaEvidence!),
+          }, context.retrieveFreshFigmaSnapshot!, context.compileFreshFigmaEvidence!, signal),
         }
       : {}),
     ...(mode === "fresh" && context.scaffoldFreshProject !== undefined
@@ -65,6 +65,9 @@ export async function runTuiShell(
       : {}),
     ...(mode === "fresh" && context.generateFreshProject !== undefined
       ? { generateFreshProject: context.generateFreshProject }
+      : {}),
+    ...(mode === "fresh" && context.previewFreshProject !== undefined
+      ? { previewFreshProject: context.previewFreshProject }
       : {}),
     ...(mode === "legacy" ? { getDestinations: () => findDestinationCandidates(context, runtime.project) } : {}),
   };

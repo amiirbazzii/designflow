@@ -19,6 +19,7 @@ export type FreshEvidenceCompiler<TSpecificationEvidence = unknown> = (
 export type FreshSnapshotRetriever = (
   source: ParsedFigmaSource,
   sourceKind: FreshSnapshotSourceKind,
+  signal?: AbortSignal,
 ) => Promise<FigmaSourceSnapshot>;
 
 /**
@@ -125,8 +126,9 @@ export async function retrieveFreshFrameEvidence(
   request: FreshEvidenceRequest,
   retrieveSnapshot: FreshSnapshotRetriever,
   compileEvidence: FreshEvidenceCompiler,
+  signal?: AbortSignal,
 ): Promise<FreshFrameEvidence> {
-  const snapshot = await retrieveSnapshot(request.source, request.sourceKind);
+  const snapshot = await retrieveSnapshot(request.source, request.sourceKind, signal);
   return normalizeFreshFrameEvidence(snapshot, request.nodeId, compileEvidence);
 }
 

@@ -111,6 +111,7 @@ import {
   scaffoldFreshUiProject,
   type FreshScaffoldResult,
 } from "./fresh-project-scaffolder";
+import { captureFreshUiPreview, type FreshPreviewResult } from "./fresh-ui-preview";
 import {
   FileAgentMemoryStore,
   FileApprovalManager,
@@ -473,6 +474,7 @@ export interface CliContext {
   readonly retrieveFreshFigmaSnapshot?: (
     source: ParsedFigmaSource,
     sourceKind: "current-selection" | "figma-url",
+    signal?: AbortSignal,
   ) => Promise<FigmaSourceSnapshot>;
   /** Reuses the canonical evidence projection from the composition root. */
   readonly compileFreshFigmaEvidence?: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>>;
@@ -483,6 +485,12 @@ export interface CliContext {
     evidence: FreshFrameEvidence,
     scaffold: FreshScaffoldResult,
   ) => Promise<FreshGenerationResult>;
+  /** Captures the generated Fresh project at the authoritative frame viewport. */
+  readonly previewFreshProject?: (
+    evidence: FreshFrameEvidence,
+    scaffold: FreshScaffoldResult,
+    signal?: AbortSignal,
+  ) => Promise<FreshPreviewResult>;
   /** True only for the bare-shell standard endpoint fallback. */
   readonly figmaAutoDetected: boolean;
   /**
@@ -821,6 +829,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const retrieveFreshFigmaSnapshot = async (
     parsedSource: ParsedFigmaSource,
     sourceKind: "current-selection" | "figma-url",
+    signal?: AbortSignal,
   ): Promise<FigmaSourceSnapshot> => {
     if (mcpClient === undefined) {
       throw new DesignFlowError(
@@ -839,7 +848,11 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       );
     }
 
-    const signal = options?.signal ?? new AbortController().signal;
+    const effectiveSignal = signal === undefined
+      ? options?.signal ?? new AbortController().signal
+      : options?.signal === undefined
+        ? signal
+        : AbortSignal.any([options.signal, signal]);
     return buildFigmaSourceSnapshot(
       {
         executionId: "fresh-ui-evidence",
@@ -850,7 +863,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
         parentArtifacts: [],
         artifactStore,
         config: {},
-        signal,
+        signal: effectiveSignal,
         mcp: mcpClient,
       },
       {
@@ -870,17 +883,36 @@ export function createCliContext(options?: CliContextOptions): CliContext {
   const generateFreshProject = async (
     evidence: FreshFrameEvidence,
     scaffold: FreshScaffoldResult,
+    signal?: AbortSignal,
   ): Promise<FreshGenerationResult> => {
     if (figmaAgentInvocationRuntime === undefined) {
       throw new DesignFlowError("ERR_FRESH_UI_BUILDER_UNAVAILABLE", "Fresh UI Builder is unavailable.");
     }
-    return generateFreshUiProject({
+    const effectiveSignal = signal ?? options?.signal;
+    const request = {
       evidence,
       scaffold,
-      ...(options?.signal === undefined ? {} : { signal: options.signal }),
       installDependencies: installFreshProjectDependencies,
       invokeBuilder: (input: FreshUiBuilderInput, signal?: AbortSignal) =>
         invokeFreshUiBuilder(figmaAgentInvocationRuntime, input, signal),
+      ...(effectiveSignal === undefined ? {} : { signal: effectiveSignal }),
+    };
+    return generateFreshUiProject(request);
+  };
+  const previewFreshProject = (
+    evidence: FreshFrameEvidence,
+    scaffold: FreshScaffoldResult,
+    signal?: AbortSignal,
+  ): Promise<FreshPreviewResult> => {
+    const effectiveSignal = signal === undefined
+      ? options?.signal
+      : options?.signal === undefined
+        ? signal
+        : AbortSignal.any([options.signal, signal]);
+    return captureFreshUiPreview({
+      evidence,
+      scaffold,
+      ...(effectiveSignal === undefined ? {} : { signal: effectiveSignal }),
     });
   };
 
@@ -1367,6 +1399,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     compileFreshFigmaEvidence,
     scaffoldFreshProject,
     generateFreshProject,
+    previewFreshProject,
     figmaAutoDetected: figmaResolution.source === "automatic",
     traces,
     artifactInspection,

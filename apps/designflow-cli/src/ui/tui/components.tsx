@@ -339,9 +339,13 @@ function FreshMainPanel({
             <Text color={designFlowTheme.textSecondary}>Size: {navigation.freshEvidence.frame.width} × {navigation.freshEvidence.frame.height}</Text>
             {navigation.loading === "fresh-scaffold" && <Text color={designFlowTheme.accent}>Creating deterministic project scaffold…</Text>}
             {navigation.loading === "fresh-generation" && <Text color={designFlowTheme.accent}>Generating and validating the Fresh UI…</Text>}
+            {navigation.loading === "fresh-preview" && <Text color={designFlowTheme.accent}>Starting preview and capturing the Fresh UI…</Text>}
             {navigation.freshProject !== undefined && <Text color={designFlowTheme.success}>Project: {navigation.freshProject.targetPath}</Text>}
             {navigation.freshGeneration !== undefined
               ? <Text color={designFlowTheme.success}>✓ Build passed after {navigation.freshGeneration.repairAttempts} repair attempt(s).</Text>
+              : null}
+            {navigation.freshPreview !== undefined
+              ? <Text color={designFlowTheme.success}>✓ Preview captured at {navigation.freshPreview.viewport.width} × {navigation.freshPreview.viewport.height}.</Text>
               : <Text color={designFlowTheme.accentStrong}>Press Esc to choose another source.</Text>}
           </Box>
         )

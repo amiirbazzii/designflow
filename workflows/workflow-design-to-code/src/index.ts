@@ -107,6 +107,7 @@ export { visualValidationCapabilities } from "./visual-validation/visual-validat
 export { VISUAL_VALIDATION_ARTIFACT_IDS, VISUAL_VALIDATION_ARTIFACT_TYPES, visualValidationWorkflowInputSchema, visualValidationSummarySchema, previewRuntimeRecordSchema, screenshotEvidenceCollectionSchema, visualComparisonMetricsSchema } from "./visual-validation/visual-validation-types";
 export type { VisualValidationWorkflowInput, VisualValidationSummaryV1, PreviewRuntimeRecordV1, VisualValidationInput, VisualValidationReport, VisualComparisonMetricsV1 } from "./visual-validation/visual-validation-types";
 export { DEFAULT_VISUAL_VIEWPORTS, PreviewRuntime, captureWithPreview, compareScreenshotBytes, discoverPreviewCommand, loadOptionalPlaywrightRenderer, makePreviewTarget, RendererUnavailableError } from "./visual-validation/visual-validation-runtime";
+export type { BrowserCapture, BrowserRenderer, PreviewRuntimeRecord } from "./visual-validation/visual-validation-runtime";
 export type {
   FigmaSpecificationInput,
   Stage3Summary,

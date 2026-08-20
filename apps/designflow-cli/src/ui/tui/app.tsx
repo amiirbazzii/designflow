@@ -38,6 +38,8 @@ import {
   setFreshScaffold,
   setFreshGenerationLoading,
   setFreshGeneration,
+  setFreshPreviewLoading,
+  setFreshPreview,
   updateUrlText,
   openProposalReview,
   openDiffView,
@@ -101,6 +103,7 @@ import { readyFreshUiState } from "./fresh-ui";
 import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
 import type { FreshScaffoldResult } from "../../services/fresh-project-scaffolder";
 import type { FreshGenerationResult } from "../../services/fresh-ui-generation";
+import type { FreshPreviewResult } from "../../services/fresh-ui-preview";
 
 export type TuiMode = "legacy" | "fresh";
 
@@ -144,9 +147,11 @@ export interface TuiSelectionHandlers {
   readonly getDestinations?: () => Promise<readonly DestinationCandidate[]>;
   readonly getFreshEvidence?: (
     ready: Extract<ReturnType<typeof readyFreshUiState>, { readonly status: "ready-to-generate" }>,
+    signal?: AbortSignal,
   ) => Promise<FreshFrameEvidence>;
-  readonly scaffoldFreshProject?: (evidence: FreshFrameEvidence) => Promise<FreshScaffoldResult>;
-  readonly generateFreshProject?: (evidence: FreshFrameEvidence, scaffold: FreshScaffoldResult) => Promise<FreshGenerationResult>;
+  readonly scaffoldFreshProject?: (evidence: FreshFrameEvidence, signal?: AbortSignal) => Promise<FreshScaffoldResult>;
+  readonly generateFreshProject?: (evidence: FreshFrameEvidence, scaffold: FreshScaffoldResult, signal?: AbortSignal) => Promise<FreshGenerationResult>;
+  readonly previewFreshProject?: (evidence: FreshFrameEvidence, scaffold: FreshScaffoldResult, signal?: AbortSignal) => Promise<FreshPreviewResult>;
 }
 
 export interface TuiAppProps {
@@ -206,6 +211,7 @@ export function App({
   const cancellationRequested = useRef(false);
   const destinationRequest = useRef(0);
   const freshEvidenceRequest = useRef(0);
+  const freshPreviewAbort = useRef<AbortController | undefined>();
   const handoffStarted = useRef(false);
   const rawInputRef = useRef<string | undefined>();
   const authRequestRef = useRef(0);
@@ -214,6 +220,8 @@ export function App({
 
   const navigateBackFromUi = (): void => {
     freshEvidenceRequest.current += 1;
+    freshPreviewAbort.current?.abort();
+    freshPreviewAbort.current = undefined;
     setNavigation((current) => navigateBack(current));
   };
 
@@ -373,8 +381,11 @@ export function App({
         if (handlers.getFreshEvidence !== undefined) {
           const requestId = freshEvidenceRequest.current + 1;
           freshEvidenceRequest.current = requestId;
+          freshPreviewAbort.current?.abort();
+          const previewAbort = new AbortController();
+          freshPreviewAbort.current = previewAbort;
           setNavigation((current) => setFreshEvidenceLoading(current));
-          void handlers.getFreshEvidence(ready)
+          void handlers.getFreshEvidence(ready, previewAbort.signal)
             .then((evidence) => {
               if (freshEvidenceRequest.current !== requestId) return;
               if (handlers.scaffoldFreshProject === undefined) {
@@ -386,7 +397,7 @@ export function App({
               setNavigation((current) => current.view === "ready-to-generate"
                 ? setFreshScaffoldLoading(setFreshEvidence(current, evidence))
                 : current);
-              void handlers.scaffoldFreshProject(evidence)
+              void handlers.scaffoldFreshProject(evidence, previewAbort.signal)
                 .then((project) => {
                   if (freshEvidenceRequest.current !== requestId) return;
                   setNavigation((current) => current.view === "ready-to-generate"
@@ -396,12 +407,26 @@ export function App({
                     setNavigation((current) => current.view === "ready-to-generate"
                       ? setFreshGenerationLoading(current)
                       : current);
-                    void handlers.generateFreshProject(evidence, project)
+                    void handlers.generateFreshProject(evidence, project, previewAbort.signal)
                       .then((generation) => {
                         if (freshEvidenceRequest.current !== requestId) return;
                         setNavigation((current) => current.view === "ready-to-generate"
                           ? setFreshGeneration(current, generation)
                           : current);
+                        if (handlers.previewFreshProject !== undefined) {
+                          setNavigation((current) => current.view === "ready-to-generate"
+                            ? setFreshPreviewLoading(current)
+                            : current);
+                          return handlers.previewFreshProject(evidence, project, previewAbort.signal)
+                            .then((preview) => {
+                              if (freshEvidenceRequest.current !== requestId) return;
+                              setNavigation((current) => current.view === "ready-to-generate"
+                                ? setFreshPreview(current, preview)
+                                : current);
+                              if (freshPreviewAbort.current === previewAbort) freshPreviewAbort.current = undefined;
+                            });
+                        }
+                        return undefined;
                       })
                       .catch((error: unknown) => {
                         if (freshEvidenceRequest.current !== requestId) return;
@@ -958,6 +983,7 @@ export function App({
     if (navigation.view === "help") {
       if (action === "back" || action === "help") setNavigation((current) => closeHelp(current));
       else if (action === "quit") {
+        freshPreviewAbort.current?.abort();
         onAction({ type: "quit" });
         exit();
       }
@@ -973,6 +999,7 @@ export function App({
         const quit = terminalOutcomeActionForShortcut(terminalOutcome?.actions ?? [], "quit");
         if (quit !== undefined) activateTerminalOutcome(quit.id);
       } else if (!executionBusy) {
+        freshPreviewAbort.current?.abort();
         onAction({ type: "quit" });
         exit();
       }

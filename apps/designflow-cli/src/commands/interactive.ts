@@ -259,6 +259,10 @@ export async function freshCommand(
             if (context.generateFreshProject !== undefined) {
               const generated = await context.generateFreshProject(evidence, scaffold);
               terminal.print(`Fresh UI generated and built: ${generated.targetPath}`);
+              if (context.previewFreshProject !== undefined) {
+                const preview = await context.previewFreshProject(evidence, scaffold);
+                terminal.print(`Fresh preview captured: ${preview.previewUrl} (${preview.viewport.width} × ${preview.viewport.height})`);
+              }
             }
           }
         }
@@ -286,6 +290,10 @@ export async function freshCommand(
             if (context.generateFreshProject !== undefined) {
               const generated = await context.generateFreshProject(evidence, scaffold);
               terminal.print(`Fresh UI generated and built: ${generated.targetPath}`);
+              if (context.previewFreshProject !== undefined) {
+                const preview = await context.previewFreshProject(evidence, scaffold);
+                terminal.print(`Fresh preview captured: ${preview.previewUrl} (${preview.viewport.width} × ${preview.viewport.height})`);
+              }
             }
           }
         }

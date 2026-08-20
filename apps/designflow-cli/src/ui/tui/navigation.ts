@@ -5,6 +5,7 @@ import type { FreshUiState } from "./fresh-ui";
 import type { FreshFrameEvidence } from "../../services/fresh-figma-evidence";
 import type { FreshScaffoldResult } from "../../services/fresh-project-scaffolder";
 import type { FreshGenerationResult } from "../../services/fresh-ui-generation";
+import type { FreshPreviewResult } from "../../services/fresh-ui-preview";
 import type { ProposalReview, ReviewCheck } from "../../services/proposal-review";
 import {
   backspaceText,
@@ -69,6 +70,7 @@ export interface TuiNavigationState {
   readonly freshEvidence?: FreshFrameEvidence | undefined;
   readonly freshProject?: FreshScaffoldResult | undefined;
   readonly freshGeneration?: FreshGenerationResult | undefined;
+  readonly freshPreview?: FreshPreviewResult | undefined;
   readonly urlValue: string;
   readonly urlCursor: number;
   readonly urlViewportStart: number;
@@ -76,7 +78,7 @@ export interface TuiNavigationState {
   readonly destinationCandidates: readonly DestinationCandidate[];
   readonly destinationIndex: number;
   readonly destinationScrollOffset: number;
-  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | "fresh-scaffold" | "fresh-generation" | null;
+  readonly loading: "current-selection" | "destinations" | "fresh-evidence" | "fresh-scaffold" | "fresh-generation" | "fresh-preview" | null;
   readonly authError?: string | undefined;
   readonly authBrowserFallback?: string | undefined;
   readonly error?: string | undefined;
@@ -151,6 +153,7 @@ export function enterDesignSelection(
     freshEvidence: undefined,
     freshProject: undefined,
     freshGeneration: undefined,
+    freshPreview: undefined,
   };
 }
 
@@ -179,6 +182,7 @@ export function setFreshReady(
     freshEvidence: undefined,
     freshProject: undefined,
     freshGeneration: undefined,
+    freshPreview: undefined,
     error: undefined,
     urlError: undefined,
     loading: null,
@@ -203,6 +207,7 @@ export function setFreshEvidence(
     freshEvidence: evidence,
     freshProject: undefined,
     freshGeneration: undefined,
+    freshPreview: undefined,
     error: undefined,
   };
 }
@@ -218,6 +223,7 @@ export function setFreshScaffold(
     freshEvidence: evidence,
     freshProject: project,
     freshGeneration: undefined,
+    freshPreview: undefined,
     error: undefined,
   };
 }
@@ -231,6 +237,17 @@ export function setFreshGeneration(
   generation: FreshGenerationResult,
 ): TuiNavigationState {
   return { ...state, loading: null, freshGeneration: generation, error: undefined };
+}
+
+export function setFreshPreviewLoading(state: TuiNavigationState): TuiNavigationState {
+  return { ...state, loading: "fresh-preview", error: undefined };
+}
+
+export function setFreshPreview(
+  state: TuiNavigationState,
+  preview: FreshPreviewResult,
+): TuiNavigationState {
+  return { ...state, loading: null, freshPreview: preview, error: undefined };
 }
 
 export function enterDestinationSelection(
