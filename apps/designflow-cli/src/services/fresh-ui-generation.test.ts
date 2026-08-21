@@ -15,7 +15,18 @@ const evidence = {
   frame: { id: "10:20", name: "Checkout", path: ["Page", "Checkout"], width: 800, height: 600 },
   snapshot: {
     source: { designFile: "Checkout", resolvedFrames: [{ id: "10:20", name: "Checkout", path: ["Page", "Checkout"] }] },
-    nodes: [], variables: [], styles: [], components: [], assets: [], screenshots: [], warnings: [], capabilities: {}, provenance: {},
+    nodes: [{
+      id: "10:20",
+      name: "Checkout",
+      type: "FRAME",
+      childIds: [],
+      absoluteBoundingBox: { x: 0, y: 0, width: 800, height: 600 },
+      fills: [],
+      strokes: [],
+      effects: [],
+      properties: {},
+    }],
+    variables: [], styles: [], components: [], assets: [], screenshots: [], warnings: [], capabilities: {}, provenance: {},
   },
   specificationEvidence: { visibleText: ["Checkout"], hierarchy: [], layout: {}, styles: {} },
 } as unknown as FreshFrameEvidence;
@@ -148,6 +159,29 @@ describe("Fresh UI generation", () => {
         invokeBuilder: async () => ({ files: [] }),
         runBuild: async () => ({ passed: true, stdout: "", stderr: "", exitCode: 0 }),
       })).rejects.toBeInstanceOf(FreshGenerationError);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails before Builder invocation when detailed Figma context is incomplete", async () => {
+    const { root, result } = await scaffold();
+    try {
+      let invoked = false;
+      const incomplete = {
+        ...evidence,
+        snapshot: {
+          ...evidence.snapshot,
+          warnings: [{ code: "DESIGN_CONTEXT_RETRIEVAL_FAILED", message: "timed out" }],
+        },
+      } as FreshFrameEvidence;
+      await expect(generateFreshUiProject({
+        evidence: incomplete,
+        scaffold: result,
+        invokeBuilder: async () => { invoked = true; return proposal(); },
+        runBuild: async () => ({ passed: true, stdout: "", stderr: "", exitCode: 0 }),
+      })).rejects.toMatchObject({ code: "ERR_FRESH_UI_EVIDENCE_INCOMPLETE" });
+      expect(invoked).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

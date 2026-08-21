@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type {
   AgentInvocationOutcome,
@@ -7,9 +7,14 @@ import type {
 } from "@designflow/sdk";
 import type { FreshFrameEvidence } from "./fresh-figma-evidence";
 import type { FreshScaffoldResult } from "./fresh-project-scaffolder";
+import {
+  createFreshBuilderEvidence,
+  type FreshBuilderEvidence,
+  type FreshBuilderEvidenceMetrics,
+} from "./fresh-builder-evidence";
 
 export interface FreshUiBuilderInput {
-  readonly evidence: unknown;
+  readonly evidence: FreshBuilderEvidence;
   readonly frame: {
     readonly id: string;
     readonly name: string;
@@ -18,6 +23,9 @@ export interface FreshUiBuilderInput {
   };
   readonly fixedStack: readonly ["Vite", "React", "TypeScript", "Plain CSS"];
   readonly allowedWritePaths: readonly string[];
+  readonly mode?: "generate" | "compile-repair" | "visual-repair";
+  readonly repairEvidence?: unknown;
+  readonly attempt?: number;
   readonly currentFiles?: Readonly<Record<string, string>>;
   readonly buildFailure?: {
     readonly stdout: string;
@@ -73,9 +81,11 @@ export async function invokeFreshUiBuilder(
 ): Promise<unknown> {
   const outcome: AgentInvocationOutcome = await runtime.invoke({
     agentId: "fresh-ui-builder-agent",
-    objective: "Generate the first buildable Fresh UI implementation from authoritative Figma evidence.",
+    objective: input.mode === "visual-repair"
+      ? "Repair the Fresh UI implementation using authoritative Figma evidence and deterministic visual mismatch evidence."
+      : "Generate the first buildable Fresh UI implementation from authoritative Figma evidence.",
     input,
-    attempt: input.buildFailure === undefined ? 1 : 2,
+    attempt: input.attempt ?? (input.buildFailure === undefined ? 1 : 2),
   }, signal);
   if (outcome.type === "failure") {
     throw Object.assign(new Error(outcome.message), { code: outcome.code });
@@ -88,6 +98,7 @@ export interface FreshGenerationResult {
   readonly generatedFiles: readonly string[];
   readonly build: FreshBuildResult;
   readonly repairAttempts: number;
+  readonly builderEvidenceMetrics: FreshBuilderEvidenceMetrics;
 }
 
 export class FreshGenerationError extends Error {
@@ -137,7 +148,7 @@ function classifyBuilderError(error: unknown): FreshGenerationError {
   );
 }
 
-function validateProposal(raw: unknown): FreshUiBuilderProposal {
+export function validateFreshUiProposal(raw: unknown): FreshUiBuilderProposal {
   if (typeof raw !== "object" || raw === null) {
     throw new FreshGenerationError(
       "ERR_FRESH_UI_BUILDER_RESPONSE",
@@ -222,7 +233,8 @@ async function assertTarget(targetPath: string, outputRoot: string): Promise<str
   return canonical;
 }
 
-async function writeProposal(targetPath: string, proposal: FreshUiBuilderProposal): Promise<readonly string[]> {
+export async function writeFreshUiProposal(targetPath: string, raw: unknown): Promise<readonly string[]> {
+  const proposal = validateFreshUiProposal(raw);
   const canonical = await assertTarget(targetPath, dirname(targetPath));
   const written: string[] = [];
   for (const file of proposal.files) {
@@ -264,12 +276,27 @@ export async function installFreshProjectDependencies(targetPath: string, signal
   return runFreshCommand(targetPath, ["install", "--ignore-scripts", "--no-audit", "--no-fund"], signal);
 }
 
-async function readAllowedFiles(targetPath: string): Promise<Record<string, string>> {
+export async function readFreshUiFiles(targetPath: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
+  const visit = async (directory: string, prefix: string): Promise<void> => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) await visit(resolve(directory, entry.name), path);
+      else if (ALLOWED_FILES.has(path) || path.startsWith("src/assets/")) result[path] = await readFile(resolve(directory, entry.name), "utf8");
+    }
+  };
+  await visit(resolve(targetPath, "src"), "src");
   for (const path of ALLOWED_FILES) {
-    result[path] = await readFile(resolve(targetPath, path), "utf8");
+    if (result[path] === undefined) result[path] = await readFile(resolve(targetPath, path), "utf8");
   }
   return result;
+}
+
+export function createFreshUiBuilderInput(
+  evidence: FreshFrameEvidence,
+  options: { readonly currentFiles?: Readonly<Record<string, string>>; readonly buildFailure?: FreshBuildResult; readonly repairEvidence?: unknown; readonly mode?: FreshUiBuilderInput["mode"]; readonly attempt?: number } = {},
+): FreshUiBuilderInput {
+  return builderInput(createFreshBuilderEvidence(evidence).evidence, options.currentFiles, options.buildFailure, options);
 }
 
 export async function runFreshProjectBuild(targetPath: string, signal?: AbortSignal): Promise<FreshBuildResult> {
@@ -314,28 +341,15 @@ async function runFreshCommand(targetPath: string, args: readonly string[], sign
   });
 }
 
-function builderInput(evidence: FreshFrameEvidence, currentFiles?: Readonly<Record<string, string>>, buildFailure?: FreshBuildResult): FreshUiBuilderInput {
-  const { retrievedAt: _retrievedAt, ...provenance } = evidence.snapshot.provenance;
+function builderInput(evidence: FreshBuilderEvidence, currentFiles?: Readonly<Record<string, string>>, buildFailure?: FreshBuildResult, options: { readonly repairEvidence?: unknown; readonly mode?: FreshUiBuilderInput["mode"]; readonly attempt?: number } = {}): FreshUiBuilderInput {
   return {
-    evidence: {
-      frame: evidence.frame,
-      source: evidence.snapshot.source,
-      nodes: evidence.snapshot.nodes,
-      variables: evidence.snapshot.variables,
-      styles: evidence.snapshot.styles,
-      components: evidence.snapshot.components,
-      assets: evidence.snapshot.assets,
-      screenshots: evidence.snapshot.screenshots,
-      capabilities: evidence.snapshot.capabilities,
-      warnings: evidence.snapshot.warnings,
-      provenance,
-      sourceProvenance: evidence.snapshot.sourceProvenance,
-      specificationEvidence: evidence.specificationEvidence,
-      ...(evidence.referenceScreenshot === undefined ? {} : { referenceScreenshot: evidence.referenceScreenshot }),
-    },
+    evidence,
     frame: evidence.frame,
     fixedStack: ["Vite", "React", "TypeScript", "Plain CSS"],
     allowedWritePaths: ["src/App.tsx", "src/styles.css", "src/assets/**"],
+    ...(options.mode === undefined ? {} : { mode: options.mode }),
+    ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
+    ...(options.repairEvidence === undefined ? {} : { repairEvidence: options.repairEvidence }),
     ...(currentFiles === undefined ? {} : { currentFiles }),
     ...(buildFailure === undefined ? {} : {
       buildFailure: {
@@ -351,15 +365,16 @@ export async function generateFreshUiProject(request: FreshGenerationRequest): P
   if (request.signal?.aborted) {
     throw new FreshGenerationError("ERR_FRESH_UI_BUILD_CANCELLED", "Fresh UI generation was cancelled.");
   }
+  const builderEvidence = createFreshBuilderEvidence(request.evidence);
   const targetPath = await assertTarget(request.scaffold.targetPath, request.scaffold.outputRoot);
   const build = request.runBuild ?? runFreshProjectBuild;
   let proposal: FreshUiBuilderProposal;
   try {
-    proposal = validateProposal(await request.invokeBuilder(builderInput(request.evidence), request.signal));
+    proposal = validateFreshUiProposal(await request.invokeBuilder(builderInput(builderEvidence.evidence, undefined, undefined, { mode: "generate", attempt: 1 }), request.signal));
   } catch (error) {
     throw classifyBuilderError(error);
   }
-  const generatedFileSet = new Set(await writeProposal(targetPath, proposal));
+  const generatedFileSet = new Set(await writeFreshUiProposal(targetPath, proposal));
   if (request.installDependencies !== undefined) {
     const install = await request.installDependencies(targetPath, request.signal);
     if (request.signal?.aborted) {
@@ -381,11 +396,11 @@ export async function generateFreshUiProject(request: FreshGenerationRequest): P
     }
     repairAttempts += 1;
     try {
-      const repair = validateProposal(await request.invokeBuilder(
-        builderInput(request.evidence, await readAllowedFiles(targetPath), result),
+      const repair = validateFreshUiProposal(await request.invokeBuilder(
+        builderInput(builderEvidence.evidence, await readFreshUiFiles(targetPath), result, { mode: "compile-repair", attempt: repairAttempts + 1 }),
         request.signal,
       ));
-      for (const path of await writeProposal(targetPath, repair)) generatedFileSet.add(path);
+      for (const path of await writeFreshUiProposal(targetPath, repair)) generatedFileSet.add(path);
     } catch (error) {
       throw classifyBuilderError(error);
     }
@@ -398,5 +413,11 @@ export async function generateFreshUiProject(request: FreshGenerationRequest): P
       { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode, repairAttempts },
     );
   }
-  return { targetPath, generatedFiles: [...generatedFileSet], build: result, repairAttempts };
+  return {
+    targetPath,
+    generatedFiles: [...generatedFileSet],
+    build: result,
+    repairAttempts,
+    builderEvidenceMetrics: builderEvidence.metrics,
+  };
 }
