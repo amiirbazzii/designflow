@@ -39,6 +39,8 @@ export interface BuildSnapshotOptions {
   readonly sourceKind?: "current-selection" | "figma-url";
   readonly captureScreenshots: boolean;
   readonly screenshotArtifactIdPrefix: string;
+  /** Optional Fresh-only override for the expensive Desktop design-context call. */
+  readonly designContextTimeoutMs?: number;
   readonly now: () => string;
 }
 

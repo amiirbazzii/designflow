@@ -79,6 +79,7 @@ export async function buildFigmaDesktopSourceSnapshot(
     readonly sourceKind?: "current-selection" | "figma-url";
     readonly captureScreenshots: boolean;
     readonly screenshotArtifactIdPrefix: string;
+    readonly designContextTimeoutMs?: number;
     readonly now: () => string;
   },
 ): Promise<FigmaSourceSnapshot> {
@@ -178,11 +179,25 @@ export async function buildFigmaDesktopSourceSnapshot(
   let contextTree: readonly DesignContextTreeNode[] = [];
   if (capabilities.inspectNodes) {
     try {
-      const content = await callDesktopTool(client, DESKTOP_TOOLS.designContext, desktopNodeArgs, context.signal);
+      const content = await callDesktopTool(
+        client,
+        DESKTOP_TOOLS.designContext,
+        desktopNodeArgs,
+        context.signal,
+        options.designContextTimeoutMs,
+      );
       const contextText = textFromContent(content);
       contextFacts = parseDesignContextFacts(contextText);
       contextTree = parseDesignContextTree(contextText);
+      if (contextFacts.size === 0 && contextTree.length === 0) {
+        warnings.push({
+          code: "DESIGN_CONTEXT_RETRIEVAL_FAILED",
+          message: "Figma Desktop MCP returned no parseable detailed design context for the selected node",
+          nodeId: selection.id,
+        });
+      }
     } catch (error) {
+      if (context.signal?.aborted) throw error;
       const cause = error instanceof DesignFlowError ? ` (${error.code})` : "";
       warnings.push({
         code: "DESIGN_CONTEXT_RETRIEVAL_FAILED",
@@ -231,9 +246,20 @@ export async function buildFigmaDesktopSourceSnapshot(
             DESKTOP_TOOLS.designContext,
             { nodeId: instance.id, clientLanguages: "typescript", clientFrameworks: "react" },
             context.signal,
+            options.designContextTimeoutMs,
           );
-          targetedContextTree = parseDesignContextTree(textFromContent(targetedContext));
+          const targetedContextText = textFromContent(targetedContext);
+          targetedContextTree = parseDesignContextTree(targetedContextText);
+          if (targetedContextTree.length === 0 && parseDesignContextFacts(targetedContextText).size === 0) {
+            warnings.push({
+              code: "INSTANCE_TARGETED_CONTEXT_FAILED",
+              message: `Targeted design context contained no parseable detailed evidence for visible instance ${instance.id}`,
+              nodeId: instance.id,
+            });
+            continue;
+          }
         } catch (error) {
+          if (context.signal?.aborted) throw error;
           const cause = error instanceof DesignFlowError ? ` (${error.code})` : "";
           warnings.push({
             code: "INSTANCE_TARGETED_CONTEXT_FAILED",
@@ -256,6 +282,7 @@ export async function buildFigmaDesktopSourceSnapshot(
           }
         }
       } catch (error) {
+        if (context.signal?.aborted) throw error;
         const cause = error instanceof DesignFlowError ? ` (${error.code})` : "";
         warnings.push({
           code: "INSTANCE_TARGETED_METADATA_FAILED",
@@ -398,8 +425,13 @@ async function callDesktopTool(
   toolName: string,
   arguments_: Record<string, unknown>,
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<unknown> {
-  const result = await client.callTool({ toolName, arguments: arguments_ }, signal);
+  const result = await client.callTool({
+    toolName,
+    arguments: arguments_,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  }, signal);
   if (result.type === "failure") {
     throw new DesignFlowError(result.code, result.message, { toolName });
   }
@@ -451,7 +483,8 @@ async function readDesktopVariables(
         warnings: [{ code: "VARIABLES_SHAPE_UNRECOGNIZED", message: "Desktop MCP returned variable definitions in a non-normalized text format" }],
       };
     }
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     // The capability remains available in tools/list, but this retrieval is
     // optional and is reported without leaking the server's response.
   }

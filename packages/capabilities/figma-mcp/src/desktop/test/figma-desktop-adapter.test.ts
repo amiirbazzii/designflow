@@ -24,7 +24,7 @@ function store(): ArtifactStore {
   };
 }
 
-function context(mcp: CapabilityContext["mcp"]): CapabilityContext {
+function context(mcp: CapabilityContext["mcp"], signal = new AbortController().signal): CapabilityContext {
   return {
     executionId: "desktop-exec",
     workflowId: "desktop-workflow",
@@ -34,7 +34,7 @@ function context(mcp: CapabilityContext["mcp"]): CapabilityContext {
     parentArtifacts: [],
     artifactStore: store(),
     config: {},
-    signal: new AbortController().signal,
+    signal,
     mcp,
   };
 }
@@ -111,6 +111,8 @@ describe("Figma Desktop MCP adapter", () => {
     expect(snapshot.capabilities.stylesAvailable).toBe(false);
     expect(snapshot.warnings.map((warning) => warning.code)).toEqual([
       "DESKTOP_MCP_SELECTION_SCOPE",
+      "DESIGN_CONTEXT_RETRIEVAL_FAILED",
+      "INSTANCE_TARGETED_CONTEXT_FAILED",
       "VARIABLES_SHAPE_UNRECOGNIZED",
     ]);
     expect(client.calls.map((call) => call.toolName)).toEqual([
@@ -242,11 +244,11 @@ describe("Figma Desktop MCP adapter", () => {
   });
 
   test("target-expands visible instance leaves with exact bounded requests", async () => {
-    const calls: Array<{ toolName: string; arguments: Record<string, unknown> }> = [];
+    const calls: Array<{ toolName: string; arguments: Record<string, unknown>; timeoutMs?: number }> = [];
     const client = {
       serverIdentity: "figma-desktop-mcp",
       async listTools() { return tools; },
-      async callTool(request: { toolName: string; arguments: Record<string, unknown> }) {
+      async callTool(request: { toolName: string; arguments: Record<string, unknown>; timeoutMs?: number }) {
         calls.push(request);
         const nodeId = request.arguments.nodeId;
         if (request.toolName === "get_metadata") {
@@ -270,6 +272,7 @@ describe("Figma Desktop MCP adapter", () => {
       sourceKind: "figma-url",
       captureScreenshots: false,
       screenshotArtifactIdPrefix: "desktop-screenshot",
+      designContextTimeoutMs: 60_000,
       now: () => "2026-08-10T00:00:00.000Z",
     });
 
@@ -280,6 +283,142 @@ describe("Figma Desktop MCP adapter", () => {
       { nodeId: "10:1" },
       { nodeId: "10:8" },
     ]);
+    expect(calls.filter((call) => call.toolName === "get_design_context").map((call) => call.timeoutMs))
+      .toEqual([60_000, 60_000]);
+  });
+
+  test("uses the Fresh bounded timeout for every design-context request", async () => {
+    const client = new InMemoryMcpClient({
+      serverIdentity: "figma-desktop-mcp",
+      tools: [{ name: "get_metadata" }, { name: "get_design_context" }],
+      results: {
+        get_metadata: [
+          { type: "text", text: "- 10:1: Screen A" },
+          { type: "text", text: '<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="100"><text id="10:2" name="Title" x="0" y="0" width="100" height="20" /></frame>' },
+        ],
+        get_design_context: [{ type: "text", text: '<div data-node-id="10:1"><p data-node-id="10:2">Title</p></div>' }],
+      },
+    });
+
+    await buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      designContextTimeoutMs: 60_000,
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+
+    expect(client.calls.filter((call) => call.toolName === "get_design_context").map((call) => call.timeoutMs))
+      .toEqual([60_000]);
+  });
+
+  test("propagates cancellation while design context is pending", async () => {
+    const controller = new AbortController();
+    const client = {
+      serverIdentity: "figma-desktop-mcp",
+      async listTools() { return [{ name: "get_metadata" }, { name: "get_design_context" }]; },
+      async callTool(request: { toolName: string }, signal?: AbortSignal) {
+        if (request.toolName === "get_metadata") {
+          return {
+            type: "success", toolName: request.toolName, durationMs: 0,
+            content: [{ type: "text", text: "- 10:1: Screen A" }, { type: "text", text: '<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="100"><text id="10:2" name="Title" x="0" y="0" width="100" height="20" /></frame>' }],
+          } as const;
+        }
+        await new Promise<void>((resolve, reject) => {
+          if (signal?.aborted) { reject(new Error("aborted")); return; }
+          const timer = setTimeout(resolve, 60_000);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          }, { once: true });
+        });
+        return { type: "success", toolName: request.toolName, durationMs: 0, content: [] } as const;
+      },
+    } as never;
+    const pending = buildFigmaDesktopSourceSnapshot(context(client, controller.signal), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      designContextTimeoutMs: 60_000,
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    setTimeout(() => controller.abort(), 10);
+    await expect(pending).rejects.toThrow("aborted");
+  });
+
+  test("propagates cancellation while variable retrieval is pending", async () => {
+    const controller = new AbortController();
+    const client = {
+      serverIdentity: "figma-desktop-mcp",
+      async listTools() { return tools; },
+      async callTool(request: { toolName: string }, signal?: AbortSignal) {
+        if (request.toolName === "get_metadata") {
+          return {
+            type: "success", toolName: request.toolName, durationMs: 0,
+            content: [{ type: "text", text: "- 10:1: Screen A" }, { type: "text", text: '<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="100"><text id="10:2" name="Title" x="0" y="0" width="100" height="20" /></frame>' }],
+          } as const;
+        }
+        if (request.toolName === "get_design_context") {
+          return { type: "success", toolName: request.toolName, durationMs: 0, content: [{ type: "text", text: '<div data-node-id="10:1"><p data-node-id="10:2">Title</p></div>' }] } as const;
+        }
+        await new Promise<void>((resolve, reject) => {
+          if (signal?.aborted) { reject(new Error("aborted")); return; }
+          const timer = setTimeout(resolve, 60_000);
+          signal?.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          }, { once: true });
+        });
+        return { type: "success", toolName: request.toolName, durationMs: 0, content: [] } as const;
+      },
+    } as never;
+    const pending = buildFigmaDesktopSourceSnapshot(context(client, controller.signal), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    setTimeout(() => controller.abort(), 10);
+    await expect(pending).rejects.toThrow("aborted");
+  });
+
+  test("propagates cancellation during targeted instance expansion", async () => {
+    const controller = new AbortController();
+    const client = {
+      serverIdentity: "figma-desktop-mcp",
+      async listTools() { return [{ name: "get_metadata" }, { name: "get_design_context" }]; },
+      async callTool(request: { toolName: string; arguments: Record<string, unknown> }, signal?: AbortSignal) {
+        if (request.toolName === "get_metadata" && request.arguments.nodeId === "10:8") {
+          await new Promise<void>((resolve, reject) => {
+            if (signal?.aborted) { reject(new Error("aborted")); return; }
+            const timer = setTimeout(resolve, 60_000);
+            signal?.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new Error("aborted"));
+            }, { once: true });
+          });
+        }
+        if (request.toolName === "get_metadata") {
+          const text = request.arguments.nodeId === undefined || request.arguments.nodeId === "10:1"
+            ? '- 10:1: Screen A\n<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="100"><instance id="10:8" name="History" x="0" y="0" width="200" height="80" /></frame>'
+            : '<instance id="10:8" name="History" x="0" y="0" width="200" height="80" />';
+          return { type: "success", toolName: request.toolName, durationMs: 0, content: [{ type: "text", text }] } as const;
+        }
+        return { type: "success", toolName: request.toolName, durationMs: 0, content: [{ type: "text", text: '<div data-node-id="10:1" />' }] } as const;
+      },
+    } as never;
+    const pending = buildFigmaDesktopSourceSnapshot(context(client, controller.signal), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+    setTimeout(() => controller.abort(), 10);
+    await expect(pending).rejects.toThrow("aborted");
   });
 
   test("fails honestly when no evidence beyond node identity is retrievable", async () => {

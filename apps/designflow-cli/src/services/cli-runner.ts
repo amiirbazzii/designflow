@@ -90,6 +90,7 @@ import {
 } from "@designflow/capability-figma-mcp";
 import {
   DesignFlowError,
+  type ArtifactRef,
   type ModelProfile,
   primaryWorkflowOf,
   type ExecutionEvent,
@@ -99,7 +100,14 @@ import {
   type RegistryArtifactStore,
   type FigmaSourceSnapshot,
 } from "@designflow/sdk";
-import type { FreshEvidenceCompiler, FreshFrameEvidence } from "./fresh-figma-evidence";
+import {
+  normalizeFreshFrameEvidence,
+  type FreshEvidenceCompiler,
+  type FreshFrameEvidence,
+} from "./fresh-figma-evidence";
+import {
+  persistFreshAuthoritativeEvidence,
+} from "./fresh-evidence-artifact";
 import {
   generateFreshUiProject,
   invokeFreshUiBuilder,
@@ -476,6 +484,8 @@ export interface CliContext {
     sourceKind: "current-selection" | "figma-url",
     signal?: AbortSignal,
   ) => Promise<FigmaSourceSnapshot>;
+  /** Latest complete authoritative Fresh evidence persisted by retrieval. */
+  readonly latestFreshEvidenceArtifact: () => ArtifactRef | undefined;
   /** Reuses the canonical evidence projection from the composition root. */
   readonly compileFreshFigmaEvidence?: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>>;
   /** Creates the fixed Fresh UI host project without sessions, workflows, or AI. */
@@ -826,6 +836,8 @@ export function createCliContext(options?: CliContextOptions): CliContext {
     }
   };
 
+  let latestFreshEvidenceArtifact: ArtifactRef | undefined;
+
   const retrieveFreshFigmaSnapshot = async (
     parsedSource: ParsedFigmaSource,
     sourceKind: "current-selection" | "figma-url",
@@ -853,7 +865,7 @@ export function createCliContext(options?: CliContextOptions): CliContext {
       : options?.signal === undefined
         ? signal
         : AbortSignal.any([options.signal, signal]);
-    return buildFigmaSourceSnapshot(
+    const snapshot = await buildFigmaSourceSnapshot(
       {
         executionId: "fresh-ui-evidence",
         workflowId: "fresh-ui",
@@ -871,9 +883,35 @@ export function createCliContext(options?: CliContextOptions): CliContext {
         sourceKind,
         captureScreenshots: true,
         screenshotArtifactIdPrefix: "fresh-figma-screenshot",
+        designContextTimeoutMs: 60_000,
         now: () => new Date().toISOString(),
       },
     );
+    const requestedNodeId = parsedSource.nodeIds[0];
+    if (requestedNodeId === undefined) {
+      throw new DesignFlowError(
+        "ERR_FIGMA_NODE_NOT_FOUND",
+        "Fresh UI evidence requires one normalized Figma node ID.",
+        { sourceKind },
+      );
+    }
+    if (effectiveSignal?.aborted) {
+      throw new DesignFlowError(
+        "ERR_FRESH_EVIDENCE_CANCELLED",
+        "Fresh Figma evidence retrieval was cancelled before persistence.",
+        { sourceKind, nodeId: requestedNodeId },
+      );
+    }
+    const evidence = normalizeFreshFrameEvidence(snapshot, requestedNodeId, compileFreshFigmaEvidence);
+    if (effectiveSignal?.aborted) {
+      throw new DesignFlowError(
+        "ERR_FRESH_EVIDENCE_CANCELLED",
+        "Fresh Figma evidence retrieval was cancelled before persistence.",
+        { sourceKind, nodeId: requestedNodeId },
+      );
+    }
+    latestFreshEvidenceArtifact = await persistFreshAuthoritativeEvidence(artifactStore, evidence);
+    return snapshot;
   };
   const compileFreshFigmaEvidence: FreshEvidenceCompiler<ReturnType<typeof compileSpecificationEvidenceBundle>> = (
     snapshot,
