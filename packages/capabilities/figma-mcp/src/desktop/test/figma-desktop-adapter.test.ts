@@ -116,6 +116,8 @@ describe("Figma Desktop MCP adapter", () => {
     expect(client.calls.map((call) => call.toolName)).toEqual([
       "get_metadata",
       "get_design_context",
+      "get_metadata",
+      "get_design_context",
       "get_variable_defs",
       "get_screenshot",
     ]);
@@ -125,8 +127,10 @@ describe("Figma Desktop MCP adapter", () => {
       clientLanguages: "typescript",
       clientFrameworks: "react",
     });
-    expect(client.calls[2]?.arguments).toEqual(client.calls[1]?.arguments);
-    expect(client.calls[3]?.arguments).toEqual({ nodeId: "32148:21075", contentsOnly: true });
+    expect(client.calls[2]?.arguments).toEqual({ nodeId: "32148:21075" });
+    expect(client.calls[3]?.arguments).toEqual(client.calls[1]?.arguments);
+    expect(client.calls[4]?.arguments).toEqual(client.calls[1]?.arguments);
+    expect(client.calls[5]?.arguments).toEqual({ nodeId: "32148:21075", contentsOnly: true });
     expect(client.calls.every((call) => !("fileKey" in call.arguments))).toBe(true);
   });
 
@@ -235,6 +239,47 @@ describe("Figma Desktop MCP adapter", () => {
     expect(snapshot.nodes).toHaveLength(2);
     expect(snapshot.nodes[0]?.childIds).toEqual(["10:2"]);
     expect(snapshot.nodes[0]?.absoluteBoundingBox).toEqual({ x: 0, y: 0, width: 440, height: 100 });
+  });
+
+  test("target-expands visible instance leaves with exact bounded requests", async () => {
+    const calls: Array<{ toolName: string; arguments: Record<string, unknown> }> = [];
+    const client = {
+      serverIdentity: "figma-desktop-mcp",
+      async listTools() { return tools; },
+      async callTool(request: { toolName: string; arguments: Record<string, unknown> }) {
+        calls.push(request);
+        const nodeId = request.arguments.nodeId;
+        if (request.toolName === "get_metadata") {
+          const text = nodeId === "10:8"
+            ? '<instance id="10:8" name="History" x="0" y="0" width="200" height="80"><text id="10:9" name="Title" x="8" y="8" width="160" height="20" /></instance>'
+            : '- 10:1: Screen A\n<frame id="10:1" name="Screen A" x="0" y="0" width="440" height="100"><instance id="10:8" name="History" x="0" y="0" width="200" height="80" /></frame>';
+          return { type: "success", toolName: request.toolName, content: [{ type: "text", text }], durationMs: 0 } as const;
+        }
+        if (request.toolName === "get_design_context") {
+          const text = nodeId === "10:8"
+            ? '<HistoryCard data-node-id="component:history"><p className="text-[16px]" data-node-id="generated:1">Grocery Shopping</p></HistoryCard>'
+            : '<div data-node-id="10:1"><div data-node-id="10:8" /></div>';
+          return { type: "success", toolName: request.toolName, content: [{ type: "text", text }], durationMs: 0 } as const;
+        }
+        return { type: "success", toolName: request.toolName, content: [{ type: "text", text: "{}" }], durationMs: 0 } as const;
+      },
+    } as never;
+
+    const snapshot = await buildFigmaDesktopSourceSnapshot(context(client), {
+      parsedSource: parseFigmaSource("https://www.figma.com/design/abc123/ScreenA?node-id=10-1"),
+      sourceKind: "figma-url",
+      captureScreenshots: false,
+      screenshotArtifactIdPrefix: "desktop-screenshot",
+      now: () => "2026-08-10T00:00:00.000Z",
+    });
+
+    const history = snapshot.nodes.find((node) => node.id === "10:8");
+    expect(history?.childIds).toEqual(["10:9"]);
+    expect(snapshot.nodes.find((node) => node.id === "10:9")?.characters).toBe("Grocery Shopping");
+    expect(calls.filter((call) => call.toolName === "get_metadata").map((call) => call.arguments)).toEqual([
+      { nodeId: "10:1" },
+      { nodeId: "10:8" },
+    ]);
   });
 
   test("fails honestly when no evidence beyond node identity is retrievable", async () => {

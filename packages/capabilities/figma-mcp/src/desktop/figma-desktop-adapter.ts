@@ -14,7 +14,7 @@ import type { ParsedFigmaSource } from "../source/parse-figma-source";
 import { discoverFigmaMcpCapabilities } from "../transport/discover-capabilities";
 import { normalizeFigmaNodeTree } from "../normalization/normalize-nodes";
 import { parseDesktopMetadataOutline } from "../desktop/desktop-metadata-parser";
-import { expandInstanceEvidence } from "../desktop/instance-evidence-expander";
+import { expandInstanceEvidence, expandTargetedInstanceEvidence } from "../desktop/instance-evidence-expander";
 import { parseDesignContextFacts, parseDesignContextTree, type DesignContextNodeFacts, type DesignContextTreeNode } from "../desktop/desktop-design-context-parser";
 import { storeFigmaScreenshotArtifact } from "../screenshot/screenshot-artifact";
 import type { CapturedScreenshot } from "../transport/figma-mcp-tools";
@@ -26,6 +26,8 @@ const DESKTOP_TOOLS = {
   screenshot: "get_screenshot",
   variables: "get_variable_defs",
 } as const;
+
+const MAX_TARGETED_INSTANCE_EXPANSIONS = 12;
 
 interface ContentBlock {
   readonly type?: unknown;
@@ -191,7 +193,86 @@ export async function buildFigmaDesktopSourceSnapshot(
   }
   const enriched = enrichNodesWithContextFacts(normalized.nodes, contextFacts);
   const expanded = expandInstanceEvidence(enriched, contextTree, warnings);
-  const nodes = expanded.nodes;
+  let expandedNodes = expanded.nodes;
+  const componentNames = new Map(expanded.componentNames);
+
+  // A selected-frame context response may leave visible component instances as
+  // opaque leaves. Request those exact instances once, in a small bounded pass,
+  // rather than crawling the document or falling back to a child frame.
+  if (capabilities.inspectNodes) {
+    const targetedIds = new Set<string>();
+    const queue = expandedNodes.filter((node) => node.type === "INSTANCE" && node.visible !== false && node.childIds.length === 0);
+    while (queue.length > 0 && targetedIds.size < MAX_TARGETED_INSTANCE_EXPANSIONS) {
+      const instance = queue.shift()!;
+      if (targetedIds.has(instance.id)) continue;
+      targetedIds.add(instance.id);
+      try {
+        const targetedMetadata = await callDesktopTool(
+          client,
+          DESKTOP_TOOLS.metadata,
+          { nodeId: instance.id },
+          context.signal,
+        );
+        const targetedOutline = parseDesktopMetadataOutline(textFromContent(targetedMetadata), instance.id);
+        if (targetedOutline === undefined) {
+          warnings.push({
+            code: "INSTANCE_TARGETED_METADATA_FAILED",
+            message: `Targeted metadata did not contain a parseable subtree for visible instance ${instance.id}`,
+            nodeId: instance.id,
+          });
+          continue;
+        }
+        const targetedNormalized = normalizeFigmaNodeTree(targetedOutline);
+        warnings.push(...targetedNormalized.warnings);
+        let targetedContextTree: readonly DesignContextTreeNode[] = [];
+        try {
+          const targetedContext = await callDesktopTool(
+            client,
+            DESKTOP_TOOLS.designContext,
+            { nodeId: instance.id, clientLanguages: "typescript", clientFrameworks: "react" },
+            context.signal,
+          );
+          targetedContextTree = parseDesignContextTree(textFromContent(targetedContext));
+        } catch (error) {
+          const cause = error instanceof DesignFlowError ? ` (${error.code})` : "";
+          warnings.push({
+            code: "INSTANCE_TARGETED_CONTEXT_FAILED",
+            message: `Targeted design context did not return detailed evidence for visible instance ${instance.id}${cause}`,
+            nodeId: instance.id,
+          });
+          continue;
+        }
+        const targetedExpanded = expandTargetedInstanceEvidence(
+          expandedNodes,
+          instance.id,
+          targetedNormalized.nodes,
+          targetedContextTree,
+        );
+        expandedNodes = targetedExpanded.nodes;
+        for (const [nodeId, name] of targetedExpanded.componentNames) componentNames.set(nodeId, name);
+        for (const candidate of expandedNodes) {
+          if (candidate.type === "INSTANCE" && candidate.visible !== false && candidate.childIds.length === 0 && !targetedIds.has(candidate.id) && !queue.some((queued) => queued.id === candidate.id)) {
+            queue.push(candidate);
+          }
+        }
+      } catch (error) {
+        const cause = error instanceof DesignFlowError ? ` (${error.code})` : "";
+        warnings.push({
+          code: "INSTANCE_TARGETED_METADATA_FAILED",
+          message: `Targeted evidence retrieval failed for visible instance ${instance.id}${cause}`,
+          nodeId: instance.id,
+        });
+      }
+    }
+    if (queue.length > 0) {
+      warnings.push({
+        code: "INSTANCE_TARGETED_EXPANSION_BOUNDED",
+        message: `Targeted instance expansion is bounded at ${MAX_TARGETED_INSTANCE_EXPANSIONS} visible instances; remaining leaves were not expanded`,
+        nodeId: selection.id,
+      });
+    }
+  }
+  const nodes = expandedNodes;
 
   const variables = capabilities.inspectVariables
     ? await readDesktopVariables(client, desktopNodeArgs, context.signal)
@@ -205,7 +286,7 @@ export async function buildFigmaDesktopSourceSnapshot(
     .filter((node) => node.type === "INSTANCE")
     .map((node) => ({
       id: node.id,
-      name: expanded.componentNames.get(node.id) ?? node.name,
+      name: componentNames.get(node.id) ?? node.name,
       ...(node.variantProperties !== undefined ? { variantProperties: node.variantProperties } : {}),
     }));
 

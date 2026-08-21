@@ -143,4 +143,10 @@ describe("Fresh Builder evidence projection", () => {
       warnings: [{ code: "INSTANCE_EXPANSION_BOUNDED", message: "descendants omitted" }],
     }))).toThrow(FreshBuilderEvidenceIncompleteError);
   });
+
+  it("fails closed when a targeted instance request is incomplete", () => {
+    expect(() => createFreshBuilderEvidence(evidence({
+      warnings: [{ code: "INSTANCE_TARGETED_CONTEXT_FAILED", message: "instance context unavailable", nodeId: "1:4" }],
+    }))).toThrow(FreshBuilderEvidenceIncompleteError);
+  });
 });

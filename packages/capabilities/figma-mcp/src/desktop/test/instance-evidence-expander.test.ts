@@ -12,6 +12,8 @@ import type { CapabilityContext, FigmaSourceSnapshot } from "@designflow/sdk";
 import { buildFigmaDesktopSourceSnapshot } from "../../desktop/figma-desktop-adapter";
 import { parseFigmaSource } from "../../source/parse-figma-source";
 import { parseDesignContextTree } from "../../desktop/desktop-design-context-parser";
+import { expandTargetedInstanceEvidence } from "../../desktop/instance-evidence-expander";
+import { normalizeFigmaNodeTree } from "../../normalization/normalize-nodes";
 import { InMemoryMcpClient } from "../../../test/support/in-memory-mcp-client";
 
 function store(): unknown {
@@ -256,5 +258,37 @@ describe("instance descendant evidence (Spendly-shaped)", () => {
       "x" + Array.from({ length: 30 }, () => "</div>").join("");
     const tree = parseDesignContextTree(`<div data-node-id="root">${deep}</div>`);
     expect(tree).toHaveLength(1);
+  });
+
+  test("targeted instance expansion merges exact metadata with rich context once", () => {
+    const base = normalizeFigmaNodeTree({
+      id: "frame:1",
+      name: "Frame",
+      type: "FRAME",
+      children: [{ id: "instance:1", name: "History", type: "INSTANCE" }],
+    });
+    const targeted = normalizeFigmaNodeTree({
+      id: "instance:1",
+      name: "History",
+      type: "INSTANCE",
+      children: [
+        { id: "child:1", name: "Title", type: "TEXT", absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 20 } },
+        { id: "child:2", name: "Amount", type: "TEXT", absoluteBoundingBox: { x: 0, y: 24, width: 100, height: 20 } },
+      ],
+    });
+    const contextTree = parseDesignContextTree([
+      '<HistoryCard data-node-id="component:history">',
+      '  <p className="text-[16px]" data-node-id="generated:1">Grocery Shopping</p>',
+      '  <p className="text-[16px]" data-node-id="generated:2">-$120.50</p>',
+      '</HistoryCard>',
+    ].join("\n"));
+
+    const result = expandTargetedInstanceEvidence(base.nodes, "instance:1", targeted.nodes, contextTree);
+    const byId = new Map(result.nodes.map((node) => [node.id, node]));
+    expect(result.expanded).toBe(true);
+    expect(byId.get("instance:1")?.childIds).toEqual(["child:1", "child:2"]);
+    expect(byId.get("child:1")?.characters).toBe("Grocery Shopping");
+    expect(byId.get("child:2")?.characters).toBe("-$120.50");
+    expect(new Set(result.nodes.map((node) => node.id)).size).toBe(result.nodes.length);
   });
 });
